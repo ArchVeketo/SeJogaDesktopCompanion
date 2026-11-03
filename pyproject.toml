@@ -47,7 +47,7 @@ raylib = ["raylib>=6.0"]
 windows = ["pywin32>=306", "comtypes>=1.4"]
 
 # Bandeja do sistema / menu.
-tray = ["pystray>=0.19", "pillow>=11"]
+tray = ["pystray>=0.19", "pillow>=11", "PySide6>=6.6"]
 
 # Interação com música: sessão de mídia do Windows + análise de áudio.
 music = [
