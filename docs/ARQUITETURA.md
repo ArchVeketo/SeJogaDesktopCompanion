@@ -8,7 +8,9 @@
 
 ## 1. Visão Geral
 
-O **SeJogaDesktopCompanion** é um *desktop companion* 3D interativo do mascote **Mário** (cabeça de armário + tentáculos) que flutua no desktop Windows 11.
+O **SeJogaDesktopCompanion** é um *desktop companion* 3D interativo do mascote **Mário** que flutua no desktop Windows 11.
+
+**Descrição do mascote Mário:** personagem estilo Minecraft/Blockbench (low-poly) com **corpo completo** — cabeça de armário (com porta funcional), corpo, dois braços alongados ("ant-arm") com mãos e dedos, pernas e pés. Os "tentáculos" referidos originalmente são os braços alongados estilo Minecraft. O modelo é exportado do Blockbench 4.12.4 em glTF 2.0, com hierarquia de nós (sem skin): `head` (com `door`), `body`, `legs`, `right-arm`/`left-arm` (com `shoulder`/`shoulder2`, `ant-arm`/`ant-arm2`, `hand`/`hand2`, `fingers`/`fingers2`), `left-feet`/`right-feet`.
 
 **Requisitos funcionais:**
 - Modelo 3D principal (glTF/GLB, hierarquia de nós Blockbench)

@@ -8,7 +8,9 @@
 
 ## Resumo Executivo
 
-Este documento consolida a pesquisa técnica para construir o **SeJogaDesktopCompanion**: um *desktop companion* 3D interativo do mascote **Mário** (cabeça de armário + tentáculos) em Python no Windows 11.
+Este documento consolida a pesquisa técnica para construir o **SeJogaDesktopCompanion**: um *desktop companion* 3D interativo do mascote **Mário** em Python no Windows 11.
+
+**Descrição do mascote Mário:** personagem estilo Minecraft/Blockbench (low-poly) com **corpo completo** — cabeça de armário (com porta funcional), corpo, dois braços alongados ("ant-arm") com mãos e dedos, pernas e pés. Os "tentáculos" referidos originalmente são os braços alongados estilo Minecraft. O modelo é exportado do Blockbench 4.12.4 em glTF 2.0, com hierarquia de nós (sem skin): `head` (com `door`), `body`, `legs`, `right-arm`/`left-arm` (com `shoulder`/`shoulder2`, `ant-arm`/`ant-arm2`, `hand`/`hand2`, `fingers`/`fingers2`), `left-feet`/`right-feet`.
 
 **Conclusão principal:** Não existe atalho de marketplace. O caminho viável é:
 1. **Modelagem/Animação** → Blockbench 5.x → exportar `.glb` (hierarquia de nós, sem skin)
