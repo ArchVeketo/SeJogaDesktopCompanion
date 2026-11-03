@@ -1,0 +1,49 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribuição / build
+build/
+dist/
+*.egg-info/
+.eggs/
+*.whl
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Ferramentas
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# PyInstaller / Nuitka
+*.spec
+!tools/*.spec
+main.build/
+main.dist/
+*.onefile.exe
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Configuração local do companion (não versionar)
+config.local.toml
+*.local.toml
+state/
+logs/
+
+# Modelo derivado gerado por tools/gltf_to_glb.py (regenerável)
+# Mantido fora do controle de versão: rode `python tools/gltf_to_glb.py`
+assets/model/*.glb
+
+# Capturas / debug
+captures/
+*.log
