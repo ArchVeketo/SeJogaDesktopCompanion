@@ -92,10 +92,15 @@ class TrayRegistration:
         data.uCallbackMessage = win32con.WM_APP + 101
         data.hIcon = self._icon
         data.szTip = self.tooltip[:127]
-        if self._notify(0, ctypes.byref(data)):  # NIM_ADD
+        ctypes.set_last_error(0)
+        added = bool(self._notify(0, ctypes.byref(data)))  # NIM_ADD
+        error = ctypes.get_last_error()
+        if added:
             data.uVersion = 4
             self._notify(4, ctypes.byref(data))  # NIM_SETVERSION
-        return self.status()
+        result = self.status()
+        result.update(add_succeeded=added, add_error=error)
+        return result
 
     def close(self):
         if self._icon:

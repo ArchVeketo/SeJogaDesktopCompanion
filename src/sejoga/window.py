@@ -1253,7 +1253,14 @@ class OverlayApp(ShowBase):
     def _mouse_poll(self, task: Task) -> int:
         if not win32gui.IsWindow(self.hwnd):
             return Task.done
-        position = win32gui.GetCursorPos()
+        try:
+            position = win32gui.GetCursorPos()
+        except win32gui.error as exc:
+            if exc.winerror == 5:
+                # The input desktop is unavailable while Windows is locked or
+                # showing a secure desktop. Resume polling when it returns.
+                return Task.cont
+            raise
         self._mouse_screen = position
         buttons = self._mouse_buttons()
         self._mouse_local = win32gui.ScreenToClient(self.hwnd, position)
