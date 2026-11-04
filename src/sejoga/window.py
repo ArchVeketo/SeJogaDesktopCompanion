@@ -15,6 +15,7 @@ import sys
 import os
 import math
 import time
+import random
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -52,7 +53,7 @@ from direct.task import Task
 from panda3d.core import (
     WindowProperties, FrameBufferProperties, GraphicsPipe,
     GraphicsWindow, GraphicsOutput, Texture, CardMaker, NodePath,
-    LColor, LVecBase3, LVecBase4, Vec3, Vec4,
+    LColor, LVecBase3, LVecBase4, Point3, Vec3, Vec4,
     GraphicsPipeSelection, FrameBufferProperties, WindowProperties,
     PerspectiveLens, AmbientLight, DirectionalLight, PointLight,
     AntialiasAttrib, TransparencyAttrib, ColorBlendAttrib,
@@ -85,7 +86,10 @@ from .debug import DebugTools, configure_logging
 from .interaction import MouseInteraction
 from .desktop_shell import DesktopIntegration
 from .exit_animation import ExitAnimation
-from .tentacles import TentacleRenderer
+from .tentacle_system import (
+    TentaclePool, TentacleDirector, TentacleState,
+    create_tentacle_geometry, update_tentacle_render,
+)
 from .attention import HoverAttention
 
 # ============================================================
@@ -115,8 +119,8 @@ SWP_NOACTIVATE = 0x0010
 SWP_NOZORDER = 0x0004
 SWP_SHOWWINDOW = 0x0040
 
-# Magenta color key (0xFF00FF = RGB(255, 0, 255)) - BGR format for Win32
-COLOR_KEY = 0x00D600D6  # simplepbr maps magenta clear color to RGB(214, 0, 214)
+# The calibrated final framebuffer key is RGB(214, 0, 214); keep the clear color and Win32 key paired.
+COLOR_KEY = 0x00D600D6
 
 user32 = ctypes.windll.user32
 dwmapi = ctypes.windll.dwmapi
@@ -170,6 +174,8 @@ class Panda3DRenderer:
         self._model_min_z = 0.0
         self._model_radius_px = 0.0
         self.tentacles = None
+        self.tentacle_pool = None
+        self.tentacle_director = None
         self._door_requested = 0.0
 
         self._setup_scene()
@@ -283,8 +289,28 @@ class Panda3DRenderer:
         self.set_visual_scale(self.showbase.settings.window.scale)
 
         self._apply_rig_to_model()
-        self.tentacles = TentacleRenderer(self._rig_nodes["head"])
-        self.tentacles.root.instanceTo(self._outline_nodes["head"])
+
+        unit_scale = float(self._view_height / self.height / self.model_np.getScale().x)
+        head_node = self._rig_nodes["head"]
+        spawn_points = [
+            self.model_np.getRelativePoint(head_node, Vec3(.025, .065, .19)),
+            self.model_np.getRelativePoint(head_node, Vec3(-.035, .065, .085)),
+            self.model_np.getRelativePoint(head_node, Vec3(-.02, .065, .16)),
+            self.model_np.getRelativePoint(head_node, Vec3(.035, .065, .10)),
+            self.model_np.getRelativePoint(head_node, Vec3(0, .1, .12)),
+            self.model_np.getRelativePoint(head_node, Vec3(0, .03, .14)),
+        ]
+        self.tentacle_pool = TentaclePool(
+            self.rig, self.model_np, self.outline_np, spawn_points,
+            rng=random.Random(), unit_scale=unit_scale,
+        )
+        for tentacle in self.tentacle_pool.tentacles:
+            create_tentacle_geometry(tentacle, self.model_np, self.outline_np)
+        self.tentacle_director = TentacleDirector(
+            self.tentacle_pool, self.rig, self.model_np, self.outline_np,
+            self._rig_nodes.get("door"), rng=random.Random(),
+        )
+        self._tentacles_were_visible = False
         self.set_outline_settings(self.showbase.settings.window)
         self.set_model_screen_position(
             self.width / 2,
@@ -344,9 +370,11 @@ void main() {
         if not self.outline_np:
             return
         if not settings.outline_enabled:
-            self.outline_np.hide()
+            # Stash the whole duplicate subtree so child geometry added under
+            # the outline root can never remain visible on its own.
+            self.outline_np.stash()
             return
-        self.outline_np.show()
+        self.outline_np.unstash()
         color = settings.outline_color.lstrip("#")
         rgb = tuple(int(color[index:index + 2], 16) / 255 for index in (0, 2, 4))
         self.outline_np.setShaderInput("outline_color", (*rgb, 1.0))
@@ -456,11 +484,31 @@ void main() {
             self._outline_nodes[forearm].setHpr(node.getHpr())
 
     def update_appendages(self, dt, visible=True):
-        if self.tentacles:
-            self.tentacles.update(dt, self._door_requested, visible)
-            door = self._rig_nodes["door"]
+        if not self.tentacle_director:
+            return
+        controller = self.showbase.animation_controller
+        if visible:
+            if not self._tentacles_were_visible:
+                self.tentacle_director.trigger_curious()
+            self.tentacle_director.update(
+                dt, controller.idle_time, controller.idle_personality
+            )
+        elif self._tentacles_were_visible:
+            self.tentacle_director._retract_all()
+            self.tentacle_director.update(dt, 0.0, controller.idle_personality)
+        self._tentacles_were_visible = visible
+        for tentacle in self.tentacle_pool.tentacles:
+            update_tentacle_render(tentacle)
+            active = tentacle.state != TentacleState.DORMANT
+            for seg in tentacle.segments:
+                if seg.node:
+                    (seg.node.show if active else seg.node.hide)()
+                if seg.outline_node:
+                    (seg.outline_node.show if active else seg.outline_node.hide)()
+        door = self._rig_nodes.get("door")
+        if door:
             base_h, base_p, base_r = self._rig_base_hpr["door"]
-            door.setHpr(base_h+self.tentacles.door.angle, base_p, base_r)
+            door.setHpr(base_h + self.tentacle_director._door_current, base_p, base_r)
             self._outline_nodes["door"].setHpr(door.getHpr())
 
     def begin_exit_effect(self):
@@ -513,6 +561,7 @@ class OverlayApp(ShowBase):
         self._drag_start_pos = (0, 0)
         self._window_start_pos = (0, 0)
         self._drag_direction = 0.0
+        self._drag_intensity = 0.0
         self._animation_last_tick = time.perf_counter()
         self._physics_last_tick = time.perf_counter()
         self._mouse_hovered = False
@@ -604,7 +653,7 @@ class OverlayApp(ShowBase):
 
         self.openDefaultWindow(props=wp, fbprops=fbprops)
 
-        self.win.setClearColor((1.0, 0.0, 1.0, 1.0))  # Magenta
+        self.win.setClearColor((1.0, 0.0, 1.0, 1.0))  # Magenta color key (tone-maps to RGB 214, 0, 214)
         self.win.setClearColorActive(True)
 
         self.disableMouse()
@@ -661,6 +710,7 @@ class OverlayApp(ShowBase):
         image = self.win.getScreenshot()
         if image:
             red, green, blue = bytes(image.getRamImageAs("RGB"))[:3]
+            # Calibrate only the known magenta clear pixel after PBR tone mapping.
             if red > 128 and green < 20 and blue > 128:
                 self._background_key = red | (green << 8) | (blue << 16)
                 self._refresh_background_mode()
@@ -835,6 +885,7 @@ class OverlayApp(ShowBase):
             gravity_active=state.gravity_active if state else False,
             dragging=self._drag_active,
             drag_direction=self._drag_direction,
+            drag_intensity=self._drag_intensity,
             music_playing=music_playing,
             music_intensity=music_intensity,
             dance_chance=self.settings.music.dance_chance,
@@ -848,6 +899,14 @@ class OverlayApp(ShowBase):
         )
         self.renderer.apply_rig_pose(pose)
         self.renderer.update_appendages(dt, self.animation_controller.state == AnimationState.PEEK)
+        if self.renderer.tentacle_director:
+            mouse_world = Point3(
+                (self._mouse_local[0] - self.renderer.width / 2) * self.renderer._view_width / self.renderer.width,
+                0,
+                self.renderer._view_target_z + (self.renderer.height / 2 - self._mouse_local[1]) * self.renderer._view_height / self.renderer.height,
+            )
+            mouse_local = self.renderer.model_np.getRelativePoint(self.render, mouse_world)
+            self.renderer.tentacle_director.set_mouse(mouse_local, Vec3(0))
         if state:
             self._sync_model_with_physics()
         if self.debug_tools:
@@ -1069,6 +1128,7 @@ class OverlayApp(ShowBase):
                 dx = position[0] - self._drag_start_pos[0]
                 dy = position[1] - self._drag_start_pos[1]
                 self._drag_direction = max(-1.0, min(1.0, dx / 80.0))
+                self._drag_intensity = min(1.0, math.hypot(dx, dy)/160)
                 win32gui.SetWindowPos(
                     self.hwnd, 0,
                     self._window_start_pos[0] + dx, self._window_start_pos[1] + dy,
@@ -1082,6 +1142,7 @@ class OverlayApp(ShowBase):
                     self.physics.end_drag(cancel=event.kind == "drag_cancel")
                 self._drag_active = False
                 self._drag_direction = 0.0
+                self._drag_intensity = 0.0
                 self.settings.window.start_position = win32gui.GetWindowRect(self.hwnd)[:2]
                 self._persist_settings()
             if event.kind != "drag_move":

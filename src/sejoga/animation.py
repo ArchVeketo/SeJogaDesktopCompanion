@@ -22,6 +22,8 @@ from .rig import (
     pose_thrown,
     pose_walk,
     pose_flourish,
+    pose_secondary,
+    pose_throw_release,
 )
 
 
@@ -73,6 +75,9 @@ class AnimationController:
         self._dance_decision_in = 0.0
         self._previous_beat = False
         self._dance_rng = random.Random()
+        self.drag_intensity = 0.0
+        self._release_time = 1.0
+        self._release_grip = 0.0
 
     REACTION_SECONDS = {
         AnimationState.CLICK: 0.5,
@@ -131,6 +136,7 @@ class AnimationController:
         gravity_active: bool = False,
         dragging: bool = False,
         drag_direction: float = 0.0,
+        drag_intensity: float = 0.0,
         music_playing: bool = False,
         music_intensity: float = 0.0,
         dance_chance: float = 1.0,
@@ -145,6 +151,12 @@ class AnimationController:
         """Atualiza o estado e devolve um snapshot de rotações em radianos."""
         dt = min(0.1, max(0.0, dt))
         self.clock += dt
+        if self.state == AnimationState.DRAG and not dragging:
+            self._release_time = 0.0
+            self._release_grip = self.drag_intensity
+        else:
+            self._release_time += dt
+        self.drag_intensity += (max(0, min(1, drag_intensity))-self.drag_intensity)*min(1, dt*8)
         self._dance_remaining = max(0.0, self._dance_remaining - dt)
         self._dance_decision_in = max(0.0, self._dance_decision_in - dt)
         if not music_playing or not react_to_beat or dance_chance <= 0:
@@ -234,7 +246,7 @@ class AnimationController:
         elif self.state == AnimationState.RUN:
             pose_walk(self.rig, self.clock, run=True)
         elif self.state == AnimationState.DRAG:
-            pose_drag(self.rig, self.clock, drag_direction)
+            pose_drag(self.rig, self.clock, drag_direction, self.drag_intensity)
         elif self.state == AnimationState.FALL:
             pose_thrown(self.rig, self.clock)
         elif self.state == AnimationState.DANCE:
@@ -245,6 +257,10 @@ class AnimationController:
             pose_flourish(self.rig, self.state.value, self._reaction_time)
         elif self.state == AnimationState.HOVER or self.state in self.REACTION_SECONDS:
             pose_interaction(self.rig, self.state.value, self._reaction_time, self._look_direction, self._look_vertical)
+
+        pose_secondary(self.rig, self.clock, self.state.value, self.idle_personality)
+        if not dragging and self._release_time < .9:
+            pose_throw_release(self.rig, self._release_time, self._release_grip)
 
         target = self.rig.pose()
         if self._active_transition_seconds == 0.0:
