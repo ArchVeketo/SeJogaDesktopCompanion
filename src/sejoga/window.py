@@ -161,6 +161,7 @@ class Panda3DRenderer:
         self._rig_nodes: dict[str, NodePath] = {}
         self._outline_nodes: dict[str, NodePath] = {}
         self._rig_base_hpr: dict[str, tuple[float, float, float]] = {}
+        self._rig_base_pos = {}
         self._view_width = 1.0
         self._view_height = 1.0
         self._view_target_z = 1.0
@@ -376,6 +377,7 @@ void main() {
             node = self.model_np.find(f"**/{group_name}")
             if not node.isEmpty():
                 self._rig_nodes[group_name] = node
+                self._rig_base_pos[group_name] = node.getPos()
                 outline_node = self.outline_np.find(f"**/{group_name}")
                 if not outline_node.isEmpty():
                     self._outline_nodes[group_name] = outline_node
@@ -408,6 +410,9 @@ void main() {
     def apply_rig_pose(self, pose_dict: dict) -> None:
         if not self.model_np:
             return
+        for arm in ("right-arm", "left-arm"):
+            if arm in self._rig_nodes:
+                self._rig_nodes[arm].setPos(self._rig_base_pos[arm])
 
         for group_name, rotation in pose_dict.items():
             node = self._rig_nodes.get(group_name)
@@ -417,12 +422,16 @@ void main() {
                 x, y, z = rotation.x, rotation.y, rotation.z
             else:
                 x, y, z = rotation
+            # Beyond vertical the upper arms fold inward through the torso.
+            if group_name == "right-arm":
+                z = max(math.radians(-75), min(math.radians(50), z))
+            elif group_name == "left-arm":
+                z = max(math.radians(-50), min(math.radians(75), z))
             base_h, base_p, base_r = self._rig_base_hpr.get(group_name, (0.0, 0.0, 0.0))
             if group_name == "door":
                 self._door_requested = max(0.0, math.degrees(y))
-                # Keep the opening clear until the last tentacle has retracted.
-                if self.tentacles and self.tentacles.motion.extension > .01:
-                    y = math.radians(max(self._door_requested, 10 + 60 * self.tentacles.motion.extension))
+                if self.tentacles:
+                    y = math.radians(self.tentacles.door.angle)
             node.setHpr(
                 base_h + math.degrees(y),
                 base_p + math.degrees(x),
@@ -431,10 +440,39 @@ void main() {
             outline_node = self._outline_nodes.get(group_name)
             if outline_node:
                 outline_node.setHpr(node.getHpr())
+        self._resolve_arm_clearance()
+
+    def _resolve_arm_clearance(self):
+        for arm, forearm, hand, direction in (("right-arm", "ant-arm", "hand", 1),
+                                               ("left-arm", "ant-arm2", "hand2", -1)):
+            # Shoulders stay attached. Open the elbow outward if the hand enters
+            # the torso/pelvis, instead of translating the whole arm off its socket.
+            node = self._rig_nodes[forearm]
+            for _ in range(13):
+                clear = True
+                bounds = self._rig_nodes[hand].getTightBounds(self.model_np)
+                for obstacle in ("body", "legs"):
+                    body = self._rig_nodes[obstacle].getTightBounds(self.model_np)
+                    if not body or not bounds:
+                        continue
+                    overlap_z = bounds[0].z < body[1].z and bounds[1].z > body[0].z
+                    overlap_y = bounds[0].y < body[1].y and bounds[1].y > body[0].y
+                    inside_x = bounds[0].x < body[1].x+.01 if direction > 0 else bounds[1].x > body[0].x-.01
+                    if overlap_z and overlap_y and inside_x:
+                        clear = False
+                if clear:
+                    break
+                node.setR(node.getR()-direction*5)
+            self._outline_nodes[forearm].setHpr(node.getHpr())
+            self._outline_nodes[arm].setPos(self._rig_nodes[arm].getPos())
 
     def update_appendages(self, dt):
         if self.tentacles:
             self.tentacles.update(dt, self._door_requested)
+            door = self._rig_nodes["door"]
+            base_h, base_p, base_r = self._rig_base_hpr["door"]
+            door.setHpr(base_h+self.tentacles.door.angle, base_p, base_r)
+            self._outline_nodes["door"].setHpr(door.getHpr())
 
     def begin_exit_effect(self):
         from panda3d.core import Shader

@@ -37,6 +37,25 @@ def main():
         assert app.win.getScreenshot().write(Filename.fromOsSpecific(str(path)))
         print(path)
 
+    def check_clearance():
+        from panda3d.core import GeomVertexReader
+        tentacles = app.renderer.tentacles
+        for data, np in zip(tentacles._data, tentacles.meshes):
+            if np.isHidden():
+                continue
+            reader = GeomVertexReader(data, "vertex")
+            while not reader.isAtEnd():
+                point = reader.getData3()
+                assert tentacles.door.distance(point, tentacles.door.angle) >= -1e-5, (point, tentacles.door.angle)
+        for arm in ("right-arm", "left-arm"):
+            assert app.renderer._rig_nodes[arm].getPos().almostEqual(app.renderer._rig_base_pos[arm], 1e-6)
+        for forearm, direction in (("hand", 1), ("hand2", -1)):
+            bounds = app.renderer._rig_nodes[forearm].getTightBounds(app.renderer.model_np)
+            for obstacle in ("body", "legs"):
+                body = app.renderer._rig_nodes[obstacle].getTightBounds(app.renderer.model_np)
+                if bounds[0].z < body[1].z and bounds[1].z > body[0].z and bounds[0].y < body[1].y and bounds[1].y > body[0].y:
+                    assert bounds[0].x >= body[1].x if direction > 0 else bounds[1].x <= body[0].x
+
     try:
         for _ in range(20):
             app.taskMgr.step()
@@ -60,12 +79,21 @@ def main():
                 app.renderer.update_appendages(.033)
             assert pose["head"].x * vertical < 0 and pose["head"].y * horizontal > 0
             capture(name)
+        from sejoga.rig import IdlePersonality, pose_idle
+        for personality in IdlePersonality:
+            for phase in (0, .6, 1.2, 2.0):
+                app.renderer.rig.reset()
+                pose_idle(app.renderer.rig, phase, personality)
+                app.renderer.apply_rig_pose(app.renderer.rig.pose())
+                app.renderer.update_appendages(.033)
+                check_clearance()
         for kind in ("wave", "stretch", "peek", "hit"):
             app.animation_controller.interact(kind)
             for _ in range(18):
                 pose = app.animation_controller.update(.033, idle_enabled=False)
                 app.renderer.apply_rig_pose(pose)
                 app.renderer.update_appendages(.033)
+                check_clearance()
             capture(kind)
         # Full opening, then a half-retracted frame and a closed frame.
         from sejoga.rig import Rotation3
@@ -73,19 +101,25 @@ def main():
         for _ in range(30):
             app.renderer.apply_rig_pose({"door": Rotation3(y=math.radians(85))})
             app.renderer.update_appendages(.033)
+            check_clearance()
         assert app.renderer.tentacles.motion.extension > .95
         capture("tentacles-open")
+        app.renderer.apply_rig_pose({"head": Rotation3(y=math.radians(30)), "door": Rotation3(y=math.radians(85))})
+        capture("tentacles-three-quarter")
+        app.renderer.apply_rig_pose({"head": Rotation3(), "door": Rotation3(y=math.radians(85))})
         app.renderer.tentacles._slime_cooldown = 0
         app.renderer.tentacles._rng.random = lambda: 0.0
         for _ in range(8):
             app.renderer.apply_rig_pose({"door": Rotation3()})
             app.renderer.update_appendages(.033)
+            check_clearance()
         assert 0 < app.renderer.tentacles.motion.extension < .9
         assert app.renderer.tentacles.drops
         capture("tentacles-retract")
         for _ in range(40):
             app.renderer.apply_rig_pose({"door": Rotation3()})
             app.renderer.update_appendages(.033)
+            check_clearance()
         assert app.renderer.tentacles.motion.extension == 0
         capture("tentacles-closed")
         app.renderer.begin_exit_effect()

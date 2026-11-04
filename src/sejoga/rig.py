@@ -149,8 +149,8 @@ def pose_idle(
         rig.set_rotation("body", x=1.0 + breath * 0.7, y=-3.0 + sway * 1.2, z=-2.0)
         rig.set_rotation("head", x=8.0 + breath, y=sin(t * 0.42) * 5.0, z=-6.0 + sway * 2.0)
         rig.set_rotation("door", y=peek * 13.0)
-        rig.set_rotation("right-arm", x=3.0, z=82.0)
-        rig.set_rotation("left-arm", x=-3.0, z=-82.0)
+        rig.set_rotation("right-arm", x=3.0, z=58.0)
+        rig.set_rotation("left-arm", x=-3.0, z=-58.0)
         rig.set_rotation("ant-arm", x=10.0 + breath, z=sin(t * 0.7) * 3.0)
         rig.set_rotation("ant-arm2", x=10.0 + breath, z=-sin(t * 0.7) * 3.0)
     elif personality == IdlePersonality.CONFIDENT:
@@ -196,7 +196,7 @@ def pose_wave(rig: Rig, t: float) -> None:
     """Aceno: braço direito sobe e o antebraço oscila."""
     from math import sin
 
-    rig.set_rotation("right-arm", z=95.0, x=-15.0)
+    rig.set_rotation("right-arm", z=-65.0, x=-15.0)
     rig.set_rotation("ant-arm", x=sin(t * 8.0) * 25.0)
     rig.set_rotation("head", z=6.0)
 
@@ -240,8 +240,8 @@ def pose_sleep(rig: Rig, t: float) -> None:
     breath = sin(t * 0.75)
     rig.set_rotation("body", x=1.5 + breath * 0.6, z=-2.0)
     rig.set_rotation("head", x=12.0 + breath * 0.8, y=4.0)
-    rig.set_rotation("right-arm", x=10.0, z=-12.0)
-    rig.set_rotation("left-arm", x=10.0, z=12.0)
+    rig.set_rotation("right-arm", x=10.0, z=55.0)
+    rig.set_rotation("left-arm", x=10.0, z=-55.0)
     rig.set_rotation("ant-arm", x=8.0)
     rig.set_rotation("ant-arm2", x=8.0)
 
@@ -283,7 +283,7 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
         pulse = sin(pi * min(1.0, t / 0.4))
         rig.set_rotation("body", x=-8.0 * pulse)
         rig.set_rotation("head", x=-12.0 * pulse, z=8.0 * pulse)
-        rig.set_rotation("right-arm", z=65.0 + pulse * 30.0)
+        rig.set_rotation("right-arm", z=65.0 - pulse * 75.0)
         rig.set_rotation("door", y=35.0 * pulse)
     elif kind == "land":
         pulse = sin(pi * min(1.0, t / 0.45))
@@ -296,8 +296,8 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
         rig.set_rotation("body", x=-6.0 * pulse)
         rig.set_rotation("head", x=-10.0 * pulse, y=sin(t * 12.0) * 5.0 * pulse)
         rig.set_rotation("door", y=75.0 * pulse)
-        rig.set_rotation("right-arm", z=65.0 + 35.0 * pulse)
-        rig.set_rotation("left-arm", z=-65.0 - 35.0 * pulse)
+        rig.set_rotation("right-arm", z=65.0 - 95.0 * pulse)
+        rig.set_rotation("left-arm", z=-65.0 + 95.0 * pulse)
 
 
 def pose_flourish(rig: Rig, kind: str, t: float) -> None:
@@ -309,13 +309,13 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
     rig.set_rotation("right-arm", z=65)
     rig.set_rotation("left-arm", z=-65)
     if kind == "wave":
-        rig.set_rotation("right-arm", x=-15 * envelope, z=65 + 70 * envelope)
+        rig.set_rotation("right-arm", x=-15 * envelope, z=65 - 130 * envelope)
         rig.set_rotation("ant-arm", x=sin(t * 11) * 22 * envelope)
         rig.set_rotation("head", z=8 * envelope)
         rig.set_rotation("door", y=25 * envelope)
     elif kind == "stretch":
-        rig.set_rotation("right-arm", x=-25 * envelope, z=65 + 75 * envelope)
-        rig.set_rotation("left-arm", x=-25 * envelope, z=-65 - 75 * envelope)
+        rig.set_rotation("right-arm", x=-25 * envelope, z=65 - 125 * envelope)
+        rig.set_rotation("left-arm", x=-25 * envelope, z=-65 + 125 * envelope)
         rig.set_rotation("body", x=-8 * envelope)
         rig.set_rotation("head", x=-12 * envelope)
         rig.set_rotation("door", y=60 * envelope)

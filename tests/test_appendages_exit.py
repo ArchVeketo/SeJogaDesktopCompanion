@@ -1,6 +1,7 @@
 import math
 from sejoga.appendages import AppendageMotion
 from sejoga.exit_animation import ExitAnimation
+from sejoga.appendages import DoorJoint, tentacle_center
 
 
 def test_tentacles_retract_progressively_instead_of_popping():
@@ -38,3 +39,38 @@ def test_exit_freezes_then_spins_outside_desktop_both_directions():
         end = effect.sample(2)
         assert end.done and end.y + 480 < -200
         assert end.x + 480 < -1920 or end.x > 1920
+
+
+def test_door_is_pushed_open_by_contact_and_closes_after_retraction():
+    door = DoorJoint()
+    sphere = ((0, .155, .15), .04)
+    for _ in range(30):
+        door.update(.033, 0, [sphere])
+    assert door.angle > 20
+    assert door.distance(sphere[0], door.angle) >= sphere[1]
+    for _ in range(60):
+        door.update(.033, 0, [])
+    assert door.angle == 0
+
+
+def test_contact_projection_clears_door_volume():
+    door = DoorJoint()
+    for angle in (0, 40, 85, 120):
+        door.angle = angle
+        point = (-.02, .15, .15)
+        result = door.project(point, .06)
+        assert door.distance(result, angle) >= .06 - 1e-7
+
+
+def test_tentacle_roots_are_inside_opening_and_tips_move_in_depth():
+    for index in range(4):
+        root = tentacle_center(index, 0, 0, 1)
+        assert abs(root[0]) < .07 and root[1] < .116
+        assert 0 < root[2] < .3
+        tip_a = tentacle_center(index, 1, 0, 1)
+        tip_b = tentacle_center(index, 1, 1, 1)
+        assert tip_a != tip_b
+        assert tip_a[1] > root[1]+.15
+    motion = AppendageMotion()
+    motion.update(.1, 85, actual_door=0)
+    assert motion.extension == 0  # The mesh waits for room at the hinge.

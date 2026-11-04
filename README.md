@@ -30,6 +30,7 @@ O executável gerado fica em `dist\SeJogaCompanion\SeJogaCompanion.exe`.
 - O contorno acompanha as partes animadas do personagem. Em **Configurações**, escolha a cor, ajuste a espessura de 0,5 a 8 px ou desligue o contorno. As mudanças são aplicadas ao salvar.
 - O olhar reage também numa área ao redor do personagem, acompanhando o cursor para os lados, para cima e para baixo.
 - O menu da bandeja oferece **Acenar**, **Alongar** e **Mostrar tentáculos**. Os tentáculos aparecem com a abertura da porta, recolhem gradualmente antes de ela fechar e às vezes soltam uma gota de gosma rosa.
+- Os tentáculos saem de dentro da abertura e flexionam em 3D. A porta tem mola e contato com o volume ocupado por eles: cede à passagem e volta a fechar quando há espaço.
 
 ## Barra de tarefas e saída
 

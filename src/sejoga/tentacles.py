@@ -1,22 +1,22 @@
-"""Malhas procedurais curvas e pequenas gotas rosas no recolhimento."""
+"""Tentáculos volumétricos deformados por curvas 3D, com contato na porta."""
 import math
 import random
 
 from panda3d.core import (Geom, GeomNode, GeomTriangles, GeomVertexData,
                          GeomVertexFormat, GeomVertexWriter, Vec3, Texture)
-from .appendages import AppendageMotion
-from .assets import model_dir
-import gltf
-from panda3d.core import NodePath
+from .appendages import AppendageMotion, DoorJoint, tentacle_center
+from .tentacle_model import build_tentacle
+from panda3d.core import Material, PointLight
 
 
 class TentacleRenderer:
-    RINGS = 19
-    SIDES = 8
 
     def __init__(self, head):
         self.root = head.attachNewNode("procedural-tentacles")
         self.motion = AppendageMotion()
+        self.door = DoorJoint()
+        self._geometry_elapsed = 0.0
+        self._last_spheres = []
         self.clock = 0.0
         self._rng = random.Random()
         self._slime_cooldown = 5.0
@@ -27,11 +27,46 @@ class TentacleRenderer:
         texture.setup2dTexture(1, 1, Texture.TUnsignedByte, Texture.FRgba)
         texture.setRamImage(bytes([255, 255, 255, 255]))
         self.root.setTexture(texture, 1)
-        model = NodePath(gltf.load_model(str(model_dir() / "tentacle.gltf")))
+        self.vertices, _, colors, indices = build_tentacle()
+        self._data = []
+        self._slices = {}
+        for x, y, z in self.vertices:
+            u = max(0.0, min(1.0, z/.432))
+            rx = x - self._rest_center(z)
+            radius = math.hypot(rx, y)
+            self._slices[u] = max(self._slices.get(u, 0), radius)
+        self._contact_slices = sorted(self._slices)[::max(1, len(self._slices)//12)]
         for index in range(4):
-            np = model.copyTo(self.root)
-            np.setName(f"thick-tentacle-{index}")
+            data = GeomVertexData(f"deformable-tentacle-{index}", GeomVertexFormat.getV3n3c4t2(), Geom.UHDynamic)
+            data.setNumRows(len(self.vertices))
+            color, uv = GeomVertexWriter(data, 'color'), GeomVertexWriter(data, 'texcoord')
+            for rgba in colors:
+                linear = tuple(v/12.92 if v <= .04045 else ((v+.055)/1.055)**2.4 for v in rgba[:3])
+                color.setData4(*linear, rgba[3])
+                uv.setData2(0, 0)
+            triangles = GeomTriangles(Geom.UHStatic)
+            for i in range(0, len(indices), 3):
+                triangles.addVertices(*indices[i:i+3])
+            triangles.closePrimitive()
+            geom = Geom(data)
+            geom.addPrimitive(triangles)
+            node = GeomNode(f"thick-tentacle-{index}")
+            node.addGeom(geom)
+            np = self.root.attachNewNode(node)
+            np.setTwoSided(True)
             self.meshes.append(np)
+            self._data.append(data)
+        material = Material('tentacle-volume')
+        material.setBaseColor((1, 1, 1, 1))
+        material.setRoughness(.55)
+        material.setMetallic(0)
+        self.root.setMaterial(material, 1)
+        light = PointLight('cabinet-depth-light')
+        light.setColor((.32, .25, .36, 1))
+        light.setAttenuation((1, 0, 5))
+        lamp = head.attachNewNode(light)
+        lamp.setPos(-.3, .55, .4)
+        self.root.setLight(lamp)
         self.drop_template = self._drop_mesh()
         self.root.hide()
 
@@ -58,7 +93,18 @@ class TentacleRenderer:
     def update(self, dt, door_degrees):
         dt = min(.1, max(0.0, dt))
         self.clock += dt
-        extent = self.motion.update(dt, door_degrees)
+        extent = self.motion.update(dt, door_degrees, self.door.angle)
+        spheres = []
+        for index in range(4):
+            local_extent = self._extension(index, extent)
+            if local_extent > .02:
+                for u in self._contact_slices:
+                    center = tentacle_center(index, u, self.clock, local_extent)
+                    radius = self._radius(self._slices[u], center, local_extent)
+                    spheres.append((center, radius))
+        if extent <= .001:
+            self._last_spheres = []
+        self.door.update(dt, door_degrees, spheres+self._last_spheres)
         if extent <= .001 and not self.drops:
             self.root.hide()
             return
@@ -78,16 +124,69 @@ class TentacleRenderer:
             if age > .85:
                 np.removeNode()
                 self.drops.remove(drop)
-        roots = [(-.06, .15, .18), (.06, .15, .18), (-.065, .15, .035), (.065, .15, .035)]
-        rolls = [-55, 55, -110, 140]
+        self._geometry_elapsed += dt
+        if self._geometry_elapsed < 1/30 and not self.door.contacts:
+            return
+        self._geometry_elapsed = 0.0
+        self._last_spheres = []
         for index, np in enumerate(self.meshes):
-            local_extent = max(0.0, min(1.0, (extent - index * .1) / .7))
-            if local_extent < .01:
+            extent_here = self._extension(index, extent)
+            if extent_here < .01:
                 np.hide()
                 continue
             np.show()
-            x, y, z = roots[index]
-            np.setPos(x, y - .09*(1-local_extent), z)
-            np.setScale(local_extent ** .4, local_extent ** .4, local_extent)
-            np.setHpr(0, math.sin(self.clock*1.5 + index)*6*local_extent,
-                      rolls[index] + math.sin(self.clock*1.3 + index*1.6)*8*local_extent)
+            frames = {}
+            for u, radius in self._slices.items():
+                p = tentacle_center(index, u, self.clock, extent_here)
+                radius_here = self._radius(radius, p, extent_here)
+                center = Vec3(*self.door.project(p, radius_here))
+                self._last_spheres.append((tuple(center), radius_here))
+                a = Vec3(*tentacle_center(index, max(0, u-.005), self.clock, extent_here))
+                b = Vec3(*tentacle_center(index, min(1, u+.005), self.clock, extent_here))
+                tangent = (b-a).normalized()
+                axis = Vec3(0, 1, 0).cross(tangent)
+                if axis.lengthSquared() < 1e-8:
+                    axis = Vec3(1, 0, 0)
+                axis.normalize()
+                side = tangent.cross(axis).normalized()
+                twist = [-.45, .55, -.7, .8][index] + math.sin(self.clock*.9+index)*.3*u
+                x_axis = axis*math.cos(twist) + side*math.sin(twist)
+                y_axis = -axis*math.sin(twist) + side*math.cos(twist)
+                scale = radius_here/radius if radius > 1e-8 else 0
+                frames[u] = (center, x_axis, y_axis, scale)
+            points = []
+            for x, y, z in self.vertices:
+                u = max(0.0, min(1.0, z/.432))
+                center, axis, side, scale = frames[u]
+                points.append(center + axis*((x-self._rest_center(z))*scale) + side*(y*scale))
+            vertex, normal = GeomVertexWriter(self._data[index], 'vertex'), GeomVertexWriter(self._data[index], 'normal')
+            for i in range(0, len(points), 3):
+                face_normal = (points[i+1]-points[i]).cross(points[i+2]-points[i])
+                if face_normal.lengthSquared() > 1e-12:
+                    face_normal.normalize()
+                else:
+                    face_normal = Vec3(0, 1, 0)
+                for point in points[i:i+3]:
+                    vertex.setData3(point)
+                    normal.setData3(face_normal)
+
+    @staticmethod
+    def _extension(index, extent):
+        return max(0.0, min(1.0, (extent-index*.12)/.64))
+
+    @staticmethod
+    def _rest_center(z):
+        profile = [(0, 0), (.0675, -.00805), (.135, -.0069), (.207, .00575),
+                   (.279, .02875), (.351, .0644), (.432, .115)]
+        for (a, x), (b, y) in zip(profile, profile[1:]):
+            if z <= b:
+                return x + (y-x)*max(0.0, (z-a)/(b-a))
+        return profile[-1][1]
+
+    @staticmethod
+    def _radius(radius, center, extent):
+        radius *= extent**.4
+        if center[1] < .23:
+            radius = min(radius, max(.008, .12-abs(center[0])),
+                         max(.008, center[2]+.043), max(.008, .32-center[2]))
+        return radius
