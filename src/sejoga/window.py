@@ -17,6 +17,12 @@ import math
 from pathlib import Path
 from typing import Optional, Tuple
 
+# Load Qt before Panda3D: their Windows bundles ship different MSVC runtime
+# DLLs, and the first loaded copy wins for the whole process.
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+
 # Win32 API
 import win32gui
 import win32con
@@ -28,6 +34,8 @@ from ctypes import wintypes
 from panda3d.core import loadPrcFileData
 
 loadPrcFileData("", "window-type none")
+loadPrcFileData("", "load-display pandagl")
+loadPrcFileData("", "aux-display p3tinydisplay")
 loadPrcFileData("", "framebuffer-alpha 1")
 loadPrcFileData("", "framebuffer-multisample 1")
 loadPrcFileData("", "multisamples 4")
@@ -54,13 +62,8 @@ from panda3d.core import (
 from direct.task import Task
 from direct.showbase.ShowBase import ShowBase
 
-# Panda3D GLTF loader
+# Panda3D GLTF loader registers support for .gltf and .glb files.
 import gltf
-
-# PySide6 (apenas para system tray)
-from PySide6.QtCore import QTimer, QPoint, QObject
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
-from PySide6.QtGui import QIcon, QPixmap, QCursor
 
 # Win32 API
 import win32gui
@@ -70,7 +73,7 @@ import ctypes
 from ctypes import wintypes
 
 # Project imports
-from .assets import resolve_model
+from .assets import brand_dir, resolve_model
 from .model import load_model
 from .rig import Rig, ALL_GROUPS
 from .config import load_settings, Settings
@@ -194,13 +197,12 @@ class Panda3DRenderer:
         rig = Rig.from_model(model)
 
         if rig.missing:
-            print(f"⚠️ Grupos de rig ausentes: {rig.missing}")
+            print(f"WARNING: Grupos de rig ausentes: {rig.missing}")
 
         self.rig = rig
 
-        # Carrega modelo via panda3d_gltf loader
-        loader = gltf.get_loader()
-        model_np = loader.load_model(str(resolve_model()))
+        # panda3d-gltf 1.x expõe load_model diretamente no módulo.
+        model_np = NodePath(gltf.load_model(str(model_path)))
         model_np.reparentTo(self.showbase.render)
         model_np.setScale(1.0)
         model_np.setPos(0, 0, -0.5)
@@ -310,8 +312,27 @@ class OverlayApp(ShowBase):
 
         self.disableMouse()
 
+    def _get_hwnd(self) -> int:
+        """Extract integer HWND from Panda3D WindowHandle."""
+        wh = self.win.getWindowHandle()
+        # Try various WindowHandle API methods
+        if hasattr(wh, 'getHandle'):
+            return int(wh.getHandle())
+        elif hasattr(wh, 'asInt'):
+            return wh.asInt()
+        elif hasattr(wh, '__int__'):
+            return int(wh)
+        elif hasattr(wh, 'handle'):
+            return int(wh.handle)
+        else:
+            # String representation is typically a hex address like '0000000000360D5E'
+            wh_str = str(wh).strip()
+            if wh_str.startswith('0x') or all(c in '0123456789abcdefABCDEF' for c in wh_str):
+                return int(wh_str, 16)
+            return int(wh_str)
+
     def _setup_win32(self) -> None:
-        self.hwnd = int(self.win.getWindowHandle())
+        self.hwnd = self._get_hwnd()
 
         ex_style = win32gui.GetWindowLong(self.hwnd, -20)
         ex_style |= 0x00080000 | 0x08000000  # WS_EX_LAYERED | WS_EX_NOACTIVATE
@@ -346,9 +367,26 @@ class OverlayApp(ShowBase):
         else:
             ctypes.windll.user32.SetWindowPos(self.hwnd, -2, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0010)
 
+    def _apply_window_state(self) -> None:
+        """Aplica tamanho, posição inicial e estilos definidos nas configurações."""
+        size = self.settings.window.size
+        start_position = self.settings.window.start_position
+        if start_position is None:
+            screen_w = win32api.GetSystemMetrics(0)
+            screen_h = win32api.GetSystemMetrics(1)
+            x = max(0, screen_w - size - 32)
+            y = max(0, screen_h - size - 72)
+        else:
+            x, y = (int(start_position[0]), int(start_position[1]))
+
+        # SWP_NOZORDER | SWP_NOACTIVATE; z-order is applied separately below.
+        win32gui.SetWindowPos(self.hwnd, 0, x, y, size, size, 0x0004 | 0x0010)
+        self._update_click_through()
+        self._update_z_order()
+
     def _init_renderer(self) -> None:
-        from .renderer import Panda3DRenderer
-        self.renderer = Panda3DRenderer(self, int(self.win.getWindowHandle()),
+        # Panda3DRenderer is defined in this same file
+        self.renderer = Panda3DRenderer(self, self._get_hwnd(),
                                        self.settings.window.size, self.settings.window.size)
 
     def _init_physics(self) -> None:
@@ -433,13 +471,55 @@ class OverlayApp(ShowBase):
             self.renderer.set_model_rotation(0, 0, math.degrees(angle))
 
     def _animation_tick(self) -> None:
-        QApplication.processEvents()
         if self.renderer and self.renderer.rig:
             pass
 
         # Sincroniza modelo com física
         if self.physics:
             self._sync_model_with_physics()
+
+    def _setup_tray(self) -> None:
+        """Cria o ícone e o menu da bandeja do sistema."""
+        icon_path = brand_dir() / "Icon-100.jpg"
+        self.tray_icon = QSystemTrayIcon(QIcon(str(icon_path)), self.qt_app)
+        self.tray_icon.setToolTip("SeJoga Desktop Companion")
+
+        self.tray_menu = QMenu()
+        toggle_action = self.tray_menu.addAction("Mostrar / ocultar")
+        toggle_action.triggered.connect(lambda _checked=False: self.toggle_visibility())
+
+        self.tray_menu.addSeparator()
+
+        topmost_action = self.tray_menu.addAction("Sempre no topo")
+        topmost_action.setCheckable(True)
+        topmost_action.setChecked(self._is_topmost)
+        topmost_action.toggled.connect(self.set_topmost)
+
+        click_through_action = self.tray_menu.addAction("Cliques atravessam o mascote")
+        click_through_action.setCheckable(True)
+        click_through_action.setChecked(self._click_through)
+        click_through_action.toggled.connect(self.set_click_through)
+
+        self.tray_menu.addSeparator()
+        quit_action = self.tray_menu.addAction("Sair")
+        quit_action.triggered.connect(lambda _checked=False: self.quit_app())
+
+        self.tray_icon.setContextMenu(self.tray_menu)
+        self.tray_icon.activated.connect(self._on_tray_activated)
+        self.tray_icon.show()
+
+    def _setup_timers(self) -> None:
+        """Agenda a animação e bombeia os eventos do Qt junto ao loop Panda3D."""
+        interval_ms = max(1, round(1000 / self.settings.window.fps))
+        self.animation_timer = QTimer(self.qt_app)
+        self.animation_timer.setInterval(interval_ms)
+        self.animation_timer.timeout.connect(self._animation_tick)
+        self.animation_timer.start()
+        self.taskMgr.add(self._process_qt_events, "qt-event-pump")
+
+    def _process_qt_events(self, task: Task) -> int:
+        QApplication.processEvents()
+        return Task.cont
 
     def _on_tray_activated(self, reason) -> None:
         from PySide6.QtWidgets import QSystemTrayIcon
@@ -520,7 +600,7 @@ class OverlayApp(ShowBase):
     def run(self) -> None:
         print("🚀 Iniciando SeJogaDesktopCompanion...")
         try:
-            self.main_loop()
+            ShowBase.run(self)
         except KeyboardInterrupt:
             self.userExit()
 

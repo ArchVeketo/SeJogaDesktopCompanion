@@ -61,6 +61,9 @@ class PhysicsSettings(BaseModel):
     """Física de tela (espaço 2D) para arrastar e arremessar."""
 
     enabled: bool = True
+    mascot_radius: float = Field(default=40.0, gt=0)
+    """Raio de colisão do mascote, em pixels."""
+
     gravity: float = Field(default=2400.0, ge=0.0)
     """px/s² — usada só quando o personagem "cai"."""
 

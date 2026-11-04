@@ -27,20 +27,30 @@ DEFAULT_MODEL_STEM = "mario"
 MODEL_SUFFIXES = (".glb", ".gltf")
 
 
-def project_root() -> Path:
-    """Raiz do projeto em dev; ``sys._MEIPASS`` quando congelado."""
-    if hasattr(sys, "_MEIPASS"):  # PyInstaller onefile
-        return Path(sys._MEIPASS)
-    # src/sejoga/assets.py -> src/sejoga -> src -> raiz
+def _get_base_dir() -> Path:
+    """Diretório base: raiz do projeto em dev, ou pasta do executável quando congelado."""
+    # PyInstaller onefile: sys._MEIPASS existe
+    if getattr(sys, "frozen", False):
+        if hasattr(sys, "_MEIPASS"):
+            return Path(sys._MEIPASS)
+        # PyInstaller onedir: executável em dist/SeJogaCompanion/, assets em _internal/assets
+        return Path(sys.executable).parent / "_internal"
+    # Desenvolvimento: src/sejoga/assets.py -> src/sejoga -> src -> raiz
     return _PACKAGE_DIR.parents[1]
+
+
+def project_root() -> Path:
+    """Raiz do projeto em dev; ``sys._MEIPASS`` quando congelado (onefile)."""
+    return _get_base_dir()
 
 
 def assets_dir() -> Path:
     """Diretório ``assets`` (ou o bundle embutido, quando empacotado)."""
+    # Em desenvolvimento, pode haver um _bundled_assets local
     bundled = _PACKAGE_DIR / "_bundled_assets"
     if bundled.is_dir():
         return bundled
-    return project_root() / "assets"
+    return _get_base_dir() / "assets"
 
 
 def model_dir() -> Path:

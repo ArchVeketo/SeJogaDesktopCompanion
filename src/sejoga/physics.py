@@ -24,12 +24,13 @@ from typing import Optional, List, Tuple, Callable
 from collections import deque
 
 import pymunk
-import pymunk.pygame_util  # para debug draw se necessário
+# import pymunk.pygame_util  # para debug draw se necessário (removido - requer pygame)
 
 # Win32 para detecção de janelas
 import win32gui
 import win32con
 import win32api
+import win32process
 import ctypes
 from ctypes import wintypes
 
@@ -152,7 +153,7 @@ def is_valid_shelf(hwnd: int, own_pid: int) -> bool:
         return False
     
     # Filtra própria janela
-    _, pid = win32gui.GetWindowThreadProcessId(hwnd)
+    _, pid = win32process.GetWindowThreadProcessId(hwnd)
     if pid == own_pid:
         return False
     
@@ -221,20 +222,21 @@ class ScreenSpacePhysics:
         self.space.gravity = (0, 0)  # Inicialmente sem gravidade (flutuando)
         self.space.damping = DRAG  # 0.995 per step
         
-        # Collision types
-        self.space.add_collision_handler(CAT_MASCOT, CAT_SHELF).pre_solve = self._shelf_pre_solve
-        self.space.add_collision_handler(CAT_MASCOT, CAT_SCREEN_EDGE).pre_solve = self._edge_pre_solve
-        
-        # Mascot body
-        self._create_mascot_body()
-        
-        # Screen edges (paredes da tela)
-        self._create_screen_edges()
-        
-        # Shelves (janelas)
-        self.shelves: List[Shelf] = []
-        self.shelf_shapes: dict[int, pymunk.Segment] = {}  # hwnd -> shape
-        self.shelf_cache_time = 0.0
+        # Pymunk 7 replaced add_collision_handler() with on_collision().
+        if hasattr(self.space, "on_collision"):
+            self.space.on_collision(
+                CAT_MASCOT, CAT_SHELF, pre_solve=self._shelf_pre_solve
+            )
+            self.space.on_collision(
+                CAT_MASCOT, CAT_SCREEN_EDGE, pre_solve=self._edge_pre_solve
+            )
+        else:
+            self.space.add_collision_handler(
+                CAT_MASCOT, CAT_SHELF
+            ).pre_solve = self._shelf_pre_solve
+            self.space.add_collision_handler(
+                CAT_MASCOT, CAT_SCREEN_EDGE
+            ).pre_solve = self._edge_pre_solve
         
         # State
         self.state = PhysicsState(
@@ -242,6 +244,17 @@ class ScreenSpacePhysics:
             velocity=(0, 0),
             grounded=False
         )
+
+        # Mascot body needs the initial state position.
+        self._create_mascot_body()
+
+        # Screen edges (paredes da tela)
+        self._create_screen_edges()
+
+        # Shelves (janelas)
+        self.shelves: List[Shelf] = []
+        self.shelf_shapes: dict[int, pymunk.Segment] = {}  # hwnd -> shape
+        self.shelf_cache_time = 0.0
         
         # Drag/throw state
         self._drag_active = False
@@ -484,18 +497,23 @@ class ScreenSpacePhysics:
         self.state.grounded = False
         self.state.on_shelf = None
         
-        # Check collisions with shelves and bottom
-        for arbiter in self.body.arbiters:
-            for shape in arbiter.shapes:
-                if shape.collision_type == CAT_SHELF:
-                    # Encontra shelf correspondente
-                    for hwnd, shape in self.shelf_shapes.items():
-                        if shape._shapeid == shape._shapeid:  # comparação por id interno
-                            self.state.grounded = True
-                            self.state.on_shelf = shape.hwnd if hasattr(shape, 'hwnd') else None
-                            break
-                elif shape.collision_type == CAT_SCREEN_EDGE and shape == self._bottom_shape:
-                    self.state.grounded = True
+        def inspect_arbiter(arbiter: pymunk.Arbiter) -> None:
+            shapes = arbiter.shapes
+            if any(shape.collision_type == CAT_SHELF for shape in shapes):
+                self.state.grounded = True
+                self.state.on_shelf = next(
+                    (hwnd for hwnd, shelf_shape in self.shelf_shapes.items()
+                     if shelf_shape in shapes),
+                    None,
+                )
+            elif self._bottom_shape in shapes:
+                self.state.grounded = True
+
+        if hasattr(self.body, "each_arbiter"):
+            self.body.each_arbiter(inspect_arbiter)
+        else:
+            for arbiter in self.body.arbiters:
+                inspect_arbiter(arbiter)
         
         # Se estava no chão e agora não está mais, ativa gravidade
         if was_grounded and not self.state.grounded:
