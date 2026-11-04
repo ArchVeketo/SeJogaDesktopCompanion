@@ -389,6 +389,21 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
         pulse = sin(pi * min(1.0, t / 0.5))
         rig.set_rotation("head", y=direction * 35.0, z=pulse * 8.0)
         rig.set_rotation("door", y=45.0 * sin(t * 4.0 * pi) ** 2)
+    elif kind == "double_click":
+        from .idle_clips import sample_track
+        def track(*keys):
+            return sample_track(tuple((at, (value, 0, 0)) for at, value in keys), t)[0]
+        recoil = track((0, 0), (.18, 5), (.42, -7), (.75, 2), (1.4, 0))
+        reach = track((0, 0), (.18, -4), (.44, 1), (.65, 1), (1.4, 0))
+        extension = track((0, 0), (.20, -6), (.48, -48), (.72, -42), (1.4, 0))
+        rig.set_rotation("body", x=recoil, y=-direction * reach)
+        rig.set_rotation("head", x=-recoil * .65, y=direction * 15, z=-recoil * .4)
+        rig.set_rotation("right-arm", x=-abs(extension) * .2, z=65 + extension)
+        rig.set_rotation("ant-arm", x=extension * .4, z=extension * .3)
+        rig.set_rotation("hand", x=-recoil, z=-extension * .2)
+        curl = track((0, 0), (.18, 20), (.43, -10), (.8, 4), (1.4, 0))
+        rig.set_rotation("fingers", z=curl)
+        rig.set_rotation("door", y=max(0, -recoil) * 3)
     elif kind == "pet":
         pulse = sin(pi * min(1.0, t / 1.5))
         rig.set_rotation("head", x=-12.0 * pulse, y=direction * 25.0, z=8.0 * pulse)

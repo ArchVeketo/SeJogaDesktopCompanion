@@ -53,9 +53,12 @@ class TrayRegistration:
         pid = pid or os.getpid()
         found = []
         def collect(hwnd, _):
-            _, owner = win32process.GetWindowThreadProcessId(hwnd)
-            if owner == pid and win32gui.GetWindowText(hwnd) == "QTrayIconMessageWindow":
-                found.append(hwnd)
+            try:
+                _, owner = win32process.GetWindowThreadProcessId(hwnd)
+                if owner == pid and win32gui.GetWindowText(hwnd) == "QTrayIconMessageWindow":
+                    found.append(hwnd)
+            except win32gui.error:
+                pass  # Another application may close a window during enumeration.
         win32gui.EnumWindows(collect, None)
         return found[0] if found else None
 

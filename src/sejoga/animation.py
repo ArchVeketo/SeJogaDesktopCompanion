@@ -38,6 +38,7 @@ class AnimationState(StrEnum):
     SLEEP = "sleep"
     HOVER = "hover"
     CLICK = "click"
+    DOUBLE_CLICK = "double_click"
     PET = "pet"
     POKE = "poke"
     WAKE = "wake"
@@ -103,6 +104,7 @@ class AnimationController:
 
     REACTION_SECONDS = {
         AnimationState.CLICK: 0.5,
+        AnimationState.DOUBLE_CLICK: 1.4,
         AnimationState.PET: 1.5,
         AnimationState.POKE: 0.4,
         AnimationState.WAKE: 1.2,

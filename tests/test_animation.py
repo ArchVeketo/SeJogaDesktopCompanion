@@ -125,3 +125,18 @@ def test_tentacle_peeks_are_rare_but_manual_peek_remains_available():
     other.interact("peek")
     other.update(.1)
     assert other.state == AnimationState.PEEK
+
+
+def test_double_click_interrupts_single_click_then_recovers():
+    animation = controller()
+    animation.interact("click")
+    animation.update(.1)
+    animation.interact("double_click")
+    assert animation.body_motion.pitch.velocity < 0
+    for _ in range(6):
+        pose = animation.update(.1)
+    assert animation.state == AnimationState.DOUBLE_CLICK
+    assert pose["hand"].z != 0 and pose["ant-arm"].x != 0
+    for _ in range(10):
+        animation.update(.1)
+    assert animation.state == AnimationState.IDLE

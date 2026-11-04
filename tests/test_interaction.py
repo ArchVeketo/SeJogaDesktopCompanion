@@ -73,3 +73,30 @@ def test_secondary_button_during_drag_does_not_trigger_pet_on_release():
     kinds(mouse, buttons=("left",), hit=True)
     kinds(mouse, (130, 100), ("left", "right"), hit=True)
     assert kinds(mouse, (130, 100), hit=True) == ["drag_end"]
+
+
+def test_owned_double_click_uses_time_and_distance_thresholds():
+    mouse = MouseInteraction(double_click_seconds=.4, double_click_distance=5)
+    kinds(mouse, buttons=("left",), hit=True, now=0)
+    assert kinds(mouse, hit=True, now=.05) == ["click"]
+    kinds(mouse, (102, 100), ("left",), hit=True, now=.15)
+    assert kinds(mouse, (102, 100), hit=True, now=.20) == ["double_click"]
+    kinds(mouse, buttons=("left",), hit=True, now=.25)
+    assert kinds(mouse, hit=True, now=.30) == ["click"]
+    kinds(mouse, buttons=("left",), hit=True, now=1)
+    assert kinds(mouse, hit=True, now=1.05) == ["click"]
+    kinds(mouse, (120, 100), ("left",), hit=True, now=1.1)
+    assert kinds(mouse, (120, 100), hit=True, now=1.15) == ["click"]
+
+
+def test_drag_or_external_press_cannot_complete_double_click():
+    mouse = MouseInteraction()
+    kinds(mouse, buttons=("left",), hit=True, now=0)
+    kinds(mouse, hit=True, now=.02)
+    kinds(mouse, buttons=("left",), hit=False, now=.04)
+    kinds(mouse, hit=True, now=.06)
+    kinds(mouse, buttons=("left",), hit=True, now=.08)
+    assert kinds(mouse, hit=True, now=.10) == ["click"]
+    kinds(mouse, buttons=("left",), hit=True, now=.12)
+    kinds(mouse, (160, 100), ("left",), hit=True, now=.14)
+    assert kinds(mouse, (160, 100), hit=True, now=.16) == ["drag_end"]

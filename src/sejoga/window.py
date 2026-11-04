@@ -692,7 +692,11 @@ class OverlayApp(ShowBase):
         self._busy_cursors = {win32gui.LoadCursor(0, cursor) for cursor in
                               (win32con.IDC_IBEAM, win32con.IDC_HAND, win32con.IDC_SIZEALL,
                                win32con.IDC_SIZENS, win32con.IDC_SIZEWE)}
-        self.mouse_interaction = MouseInteraction(buttons=self._mouse_buttons())
+        self.mouse_interaction = MouseInteraction(
+            buttons=self._mouse_buttons(),
+            double_click_seconds=user32.GetDoubleClickTime() / 1000,
+            double_click_distance=max(4, win32api.GetSystemMetrics(win32con.SM_CXDOUBLECLK) / 2),
+        )
         self.animation_controller: Optional[AnimationController] = None
 
         self.qt_app: Optional = None
@@ -1298,7 +1302,7 @@ class OverlayApp(ShowBase):
         if self._mouse_hovered and not previous_hover and self.animation_controller:
             self.animation_controller.interact("hover_enter")
         for event in events:
-            if event.kind in ("hover_enter", "click", "pet", "poke"):
+            if event.kind in ("hover_enter", "click", "double_click", "pet", "poke"):
                 if (self.settings.behavior.react_to_click and self.animation_controller
                         and (event.kind != "hover_enter" or self._mouse_hovered)):
                     self.animation_controller.interact(event.kind)

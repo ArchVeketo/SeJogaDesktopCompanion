@@ -91,6 +91,12 @@ cada parte do corpo. As posições/eixos dos tentáculos acompanham a cabeça.
 inverter e soltar, verifica recuperação do corpo e restaura cursor/botões.
 Capturas e JSONL incluem o estado do balanço e a velocidade do cursor.
 
+O duplo clique reconhece dois cliques pertencentes ao mascote dentro do
+intervalo configurado no Windows e de uma pequena distância. Dispara uma
+frase de 1,4 s: preparação do corpo, gesto do braço com punho/dedos,
+contrapeso e recuperação. Arraste ou clique externo interrompe a sequência
+de reconhecimento. A reação acrescenta impulso às molas visuais do corpo.
+
 ```
                               ┌──────────────┐
                               │    IDLE      │ ◄──────────────────┐

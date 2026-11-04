@@ -57,6 +57,23 @@ def main():
         win32api.SetCursorPos(point)
         frames(3)
         assert win32gui.WindowFromPoint(point) == app.hwnd
+        for _ in range(2):
+            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0)
+            frames(2)
+            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0)
+            frames(2)
+        assert app.animation_controller.state.value == "double_click"
+        capture("double-click")
+        frames(100)
+        # The reaction changes the silhouette. Reacquire a solid shirt pixel
+        # instead of pressing the former head/neck edge after it moved.
+        candidates = [(x, y) for y in range(320, 370, 5) for x in range(220, 265, 5)
+                      if app.renderer.hit_test(x, y)]
+        local = next(p for p in sorted(candidates, key=lambda p: (p[0]-240)**2 + (p[1]-345)**2)
+                     if win32gui.WindowFromPoint(win32gui.ClientToScreen(app.hwnd, p)) == app.hwnd)
+        point = win32gui.ClientToScreen(app.hwnd, local)
+        win32api.SetCursorPos(point)
+        frames(3)
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0)
         frames(3)
         for step in range(1, 25):
@@ -83,6 +100,7 @@ def main():
         assert app.renderer._hidden_export_planes == ["mesh11", "mesh12", "mesh13", "mesh14"]
         print(json.dumps({"profile": str(profile), "native_drag_roll": [first, second],
                           "settled_roll": settled, "tray_recovered": recovered,
+                          "native_double_click": True,
                           "hidden_export_planes": app.renderer._hidden_export_planes}, indent=2))
     finally:
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0)

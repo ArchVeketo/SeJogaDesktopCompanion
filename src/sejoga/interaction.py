@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import hypot
+import time
 
 
 @dataclass(frozen=True)
@@ -15,7 +16,8 @@ class MouseEvent:
 class MouseInteraction:
     """Só aceita gestos iniciados no mascote; soltar fora encerra o arraste."""
 
-    def __init__(self, drag_threshold: float = 6.0, buttons: frozenset[str] = frozenset()):
+    def __init__(self, drag_threshold: float = 6.0, buttons: frozenset[str] = frozenset(),
+                 double_click_seconds: float = .5, double_click_distance: float = 8.0):
         self.drag_threshold = drag_threshold
         self.buttons = buttons
         self.hovered = False
@@ -23,6 +25,9 @@ class MouseInteraction:
         self.press_position: tuple[int, int] | None = None
         self._owned: set[str] = set()
         self._moved = False
+        self.double_click_seconds = double_click_seconds
+        self.double_click_distance = double_click_distance
+        self._last_click = None
 
     @property
     def has_press(self) -> bool:
@@ -37,8 +42,12 @@ class MouseInteraction:
         enabled: bool = True,
         allow_drag: bool = True,
         allow_click: bool = True,
+        now: float | None = None,
     ) -> list[MouseEvent]:
         events: list[MouseEvent] = []
+        now = time.monotonic() if now is None else now
+        if not enabled or not allow_click:
+            self._last_click = None
 
         def emit(kind: str) -> None:
             events.append(MouseEvent(kind, position))
@@ -56,6 +65,8 @@ class MouseInteraction:
             self.press_position = None
         else:
             for button in buttons - self.buttons:
+                if button != "left" or not hit:
+                    self._last_click = None
                 if hit:
                     self._owned.add(button)
                     if button == "left":
@@ -68,6 +79,7 @@ class MouseInteraction:
                 self._moved |= hypot(dx, dy) >= self.drag_threshold
                 if "left" in buttons:
                     if self._moved and allow_drag and not self.dragging:
+                        self._last_click = None
                         self.dragging = True
                         emit("drag_start")
                     if self.dragging:
@@ -82,7 +94,17 @@ class MouseInteraction:
                     if self.dragging:
                         emit("drag_end")
                     elif hit and not self._moved and allow_click:
-                        emit("click")
+                        previous = self._last_click
+                        if (previous and 0 <= now - previous[0] <= self.double_click_seconds and
+                                hypot(position[0] - previous[1][0], position[1] - previous[1][1])
+                                <= self.double_click_distance):
+                            emit("double_click")
+                            self._last_click = None
+                        else:
+                            emit("click")
+                            self._last_click = (now, position)
+                    else:
+                        self._last_click = None
                     self.dragging = False
                     self.press_position = None
                 elif hit and allow_click and not was_dragging:
