@@ -21,6 +21,7 @@ from .rig import (
     pose_sleep,
     pose_thrown,
     pose_walk,
+    pose_flourish,
 )
 
 
@@ -38,6 +39,10 @@ class AnimationState(StrEnum):
     POKE = "poke"
     WAKE = "wake"
     LAND = "land"
+    WAVE = "wave"
+    STRETCH = "stretch"
+    PEEK = "peek"
+    HIT = "hit"
 
 
 class AnimationController:
@@ -61,6 +66,8 @@ class AnimationController:
         self._reaction_time = 0.0
         self._cooldowns: dict[str, float] = {}
         self._look_direction = 0.0
+        self._look_vertical = 0.0
+        self._ambient_in = 9.0
         self._dance_remaining = 0.0
         self._dance_decision_in = 0.0
         self._previous_beat = False
@@ -72,6 +79,10 @@ class AnimationController:
         AnimationState.POKE: 0.4,
         AnimationState.WAKE: 1.2,
         AnimationState.LAND: 0.45,
+        AnimationState.WAVE: 2.0,
+        AnimationState.STRETCH: 2.8,
+        AnimationState.PEEK: 3.5,
+        AnimationState.HIT: 0.65,
     }
 
     def interact(self, kind: str) -> None:
@@ -86,7 +97,7 @@ class AnimationController:
             return
         self._reaction = AnimationState(kind)
         self._reaction_time = 0.0
-        self._cooldowns[kind] = self.clock + {"click": 0.5, "pet": 2.0, "poke": 1.0, "wake": 1.2, "land": 0.45}[kind]
+        self._cooldowns[kind] = self.clock + max(self.REACTION_SECONDS[self._reaction], 0.5)
 
     @staticmethod
     def _choose_state(
@@ -100,7 +111,7 @@ class AnimationController:
     ) -> AnimationState:
         if dragging:
             return AnimationState.DRAG
-        if gravity_active or (not grounded and speed > 250.0):
+        if gravity_active or (not grounded and speed > 120.0):
             return AnimationState.FALL
         if music_playing and music_intensity > 0.12:
             return AnimationState.DANCE
@@ -128,6 +139,7 @@ class AnimationController:
         sleep_after_idle_seconds: int = 0,
         hovered: bool = False,
         look_direction: float = 0.0,
+        look_vertical: float = 0.0,
     ) -> dict[str, Rotation3]:
         """Atualiza o estado e devolve um snapshot de rotações em radianos."""
         dt = min(0.1, max(0.0, dt))
@@ -147,6 +159,7 @@ class AnimationController:
         if react_to_beat and beat_edge and self._dance_remaining > 0:
             music_intensity = max(music_intensity, 0.75)
         self._look_direction += (max(-1.0, min(1.0, look_direction)) - self._look_direction) * min(1.0, dt * 10.0)
+        self._look_vertical += (max(-1.0, min(1.0, look_vertical)) - self._look_vertical) * min(1.0, dt * 10.0)
         if self._reaction is not None:
             self._reaction_time += dt
             if self._reaction_time >= self.REACTION_SECONDS[self._reaction]:
@@ -161,12 +174,20 @@ class AnimationController:
             music_playing=music_playing and self._dance_remaining > 0,
             music_intensity=music_intensity,
         )
-        if next_state not in (AnimationState.DRAG, AnimationState.FALL):
+        if next_state == AnimationState.IDLE and grounded and idle_enabled and not hovered:
+            self._ambient_in -= dt
+            if self._ambient_in <= 0 and self._reaction is None:
+                self._reaction = self._personality_rng.choice(
+                    [AnimationState.WAVE, AnimationState.STRETCH, AnimationState.PEEK]
+                )
+                self._reaction_time = 0.0
+                self._ambient_in = self._personality_rng.uniform(10.0, 17.0)
+        if next_state != AnimationState.DRAG and (next_state != AnimationState.FALL or self._reaction == AnimationState.HIT):
             if self._reaction is not None:
                 next_state = self._reaction
             elif hovered and next_state == AnimationState.IDLE:
                 next_state = AnimationState.HOVER
-        if next_state == AnimationState.IDLE:
+        if next_state in (AnimationState.IDLE, AnimationState.WAVE, AnimationState.STRETCH, AnimationState.PEEK):
             self.idle_time += dt
             if sleep_after_idle_seconds > 0 and self.idle_time >= sleep_after_idle_seconds:
                 next_state = AnimationState.SLEEP
@@ -214,8 +235,10 @@ class AnimationController:
             pose_dance(self.rig, self.clock, music_intensity)
         elif self.state == AnimationState.SLEEP:
             pose_sleep(self.rig, self.clock)
+        elif self.state in (AnimationState.WAVE, AnimationState.STRETCH, AnimationState.PEEK, AnimationState.HIT):
+            pose_flourish(self.rig, self.state.value, self._reaction_time)
         elif self.state == AnimationState.HOVER or self.state in self.REACTION_SECONDS:
-            pose_interaction(self.rig, self.state.value, self._reaction_time, self._look_direction)
+            pose_interaction(self.rig, self.state.value, self._reaction_time, self._look_direction, self._look_vertical)
 
         target = self.rig.pose()
         if self._active_transition_seconds == 0.0:

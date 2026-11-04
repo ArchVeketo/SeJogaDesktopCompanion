@@ -13,7 +13,11 @@ Este é o roadmap canônico do projeto. As listas de próximos passos nos docume
 - **Resolução de assets:** `assets.py` resolve os caminhos em desenvolvimento e no bundle PyInstaller `onedir`.
 - **Escala/enquadramento:** `window.scale` agora multiplica o ajuste automático do modelo ao overlay; o render usa os bounds reais do Panda3D e posiciona os pés em relação ao raio da física.
 - **Física de tela:** `physics.py` integra Pymunk, arraste/arremesso e detecção de janelas/prateleiras.
+- **Correção de apoio:** grounded exige contato real com normal voltada para baixo; proximidade de uma borda não cria apoio. A enumeração recorta trechos de prateleiras ocultos por janelas à frente e ignora desktop/taskbar. Ao perder apoio, a gravidade é reativada. O monitor de soltura é escolhido pelo corpo, e a câmera ortográfica mantém a projeção dos pés consistente com pixels da física; inclinação do corpo em voo não é aplicada ao caminhar no chão.
 - **Animação procedural:** `animation.py` escolhe idle, walk, run, drag, fall, dance ou sleep e interpola as poses do `rig.py`; idle alterna entre cinco personalidades, a porta abre para a frente e os braços da dança ficam recolhidos.
+- **Novas animações e conceito:** aceno, alongamento e espiada entram como variações ambiente e ações da bandeja; impacto tem recuperação própria. Hover usa área elíptica maior e acompanha os dois eixos, com pitch vertical corrigido após feedback visual. Pausa durante clique/arraste externo, digitação, cursores de edição/link e menus/controles nativos; retoma após 1 s sem atividade bloqueante. A detecção usa entrada/cursor/classes de janela, sem analisar semanticamente toda interface de terceiros.
+- **Tentáculos 3D:** o modelo separado `assets/model/tentacle.gltf` é curto, grosso e facetado, com quatro ventosas hexagonais em relevo e 246 triângulos. Fonte da geometria em `tentacle_model.py`; exportação reproduzível com `tools/build_tentacle_model.py`, prévia isolada com `tools/preview_tentacle.py`. Validado pela Khronos com zero erros/avisos. Quatro instâncias recebem movimentos e extensão ligados à abertura da porta, recolhimento gradual e gotas rosas ocasionais. A porta aguarda o recolhimento para fechar. O GLTF original do Mário não foi modificado.
+- **Barra de tarefas/encerramento:** ícone multirresolução `.ico` gerado da arte existente por `tools/build_icon.py`; aplicado a Qt, HWND e PyInstaller. `DesktopIntegration` habilita entrada na barra de tarefas e personaliza o menu do sistema (Shift+clique direito na barra); fechar pela barra ou bandeja inicia o hit stop branco e lançamento com três giros, encerrando após 1,35 s. Movimento de saída não altera a posição salva. `tools/smoke_effects.py` confere ícone, menu, poses, tentáculos, recolhimento/gota e fechamento real por WM_CLOSE em subprocesso.
 - **Música:** `music.py` consulta a sessão GSMTC e, no modo loopback, estima nível e batidas por RMS em worker de fundo.
 - **Bandeja e loop:** `window.py` implementa menu da bandeja, polling de eventos Qt, timers de animação/física e entrada de mouse.
 - **Interação de mouse:** seleção por raio contra a malha animada, passagem de cliques nas áreas vazias e checagem da janela sob o cursor. Gestos iniciados fora não são capturados. Clique esquerdo reage, direito faz carinho, meio dá uma cutucada; hover acompanha o cursor e interação acorda o mascote. Arraste começa após 6 px, reposiciona o overlay, salva ao soltar e funciona sem física; `Esc`, ocultar ou abrir preferências interrompe o gesto. Preferências de reação/arraste aplicam na hora. HUD e JSONL incluem hover, arraste e posição local do mouse.
@@ -31,7 +35,7 @@ Essa verificação confirma o funcionamento no ambiente usado para o desenvolvim
 
 ### Parcial ou ainda pendente
 
-- **Animação:** o controlador procedural cobre os estados básicos e reações de mouse com transições/cooldowns; ainda faltam duplo clique, reações acionadas pela música/colisões e clipes exportados do Blockbench. As reações implementadas usam rotações, sem squash/stretch ou alteração da textura dos olhos.
+- **Animação:** o controlador procedural cobre estados básicos, gestos, impacto e saída; ainda faltam duplo clique e clipes exportados do Blockbench. O olhar usa rotação da cabeça, sem alterar a textura dos olhos. O asset separado dos tentáculos pode ser refinado artisticamente no futuro; seus movimentos atuais são procedurais.
 - **Arraste e física:** corpo e prateleiras agora usam coordenadas absolutas do desktop e o HWND acompanha o corpo. A soltura calcula velocidade recente, aplica `throw_multiplier` e limita a 3200 px/s; pausa antes de soltar elimina impulso antigo e cancelamento mantém o mascote flutuando. O voo fica na área útil do monitor de soltura, com suporte a origens negativas. Há queda, quique, repouso, pose de aterrissagem e persistência ao parar. Prateleiras movidas/fechadas são atualizadas; janelas minimizadas são excluídas. Colisão usa círculo, sem representar toda a silhueta; travessia entre monitores durante o voo, DPI misto e mudanças de resolução ainda exigem implementação/validação.
 - **Configuração visual:** o diálogo e os atalhos editáveis estão integrados; atalhos são validados e reaplicados na hora. Se outro programa já usa uma combinação, o companion avisa. Alterar tamanho ou física exige reiniciar o app. O campo antigo `click_through_transparent` continua aceito no TOML por compatibilidade, mas o fundo fica transparente sempre que o diagnóstico está desligado.
 - **Configuração persistente:** carregamento e gravação TOML estão em `config.py`; não há hot-reload de um arquivo TOML alterado externamente.
@@ -48,7 +52,7 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 
 - Validar manualmente em múltiplos monitores e DPI misto; implementar travessia entre monitores durante o voo e atualização de limites após mudanças de resolução.
 - Refinar corpo circular para evitar que cabeça/braços ultrapassem bordas; avaliar apoio que acompanhe uma janela sendo arrastada (atualmente o mascote perde o apoio e cai).
-- Refinar poses de impacto/aterrissagem e comportamento de prateleiras sobrepostas/ocultas.
+- Refinar apoio que acompanhe janelas em movimento e testar mais casos de janelas parcialmente transparentes/recortadas; a oclusão atual usa retângulos DWM e ordem Z.
 - Testar hit-test com texturas transparentes, escalas extremas, janelas sobrepostas e DPI distintos. O teste atual usa geometria, não alpha por pixel.
 
 ### 1. Música — validar e refinar `src/sejoga/music.py`
@@ -58,7 +62,7 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 - Afinar o detector RMS/onset com diferentes gêneros e volumes; medir custo antes de considerar `librosa`.
 - Ler e expor a arte do álbum quando houver uma interface que a apresente.
 - Ajustar a intensidade de dança e os gatilhos de beat com base na captura real.
-- Definir e ligar `react_to_beat` e `dance_chance` ao controlador de animação após verificar os dados reais do listener.
+- Validar `react_to_beat` e `dance_chance`, já ligados ao controlador, com dados reais do listener.
 
 ### 2. Configurações e controles — `src/sejoga/ui.py`
 
@@ -80,6 +84,8 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 - Tratar assinatura de código como etapa futura, quando houver certificado.
 
 ## Build usado na validação atual
+
+Última etapa visual/física (04/11/2026): 47 testes passaram, além dos smokes de mouse/física e efeitos. O modelo separado do tentáculo passou no glTF Validator da Khronos com zero erros e zero avisos. No executável, ícone e estilo de barra de tarefas foram conferidos; o hover ampliado parou sobre um controle Edit de outra janela e retomou após voltar à área ociosa. Após arremesso, a captura registrou grounded=true, velocidade (0, 0) e centro em y=1398,1 na área útil de 1440 px. O comando nativo SC_CLOSE completou a saída animada e encerrou o processo. A tentativa de medir um arraste exato sofreu interferência do cursor em uso; os logs confirmaram down/drag/up e o repouso foi verificado separadamente.
 
 Validação da etapa de mouse: `python -m pytest` e `python tools/smoke_mouse.py` (repetir com `--physics`). O smoke usa perfil temporário, uma janela Panda3D real e entradas simuladas no polling, sem movimentar o cursor do usuário; verifica picking, estilos de click-through, reações, deslocamento real do HWND, persistência e rejeição de gestos externos. PNG e JSONL são gravados no perfil temporário indicado ao terminar. Isso não substitui validação manual de cliques rápidos e múltiplos monitores.
 

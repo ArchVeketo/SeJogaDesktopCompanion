@@ -28,6 +28,14 @@ O executável gerado fica em `dist\SeJogaCompanion\SeJogaCompanion.exe`.
 - Interagir acorda o personagem. As preferências permitem desligar reações e arraste separadamente, sem reiniciar.
 - O fundo é transparente e deixa os cliques passar automaticamente. O rosa aparece quando o diagnóstico está ligado. Gestos iniciados em outro aplicativo não arrastam o mascote.
 - O contorno acompanha as partes animadas do personagem. Em **Configurações**, escolha a cor, ajuste a espessura de 0,5 a 8 px ou desligue o contorno. As mudanças são aplicadas ao salvar.
+- O olhar reage também numa área ao redor do personagem, acompanhando o cursor para os lados, para cima e para baixo.
+- O menu da bandeja oferece **Acenar**, **Alongar** e **Mostrar tentáculos**. Os tentáculos aparecem com a abertura da porta, recolhem gradualmente antes de ela fechar e às vezes soltam uma gota de gosma rosa.
+
+## Barra de tarefas e saída
+
+O aplicativo tem ícone próprio no executável, na janela e na bandeja, derivado da arte oficial SeJoga. A janela também aparece na barra de tarefas do Windows.
+
+**Fechar janela** pela barra de tarefas ou **Encerrar Mário** pela bandeja inicia a saída: Mário fica branco, gira e voa para fora da tela; o processo encerra em seguida. `Shift` + clique direito no botão da barra abre o menu do sistema com **Encerrar Mário**, **Configurações** e **Mostrar tentáculos**. A posição fora da tela usada no efeito não substitui a posição salva.
 
 Com a física ligada, soltar em movimento arremessa o mascote: ele cai, quica e repousa no chão ou no topo das janelas. Segurar parado antes de soltar elimina o impulso; `Esc` cancela o gesto e mantém o mascote flutuando. Com a física desligada, soltar apenas posiciona o overlay.
 

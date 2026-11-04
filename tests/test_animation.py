@@ -83,3 +83,26 @@ def test_music_probability_is_not_sampled_every_frame():
         animation.update(.016, music_playing=True, music_intensity=.5, dance_chance=.35)
     assert animation.state == AnimationState.IDLE
     assert animation._dance_rng.random.call_count == 1
+
+
+def test_airborne_motion_never_selects_walk_or_run():
+    animation = controller()
+    for speed in (150, 500, 1500):
+        animation.update(.1, grounded=False, velocity=(speed, 0))
+        assert animation.state == AnimationState.FALL
+
+
+def test_hover_tracks_both_axes_and_new_reactions_generate_distinct_poses():
+    animation = controller()
+    for _ in range(10):
+        pose = animation.update(.1, hovered=True, look_direction=-1, look_vertical=1)
+    assert pose["head"].x < 0 and pose["head"].y < 0
+    frames = []
+    for kind in ("wave", "stretch", "peek", "hit"):
+        other = controller()
+        other.interact(kind)
+        for _ in range(5):
+            pose = other.update(.1)
+        frames.append(tuple(pose.values()))
+        assert other.state.value == kind
+    assert len(set(frames)) == 4

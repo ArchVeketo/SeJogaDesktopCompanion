@@ -15,6 +15,7 @@ $panda3dDir = Join-Path $env:APPDATA 'Python\Python314\site-packages\panda3d'
 & "C:\Users\victh\AppData\Roaming\Python\Python314\Scripts\pyinstaller.exe" `
     --clean `
     --name SeJogaCompanion `
+    --icon "assets\brand\companion.ico" `
     --windowed `
     --onedir `
     --add-data "assets;assets" `

@@ -84,6 +84,10 @@ from .music import MusicListener
 from .ui import HotkeyManager, SettingsDialog
 from .debug import DebugTools, configure_logging
 from .interaction import MouseInteraction
+from .desktop_shell import DesktopIntegration
+from .exit_animation import ExitAnimation
+from .tentacles import TentacleRenderer
+from .attention import HoverAttention
 
 # ============================================================
 # Win32 Constants & Helpers
@@ -165,6 +169,8 @@ class Panda3DRenderer:
         self._model_center = Vec3(0, 0, 0)
         self._model_min_z = 0.0
         self._model_radius_px = 0.0
+        self.tentacles = None
+        self._door_requested = 0.0
 
         self._setup_scene()
         self._load_model()
@@ -204,14 +210,13 @@ class Panda3DRenderer:
 
         # Câmera
         cam = self.showbase.cam
-        cam.setPos(0, -15, 2)
+        cam.setPos(0, -15, 1)
         cam.lookAt(0, 0, 1)
 
         # Lens
-        from panda3d.core import PerspectiveLens
-        lens = PerspectiveLens()
-        lens.setFov(45)
-        lens.setAspectRatio(self.width / self.height)
+        from panda3d.core import OrthographicLens
+        lens = OrthographicLens()
+        lens.setFilmSize(12.4264 * self.width / self.height, 12.4264)
         lens.setNear(0.1)
         lens.setFar(100)
         self.showbase.cam.node().setLens(lens)
@@ -278,6 +283,8 @@ class Panda3DRenderer:
         self.set_visual_scale(self.showbase.settings.window.scale)
 
         self._apply_rig_to_model()
+        self.tentacles = TentacleRenderer(self._rig_nodes["head"])
+        self.tentacles.root.instanceTo(self._outline_nodes["head"])
         self.set_outline_settings(self.showbase.settings.window)
         self.set_model_screen_position(
             self.width / 2,
@@ -350,6 +357,10 @@ void main() {
 
     def _update_view_dimensions(self) -> None:
         lens = self.showbase.cam.node().getLens()
+        from panda3d.core import OrthographicLens
+        if isinstance(lens, OrthographicLens):
+            self._view_width, self._view_height = map(float, lens.getFilmSize())
+            return
         fov_x, fov_y = lens.getFov()
         camera_pos = self.showbase.cam.getPos(self.showbase.render)
         target = Vec3(0, 0, self._view_target_z)
@@ -407,6 +418,11 @@ void main() {
             else:
                 x, y, z = rotation
             base_h, base_p, base_r = self._rig_base_hpr.get(group_name, (0.0, 0.0, 0.0))
+            if group_name == "door":
+                self._door_requested = max(0.0, math.degrees(y))
+                # Keep the opening clear until the last tentacle has retracted.
+                if self.tentacles and self.tentacles.motion.extension > .01:
+                    y = math.radians(max(self._door_requested, 10 + 60 * self.tentacles.motion.extension))
             node.setHpr(
                 base_h + math.degrees(y),
                 base_p + math.degrees(x),
@@ -415,6 +431,31 @@ void main() {
             outline_node = self._outline_nodes.get(group_name)
             if outline_node:
                 outline_node.setHpr(node.getHpr())
+
+    def update_appendages(self, dt):
+        if self.tentacles:
+            self.tentacles.update(dt, self._door_requested)
+
+    def begin_exit_effect(self):
+        from panda3d.core import Shader
+        vertex = """#version 130
+in vec4 p3d_Vertex; in vec2 p3d_MultiTexCoord0;
+uniform mat4 p3d_ModelViewProjectionMatrix; out vec2 uv;
+void main() { uv = p3d_MultiTexCoord0; gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex; }
+"""
+        fragment = """#version 130
+uniform sampler2D p3d_Texture0; in vec2 uv; out vec4 fragColor;
+void main() { if (texture(p3d_Texture0, uv).a < 0.05) discard; fragColor = vec4(100.0, 100.0, 100.0, 1.0); }
+"""
+        self.model_np.setShader(Shader.make(Shader.SL_GLSL, vertex, fragment), 1001)
+        self.outline_np.hide()
+        minimum, maximum = self.model_np.getTightBounds(self.showbase.render)
+        self.exit_pivot = self.showbase.render.attachNewNode("exit-spin-center")
+        self.exit_pivot.setPos((minimum + maximum) * .5)
+        self.model_anchor.wrtReparentTo(self.exit_pivot)
+
+    def set_exit_rotation(self, roll):
+        self.exit_pivot.setR(roll)
 
 
 # ============================================================
@@ -425,6 +466,7 @@ class OverlayApp(ShowBase):
     """Aplicação principal - Panda3D ShowBase + Win32 layered window + PySide6 tray."""
 
     def __init__(self, settings: Settings):
+        DesktopIntegration.set_app_id()
         ShowBase.__init__(self, windowType="none")
 
         self.settings = settings
@@ -433,6 +475,9 @@ class OverlayApp(ShowBase):
         self.physics: Optional = None
         self.music_listener: Optional[MusicListener] = None
         self.debug_tools: Optional[DebugTools] = None
+        self.desktop = None
+        self._exit_started = None
+        self._force_exit = False
 
         self._is_topmost = settings.window.always_on_top
         self._is_bottom = settings.window.mode == "desktop"
@@ -446,6 +491,11 @@ class OverlayApp(ShowBase):
         self._mouse_hovered = False
         self._mouse_local = (0, 0)
         self._native_buttons: set[str] = set()
+        self._hover_attention = HoverAttention()
+        self._hover_foreground = win32gui.GetForegroundWindow()
+        self._busy_cursors = {win32gui.LoadCursor(0, cursor) for cursor in
+                              (win32con.IDC_IBEAM, win32con.IDC_HAND, win32con.IDC_SIZEALL,
+                               win32con.IDC_SIZENS, win32con.IDC_SIZEWE)}
         self.mouse_interaction = MouseInteraction(buttons=self._mouse_buttons())
         self.animation_controller: Optional[AnimationController] = None
 
@@ -500,6 +550,9 @@ class OverlayApp(ShowBase):
         self.taskMgr.doMethodLater(0.15, self._restore_z_order, "restore-z-order")
         self.taskMgr.doMethodLater(0.2, self._calibrate_background_key, "background-key")
         self._init_physics()
+        icon = brand_dir() / "companion.ico"
+        self.qt_app.setWindowIcon(QIcon(str(icon)))
+        self.desktop = DesktopIntegration(self.hwnd, icon)
 
         print("OverlayApp initialized.")
 
@@ -593,6 +646,8 @@ class OverlayApp(ShowBase):
 
     def _restore_z_order(self, task: Task) -> int:
         if win32gui.IsWindow(self.hwnd):
+            if self.desktop:
+                self.desktop.apply_style()
             self._update_z_order()
         return Task.done
 
@@ -655,7 +710,7 @@ class OverlayApp(ShowBase):
         size = self.settings.window.size
         self._physics_local = (size / 2, size - self.settings.physics.mascot_radius - 35)
         origin = win32gui.ClientToScreen(self.hwnd, (0, 0))
-        self._set_physics_monitor(origin)
+        self._set_physics_monitor((origin[0] + self._physics_local[0], origin[1] + self._physics_local[1]))
         self.physics.set_position(
             origin[0] + self._physics_local[0],
             origin[1] + self._physics_local[1],
@@ -699,7 +754,7 @@ class OverlayApp(ShowBase):
     def _on_physics_collision(self, kind, velocity) -> None:
         self.logger.info("Physics %s velocity=%s", kind, velocity)
         if self.animation_controller:
-            self.animation_controller.interact("poke")
+            self.animation_controller.interact("hit")
 
     def _physics_tick(self, task: Task) -> int:
         """Task de física - roda a 120 Hz."""
@@ -725,12 +780,15 @@ class OverlayApp(ShowBase):
         self.renderer.set_model_screen_position(*self._physics_local)
 
         vx, vy = state.velocity
-        if math.hypot(vx, vy) > 80:
+        if not state.grounded and math.hypot(vx, vy) > 80:
             self.renderer.set_model_rotation(z=max(-20.0, min(20.0, -vx / 80)))
         else:
             self.renderer.set_model_rotation()
 
     def _animation_tick(self) -> None:
+        if self._exit_started is not None:
+            self._exit_tick()
+            return
         if not self.renderer or not self.animation_controller:
             return
 
@@ -759,8 +817,10 @@ class OverlayApp(ShowBase):
             sleep_after_idle_seconds=self.settings.behavior.sleep_after_idle_seconds,
             hovered=self._mouse_hovered and self.settings.behavior.react_to_click,
             look_direction=(self._mouse_local[0] / self.renderer.width - 0.5) * 2.0,
+            look_vertical=(self._mouse_local[1] / self.renderer.height - .52) * 2.0,
         )
         self.renderer.apply_rig_pose(pose)
+        self.renderer.update_appendages(dt)
         if state:
             self._sync_model_with_physics()
         if self.debug_tools:
@@ -818,7 +878,7 @@ class OverlayApp(ShowBase):
 
     def _setup_tray(self) -> None:
         """Cria o ícone e o menu da bandeja do sistema."""
-        icon_path = brand_dir() / "Icon-100.jpg"
+        icon_path = brand_dir() / "companion.ico"
         self.tray_icon = QSystemTrayIcon(QIcon(str(icon_path)), self.qt_app)
         self.tray_icon.setToolTip("SeJoga Desktop Companion")
 
@@ -847,7 +907,11 @@ class OverlayApp(ShowBase):
         self._recording_action.toggled.connect(self.set_frame_recording)
 
         self.tray_menu.addSeparator()
-        quit_action = self.tray_menu.addAction("Sair")
+        for label, kind in (("Acenar", "wave"), ("Alongar", "stretch"), ("Mostrar tentáculos", "peek")):
+            action = self.tray_menu.addAction(label)
+            action.triggered.connect(lambda _checked=False, kind=kind: self.animation_controller.interact(kind))
+        self.tray_menu.addSeparator()
+        quit_action = self.tray_menu.addAction("Encerrar Mário")
         quit_action.triggered.connect(lambda _checked=False: self.quit_app())
 
         self.tray_icon.setContextMenu(self.tray_menu)
@@ -865,6 +929,15 @@ class OverlayApp(ShowBase):
 
     def _process_qt_events(self, task: Task) -> int:
         QApplication.processEvents()
+        if self.desktop:
+            for request in self.desktop.requests[:]:
+                self.desktop.requests.remove(request)
+                if request == "quit":
+                    self.quit_app()
+                elif request == "settings" and self._exit_started is None:
+                    self.open_settings_dialog()
+                elif request == "peek" and self._exit_started is None:
+                    self.animation_controller.interact("peek")
         return Task.cont
 
     def _on_tray_activated(self, reason) -> None:
@@ -879,6 +952,8 @@ class OverlayApp(ShowBase):
         self.taskMgr.add(self._mouse_poll, "mouse-poll")
 
     def _native_mouse_button(self, button: str, pressed: bool) -> None:
+        if self._exit_started is not None:
+            return
         if pressed:
             self._native_buttons.add(button)
             if win32gui.IsWindow(self.hwnd) and self._settings_dialog is None:
@@ -921,10 +996,35 @@ class OverlayApp(ShowBase):
             allow_drag=self.settings.behavior.react_to_drag,
             allow_click=self.settings.behavior.react_to_click,
         )
-        self._mouse_hovered = self.mouse_interaction.hovered
+        previous_hover = self._mouse_hovered
+        dx = (self._mouse_local[0] - self.renderer.width * .5) / (self.renderer.width * .95)
+        dy = (self._mouse_local[1] - self.renderer.height * .52) / (self.renderer.height * .85)
+        foreground = win32gui.GetForegroundWindow()
+        typing = foreground != self.hwnd and any(
+            win32api.GetAsyncKeyState(key) & 0x8000 for key in
+            (*range(0x30, 0x5B), win32con.VK_SPACE, win32con.VK_BACK, win32con.VK_RETURN)
+        )
+        target = win32gui.WindowFromPoint(position)
+        target_class = win32gui.GetClassName(target) if target else ""
+        busy_cursor = target != self.hwnd and (
+            win32gui.GetCursorInfo()[1] in self._busy_cursors or
+            target_class in ("#32768", "Button", "Edit", "ComboBox", "ListBox",
+                             "SysTreeView32", "SysListView32", "ToolbarWindow32") or "Popup" in target_class
+        )
+        allowed = self._hover_attention.update(
+            time.perf_counter(),
+            external_press=bool(buttons) and not self.mouse_interaction.has_press and not self._drag_active,
+            typing=bool(typing), busy_cursor=busy_cursor,
+            focus_changed=foreground != self._hover_foreground,
+        )
+        self._hover_foreground = foreground
+        self._mouse_hovered = enabled and allowed and not self._drag_active and dx*dx + dy*dy <= 1
+        if self._mouse_hovered and not previous_hover and self.animation_controller:
+            self.animation_controller.interact("hover_enter")
         for event in events:
             if event.kind in ("hover_enter", "click", "pet", "poke"):
-                if self.settings.behavior.react_to_click and self.animation_controller:
+                if (self.settings.behavior.react_to_click and self.animation_controller
+                        and (event.kind != "hover_enter" or self._mouse_hovered)):
                     self.animation_controller.interact(event.kind)
             elif event.kind == "drag_start":
                 self._drag_active = True
@@ -947,7 +1047,7 @@ class OverlayApp(ShowBase):
                     self.physics.update_drag(*position)
             if event.kind in ("drag_end", "drag_cancel"):
                 if self.physics:
-                    self._set_physics_monitor(position)
+                    self._set_physics_monitor(self.physics.get_state().position)
                     self.physics.end_drag(cancel=event.kind == "drag_cancel")
                 self._drag_active = False
                 self._drag_direction = 0.0
@@ -1073,6 +1173,52 @@ class OverlayApp(ShowBase):
         self.userExit()
 
     def userExit(self) -> None:
+        if not self._force_exit and self.renderer and win32gui.IsWindow(self.hwnd):
+            if self._exit_started is None:
+                self._begin_exit()
+            return
+        self._finish_exit()
+
+    def _begin_exit(self):
+        self._persist_settings()
+        self._exit_started = time.perf_counter()
+        self.taskMgr.remove("physics-tick")
+        self.taskMgr.remove("mouse-poll")
+        self._native_buttons.clear()
+        if win32gui.GetCapture() == self.hwnd:
+            win32gui.ReleaseCapture()
+        if self._settings_dialog:
+            self._settings_dialog.reject()
+        win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNOACTIVATE)
+        rect = win32gui.GetWindowRect(self.hwnd)
+        bounds = (win32api.GetSystemMetrics(76), win32api.GetSystemMetrics(77),
+                  win32api.GetSystemMetrics(76) + win32api.GetSystemMetrics(78),
+                  win32api.GetSystemMetrics(77) + win32api.GetSystemMetrics(79))
+        self._exit_motion = ExitAnimation(rect[:2], self.settings.window.size, bounds)
+        self.renderer.begin_exit_effect()
+        self.logger.info("Exit animation started")
+
+    def _exit_tick(self):
+        if not win32gui.IsWindow(self.hwnd):
+            self._force_exit = True
+            self._finish_exit()
+            return
+        frame = self._exit_motion.sample(time.perf_counter() - self._exit_started)
+        self.renderer.set_exit_rotation(frame.roll)
+        win32gui.SetWindowPos(self.hwnd, win32con.HWND_TOPMOST, frame.x, frame.y, 0, 0,
+                             SWP_NOSIZE | SWP_NOACTIVATE)
+        if self.debug_tools:
+            self.debug_tools.update(1 / self.settings.window.fps)
+        if frame.done:
+            self._force_exit = True
+            self._finish_exit()
+
+    def _finish_exit(self):
+        self.taskMgr.remove("physics-tick")
+        self.taskMgr.remove("mouse-poll")
+        if self.desktop:
+            self.desktop.close()
+            self.desktop = None
         if hasattr(self, 'animation_timer') and self.animation_timer:
             self.animation_timer.stop()
         if hasattr(self, 'tray_icon') and self.tray_icon:

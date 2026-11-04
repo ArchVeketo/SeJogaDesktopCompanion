@@ -259,7 +259,7 @@ def pose_thrown(rig: Rig, t: float = 0.0) -> None:
     rig.set_rotation("head", x=-8.0, y=wobble * 4.0)
 
 
-def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0) -> None:
+def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vertical: float = 0.0) -> None:
     """Reações procedurais: porta gira na dobradiça, sem escala da malha."""
     from math import pi, sin
 
@@ -267,7 +267,7 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0) -> N
     # Mantém os braços junto ao corpo durante as reações.
     rig.set_rotation("right-arm", z=65.0)
     rig.set_rotation("left-arm", z=-65.0)
-    rig.set_rotation("head", y=direction * 30.0)
+    rig.set_rotation("head", x=-max(-1.0, min(1.0, vertical)) * 18.0, y=direction * 30.0)
     if kind == "hover":
         rig.set_rotation("door", y=20.0)
     elif kind == "click":
@@ -298,3 +298,34 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0) -> N
         rig.set_rotation("door", y=75.0 * pulse)
         rig.set_rotation("right-arm", z=65.0 + 35.0 * pulse)
         rig.set_rotation("left-arm", z=-65.0 - 35.0 * pulse)
+
+
+def pose_flourish(rig: Rig, kind: str, t: float) -> None:
+    """Aceno, alongamento, espiada e recuperação de impacto."""
+    from math import pi, sin
+    durations = {"wave": 2.0, "stretch": 2.8, "peek": 3.5, "hit": .65}
+    phase = min(1.0, max(0.0, t / durations[kind]))
+    envelope = sin(phase * pi)
+    rig.set_rotation("right-arm", z=65)
+    rig.set_rotation("left-arm", z=-65)
+    if kind == "wave":
+        rig.set_rotation("right-arm", x=-15 * envelope, z=65 + 70 * envelope)
+        rig.set_rotation("ant-arm", x=sin(t * 11) * 22 * envelope)
+        rig.set_rotation("head", z=8 * envelope)
+        rig.set_rotation("door", y=25 * envelope)
+    elif kind == "stretch":
+        rig.set_rotation("right-arm", x=-25 * envelope, z=65 + 75 * envelope)
+        rig.set_rotation("left-arm", x=-25 * envelope, z=-65 - 75 * envelope)
+        rig.set_rotation("body", x=-8 * envelope)
+        rig.set_rotation("head", x=-12 * envelope)
+        rig.set_rotation("door", y=60 * envelope)
+    elif kind == "peek":
+        rig.set_rotation("head", y=sin(t * 2) * 12 * envelope, z=5 * envelope)
+        rig.set_rotation("door", y=85 * envelope)
+        rig.set_rotation("ant-arm", x=-12 * envelope)
+        rig.set_rotation("ant-arm2", x=-12 * envelope)
+    else:
+        recoil = sin(t * 18) * (1 - phase) ** 2
+        rig.set_rotation("body", x=-15 * envelope, z=recoil * 10)
+        rig.set_rotation("head", x=-18 * envelope, z=-recoil * 12)
+        rig.set_rotation("door", y=40 * envelope)
