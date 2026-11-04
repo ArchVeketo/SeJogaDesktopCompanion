@@ -62,11 +62,12 @@ class DebugTools:
     """Diagnóstico visual e gravação de frames sem custo no modo normal."""
 
     MAX_RECORDING_FRAMES = 300
-    FRAME_QUEUE_SIZE = 8
+    FRAME_QUEUE_SIZE = 16
 
-    def __init__(self, app, on_recording_changed=None):
+    def __init__(self, app, on_recording_changed=None, debug_hotkey="ctrl+alt+f11"):
         self.app = app
         self.on_recording_changed = on_recording_changed
+        self.debug_hotkey = debug_hotkey.upper()
         self.visible = False
         self.recording = False
         self._frame_count = 0
@@ -87,13 +88,13 @@ class DebugTools:
         self.hud = OnscreenText(
             text="",
             parent=app.aspect2d,
-            pos=(-1.29, 0.96),
+            pos=(-0.95, 0.96),
             align=TextNode.ALeft,
-            scale=0.036,
+            scale=0.045,
             fg=(1.0, 1.0, 1.0, 1.0),
             bg=(0.035, 0.035, 0.055, 0.88),
             mayChange=True,
-            wordwrap=35,
+            wordwrap=62,
         )
         self.hud.hide()
         self._local_axes = self._make_axes(app.renderer.model_np)
@@ -226,19 +227,22 @@ class DebugTools:
         state = physics or {"position": (0, 0), "velocity": (0, 0), "grounded": True}
         camera_pos = meta["camera_position"]
         fov = meta["camera_fov"]
-        music_text = "off" if not music else f"{music['level']:.2f} / {music['bpm'] or '—'} BPM"
+        music_text = "off" if not music else f"{music['level']:.2f} / {music['bpm'] or 'n/a'} BPM"
+        bounds = " x ".join(f"{value:.2f}" for value in meta["model_bounds_units"])
+        camera = ", ".join(f"{value:.2f}" for value in camera_pos)
+        camera_fov = ", ".join(f"{value:.1f}" for value in fov)
         return (
-            "SEJOGA DEBUG  |  Ctrl+Alt+D fecha\n"
+            f"SEJOGA DEBUG  |  {self.debug_hotkey} fecha\n"
             f"FPS {self._fps:5.1f}   Janela {meta['window_pixels'][0]}x{meta['window_pixels'][1]}\n"
             f"Estado {meta['animation_state']}   Persona {meta['idle_personality']}\n"
             f"Pos {state['position'][0]:.1f}, {state['position'][1]:.1f} px\n"
             f"Vel {state['velocity'][0]:.1f}, {state['velocity'][1]:.1f} px/s\n"
             f"Chão {state['grounded']}   Gravidade {state.get('gravity_active', False)}\n"
-            f"Escala {meta['model_scale']:.3f} Bounds {meta['model_bounds_units']!s}\n"
-            f"Câmera {camera_pos!s} FOV {fov!s}\n"
+            f"Escala {meta['model_scale']:.3f} Bounds {bounds}\n"
+            f"Câmera {camera} FOV {camera_fov}\n"
             f"Música {music_text}\n"
             f"Gravação {'ON' if self.recording else 'off'}  Frames {self._frame_count}  Perdidos {self._dropped_frames}\n"
-            "Eixos: X vermelho · Y verde · Z azul"
+            "Eixos: X vermelho | Y verde | Z azul"
         )
 
     def _new_capture_dir(self) -> Path:

@@ -17,8 +17,8 @@ Este é o roadmap canônico do projeto. As listas de próximos passos nos docume
 - **Música:** `music.py` consulta a sessão GSMTC e, no modo loopback, estima nível e batidas por RMS em worker de fundo.
 - **Bandeja e loop:** `window.py` implementa menu da bandeja, polling de eventos Qt, timers de animação/física e entrada de mouse.
 - **Configurações e atalhos:** diálogo da bandeja salva em TOML; escala, música, cliques, z-order e atalhos aplicam na hora. Tamanho e física pedem reinício. Atalhos incluem visibilidade, configurações, convocação, diagnóstico e captura.
-- **Build:** o bundle PyInstaller `onedir` foi recompilado com sucesso por `build.ps1`; nesta etapa o executável não foi iniciado.
-- **Ferramentas de diagnóstico:** HUD alternável por `Ctrl+Alt+D`, eixos locais e globais, captura avulsa por `Ctrl+Alt+P`, gravação limitada a 300 frames por `Ctrl+Alt+R` e metadados JSONL. A gravação é opt-in; imagens são gravadas em segundo plano em `%LOCALAPPDATA%/ArchVeketo/SeJogaDesktopCompanion/debug-captures/`.
+- **Build:** PyInstaller conclui o bundle `onedir`, mas neste ambiente ele falha ao iniciar em `from PySide6.QtCore import QTimer` com `DLL load failed: o procedimento especificado não foi encontrado`. A falha também ocorreu num probe Qt mínimo empacotado com PyInstaller e cx_Freeze; a execução fonte importa Qt e abre a aplicação.
+- **Ferramentas de diagnóstico:** no runtime fonte, o HUD foi conferido visualmente; atalhos `Ctrl+Alt+F11`, `Ctrl+Alt+P` e `Ctrl+Alt+R`, eixos locais e globais, captura avulsa, gravação limitada a 300 frames e metadados JSONL funcionaram. Uma gravação curta salvou 102 PNGs e 102 linhas JSONL. A gravação é opt-in; imagens são gravadas em segundo plano em `%LOCALAPPDATA%/ArchVeketo/SeJogaDesktopCompanion/debug-captures/`.
 - **Logs:** exceções não tratadas vão para `logs/companion.log`, com rotação e até três cópias antigas.
 
 Essa verificação confirma o funcionamento no ambiente usado para o desenvolvimento. Não substitui teste em uma máquina limpa nem valida todas as interações do overlay.
@@ -30,7 +30,8 @@ Essa verificação confirma o funcionamento no ambiente usado para o desenvolvim
 - **Configuração persistente:** carregamento e gravação TOML estão em `config.py`; não há hot-reload de um arquivo TOML alterado externamente.
 - **Música:** o módulo está integrado, mas ainda precisa ser validado com sessões reais e diferentes dispositivos. A arte do álbum ainda não é lida como imagem; a detecção de beat é inicial e precisa ser ajustada. `react_to_beat` e `dance_chance` existem na configuração, mas ainda não controlam as animações; a semântica deve ser definida após observar sessões reais.
 - **Distribuição:** não há instalador Inno Setup, assinatura ou teste em instalação limpa.
-- **Diagnóstico:** HUD, gravação e logs estão empacotados; a imagem salva e a sequência de frames ainda precisam de inspeção visual numa sessão interativa.
+- **Diagnóstico:** a captura registra o fundo magenta usado pelo chroma key do overlay. O HUD cabe na janela quadrada após ajustar sua margem; falta verificar a mesma interface no bundle executável quando o problema de QtCore for resolvido.
+- **Inicialização congelada:** localizar por que os probes empacotados não conseguem importar `QtCore`, apesar de o mesmo pacote importar no Python normal, antes de distribuir um novo executável.
 - **Logs:** mecanismo de exceções não tratadas e rotação implementado; falta avaliar os logs após uma sessão prolongada.
 
 O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loopback, configure `music.source = "loopback"` e instale o extra `music-loopback`; essa opção é separada do modo padrão.

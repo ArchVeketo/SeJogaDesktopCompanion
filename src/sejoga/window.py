@@ -381,7 +381,11 @@ class OverlayApp(ShowBase):
         if self.renderer and self.renderer.rig:
             self.animation_controller = AnimationController(self.renderer.rig)
         if self.renderer:
-            self.debug_tools = DebugTools(self, self._on_recording_changed)
+            self.debug_tools = DebugTools(
+                self,
+                self._on_recording_changed,
+                self.settings.hotkeys.toggle_debug,
+            )
         self.music_listener = MusicListener(self.settings.music)
         self.music_listener.start()
         self._setup_tray()
@@ -680,7 +684,8 @@ class OverlayApp(ShowBase):
         settings_action = self.tray_menu.addAction("Configurações...")
         settings_action.triggered.connect(lambda _checked=False: self.open_settings_dialog())
 
-        self._debug_action = self.tray_menu.addAction("Diagnóstico (Ctrl+Alt+D)")
+        debug_shortcut = self.settings.hotkeys.toggle_debug.upper()
+        self._debug_action = self.tray_menu.addAction(f"Diagnóstico ({debug_shortcut})")
         self._debug_action.setCheckable(True)
         self._debug_action.toggled.connect(self.set_debug_overlay)
         capture_action = self.tray_menu.addAction("Capturar frame (Ctrl+Alt+P)")
