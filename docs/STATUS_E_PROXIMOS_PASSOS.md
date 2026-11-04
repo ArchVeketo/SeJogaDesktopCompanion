@@ -28,7 +28,7 @@ Essa verificação confirma o funcionamento no ambiente usado para o desenvolvim
 - **Animação:** o controlador procedural cobre os estados básicos; ainda faltam reações acionadas pela música, mais poses/eventos e clipes exportados do Blockbench.
 - **Configuração visual:** o diálogo e os atalhos editáveis estão integrados; atalhos são validados e reaplicados na hora. Se outro programa já usa uma combinação, o companion avisa. Alterar tamanho ou física exige reiniciar o app.
 - **Configuração persistente:** carregamento e gravação TOML estão em `config.py`; não há hot-reload de um arquivo TOML alterado externamente.
-- **Música:** o módulo está integrado, mas ainda precisa ser validado com sessões reais e diferentes dispositivos. A arte do álbum ainda não é lida como imagem; a detecção de beat é inicial e precisa ser ajustada.
+- **Música:** o módulo está integrado, mas ainda precisa ser validado com sessões reais e diferentes dispositivos. A arte do álbum ainda não é lida como imagem; a detecção de beat é inicial e precisa ser ajustada. `react_to_beat` e `dance_chance` existem na configuração, mas ainda não controlam as animações; a semântica deve ser definida após observar sessões reais.
 - **Distribuição:** não há instalador Inno Setup, assinatura ou teste em instalação limpa.
 - **Diagnóstico:** HUD, gravação e logs estão empacotados; a imagem salva e a sequência de frames ainda precisam de inspeção visual numa sessão interativa.
 - **Logs:** mecanismo de exceções não tratadas e rotação implementado; falta avaliar os logs após uma sessão prolongada.
@@ -44,6 +44,7 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 - Afinar o detector RMS/onset com diferentes gêneros e volumes; medir custo antes de considerar `librosa`.
 - Ler e expor a arte do álbum quando houver uma interface que a apresente.
 - Ajustar a intensidade de dança e os gatilhos de beat com base na captura real.
+- Definir e ligar `react_to_beat` e `dance_chance` ao controlador de animação após verificar os dados reais do listener.
 
 ### 2. Configurações e controles — `src/sejoga/ui.py`
 
