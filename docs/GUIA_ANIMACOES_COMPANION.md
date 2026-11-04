@@ -27,6 +27,32 @@
 - Na dança, os braços longos ficam recolhidos para baixo, junto às laterais do corpo. Os demais estados ainda usam suas poses próprias.
 - Esses movimentos são poses procedurais em `src/sejoga/rig.py`; a tabela completa abaixo continua sendo a especificação para animações futuras.
 
+### Idles autorados no runtime (04/11/2026)
+
+O submenu **Personalidade do idle** inclui quatro estilos adicionais. São
+interpretações das referências deste documento, com keyframes próprios de
+dez segundos em `idle_clips.py`, sem modificar o GLTF original:
+
+| Opção | Movimento |
+| --- | --- |
+| Street groove · Bomb Rush | Balanço alternado de tronco, contrapeso da cabeça e braços com atraso nos punhos. |
+| Guarda e provocação · Lethal League | Preparação, guarda unilateral com dedos fechando, provocação e recuperação mais lenta. |
+| Ritmada · Hi-Fi Rush | Pulsos a 100 BPM e gesto de mão no meio da frase. A cadência é interna; não sincroniza com o áudio. |
+| Estilosa · Persona 5 | Torção de tronco, olhar em oposição, gesto de mão e pose sustentada antes do retorno. |
+
+As pistas usam interpolação quíntica (velocidade e aceleração nulas nas
+pausas). Antebraço, punho e dedos têm tempos diferentes. O movimento
+secundário soma à pose autorada, preservando suas rotações. A escolha manual
+reinicia a frase, faz crossfade e permanece salva; automático inclui os nove
+estilos. `tools/preview_idle_styles.py` gera ciclos completos em GIF e
+capturas do início, gesto e retorno, com perfil temporário.
+
+Os tentáculos agora aguardam a porta abrir, mantêm a raiz fixa, saem em
+direções opostas e recolhem por 1,5 s sem colapsar no primeiro frame.
+A porta continua sendo atualizada até fechar após o último tentáculo.
+O contato geométrico com toda a malha da porta ainda precisa ser revalidado
+no novo sistema; abrir antes da saída não equivale a uma simulação de contato.
+
 ---
 
 ## 2. State Machine de Animação

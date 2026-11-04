@@ -31,6 +31,9 @@ def main():
     settings.music.enabled = False
     settings.window.start_position = (600, 200)
     app = OverlayApp(settings)
+    # This smoke injects its own cursor samples. Real desktop activity during
+    # startup must not leave HoverAttention in its one-second cooldown.
+    app.taskMgr.remove("mouse-poll")
     # Avoid registering shortcuts already owned by the user's running companion.
     app.hotkey_manager.close()
     results = {"physics": settings.physics.enabled, "profile": str(profile)}
@@ -39,6 +42,7 @@ def main():
         position = local if screen else win32gui.ClientToScreen(app.hwnd, local)
         with patch("sejoga.window.win32gui.GetCursorPos", return_value=position), \
              patch("sejoga.window.win32api.GetAsyncKeyState", return_value=0), \
+             patch("sejoga.window.win32gui.GetForegroundWindow", return_value=app._hover_foreground), \
              patch.object(app, "_mouse_buttons", return_value=frozenset(buttons)):
             app._mouse_poll(None)
 

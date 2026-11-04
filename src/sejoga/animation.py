@@ -57,6 +57,7 @@ class AnimationController:
         self.state: AnimationState | None = None
         self.state_time = 0.0
         self.idle_time = 0.0
+        self._idle_clock = 0.0
         self.clock = 0.0
         self.idle_personality = IdlePersonality.CALM
         self._personality_rng = random.Random()
@@ -91,6 +92,7 @@ class AnimationController:
         if selected == self.idle_personality and self._personality_locked:
             return
         self.idle_personality = selected
+        self._idle_clock = 0.0
         self._personality_locked = True
         self._personality_elapsed = 0.0
         self._transition_from = dict(self._pose)
@@ -239,6 +241,7 @@ class AnimationController:
                     if personality != self.idle_personality
                 ]
                 self.idle_personality = self._personality_rng.choice(choices)
+                self._idle_clock = 0.0
                 self._personality_elapsed = 0.0
                 self._personality_interval = self._personality_rng.uniform(10.0, 16.0)
                 self._transition_from = dict(self._pose)
@@ -258,7 +261,8 @@ class AnimationController:
         self.rig.reset()
         if self.state == AnimationState.IDLE:
             if idle_enabled:
-                pose_idle(self.rig, self.clock, self.idle_personality)
+                self._idle_clock += dt
+                pose_idle(self.rig, self._idle_clock, self.idle_personality)
         elif self.state == AnimationState.WALK:
             pose_walk(self.rig, self.clock)
         elif self.state == AnimationState.RUN:
@@ -276,7 +280,8 @@ class AnimationController:
         elif self.state == AnimationState.HOVER or self.state in self.REACTION_SECONDS:
             pose_interaction(self.rig, self.state.value, self._reaction_time, self._look_direction, self._look_vertical)
 
-        pose_secondary(self.rig, self.clock, self.state.value, self.idle_personality)
+        pose_secondary(self.rig, self._idle_clock if self.state == AnimationState.IDLE else self.clock,
+                       self.state.value, self.idle_personality)
         if not dragging and self._release_time < .9:
             pose_throw_release(self.rig, self._release_time, self._release_grip)
 

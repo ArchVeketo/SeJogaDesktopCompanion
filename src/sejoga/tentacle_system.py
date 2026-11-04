@@ -35,6 +35,13 @@ SPRING_PARAMS = {
     IdlePersonality.SHY:        dict(spring=60.0,  damper=15.0, impulse_chance=0.005, impulse_strength=5.0),
     IdlePersonality.CONFIDENT:  dict(spring=120.0, damper=10.0, impulse_chance=0.02, impulse_strength=20.0),
 }
+for _style, _base in (
+    (IdlePersonality.STREET, IdlePersonality.CALM),
+    (IdlePersonality.FIGHTER, IdlePersonality.CONFIDENT),
+    (IdlePersonality.RHYTHM, IdlePersonality.CALM),
+    (IdlePersonality.STYLISH, IdlePersonality.CURIOUS),
+):
+    SPRING_PARAMS[_style] = dict(SPRING_PARAMS[_base])
 
 # Parâmetros por estado comportamental
 STATE_PARAMS = {
@@ -102,6 +109,7 @@ class Tentacle:
     outline_vdata: object = None
     template_vertices: list = field(default_factory=list)
     template_normals: list = field(default_factory=list)
+    retract_from: list[Vec3] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.params:
@@ -173,7 +181,6 @@ class TentaclePool:
     def get_available(self, count: int) -> list[Tentacle]:
         """Retorna até `count` tentáculos DORMANT, ativando-os."""
         available = [t for t in self.tentacles if t.state == TentacleState.DORMANT]
-        self.rng.shuffle(available)
         selected = available[:count]
         for t in selected:
             t.state = TentacleState.CURIOUS
@@ -183,6 +190,9 @@ class TentaclePool:
 
     def release(self, tentacle: Tentacle) -> None:
         """Devolve tentáculo ao pool (retract -> dormant)."""
+        if tentacle.state in (TentacleState.DORMANT, TentacleState.RETRACTING):
+            return
+        tentacle.retract_from = [Vec3(segment.pos) for segment in tentacle.segments]
         tentacle.state = TentacleState.RETRACTING
         tentacle.state_time = 0.0
         tentacle.params = dict(STATE_PARAMS["retracting"])
@@ -342,10 +352,27 @@ class TentacleDirector:
         self._door_requested = 0.0
 
     def _update_tentacle(self, tentacle: Tentacle, dt: float) -> None:
+        if tentacle.state == TentacleState.CURIOUS and self._door_current < 22.0:
+            return
         tentacle.state_time += dt
+
+        if tentacle.state == TentacleState.RETRACTING:
+            progress = min(1.0, max(0.0, tentacle.state_time / 1.5))
+            eased = progress ** 3 * (10 - 15 * progress + 6 * progress * progress)
+            for index, segment in enumerate(tentacle.segments):
+                start = tentacle.retract_from[index]
+                segment.pos = tentacle.anchor + (start - tentacle.anchor) * (1 - eased)
+                segment.vel = Vec3(0)
+            if progress >= 1.0:
+                tentacle.state = TentacleState.DORMANT
+                tentacle.params = dict(STATE_PARAMS["dormant"])
+                tentacle.retract_from.clear()
+            return
 
         # Transições de estado
         self._check_state_transition(tentacle)
+        if tentacle.state in (TentacleState.RETRACTING, TentacleState.DORMANT):
+            return
 
         # Parâmetros atuais
         p = tentacle.params
@@ -360,6 +387,10 @@ class TentacleDirector:
 
         # Atualiza cada segmento
         for i, seg in enumerate(tentacle.segments):
+            if i == 0:
+                seg.pos = Vec3(tentacle.anchor)
+                seg.vel = Vec3(0)
+                continue
             t_param = i / (len(tentacle.segments) - 1) if len(tentacle.segments) > 1 else 0.0
 
             # Target position para este segmento
@@ -380,7 +411,7 @@ class TentacleDirector:
                 target_pos = tentacle.anchor
 
             # Jitter impulsivo (twitch aleatório)
-            if self.rng.random() < tentacle.impulse_chance * dt * 60:
+            if tentacle.state != TentacleState.CURIOUS and self.rng.random() < tentacle.impulse_chance * dt * 60:
                 impulse = Vec3(
                     self.rng.uniform(-1, 1) * tentacle.impulse_strength * tentacle.unit_scale,
                     self.rng.uniform(-1, 1) * tentacle.impulse_strength * tentacle.unit_scale,
@@ -432,8 +463,7 @@ class TentacleDirector:
         p = tentacle.params
 
         if st == TentacleState.CURIOUS:
-            if tentacle.state_time > 4.0:
-                tentacle.state = TentacleState.DORMANT
+            if tentacle.state_time > 4.8:
                 self.pool.release(tentacle)
 
         elif st == TentacleState.REACHING:
@@ -459,17 +489,13 @@ class TentacleDirector:
                     ).normalized()
                     tentacle.target = tentacle.anchor + eject_dir * 400.0
                 else:
-                    tentacle.state = TentacleState.RETRACTING
-                    tentacle.state_time = 0.0
-                    tentacle.params = dict(STATE_PARAMS["retracting"])
+                    self.pool.release(tentacle)
 
         elif st == TentacleState.SPITTING:
             if tentacle.target:
                 dist = (tentacle.target - tentacle.segments[-1].pos).length()
                 if dist < 30.0 * tentacle.unit_scale or tentacle.state_time > 1.0:
-                    tentacle.state = TentacleState.RETRACTING
-                    tentacle.state_time = 0.0
-                    tentacle.params = dict(STATE_PARAMS["retracting"])
+                    self.pool.release(tentacle)
 
         elif st == TentacleState.FRENZY:
             # Frenzy mantém até director mandar parar
@@ -499,7 +525,9 @@ class TentacleDirector:
     def _update_door(self, dt: float) -> None:
         # Suaviza abertura/fechamento da porta
         diff = self._door_requested - self._door_current
-        self._door_current += diff * min(1.0, dt * 8.0)
+        delta = diff * (1.0 - math.exp(-dt * 3.0))
+        limit = 38.0 * dt
+        self._door_current += max(-limit, min(limit, delta))
         if self.door_node:
             self.door_node.setH(self._door_current)
 
@@ -524,9 +552,9 @@ class TentacleDirector:
             # Move toward the cabinet front and rise above its door, so the
             # tentacles read from the normal frontal camera angle.
             t.target = t.anchor + Vec3(
-                (24.0 if index % 2 == 0 else -24.0) * self.pool.unit_scale,
-                64.0 * self.pool.unit_scale,
-                38.0 * self.pool.unit_scale,
+                (65.0 if index % 2 == 0 else -65.0) * self.pool.unit_scale,
+                (50.0 if index % 2 == 0 else 25.0) * self.pool.unit_scale,
+                30.0 * self.pool.unit_scale,
             )
         self._door_requested = max(self._door_requested, 38.0)
 
@@ -654,7 +682,7 @@ def update_tentacle_render(tentacle: Tentacle) -> None:
 
     points = [Vec3(seg.pos) for seg in tentacle.segments]
     path_length = sum((b - a).length() for a, b in zip(points, points[1:]))
-    width_scale = min(1.0, max(.02, path_length / .432))
+    width_scale = min(.75, max(.02, path_length / .432))
 
     def frame_at(t: float):
         sample = max(0.0, min(1.0, t)) * (len(points) - 1)
@@ -666,7 +694,7 @@ def update_tentacle_render(tentacle: Tentacle) -> None:
             tangent = Vec3(0, 0, 1)
         else:
             tangent.normalize()
-        front = Vec3(0, -1, 0) - tangent * (-tangent.y)
+        front = Vec3(0, 1, 0) - tangent * tangent.y
         if front.lengthSquared() < 1e-6:
             front = Vec3(0, 0, 1) - tangent * tangent.z
         front.normalize()

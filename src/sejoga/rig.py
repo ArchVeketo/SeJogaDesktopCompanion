@@ -65,6 +65,10 @@ class IdlePersonality(StrEnum):
     PLAYFUL = "playful"
     SHY = "shy"
     CONFIDENT = "confident"
+    STREET = "street"
+    FIGHTER = "fighter"
+    RHYTHM = "rhythm"
+    STYLISH = "stylish"
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +143,12 @@ def pose_idle(
     """Idle com personalidade própria, sem deixar de respeitar a dobradiça."""
     from math import sin
 
+    from .idle_clips import CLIPS, sample_idle
+    if personality.value in CLIPS:
+        for group, (x, y, z) in sample_idle(personality.value, t).items():
+            rig.set_rotation(group, x=x, y=y, z=z)
+        return
+
     breath = sin(t * 0.72)
     sway = sin(t * 0.42)
     # Keep small movements slow enough to read as weight shifts, not vibration.
@@ -184,8 +194,8 @@ def pose_idle(
         rig.set_rotation("body", x=-2.5 + breath * 0.6, y=sway * 1.0, z=sin(t * 0.3) * 1.2)
         rig.set_rotation("head", x=-4.0 + nod * 1.8 - punctuation * 3.0, y=sin(t * 0.29) * 5.0, z=nod * 1.5)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=sin(t * .3) * 1.5, z=8.0)
-        rig.set_rotation("left-arm", x=-sin(t * .3 + .4) * 1.5, z=-8.0)
+        rig.set_rotation("right-arm", x=sin(t * .3) * 1.5, z=42.0)
+        rig.set_rotation("left-arm", x=-sin(t * .3 + .4) * 1.5, z=-48.0)
         rig.set_rotation("ant-arm", x=2.0 + sin(t * 0.4) * 2.5, z=3.0 + sway * 2.0)
         rig.set_rotation("ant-arm2", x=2.0 - sin(t * 0.4 + .4) * 2.5, z=-3.0 - sway * 2.0)
         rig.set_rotation("fingers", z=finger_breath)
@@ -194,8 +204,8 @@ def pose_idle(
         rig.set_rotation("body", x=breath * 0.9, y=sway * 1.5, z=sway * 1.0)
         rig.set_rotation("head", x=sin(t * 0.52) * 1.3, y=sin(t * 0.36) * 3.0)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=sin(t * 0.36) * 2.5, z=34.0 + sin(t * .4) * 2.5 - breath * .6)
-        rig.set_rotation("left-arm", x=-sin(t * 0.36) * 2.5, z=-35.0 - sin(t * .4 + .3) * 2.5 + breath * .6)
+        rig.set_rotation("right-arm", x=sin(t * 0.36) * 2.5, z=52.0 + sin(t * .4) * 2.5 - breath * .6)
+        rig.set_rotation("left-arm", x=-sin(t * 0.36) * 2.5, z=-54.0 - sin(t * .4 + .3) * 2.5 + breath * .6)
         rig.set_rotation("ant-arm", x=3.0 + sin(t * .42) * 2.0, z=sin(t * 0.42) * 5.0)
         rig.set_rotation("ant-arm2", x=3.0 - sin(t * .42 + .35) * 2.0, z=-sin(t * 0.42 + .35) * 5.0)
         # Calm hands breathe with the shoulders; no rapid idle twitch.
@@ -249,8 +259,8 @@ def pose_walk(rig: Rig, t: float, *, run: bool = False) -> None:
     rig.set_rotation("legs", x=stride * stride_angle)
     rig.set_rotation("left-feet", x=-stride * stride_angle * 1.25)
     rig.set_rotation("right-feet", x=stride * stride_angle * 1.25)
-    rig.set_rotation("right-arm", x=-stride * arm_angle, z=9.0 if run else 7.0)
-    rig.set_rotation("left-arm", x=stride * arm_angle, z=-9.0 if run else -7.0)
+    rig.set_rotation("right-arm", x=-stride * arm_angle, z=42.0 if run else 50.0)
+    rig.set_rotation("left-arm", x=stride * arm_angle, z=-42.0 if run else -50.0)
     ant_arm_x = -stride * arm_angle * 0.65
     rig.set_rotation("ant-arm", x=ant_arm_x)
     rig.set_rotation("ant-arm2", x=-ant_arm_x)
@@ -461,12 +471,16 @@ def pose_secondary(rig: Rig, t: float, state: str, personality=IdlePersonality.C
         ("ant-arm2", "shoulder2", "hand2", "fingers2", -1),
     ):
         arm = rig.current[forearm]
+        authored_hand = rig.current[hand]
+        authored_fingers = rig.current[fingers]
         rig.set_rotation(shoulder, x=max(-3, min(3, degrees(arm.x)*.12)))
         arm_roll = degrees(arm.z)
         wrist_follow = max(-12.0, min(12.0, -arm_roll*.28))
         hand_sway = sin(t*.58-side*.35)*4.5
-        rig.set_rotation(hand, x=-degrees(arm.x)*.24 + sin(t*.52-side*.3)*2.0,
-                         z=wrist_follow + side*hand_sway)
+        wrist_pitch = -degrees(arm.x)*.24 + sin(t*.52-side*.3)*2.0
+        rig.set_rotation(hand, x=degrees(authored_hand.x) + wrist_pitch,
+                         y=degrees(authored_hand.y),
+                         z=degrees(authored_hand.z) + wrist_follow + side*hand_sway)
         if state != "drag":
             amplitude = 7.0 if personality in (IdlePersonality.CURIOUS, IdlePersonality.PLAYFUL) else 4.5
             curl = 12 + sin(t*.62-side*.3)*amplitude + wrist_follow*.3
@@ -490,8 +504,10 @@ def pose_secondary(rig: Rig, t: float, state: str, personality=IdlePersonality.C
             elif state in ("wave", "stretch", "peek", "hit"):
                 # Reactive finger movement during flourishes
                 curl = 5 + sin(t * 1.3 + side) * 4.0
-            rig.set_rotation(hand, z=wrist_follow + side * hand_sway + idle_wrist)
-            rig.set_rotation(fingers, z=side*curl)
+            rig.set_rotation(hand, x=degrees(authored_hand.x) + wrist_pitch,
+                             y=degrees(authored_hand.y),
+                             z=degrees(authored_hand.z) + wrist_follow + side * hand_sway + idle_wrist)
+            rig.set_rotation(fingers, z=degrees(authored_fingers.z) + side*curl)
 
 
 def pose_throw_release(rig: Rig, t: float, grip: float = .5) -> None:

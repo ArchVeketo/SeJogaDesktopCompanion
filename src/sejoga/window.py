@@ -77,7 +77,7 @@ from ctypes import wintypes
 from .assets import brand_dir, resolve_model
 from .animation import AnimationController, AnimationState
 from .model import load_model
-from .rig import Rig, ALL_GROUPS
+from .rig import Rig, ALL_GROUPS, IdlePersonality
 from .config import load_settings, save_settings, Settings
 from .physics import ScreenSpacePhysics, create_physics, PhysicsState
 from .music import MusicListener
@@ -293,8 +293,8 @@ class Panda3DRenderer:
         unit_scale = float(self._view_height / self.height / self.model_np.getScale().x)
         head_node = self._rig_nodes["head"]
         spawn_points = [
-            self.model_np.getRelativePoint(head_node, Vec3(.025, .20, .19)),
-            self.model_np.getRelativePoint(head_node, Vec3(-.035, .20, .085)),
+            self.model_np.getRelativePoint(head_node, Vec3(.09, .20, .12)),
+            self.model_np.getRelativePoint(head_node, Vec3(-.09, .20, .20)),
             self.model_np.getRelativePoint(head_node, Vec3(-.02, .20, .16)),
             self.model_np.getRelativePoint(head_node, Vec3(.035, .20, .10)),
             self.model_np.getRelativePoint(head_node, Vec3(0, .23, .12)),
@@ -494,14 +494,13 @@ void main() {
         if visible:
             if not self._tentacles_were_visible:
                 self.tentacle_director.trigger_curious()
-            self.tentacle_director.update(
-                dt, controller.idle_time, controller.idle_personality
-            )
         elif self._tentacles_were_visible:
             self.tentacle_director._retract_all()
-            self.tentacle_director.update(dt, 0.0, controller.idle_personality)
-        elif any(t.state != TentacleState.DORMANT for t in self.tentacle_pool.tentacles):
-            self.tentacle_director.update(dt, 0.0, controller.idle_personality)
+        active = any(t.state != TentacleState.DORMANT for t in self.tentacle_pool.tentacles)
+        self.tentacle_director._door_requested = max(self._door_requested, 48.0 if active else 0.0)
+        # The animation controller owns ambient timing. Keep updating the door
+        # after the last limb is dormant, so it can finish closing smoothly.
+        self.tentacle_director.update(dt, 0.0, controller.idle_personality)
         self._tentacles_were_visible = visible
         for tentacle in self.tentacle_pool.tentacles:
             active = tentacle.state != TentacleState.DORMANT
@@ -1014,6 +1013,10 @@ class OverlayApp(ShowBase):
             ("playful", "Brincalhona"),
             ("shy", "Tímida"),
             ("confident", "Confiante"),
+            ("street", "Street groove · Bomb Rush"),
+            ("fighter", "Guarda e provocação · Lethal League"),
+            ("rhythm", "Ritmada · Hi-Fi Rush"),
+            ("stylish", "Estilosa · Persona 5"),
         ):
             action = personality_menu.addAction(label)
             action.setCheckable(True)
@@ -1042,7 +1045,7 @@ class OverlayApp(ShowBase):
 
     def _set_idle_personality(self, personality: str) -> None:
         """Aplica e salva a personalidade sem interromper o gesto atual."""
-        if personality not in {"auto", "calm", "curious", "playful", "shy", "confident"}:
+        if personality != "auto" and personality not in IdlePersonality:
             return
         self.settings.behavior.idle_personality = personality
         if self.animation_controller:
