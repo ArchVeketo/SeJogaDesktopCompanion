@@ -91,6 +91,7 @@ from .tentacle_system import (
     create_tentacle_geometry, update_tentacle_render,
 )
 from .attention import HoverAttention
+from .tray_registration import TrayRegistration
 from .tentacle_constraints import ObstacleBox, TentacleContacts
 
 # ============================================================
@@ -211,6 +212,9 @@ class Panda3DRenderer:
         )
         self._pick_queue.clearEntries()
         self._pick_traverser.traverse(self.model_np)
+        if self._pick_queue.getNumEntries():
+            self._pick_queue.sortEntries()
+            self._pick_point_model = self._pick_queue.getEntry(0).getSurfacePoint(self.model_np)
         return self._pick_queue.getNumEntries() > 0
 
     def _setup_scene(self) -> None:
@@ -264,6 +268,15 @@ class Panda3DRenderer:
 
         # panda3d-gltf 1.x expõe load_model diretamente no módulo.
         model_np = NodePath(gltf.load_model(str(model_path)))
+        self._hidden_export_planes = []
+        head = model_np.find("**/head")
+        for name in ("mesh11", "mesh12", "mesh13", "mesh14"):
+            plane = model_np.find(f"**/{name}")
+            if not plane.isEmpty() and head.isAncestorOf(plane) and plane.getParent().getName() == "plane":
+                # Crossed export/decorative planes around the headphone antennae
+                # show dotted triangular scaffolding in the desktop projection.
+                plane.stash()
+                self._hidden_export_planes.append(name)
         # O glTF foi exportado com a frente apontando para +Y. Como a câmera
         # observa o mascote pelo lado -Y, giramos a malha para mostrar o rosto.
         model_np.setH(self.MODEL_FACING_HEADING)
@@ -448,9 +461,9 @@ void main() {
     def apply_rig_pose(self, pose_dict: dict) -> None:
         if not self.model_np:
             return
-        for arm in ("right-arm", "left-arm"):
-            if arm in self._rig_nodes:
-                self._rig_nodes[arm].setPos(self._rig_base_pos[arm])
+        for group in ("head", "body", "right-arm", "left-arm", "legs", "left-feet", "right-feet"):
+            if group in self._rig_nodes:
+                self._rig_nodes[group].setPos(self._rig_base_pos[group])
 
         for group_name, rotation in pose_dict.items():
             node = self._rig_nodes.get(group_name)
@@ -479,6 +492,39 @@ void main() {
             if outline_node:
                 outline_node.setHpr(node.getHpr())
         self._resolve_arm_clearance()
+
+    def apply_body_motion(self, motion, grab_point=None, *, grounded=True, dragging=False):
+        """Rotate connected root parts around the hips/grip without editing the asset rig."""
+        from panda3d.core import Mat4, TransformState
+
+        hip = Vec3(self._rig_base_pos["body"])
+        grip = Vec3(grab_point) if grab_point is not None else hip
+
+        def around(pivot, pitch, yaw, roll, translation=Vec3(0)):
+            rotation = TransformState.makeHpr(Vec3(yaw, pitch, roll)).getMat()
+            return Mat4.translateMat(-pivot) * rotation * Mat4.translateMat(pivot + translation)
+
+        hanging = motion.hanging
+        upper = around(hip, motion.pitch * (1 - .6 * hanging), motion.yaw,
+                       motion.roll * (1 - .7 * hanging), Vec3(0, 0, -motion.compression * .08))
+        whole = around(grip if dragging else hip, motion.pitch * .6 * hanging, 0,
+                       motion.roll * .7 * hanging)
+        for group in ("head", "body", "right-arm", "left-arm", "legs", "left-feet", "right-feet"):
+            node = self._rig_nodes[group]
+            transform = node.getMat(self.model_np)
+            if group in ("head", "body", "right-arm", "left-arm"):
+                transform = transform * upper * whole
+            elif dragging or not grounded:
+                transform = transform * whole
+            node.setMat(self.model_np, transform)
+            if group == "head":
+                node.setR(node.getR() + motion.head_roll)
+                node.setP(node.getP() + motion.head_pitch)
+            self._outline_nodes[group].setMat(self.outline_np, node.getMat(self.model_np))
+        for name, side in (("ant-arm", 1), ("ant-arm2", -1)):
+            node = self._rig_nodes[name]
+            node.setR(node.getR() + side * motion.arm_lag)
+            self._outline_nodes[name].setHpr(node.getHpr())
 
     def _resolve_arm_clearance(self):
         # Hands inherit the forearm transform. Keep a continuous outward elbow
@@ -638,6 +684,8 @@ class OverlayApp(ShowBase):
         self._physics_last_tick = time.perf_counter()
         self._mouse_hovered = False
         self._mouse_local = (0, 0)
+        self._mouse_screen = None
+        self._body_grab_point = None
         self._native_buttons: set[str] = set()
         self._hover_attention = HoverAttention()
         self._hover_foreground = win32gui.GetForegroundWindow()
@@ -707,6 +755,9 @@ class OverlayApp(ShowBase):
 
     def _init_pyside(self) -> None:
         self.qt_app = QApplication.instance() or QApplication(sys.argv)
+        self.qt_app.setApplicationName("SeJoga Companion")
+        self.qt_app.setApplicationDisplayName("SeJoga Desktop Companion")
+        self.qt_app.setOrganizationName("ArchVeketo")
         self.qt_app.setQuitOnLastWindowClosed(False)
 
     def _create_panda_window(self) -> None:
@@ -904,7 +955,8 @@ class OverlayApp(ShowBase):
     def _on_physics_collision(self, kind, velocity) -> None:
         self.logger.info("Physics %s velocity=%s", kind, velocity)
         if self.animation_controller:
-            self.animation_controller.interact("hit")
+            self.animation_controller.interact("hit", direction=max(-1, min(1, velocity[0] / 1000)),
+                                               strength=min(2, math.hypot(*velocity) / 1200))
 
     def _physics_tick(self, task: Task) -> int:
         """Task de física - roda a 120 Hz."""
@@ -969,8 +1021,13 @@ class OverlayApp(ShowBase):
             hovered=self._mouse_hovered and self.settings.behavior.react_to_click,
             look_direction=(self._mouse_local[0] / self.renderer.width - 0.5) * 2.0,
             look_vertical=(self._mouse_local[1] / self.renderer.height - .52) * 2.0,
+            pointer_position=self._mouse_screen,
         )
         self.renderer.apply_rig_pose(pose)
+        self.renderer.apply_body_motion(
+            self.animation_controller.body_motion.snapshot, self._body_grab_point,
+            grounded=state.grounded if state else True, dragging=self._drag_active,
+        )
         self.renderer.update_appendages(dt, self.animation_controller.state == AnimationState.PEEK)
         if self.renderer.tentacle_director:
             mouse_world = Point3(
@@ -1105,10 +1162,21 @@ class OverlayApp(ShowBase):
         self.tray_icon.activated.connect(self._on_tray_activated)
         self.tray_icon.setVisible(True)
         self.tray_icon.show()
+        self.tray_registration = TrayRegistration(icon_path)
+        self.taskMgr.doMethodLater(.75, self._ensure_tray_registration, "tray-registration")
         QApplication.processEvents()
         if icon.isNull() or not self.tray_icon.isVisible():
             self.logger.warning("System tray icon did not become visible (icon=%s, tray_available=%s)",
                                 icon_path, QSystemTrayIcon.isSystemTrayAvailable())
+
+    def _ensure_tray_registration(self, task):
+        if self._exit_started is not None:
+            return Task.done
+        status = self.tray_registration.ensure()
+        if not status["registered"]:
+            self.logger.warning("Tray icon has no Shell registration: %s", status)
+        task.delayTime = 15.0 if status["registered"] else 3.0
+        return Task.again
 
     def _set_idle_personality(self, personality: str) -> None:
         """Aplica e salva a personalidade sem interromper o gesto atual."""
@@ -1182,6 +1250,7 @@ class OverlayApp(ShowBase):
         if not win32gui.IsWindow(self.hwnd):
             return Task.done
         position = win32gui.GetCursorPos()
+        self._mouse_screen = position
         buttons = self._mouse_buttons()
         self._mouse_local = win32gui.ScreenToClient(self.hwnd, position)
         enabled = bool(win32gui.IsWindowVisible(self.hwnd)) and self._settings_dialog is None
@@ -1196,6 +1265,8 @@ class OverlayApp(ShowBase):
         if hit and not self._drag_active:
             target = win32gui.WindowFromPoint(position)
             hit = target == self.hwnd or win32gui.IsChild(self.hwnd, target)
+        if hit and "left" in newly_pressed:
+            self._body_grab_point = Vec3(self.renderer._pick_point_model)
         events = self.mouse_interaction.update(
             position, buttons, hit=hit, enabled=enabled,
             allow_drag=self.settings.behavior.react_to_drag,
@@ -1429,6 +1500,8 @@ class OverlayApp(ShowBase):
         self.taskMgr.remove("animation-frame")
         if hasattr(self, 'tray_icon') and self.tray_icon:
             self.tray_icon.hide()
+        if hasattr(self, "tray_registration"):
+            self.tray_registration.close()
         if self.music_listener:
             self.music_listener.stop()
         if self.debug_tools:

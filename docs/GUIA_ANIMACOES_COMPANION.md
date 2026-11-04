@@ -71,6 +71,26 @@ triângulo contra todos os pixels transparentes do GLTF.
 
 ## 2. State Machine de Animação
 
+### Balanço físico do corpo (04/11/2026)
+
+`body_motion.py` adiciona molas amortecidas independentes de Panda3D/Qt.
+Velocidade real do cursor alimenta balanço, inclinação e torção; reversão do
+arraste produz contrapeso, cabeça e antebraços respondem com atraso e a
+soltura deixa a inércia se dissipar. Clique, carinho e impacto também dão
+impulsos. Entrar na área de hover depois de mover o mouse fora dela não
+gera um impulso artificial.
+
+O renderer transforma cabeça, tronco e braços em conjunto ao redor do quadril.
+Durante suspensão/arraste, o modelo inteiro também gira ao redor do ponto
+de pega obtido pelo picking. Pés ficam fixos no modo apoiado. As matrizes
+são reconstruídas a cada frame; não se acumulam e não alteram a hierarquia
+ou o GLTF. Isso é animação física visual, não ragdoll nem colisão rígida de
+cada parte do corpo. As posições/eixos dos tentáculos acompanham a cabeça.
+
+`tools/smoke_native_body.py` usa entrada real do Windows para arrastar,
+inverter e soltar, verifica recuperação do corpo e restaura cursor/botões.
+Capturas e JSONL incluem o estado do balanço e a velocidade do cursor.
+
 ```
                               ┌──────────────┐
                               │    IDLE      │ ◄──────────────────┐

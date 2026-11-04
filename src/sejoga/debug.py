@@ -185,6 +185,10 @@ class DebugTools:
             "fps": round(self._fps, 2),
             "animation_state": animation.state.value if animation and animation.state else None,
             "idle_personality": animation.idle_personality.value if animation else None,
+            "body_motion": vars(animation.body_motion.snapshot) if animation else None,
+            "pointer_velocity": list(animation.body_motion.pointer_velocity) if animation else None,
+            "hidden_export_planes": renderer._hidden_export_planes,
+            "tray_registration": self.app.tray_registration.last_status,
             "tentacle_contacts": renderer.tentacle_contacts.contacts,
             "tentacles": [
                 {
@@ -256,6 +260,7 @@ class DebugTools:
             f"SEJOGA DEBUG  |  {self.debug_hotkey} fecha\n"
             f"FPS {self._fps:5.1f}   Janela {meta['window_pixels'][0]}x{meta['window_pixels'][1]}\n"
             f"Estado {meta['animation_state']}   Persona {meta['idle_personality']}\n"
+            f"Balanço {meta['body_motion']['roll']:.1f}°  Suspensão {meta['body_motion']['hanging']:.2f}\n"
             f"Tentáculos {len(meta['tentacles'])}   Contatos {meta['tentacle_contacts']}\n"
             f"Mouse {meta['mouse']['local_position']} Hover {meta['mouse']['hovered']} Drag {meta['mouse']['dragging']}\n"
             f"Pos {state['position'][0]:.1f}, {state['position'][1]:.1f} px\n"

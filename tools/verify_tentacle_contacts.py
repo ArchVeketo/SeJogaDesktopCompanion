@@ -28,6 +28,7 @@ def main():
     def tick():
         pose = controller.update(1 / 60)
         renderer.apply_rig_pose(pose)
+        renderer.apply_body_motion(controller.body_motion.snapshot)
         renderer.update_appendages(1 / 60, controller.state.value == "peek")
     app._animation_tick = tick
 
@@ -36,6 +37,8 @@ def main():
             app.taskMgr.step()
         controller.interact("peek")
         for frame in range(660):
+            if frame in (160, 260, 350):
+                controller.body_motion.impulse("poke", direction=1 if frame != 260 else -1)
             app.taskMgr.step()
             if frame % 15 == 0:
                 # Refresh after applying the actual door angle, not the previous frame's.

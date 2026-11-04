@@ -16,6 +16,7 @@ $panda3dDir = Join-Path $env:APPDATA 'Python\Python314\site-packages\panda3d'
     --clean `
     --name SeJogaCompanion `
     --icon "assets\brand\companion.ico" `
+    --version-file "assets\brand\version_info.txt" `
     --windowed `
     --onedir `
     --add-data "assets;assets" `

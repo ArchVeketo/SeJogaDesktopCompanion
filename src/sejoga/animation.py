@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import random
 from enum import StrEnum
+from .body_motion import BodyMotion
 
 from .rig import (
     IdlePersonality,
@@ -80,6 +81,7 @@ class AnimationController:
         self._release_time = 1.0
         self._release_grip = 0.0
         self._personality_locked = False
+        self.body_motion = BodyMotion()
 
     def set_idle_personality(self, personality: IdlePersonality | str | None) -> None:
         """Escolhe uma personalidade ou devolve o idle à rotação automática."""
@@ -111,7 +113,7 @@ class AnimationController:
         AnimationState.HIT: 0.65,
     }
 
-    def interact(self, kind: str) -> None:
+    def interact(self, kind: str, *, direction: float | None = None, strength: float = 1.0) -> None:
         """Interação acorda o mascote e dispara uma reação com cooldown."""
         self.idle_time = 0.0
         if kind == "drag_start":
@@ -121,6 +123,7 @@ class AnimationController:
             kind = "wake"
         if kind not in self.REACTION_SECONDS or self.clock < self._cooldowns.get(kind, 0.0):
             return
+        self.body_motion.impulse(kind, self._look_direction if direction is None else direction, strength)
         self._reaction = AnimationState(kind)
         self._reaction_time = 0.0
         self._cooldowns[kind] = self.clock + max(self.REACTION_SECONDS[self._reaction], 0.5)
@@ -167,10 +170,14 @@ class AnimationController:
         hovered: bool = False,
         look_direction: float = 0.0,
         look_vertical: float = 0.0,
+        pointer_position: tuple[float, float] | None = None,
     ) -> dict[str, Rotation3]:
         """Atualiza o estado e devolve um snapshot de rotações em radianos."""
         dt = min(0.1, max(0.0, dt))
         self.clock += dt
+        self.body_motion.update(dt, pointer=pointer_position, dragging=dragging,
+                                hovered=hovered, look=(look_direction, look_vertical),
+                                grounded=grounded, velocity=velocity)
         if self.state == AnimationState.DRAG and not dragging:
             self._release_time = 0.0
             self._release_grip = self.drag_intensity

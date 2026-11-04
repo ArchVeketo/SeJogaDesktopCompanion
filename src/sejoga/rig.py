@@ -312,16 +312,14 @@ def pose_drag(rig: Rig, t: float, direction: float = 0.0, drag_intensity: float 
     from math import sin
 
     grip = max(0, min(1, drag_intensity))
-    # Finger curl: 0° = open, 45° = closed
-    finger_curl = 45.0 * grip
-    rig.set_rotation("fingers", z=8 + 24*grip + sin(t*5)*3)
-    rig.set_rotation("fingers2", z=-8 - 24*grip - sin(t*5+.4)*3)
+    rig.set_rotation("fingers", z=8 + 24*grip)
+    rig.set_rotation("fingers2", z=-8 - 24*grip)
 
     direction = max(-1.0, min(1.0, direction))
-    rig.set_rotation("body", y=-direction * 10.0, z=direction * 8.0)
-    rig.set_rotation("head", y=direction * 5.0, z=-direction * 3.0)
-    rig.set_rotation("right-arm", x=-8.0 + sin(t * 5.0) * 3.0, z=-24.0)
-    rig.set_rotation("left-arm", x=8.0 - sin(t * 5.0) * 3.0, z=24.0)
+    rig.set_rotation("body", y=-direction * 3.0)
+    rig.set_rotation("head", y=direction * 3.0)
+    rig.set_rotation("right-arm", x=-5.0, z=48.0)
+    rig.set_rotation("left-arm", x=-5.0, z=-48.0)
     rig.set_rotation("ant-arm", x=-12.0, z=-direction * 8.0)
     rig.set_rotation("ant-arm2", x=-12.0, z=-direction * 8.0)
 
