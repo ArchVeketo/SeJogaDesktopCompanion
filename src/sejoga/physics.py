@@ -142,9 +142,9 @@ def cloaked(hwnd: int) -> bool:
 
 def is_valid_shelf(hwnd: int, own_pid: int) -> bool:
     """Verifica se janela é uma shelf válida (visível, não cloaked, não toolwindow, não próprio)."""
-    if not win32gui.IsWindowVisible(hwnd):
+    if not win32gui.IsWindowVisible(hwnd) or win32gui.IsIconic(hwnd):
         return False
-    if cloaked(hwnd):
+    if cloaked(hwnd) or not win32gui.GetWindowText(hwnd):
         return False
     
     # Filtra toolwindows e janelas sem título
@@ -282,8 +282,8 @@ class ScreenSpacePhysics:
         self.body.position = self.state.position
         self.shape = pymunk.Circle(self.body, radius)
         self.shape.collision_type = CAT_MASCOT
-        self.shape.elasticity = 0.55  # bounce
-        self.shape.friction = 0.5
+        self.shape.elasticity = self.settings.physics.bounce
+        self.shape.friction = self.settings.physics.friction
         self.shape.filter = pymunk.ShapeFilter(categories=CAT_MASCOT, mask=CAT_SHELF | CAT_SCREEN_EDGE)
         
         self.space.add(self.body, self.shape)
@@ -293,59 +293,56 @@ class ScreenSpacePhysics:
         self.state.velocity = self.body.velocity
     
     def _create_screen_edges(self) -> None:
-        """Cria 4 segmentos estáticos nas bordas da tela (static body)."""
-        static_body = self.space.static_body
-        thickness = WALL_THICKNESS
-        
-        # Bottom (chão) - one-way: só colide se descendo
-        bottom = pymunk.Segment(static_body, (0, self.screen_height), (self.screen_width, self.screen_height), thickness)
-        bottom.collision_type = CAT_SCREEN_EDGE
-        bottom.elasticity = 0.6
-        bottom.friction = 0.5
-        bottom.filter = pymunk.ShapeFilter(categories=CAT_SCREEN_EDGE, mask=CAT_MASCOT)
-        self.space.add(bottom)
-        self._bottom_shape = bottom
-        
-        # Top (teto)
-        top = pymunk.Segment(static_body, (0, 0), (self.screen_width, 0), thickness)
-        top.collision_type = CAT_SCREEN_EDGE
-        top.elasticity = 0.3
-        top.friction = 0.5
-        top.filter = pymunk.ShapeFilter(categories=CAT_SCREEN_EDGE, mask=CAT_MASCOT)
-        self.space.add(top)
-        
-        # Left wall
-        left = pymunk.Segment(static_body, (0, 0), (0, self.screen_height), thickness)
-        left.collision_type = CAT_SCREEN_EDGE
-        left.elasticity = 0.6
-        left.friction = 0.5
-        left.filter = pymunk.ShapeFilter(categories=CAT_SCREEN_EDGE, mask=CAT_MASCOT)
-        self.space.add(left)
-        
-        # Right wall
-        right = pymunk.Segment(static_body, (self.screen_width, 0), (self.screen_width, self.screen_height), thickness)
-        right.collision_type = CAT_SCREEN_EDGE
-        right.elasticity = 0.6
-        right.friction = 0.5
-        right.filter = pymunk.ShapeFilter(categories=CAT_SCREEN_EDGE, mask=CAT_MASCOT)
-        self.space.add(right)
-    
-    def _shelf_pre_solve(self, arbiter: pymunk.Arbiter, space: pymunk.Space, data) -> bool:
-        """One-way shelf: só colide se mascote estiver descendo (vy > 0)."""
-        arbiter.process_collision = arbiter.shapes[0].body.velocity.y > 0
+        self.bounds = (0, 0, self.screen_width, self.screen_height)
+        self._edges = []
+        self.set_bounds(self.bounds)
+
+    def set_bounds(self, bounds: tuple[int, int, int, int]) -> None:
+        """Área útil do monitor, em coordenadas absolutas (inclusive negativas)."""
+        if self._edges:
+            self.space.remove(*self._edges)
+        self.bounds = bounds
+        left, top, right, bottom = bounds
+        self._edges = []
+        for a, b in (((left, bottom), (right, bottom)), ((left, top), (right, top)),
+                     ((left, top), (left, bottom)), ((right, top), (right, bottom))):
+            shape = pymunk.Segment(self.space.static_body, a, b, WALL_THICKNESS)
+            shape.collision_type = CAT_SCREEN_EDGE
+            shape.elasticity = 1.0
+            shape.friction = 1.0
+            shape.filter = pymunk.ShapeFilter(categories=CAT_SCREEN_EDGE, mask=CAT_MASCOT)
+            self._edges.append(shape)
+        self.space.add(*self._edges)
+        self._bottom_shape = self._edges[0]
+
+    def _shelf_pre_solve(self, arbiter, space, data) -> bool:
+        shelf = next(shape for shape in arbiter.shapes if shape.collision_type == CAT_SHELF)
+        # A rising body and a body approaching from underneath pass through.
+        allowed = (self.body.velocity.y >= -1.0
+                   and self.body.position.y + self.mascot_radius <= shelf.a.y + 6.0)
+        if hasattr(arbiter, "process_collision"):
+            arbiter.process_collision = allowed
+        if allowed:
+            self._contact_response(arbiter)
+        return allowed
+
+    def _edge_pre_solve(self, arbiter, space, data) -> bool:
+        self._contact_response(arbiter)
         return True
-    
-    def _edge_pre_solve(self, arbiter: pymunk.Arbiter, space: pymunk.Space, data) -> bool:
-        """Screen edges: sempre colide (paredes sólidas)."""
-        return True
-    
-    # ============================================================
-    # Shelf Management
-    # ============================================================
-    
+
+    def _contact_response(self, arbiter) -> None:
+        speed = self.body.velocity.length
+        if speed < 160:
+            arbiter.restitution = 0.0
+        now = time.monotonic()
+        if speed > 200 and now - getattr(self, "_last_impact", 0.0) > 0.2:
+            self._last_impact = now
+            if self.on_collision:
+                self.on_collision("impact", tuple(self.body.velocity))
+
     def refresh_shelves(self, force: bool = False) -> None:
         """Atualiza cache de prateleiras (janelas)."""
-        now = time.time()
+        now = time.monotonic()
         if not force and (now - self._last_shelf_refresh) < self._shelf_cache_ttl:
             return
         
@@ -359,6 +356,12 @@ class ScreenSpacePhysics:
             shape = self.shelf_shapes.pop(hwnd)
             self.space.remove(shape)
         
+        # Rebuild changed shelves too: HWND stays the same when a window moves.
+        previous = {s.hwnd: s.rect for s in self.shelves}
+        for shelf in new_shelves:
+            if shelf.hwnd in self.shelf_shapes and previous.get(shelf.hwnd) != shelf.rect:
+                self.space.remove(self.shelf_shapes.pop(shelf.hwnd))
+
         # Adiciona novas shelves
         for shelf in new_shelves:
             if shelf.hwnd not in self.shelf_shapes:
@@ -370,8 +373,8 @@ class ScreenSpacePhysics:
                     WALL_THICKNESS
                 )
                 shape.collision_type = CAT_SHELF
-                shape.elasticity = 0.55
-                shape.friction = 0.5
+                shape.elasticity = 1.0
+                shape.friction = 1.0
                 shape.filter = pymunk.ShapeFilter(categories=CAT_SHELF, mask=CAT_MASCOT)
                 self.space.add(shape)
                 self.shelf_shapes[shelf.hwnd] = shape
@@ -395,6 +398,9 @@ class ScreenSpacePhysics:
             return
         
         self._drag_active = True
+        self._drag_offset = (self.body.position.x - mouse_x, self.body.position.y - mouse_y)
+        self.state.grounded = False
+        self.set_gravity(False)
         self._drag_samples.clear()
         self._record_drag_sample()
         
@@ -408,20 +414,26 @@ class ScreenSpacePhysics:
         if not self._drag_active:
             return
         
+        self.body.position = (mouse_x + self._drag_offset[0], mouse_y + self._drag_offset[1])
+        self.state.position = tuple(self.body.position)
         self._record_drag_sample()
-        self.body.position = (mouse_x, mouse_y)
         # Velocity será calculada no release baseado nos samples
     
-    def end_drag(self) -> Tuple[float, float]:
+    def end_drag(self, cancel: bool = False) -> Tuple[float, float]:
         """Finaliza arraste - calcula velocidade e volta a DYNAMIC."""
         if not self._drag_active:
             return (0, 0)
         
         self._drag_active = False
         self.body.body_type = pymunk.Body.DYNAMIC
+        # Switching back from KINEMATIC resets mass/moment in Pymunk 7.
+        self.body.mass = 1.0
+        self.body.moment = pymunk.moment_for_circle(1.0, 0, self.mascot_radius)
+        self.body.angular_velocity = 0.0
         
         # Estima velocidade dos últimos samples
-        velocity = self._estimate_velocity_from_samples()
+        velocity = self._estimate_velocity_from_samples() if not cancel else (0.0, 0.0)
+        velocity = tuple(v * self.settings.physics.throw_multiplier for v in velocity)
         
         # Clamp
         speed = math.hypot(velocity[0], velocity[1])
@@ -432,15 +444,20 @@ class ScreenSpacePhysics:
         self.body.velocity = velocity
         self._drag_body_type = pymunk.Body.DYNAMIC
         
-        # Ativa gravidade se estiver no ar
-        if not self.state.grounded:
-            self.set_gravity(True)
+        # Constrain a release to the selected monitor, keeping negative origins.
+        left, top, right, bottom = self.bounds
+        r = self.mascot_radius + WALL_THICKNESS
+        self.body.position = (max(left+r, min(right-r, self.body.position.x)),
+                              max(top+r, min(bottom-r, self.body.position.y)))
+        self.state.position = tuple(self.body.position)
+        self.state.velocity = velocity
+        self.set_gravity(not cancel)
         
         return velocity
     
     def _record_drag_sample(self) -> None:
         """Registra posição/tempo atual para estimativa de velocidade."""
-        now = time.time()
+        now = time.monotonic()
         pos = self.body.position
         self._drag_samples.append((now, pos.x, pos.y))
     
@@ -449,11 +466,10 @@ class ScreenSpacePhysics:
         if len(self._drag_samples) < 2:
             return (0.0, 0.0)
         
-        now = time.time()
+        now = time.monotonic()
         # Usa samples dos últimos ~60ms
         recent = [(t, x, y) for t, x, y in self._drag_samples if now - t < 0.06]
-        if len(recent) < 2:
-            recent = list(self._drag_samples)[-2:]
+        # No stale fallback: holding still before release must stop the throw.
         
         if len(recent) < 2:
             return (0.0, 0.0)
@@ -491,46 +507,24 @@ class ScreenSpacePhysics:
             self.state.gravity_active = False
     
     def update_grounded_state(self) -> None:
-        """Atualiza estado 'grounded' baseado em colisões atuais."""
-        # Verifica se está tocando chão ou shelf
-        was_grounded = self.state.grounded
+        bottom = self.body.position.y + self.mascot_radius
+        x = self.body.position.x
+        supports = [(None, self.bounds[3])]
+        supports += [(s.hwnd, s.top_y) for s in self.shelves if s.left <= x <= s.right]
         self.state.grounded = False
         self.state.on_shelf = None
-        
-        def inspect_arbiter(arbiter: pymunk.Arbiter) -> None:
-            shapes = arbiter.shapes
-            if any(shape.collision_type == CAT_SHELF for shape in shapes):
-                self.state.grounded = True
-                self.state.on_shelf = next(
-                    (hwnd for hwnd, shelf_shape in self.shelf_shapes.items()
-                     if shelf_shape in shapes),
-                    None,
-                )
-            elif self._bottom_shape in shapes:
-                self.state.grounded = True
+        if not self._drag_active and abs(self.body.velocity.y) < 60:
+            for hwnd, y in supports:
+                if abs(bottom - (y - WALL_THICKNESS)) < 5:
+                    self.state.grounded = True
+                    self.state.on_shelf = hwnd
+                    break
+        self.state.gravity_active = bool(self.space.gravity.y) and not self.state.grounded
 
-        if hasattr(self.body, "each_arbiter"):
-            self.body.each_arbiter(inspect_arbiter)
-        else:
-            for arbiter in self.body.arbiters:
-                inspect_arbiter(arbiter)
-        
-        # Se estava no chão e agora não está mais, ativa gravidade
-        if was_grounded and not self.state.grounded:
-            self.set_gravity(True)
-        elif self.state.grounded and not was_grounded:
-            # Aterrissou
-            self.set_gravity(False)
-            self.body.velocity = (self.body.velocity.x, 0)
-    
-    # ============================================================
-    # Step / Update
-    # ============================================================
-    
     def step(self, dt: float) -> PhysicsState:
         """Avança simulação por dt segundos."""
         # Accumulator para step fixo
-        self._accumulator += min(dt, 0.05)  # clamp dt
+        self._accumulator += max(0.0, min(dt, 0.05))  # clamp dt
         while self._accumulator >= FIXED_DT:
             self.space.step(FIXED_DT)
             self._accumulator -= FIXED_DT
@@ -542,9 +536,10 @@ class ScreenSpacePhysics:
         # Update grounded state
         self.update_grounded_state()
         
-        # Sleep body se parado
-        if self.state.grounded and abs(self.body.velocity.x) < 10 and abs(self.body.velocity.y) < 10:
-            self.body.sleep()
+        # Settle without Body.sleep(), which requires sleeping to be enabled.
+        if self.state.grounded:
+            vx = self.body.velocity.x * math.exp(-self.settings.physics.friction * 8 * dt)
+            self.body.velocity = (0 if abs(vx) < 5 else vx, self.body.velocity.y)
         
         # Sync state
         self.state.position = (self.body.position.x, self.body.position.y)

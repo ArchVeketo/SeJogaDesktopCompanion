@@ -28,7 +28,9 @@ O executável gerado fica em `dist\SeJogaCompanion\SeJogaCompanion.exe`.
 - Interagir acorda o personagem. As preferências permitem desligar reações e arraste separadamente, sem reiniciar.
 - As áreas vazias deixam os cliques passar quando essa opção está ligada. Gestos iniciados em outro aplicativo não arrastam o mascote.
 
-O arraste reposiciona o overlay, inclusive com a física desligada. Arremesso pelo desktop e colisões com bordas de janelas ainda precisam ser integrados ao movimento do overlay.
+Com a física ligada, soltar em movimento arremessa o mascote: ele cai, quica e repousa no chão ou no topo das janelas. Segurar parado antes de soltar elimina o impulso; `Esc` cancela o gesto e mantém o mascote flutuando. Com a física desligada, soltar apenas posiciona o overlay.
+
+O arremesso fica na área útil do monitor onde o gesto terminou. O corpo de colisão é circular; o teste de monitores com DPI diferentes e a travessia entre monitores durante o voo ainda estão pendentes.
 
 ## Documentação
 

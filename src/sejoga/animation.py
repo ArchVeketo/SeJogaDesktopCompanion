@@ -37,6 +37,7 @@ class AnimationState(StrEnum):
     PET = "pet"
     POKE = "poke"
     WAKE = "wake"
+    LAND = "land"
 
 
 class AnimationController:
@@ -66,6 +67,7 @@ class AnimationController:
         AnimationState.PET: 1.5,
         AnimationState.POKE: 0.4,
         AnimationState.WAKE: 1.2,
+        AnimationState.LAND: 0.45,
     }
 
     def interact(self, kind: str) -> None:
@@ -80,7 +82,7 @@ class AnimationController:
             return
         self._reaction = AnimationState(kind)
         self._reaction_time = 0.0
-        self._cooldowns[kind] = self.clock + {"click": 0.5, "pet": 2.0, "poke": 1.0, "wake": 1.2}[kind]
+        self._cooldowns[kind] = self.clock + {"click": 0.5, "pet": 2.0, "poke": 1.0, "wake": 1.2, "land": 0.45}[kind]
 
     @staticmethod
     def _choose_state(

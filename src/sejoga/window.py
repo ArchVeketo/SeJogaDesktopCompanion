@@ -410,7 +410,6 @@ class OverlayApp(ShowBase):
         self._create_panda_window()
         self._setup_win32()
         self._init_renderer()
-        self._init_physics()
         self._setup_mouse_hooks()
         if self.renderer and self.renderer.rig:
             self.animation_controller = AnimationController(self.renderer.rig)
@@ -441,6 +440,7 @@ class OverlayApp(ShowBase):
                 ", ".join(self.hotkey_manager.unavailable_shortcuts),
             )
         self._apply_window_state()
+        self._init_physics()
 
         print("OverlayApp initialized.")
 
@@ -542,6 +542,10 @@ class OverlayApp(ShowBase):
         properties = WindowProperties()
         properties.setOrigin(x, y)
         properties.setSize(size, size)
+        properties.setZOrder(
+            WindowProperties.ZBottom if self._is_bottom else
+            WindowProperties.ZTop if self._is_topmost else WindowProperties.ZNormal
+        )
         self.win.requestProperties(properties)
         # SWP_NOZORDER | SWP_NOACTIVATE; z-order is applied separately below.
         win32gui.SetWindowPos(self.hwnd, 0, x, y, size, size, 0x0004 | 0x0010)
@@ -569,8 +573,8 @@ class OverlayApp(ShowBase):
 
         self.physics = create_physics(
             mascot_radius=self.settings.physics.mascot_radius,
-            screen_width=self.settings.window.size,  # janela quadrada
-            screen_height=self.settings.window.size,
+            screen_width=screen_w,
+            screen_height=screen_h,
             own_hwnd=self.hwnd,
             own_pid=os.getpid(),
             settings=self.settings
@@ -578,10 +582,16 @@ class OverlayApp(ShowBase):
 
         # Posiciona o mascote no centro inferior da janela
         size = self.settings.window.size
+        self._physics_local = (size / 2, size - self.settings.physics.mascot_radius - 35)
+        origin = win32gui.ClientToScreen(self.hwnd, (0, 0))
+        self._set_physics_monitor(origin)
         self.physics.set_position(
-            size / 2,
-            size - self.settings.physics.mascot_radius - 35,
+            origin[0] + self._physics_local[0],
+            origin[1] + self._physics_local[1],
         )
+        self._last_rest_position = None
+        self._was_grounded = False
+        self.physics.on_collision = self._on_physics_collision
 
         # Configura callback de mudança de estado
         self.physics.on_state_change = self._on_physics_state_change
@@ -591,8 +601,27 @@ class OverlayApp(ShowBase):
 
     def _on_physics_state_change(self, state) -> None:
         """Callback quando estado da física muda."""
-        if self.renderer:
-            self.renderer.set_model_screen_position(*state.position)
+        if state.grounded and not self._was_grounded and self.animation_controller:
+            self.animation_controller.interact("land")
+        self._was_grounded = state.grounded
+        x = round(state.position[0] - self._physics_local[0])
+        y = round(state.position[1] - self._physics_local[1])
+        win32gui.SetWindowPos(self.hwnd, 0, x, y, 0, 0,
+                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+        self.settings.window.start_position = (x, y)
+        if state.grounded and math.hypot(*state.velocity) < 5:
+            if self._last_rest_position != (x, y):
+                self._last_rest_position = (x, y)
+                self._persist_settings()
+
+    def _set_physics_monitor(self, point) -> None:
+        monitor = win32api.MonitorFromPoint(tuple(map(int, point)), 2)
+        self.physics.set_bounds(win32api.GetMonitorInfo(monitor)["Work"])
+
+    def _on_physics_collision(self, kind, velocity) -> None:
+        self.logger.info("Physics %s velocity=%s", kind, velocity)
+        if self.animation_controller:
+            self.animation_controller.interact("poke")
 
     def _physics_tick(self, task: Task) -> int:
         """Task de física - roda a 120 Hz."""
@@ -612,11 +641,11 @@ class OverlayApp(ShowBase):
             return
 
         state = self.physics.get_state()
-        self.renderer.set_model_screen_position(*state.position)
+        self.renderer.set_model_screen_position(*self._physics_local)
 
         vx, vy = state.velocity
         if math.hypot(vx, vy) > 80:
-            self.renderer.set_model_rotation(z=math.degrees(math.atan2(vy, vx)))
+            self.renderer.set_model_rotation(z=max(-20.0, min(20.0, -vx / 80)))
         else:
             self.renderer.set_model_rotation()
 
@@ -802,6 +831,8 @@ class OverlayApp(ShowBase):
                 self._drag_active = True
                 self._drag_start_pos = self.mouse_interaction.press_position
                 self._window_start_pos = win32gui.GetWindowRect(self.hwnd)[:2]
+                if self.physics:
+                    self.physics.start_drag(*self._drag_start_pos)
                 if self.animation_controller:
                     self.animation_controller.interact("drag_start")
             elif event.kind in ("drag_move", "drag_end"):
@@ -813,7 +844,12 @@ class OverlayApp(ShowBase):
                     self._window_start_pos[0] + dx, self._window_start_pos[1] + dy,
                     0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
                 )
+                if self.physics:
+                    self.physics.update_drag(*position)
             if event.kind in ("drag_end", "drag_cancel"):
+                if self.physics:
+                    self._set_physics_monitor(position)
+                    self.physics.end_drag(cancel=event.kind == "drag_cancel")
                 self._drag_active = False
                 self._drag_direction = 0.0
                 self.settings.window.start_position = win32gui.GetWindowRect(self.hwnd)[:2]

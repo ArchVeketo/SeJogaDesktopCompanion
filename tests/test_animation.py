@@ -51,3 +51,13 @@ def test_hover_tracks_cursor_and_exits_smoothly():
     pose = animation.update(0.01)
     assert animation.state == AnimationState.IDLE
     assert pose == previous_pose
+
+
+def test_landing_reaction_finishes_and_returns_to_idle():
+    animation = controller()
+    animation.interact("land")
+    animation.update(0.1)
+    assert animation.state == AnimationState.LAND
+    for _ in range(5):
+        animation.update(0.1)
+    assert animation.state == AnimationState.IDLE

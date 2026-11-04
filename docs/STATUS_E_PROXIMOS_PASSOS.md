@@ -27,7 +27,7 @@ Essa verificação confirma o funcionamento no ambiente usado para o desenvolvim
 ### Parcial ou ainda pendente
 
 - **Animação:** o controlador procedural cobre os estados básicos e reações de mouse com transições/cooldowns; ainda faltam duplo clique, reações acionadas pela música/colisões e clipes exportados do Blockbench. As reações implementadas usam rotações, sem squash/stretch ou alteração da textura dos olhos.
-- **Arraste e física:** o arraste move o overlay; ainda não injeta velocidade de arremesso no desktop. A física existente usa coordenadas locais da janela, enquanto as prateleiras enumeradas usam coordenadas da tela; essa integração deve ser corrigida antes de habilitar arremesso e afirmar que há colisões confiáveis com outras janelas. O loop agora passa tempo real ao acumulador de passos fixos e pausa a física durante o arraste.
+- **Arraste e física:** corpo e prateleiras agora usam coordenadas absolutas do desktop e o HWND acompanha o corpo. A soltura calcula velocidade recente, aplica `throw_multiplier` e limita a 3200 px/s; pausa antes de soltar elimina impulso antigo e cancelamento mantém o mascote flutuando. O voo fica na área útil do monitor de soltura, com suporte a origens negativas. Há queda, quique, repouso, pose de aterrissagem e persistência ao parar. Prateleiras movidas/fechadas são atualizadas; janelas minimizadas são excluídas. Colisão usa círculo, sem representar toda a silhueta; travessia entre monitores durante o voo, DPI misto e mudanças de resolução ainda exigem implementação/validação.
 - **Configuração visual:** o diálogo e os atalhos editáveis estão integrados; atalhos são validados e reaplicados na hora. Se outro programa já usa uma combinação, o companion avisa. Alterar tamanho ou física exige reiniciar o app.
 - **Configuração persistente:** carregamento e gravação TOML estão em `config.py`; não há hot-reload de um arquivo TOML alterado externamente.
 - **Música:** o módulo está integrado, mas ainda precisa ser validado com sessões reais e diferentes dispositivos. A arte do álbum ainda não é lida como imagem; a detecção de beat é inicial e precisa ser ajustada. `react_to_beat` e `dance_chance` existem na configuração, mas ainda não controlam as animações; a semântica deve ser definida após observar sessões reais.
@@ -39,11 +39,11 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 
 ## Próximos passos priorizados
 
-### 0. Continuação da interação — arremesso e colisões
+### 0. Continuação da interação — refinamento da física
 
-- Unificar coordenadas do corpo, do overlay e das prateleiras no desktop; considerar monitores com origem negativa e área útil.
-- Ligar amostras de arraste à velocidade de soltura, respeitando `throw_multiplier`, limites de velocidade e cancelamento sem impulso.
-- Validar queda, quique, repouso e movimentação de janelas; adicionar reações de impacto e aterrissagem.
+- Validar manualmente em múltiplos monitores e DPI misto; implementar travessia entre monitores durante o voo e atualização de limites após mudanças de resolução.
+- Refinar corpo circular para evitar que cabeça/braços ultrapassem bordas; avaliar apoio que acompanhe uma janela sendo arrastada (atualmente o mascote perde o apoio e cai).
+- Refinar poses de impacto/aterrissagem e comportamento de prateleiras sobrepostas/ocultas.
 - Testar hit-test com texturas transparentes, escalas extremas, janelas sobrepostas e DPI distintos. O teste atual usa geometria, não alpha por pixel.
 
 ### 1. Música — validar e refinar `src/sejoga/music.py`
@@ -79,6 +79,10 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 Validação da etapa de mouse: `python -m pytest` e `python tools/smoke_mouse.py` (repetir com `--physics`). O smoke usa perfil temporário, uma janela Panda3D real e entradas simuladas no polling, sem movimentar o cursor do usuário; verifica picking, estilos de click-through, reações, deslocamento real do HWND, persistência e rejeição de gestos externos. PNG e JSONL são gravados no perfil temporário indicado ao terminar. Isso não substitui validação manual de cliques rápidos e múltiplos monitores.
 
 Resultado em 2026-11-04: 25 testes passaram; smoke passou com física ligada e desligada. O bundle foi recompilado e iniciado; um arraste com eventos nativos do Windows moveu a janela de `(0, 0)` para `(80, 40)`, com `drag_start`/`drag_end` no log e sem erro de QtCore. A restauração da posição foi corrigida sincronizando a origem solicitada ao Panda3D antes do primeiro frame.
+
+Etapa seguinte de física: 32 testes passaram, incluindo arremesso, pausa/cancelamento, limite de velocidade, origem negativa, chão, passagem por baixo de prateleiras e atualização/remoção de apoios. O smoke foi ampliado para simular seis segundos de arremesso com Pymunk real, movimento real do HWND e posição final persistida. Foi necessário restaurar massa/momento após trocar KINEMATIC por DYNAMIC no Pymunk 7; sem isso o primeiro passo após a soltura produzia NaN. O repouso também deixou de chamar `Body.sleep()` sem habilitar sleeping no espaço.
+
+O executável dessa etapa foi recompilado e testado com eventos nativos de mouse: houve deslocamento após a soltura, impactos registrados e repouso estável por duas leituras separadas de 700 ms, sem exceção. O ajuste inicial de propriedades também passou a preservar o z-order no Panda3D; o smoke verifica que a janela continua topmost após os primeiros frames.
 
 Execute no PowerShell:
 

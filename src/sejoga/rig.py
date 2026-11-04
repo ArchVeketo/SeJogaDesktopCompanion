@@ -285,6 +285,12 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0) -> N
         rig.set_rotation("head", x=-12.0 * pulse, z=8.0 * pulse)
         rig.set_rotation("right-arm", z=65.0 + pulse * 30.0)
         rig.set_rotation("door", y=35.0 * pulse)
+    elif kind == "land":
+        pulse = sin(pi * min(1.0, t / 0.45))
+        rig.set_rotation("body", x=10.0 * pulse)
+        rig.set_rotation("legs", x=-12.0 * pulse)
+        rig.set_rotation("head", x=8.0 * pulse)
+        rig.set_rotation("door", y=15.0 * pulse)
     elif kind == "wake":
         pulse = sin(pi * min(1.0, t / 1.2))
         rig.set_rotation("body", x=-6.0 * pulse)

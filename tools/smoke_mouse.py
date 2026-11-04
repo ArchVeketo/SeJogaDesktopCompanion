@@ -48,6 +48,7 @@ def main():
         app.taskMgr.remove("mouse-poll")
         app.animation_timer.stop()
         assert win32gui.GetWindowRect(app.hwnd)[:2] == settings.window.start_position
+        assert win32gui.GetWindowLong(app.hwnd, -20) & 0x00000008, "Panda reset always-on-top"
         points = [(x, y) for y in range(50, 440, 10) for x in range(60, 420, 10)
                   if app.renderer.hit_test(x, y)]
         assert points, "Picking did not find any model geometry"
@@ -90,6 +91,26 @@ def main():
         poll(point)
         assert not app._drag_active
         assert win32gui.GetWindowRect(app.hwnd)[:2] == before
+
+        if app.physics:
+            # Exercise a release through real Pymunk steps and real HWND moves.
+            p = app.physics
+            left, top, right, bottom = p.bounds
+            p.set_position((left + right) / 2, top + 300)
+            with patch("sejoga.physics.time.monotonic", return_value=10.0):
+                p.start_drag(*p.state.position)
+            with patch("sejoga.physics.time.monotonic", return_value=10.02):
+                p.update_drag(p.state.position[0] + 20, p.state.position[1] - 10)
+                velocity = p.end_drag()
+            assert velocity[0] > 0 and velocity[1] < 0
+            for _ in range(720):
+                p.step(1 / 120)
+            assert p.state.grounded
+            assert abs(p.state.velocity[0]) < 5
+            origin = win32gui.GetWindowRect(app.hwnd)[:2]
+            assert origin == tuple(round(p.state.position[i] - app._physics_local[i]) for i in (0, 1))
+            assert config.load_settings().window.start_position == origin
+            results["throw"] = {"release_velocity": velocity, "rest": list(p.state.position), "origin": origin}
 
         app.set_debug_overlay(True)
         for _ in range(10):
