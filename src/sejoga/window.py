@@ -78,9 +78,10 @@ from .assets import brand_dir, resolve_model
 from .animation import AnimationController
 from .model import load_model
 from .rig import Rig, ALL_GROUPS
-from .config import load_settings, Settings
+from .config import load_settings, save_settings, Settings
 from .physics import ScreenSpacePhysics, create_physics, PhysicsState
 from .music import MusicListener
+from .ui import HotkeyManager, SettingsDialog
 
 # ============================================================
 # Win32 Constants & Helpers
@@ -159,6 +160,10 @@ class Panda3DRenderer:
         self._view_width = 1.0
         self._view_height = 1.0
         self._view_target_z = 1.0
+        self._fit_scale = 1.0
+        self._model_center = Vec3(0, 0, 0)
+        self._model_min_z = 0.0
+        self._model_radius_px = 0.0
 
         self._setup_scene()
         self._load_model()
@@ -231,25 +236,34 @@ class Panda3DRenderer:
         target_width = self._view_width * self.FRAME_FILL
         target_height = self._view_height * self.FRAME_FILL
         fit_scale = min(target_width / dimensions.x, target_height / dimensions.z)
-        model_scale = fit_scale * self.showbase.settings.window.scale
+        self._fit_scale = fit_scale
+        self._model_center = center
+        self._model_min_z = float(minimum.z)
+        self._model_radius_px = self.showbase.settings.physics.mascot_radius
 
         self.model_anchor = self.showbase.render.attachNewNode("mascot-motion-root")
         model_np.reparentTo(self.model_anchor)
-        model_np.setScale(model_scale)
-
-        # Alinha a largura ao centro e os pés ao círculo da física. A física
-        # move o anchor; a escala e o offset visual permanecem independentes.
-        radius_px = self.showbase.settings.physics.mascot_radius
-        units_per_pixel_z = self._view_height / self.height
-        model_np.setPos(
-            -center.x * model_scale,
-            -center.y * model_scale,
-            -minimum.z * model_scale - radius_px * units_per_pixel_z,
-        )
         self.model_np = model_np
+        self.set_visual_scale(self.showbase.settings.window.scale)
 
         self._apply_rig_to_model()
-        self.set_model_screen_position(self.width / 2, self.height - radius_px - 35)
+        self.set_model_screen_position(
+            self.width / 2,
+            self.height - self._model_radius_px - 35,
+        )
+
+    def set_visual_scale(self, scale: float) -> None:
+        """Atualiza a escala sem deslocar o centro nem os pés do personagem."""
+        if not self.model_np:
+            return
+        model_scale = self._fit_scale * scale
+        units_per_pixel_z = self._view_height / self.height
+        self.model_np.setScale(model_scale)
+        self.model_np.setPos(
+            -self._model_center.x * model_scale,
+            -self._model_center.y * model_scale,
+            -self._model_min_z * model_scale - self._model_radius_px * units_per_pixel_z,
+        )
 
     def _update_view_dimensions(self) -> None:
         lens = self.showbase.cam.node().getLens()
@@ -343,6 +357,10 @@ class OverlayApp(ShowBase):
         self.qt_app: Optional = None
         self.tray_icon: Optional = None
         self.tray_menu: Optional = None
+        self._settings_dialog: Optional[SettingsDialog] = None
+        self._topmost_action = None
+        self._click_through_action = None
+        self.hotkey_manager: Optional[HotkeyManager] = None
 
         self._drag_active = False
         self._drag_start_pos = (0, 0)
@@ -359,6 +377,14 @@ class OverlayApp(ShowBase):
         self.music_listener.start()
         self._setup_tray()
         self._setup_timers()
+        self.hotkey_manager = HotkeyManager(
+            self.settings.hotkeys.model_dump(),
+            {
+                "toggle_overlay": self.toggle_visibility,
+                "open_settings": self.open_settings_dialog,
+                "summon": self.summon_overlay,
+            },
+        )
         self._apply_window_state()
 
         print("OverlayApp initialized.")
@@ -574,15 +600,18 @@ class OverlayApp(ShowBase):
 
         self.tray_menu.addSeparator()
 
-        topmost_action = self.tray_menu.addAction("Sempre no topo")
-        topmost_action.setCheckable(True)
-        topmost_action.setChecked(self._is_topmost)
-        topmost_action.toggled.connect(self.set_topmost)
+        self._topmost_action = self.tray_menu.addAction("Sempre no topo")
+        self._topmost_action.setCheckable(True)
+        self._topmost_action.setChecked(self._is_topmost)
+        self._topmost_action.toggled.connect(self.set_topmost)
 
-        click_through_action = self.tray_menu.addAction("Cliques atravessam o mascote")
-        click_through_action.setCheckable(True)
-        click_through_action.setChecked(self._click_through)
-        click_through_action.toggled.connect(self.set_click_through)
+        self._click_through_action = self.tray_menu.addAction("Cliques atravessam o mascote")
+        self._click_through_action.setCheckable(True)
+        self._click_through_action.setChecked(self._click_through)
+        self._click_through_action.toggled.connect(self.set_click_through)
+
+        settings_action = self.tray_menu.addAction("Configurações...")
+        settings_action.triggered.connect(lambda _checked=False: self.open_settings_dialog())
 
         self.tray_menu.addSeparator()
         quit_action = self.tray_menu.addAction("Sair")
@@ -629,7 +658,8 @@ class OverlayApp(ShowBase):
             self._drag_active = False
             self._drag_direction = 0.0
             rect = win32gui.GetWindowRect(self.hwnd)
-            self.settings.window.start_position = [rect[0], rect[1]]
+            self.settings.window.start_position = (rect[0], rect[1])
+            self._persist_settings()
 
         elif self._drag_active:
             x, y = win32gui.GetCursorPos()
@@ -649,23 +679,99 @@ class OverlayApp(ShowBase):
         else:
             win32gui.ShowWindow(self.hwnd, 5)
 
+    def summon_overlay(self) -> None:
+        """Mostra o mascote e o traz para frente sem alterar sua posição salva."""
+        self._is_bottom = False
+        self._is_topmost = True
+        self.settings.window.mode = "overlay"
+        self.settings.window.always_on_top = True
+        self._update_z_order()
+        self._set_action_checked(self._topmost_action, True)
+        win32gui.ShowWindow(self.hwnd, 5)
+        self._persist_settings()
+
     def set_topmost(self, checked: bool) -> None:
         self._is_topmost = checked
         self._is_bottom = False
         self._update_z_order()
         self.settings.window.always_on_top = checked
         self.settings.window.mode = "overlay"
+        self._persist_settings()
 
     def set_bottom(self, checked: bool) -> None:
         self._is_bottom = checked
         self._is_topmost = False
         self._update_z_order()
         self.settings.window.mode = "desktop" if checked else "overlay"
+        self._persist_settings()
 
     def set_click_through(self, enabled: bool) -> None:
         self._click_through = enabled
         self._update_click_through()
         self.settings.window.click_through_transparent = enabled
+        self._persist_settings()
+
+    def open_settings_dialog(self) -> None:
+        if self._settings_dialog is not None:
+            self._settings_dialog.show()
+            self._settings_dialog.raise_()
+            self._settings_dialog.activateWindow()
+            return
+
+        dialog = SettingsDialog(self.settings)
+        dialog.settings_applied.connect(self._apply_settings)
+        dialog.finished.connect(lambda _result: setattr(self, "_settings_dialog", None))
+        self._settings_dialog = dialog
+        dialog.show()
+
+    def _apply_settings(self, updated: Settings) -> None:
+        previous = self.settings
+        updated.window.start_position = previous.window.start_position
+        restart_required = (
+            previous.window.size != updated.window.size
+            or previous.physics != updated.physics
+        )
+        music_changed = previous.music != updated.music
+
+        self.settings = updated
+        self.settings_obj = updated
+        self._is_bottom = updated.window.mode == "desktop"
+        self._is_topmost = updated.window.always_on_top and not self._is_bottom
+        self._click_through = updated.window.click_through_transparent
+        self._update_click_through()
+        self._update_z_order()
+        self._set_action_checked(self._topmost_action, self._is_topmost)
+        self._set_action_checked(self._click_through_action, self._click_through)
+        if self.renderer:
+            self.renderer.set_visual_scale(updated.window.scale)
+
+        if music_changed:
+            if self.music_listener:
+                self.music_listener.stop()
+            self.music_listener = MusicListener(updated.music)
+            self.music_listener.start()
+
+        if restart_required and self.tray_icon:
+            self.tray_icon.showMessage(
+                "Configurações salvas",
+                "Tamanho da janela e física serão aplicados ao reiniciar o companion.",
+                QSystemTrayIcon.MessageIcon.Information,
+                5000,
+            )
+
+    @staticmethod
+    def _set_action_checked(action, checked: bool) -> None:
+        if action is None:
+            return
+        previous = action.blockSignals(True)
+        action.setChecked(checked)
+        action.blockSignals(previous)
+
+    def _persist_settings(self) -> None:
+        try:
+            save_settings(self.settings)
+        except OSError as exc:
+            print(f"[settings] failed to save configuration: {exc}")
 
     def toggle_visibility(self) -> None:
         if win32gui.IsWindowVisible(self.hwnd):
@@ -683,6 +789,9 @@ class OverlayApp(ShowBase):
             self.tray_icon.hide()
         if self.music_listener:
             self.music_listener.stop()
+        if self.hotkey_manager:
+            self.hotkey_manager.close()
+        self._persist_settings()
         ShowBase.userExit(self)
 
     def run(self) -> None:

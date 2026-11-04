@@ -290,11 +290,11 @@ O status detalhado e a ordem de prioridade ficam em [STATUS_E_PROXIMOS_PASSOS.md
 | **2** | Overlay Panda3D + Win32 + bandeja | ✅ Implementado; validado no ambiente de desenvolvimento |
 | **3** | Física Pymunk + detecção de janelas/prateleiras | ✅ Implementada; integração e interações ainda podem ser refinadas |
 | **4** | Música (GSMTC + captura WASAPI + beat) | 🟡 Módulo integrado; validação de áudio e refinamento pendentes |
-| **5** | `SettingsDialog` + hotkeys globais | 🟡 Parcial: menu básico da bandeja existe |
+| **5** | `SettingsDialog` + hotkeys globais | ✅ Diálogo TOML e atalhos globais; tamanho/física requerem reinício |
 | **6** | Loop de render/física + mouse | 🟡 Integrado em `OverlayApp`; falta consolidar/refinar |
 | **7** | PyInstaller + Inno Setup + teste em máquina limpa | 🟡 Build onedir validado localmente; instalador/teste limpo pendentes |
 | **8** | Animações no Blockbench + controlador de estados | 🟡 Controlador procedural básico implementado; clipes e reação musical pendentes |
 
 ---
 
-*Próximo marco sugerido: validar a captura de áudio e calibrar as reações musicais.*
+*Próximo marco sugerido: HUD de diagnóstico, eixos de referência e captura de frames sob demanda.*

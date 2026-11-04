@@ -1,7 +1,7 @@
 # SeJogaDesktopCompanion — Status atual e próximos passos
 
-**Atualizado:** 2026-11-03  
-**Base de trabalho:** fontes locais após `96fea79`; as melhorias abaixo ainda não foram commitadas.
+**Atualizado:** 2026-11-04  
+**Base de trabalho:** commits `363276c` e seguintes.
 
 Este é o roadmap canônico do projeto. As listas de próximos passos nos documentos de pesquisa e arquitetura foram escritas antes de várias etapas serem implementadas; consulte esta página para o estado atual.
 
@@ -16,6 +16,7 @@ Este é o roadmap canônico do projeto. As listas de próximos passos nos docume
 - **Animação procedural:** `animation.py` escolhe idle, walk, run, drag, fall, dance ou sleep e interpola as poses do `rig.py`; idle alterna entre cinco personalidades, a porta abre para a frente e os braços da dança ficam recolhidos.
 - **Música:** `music.py` consulta a sessão GSMTC e, no modo loopback, estima nível e batidas por RMS em worker de fundo.
 - **Bandeja e loop:** `window.py` implementa menu da bandeja, polling de eventos Qt, timers de animação/física e entrada de mouse.
+- **Configurações e atalhos:** diálogo da bandeja salva em TOML; escala, música, cliques e z-order aplicam na hora. Tamanho e física pedem reinício. Atalhos globais mostram/ocultam, abrem as configurações e chamam o mascote.
 - **Build:** há configuração para o bundle PyInstaller `onedir` em `build.ps1`. O executável recém-compilado foi iniciado neste ambiente e permaneceu em execução durante a verificação.
 
 Essa verificação confirma o funcionamento no ambiente usado para o desenvolvimento. Não substitui teste em uma máquina limpa nem valida todas as interações do overlay.
@@ -23,8 +24,8 @@ Essa verificação confirma o funcionamento no ambiente usado para o desenvolvim
 ### Parcial ou ainda pendente
 
 - **Animação:** o controlador procedural cobre os estados básicos; ainda faltam reações acionadas pela música, mais poses/eventos e clipes exportados do Blockbench.
-- **Configuração visual:** existe menu de bandeja com mostrar/ocultar, sempre no topo, click-through e sair. Ainda faltam `SettingsDialog` e hotkeys globais.
-- **Configuração persistente:** carregamento e gravação TOML estão em `config.py`; interface de edição e hot-reload ainda faltam.
+- **Configuração visual:** o diálogo e os atalhos principais estão integrados; alterar tamanho ou física exige reiniciar o app.
+- **Configuração persistente:** carregamento e gravação TOML estão em `config.py`; não há hot-reload de um arquivo TOML alterado externamente.
 - **Música:** o módulo está integrado, mas ainda precisa ser validado com sessões reais e diferentes dispositivos. A arte do álbum ainda não é lida como imagem; a detecção de beat é inicial e precisa ser ajustada.
 - **Distribuição:** não há instalador Inno Setup, assinatura ou teste em instalação limpa.
 
@@ -32,7 +33,14 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 
 ## Próximos passos priorizados
 
-### 1. Música — validar e refinar `src/sejoga/music.py`
+### 1. Ferramentas de diagnóstico — criar HUD e captura
+
+- Mostrar FPS, estado/persona, posição e velocidade da física, dimensões do modelo e parâmetros de câmera.
+- Desenhar eixos locais do modelo e eixos globais da cena para facilitar o ajuste do rig.
+- Capturar screenshot sob demanda e oferecer gravação opcional de frames com metadados, sem gravar continuamente por padrão.
+- Registrar exceções e eventos relevantes em log com rotação ou limite de tamanho.
+
+### 2. Música — validar e refinar `src/sejoga/music.py`
 
 - Validar título/artista/álbum e status com sessões GSMTC reais.
 - Instalar o extra `music-loopback` e validar captura WASAPI em diferentes saídas de áudio.
@@ -40,20 +48,19 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 - Ler e expor a arte do álbum quando houver uma interface que a apresente.
 - Ajustar a intensidade de dança e os gatilhos de beat com base na captura real.
 
-### 2. Configurações e controles — `src/sejoga/ui.py`
+### 3. Configurações e controles — `src/sejoga/ui.py`
 
-- Criar `SettingsDialog` para tamanho, física, click-through e z-order.
-- Completar o menu da bandeja com acesso a Configurações.
-- Adicionar hotkeys globais para visibilidade, z-order e click-through.
-- Manter as configurações TOML já existentes e avaliar hot-reload com `QFileSystemWatcher`.
+- Permitir edição das hotkeys pelo diálogo; hoje elas são configuráveis pelo TOML.
+- Aplicar tamanho e ativação de física sem reiniciar, se a integração de janela e limites ficar estável.
+- Avaliar hot-reload de TOML com `QFileSystemWatcher`.
 
-### 3. Animações — expansão de `animation.py` e Blockbench
+### 4. Animações — expansão de `animation.py` e Blockbench
 
 - Refinar o controlador e integrar eventos de clique/colisão/beat às transições já implementadas.
 - Criar/exportar clipes `idle`, `walk`, `run`, `jump`, `throw`, `dance`, `hit`, `sleep`, `wake`, `cling` e `peek` no Blockbench.
 - Ligar os estados a eventos de física, mouse e música.
 
-### 4. Build portável e instalador
+### 5. Build portável e instalador
 
 - Remover caminhos absolutos da instalação Python do ambiente atual em `build.ps1` e `SeJogaCompanion.spec`.
 - Manter um único fluxo de build documentado e conferir que o `.spec` inclua todos os dados e plugins necessários ao bundle.

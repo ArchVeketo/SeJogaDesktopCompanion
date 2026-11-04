@@ -20,6 +20,7 @@ Uso::
 
 from __future__ import annotations
 
+import errno
 import tomllib
 from pathlib import Path
 from typing import Literal
@@ -160,5 +161,13 @@ def save_settings(settings: Settings, path: Path | None = None) -> Path:
     payload = dumps(settings.model_dump(mode="json", exclude_none=True))
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(payload, encoding="utf-8")
-    tmp.replace(path)
+    try:
+        tmp.replace(path)
+    except OSError as exc:
+        # Algumas pastas de perfil Windows (por exemplo, EFS/redirecionadas)
+        # recusam rename atômico mesmo com origem e destino no mesmo diretório.
+        if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != 17:
+            raise
+        path.write_text(payload, encoding="utf-8")
+        tmp.unlink(missing_ok=True)
     return path
