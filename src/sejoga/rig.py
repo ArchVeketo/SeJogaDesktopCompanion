@@ -257,3 +257,38 @@ def pose_thrown(rig: Rig, t: float = 0.0) -> None:
     rig.set_rotation("ant-arm2", x=-18.0 + wobble * 8.0)
     rig.set_rotation("legs", x=-12.0 + wobble * 3.0)
     rig.set_rotation("head", x=-8.0, y=wobble * 4.0)
+
+
+def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0) -> None:
+    """Reações procedurais: porta gira na dobradiça, sem escala da malha."""
+    from math import pi, sin
+
+    direction = max(-1.0, min(1.0, direction))
+    # Mantém os braços junto ao corpo durante as reações.
+    rig.set_rotation("right-arm", z=65.0)
+    rig.set_rotation("left-arm", z=-65.0)
+    rig.set_rotation("head", y=direction * 30.0)
+    if kind == "hover":
+        rig.set_rotation("door", y=20.0)
+    elif kind == "click":
+        pulse = sin(pi * min(1.0, t / 0.5))
+        rig.set_rotation("head", y=direction * 35.0, z=pulse * 8.0)
+        rig.set_rotation("door", y=45.0 * sin(t * 4.0 * pi) ** 2)
+    elif kind == "pet":
+        pulse = sin(pi * min(1.0, t / 1.5))
+        rig.set_rotation("head", x=-12.0 * pulse, y=direction * 25.0, z=8.0 * pulse)
+        rig.set_rotation("body", z=direction * 5.0 * pulse)
+        rig.set_rotation("door", y=pulse * (20.0 + 4.0 * sin(t * 20.0)))
+    elif kind == "poke":
+        pulse = sin(pi * min(1.0, t / 0.4))
+        rig.set_rotation("body", x=-8.0 * pulse)
+        rig.set_rotation("head", x=-12.0 * pulse, z=8.0 * pulse)
+        rig.set_rotation("right-arm", z=65.0 + pulse * 30.0)
+        rig.set_rotation("door", y=35.0 * pulse)
+    elif kind == "wake":
+        pulse = sin(pi * min(1.0, t / 1.2))
+        rig.set_rotation("body", x=-6.0 * pulse)
+        rig.set_rotation("head", x=-10.0 * pulse, y=sin(t * 12.0) * 5.0 * pulse)
+        rig.set_rotation("door", y=75.0 * pulse)
+        rig.set_rotation("right-arm", z=65.0 + 35.0 * pulse)
+        rig.set_rotation("left-arm", z=-65.0 - 35.0 * pulse)

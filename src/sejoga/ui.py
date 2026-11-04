@@ -54,6 +54,11 @@ class SettingsDialog(QDialog):
         self.idle_input = QCheckBox("Variar as animações quando estiver parado")
         self.idle_input.setChecked(settings.behavior.idle_animation)
 
+        self.react_click_input = QCheckBox("Reagir ao cursor e aos cliques")
+        self.react_click_input.setChecked(settings.behavior.react_to_click)
+        self.react_drag_input = QCheckBox("Permitir arrastar o mascote")
+        self.react_drag_input.setChecked(settings.behavior.react_to_drag)
+
         self.click_through_input = QCheckBox("Cliques atravessam as áreas transparentes")
         self.click_through_input.setChecked(settings.window.click_through_transparent)
 
@@ -82,6 +87,8 @@ class SettingsDialog(QDialog):
         form.addRow("Escala do mascote", self.scale_input)
         form.addRow(self.physics_input)
         form.addRow(self.idle_input)
+        form.addRow(self.react_click_input)
+        form.addRow(self.react_drag_input)
         form.addRow(self.click_through_input)
         form.addRow("Posição da janela", self.z_order_input)
         form.addRow("Reação à música", self.music_input)
@@ -125,6 +132,8 @@ class SettingsDialog(QDialog):
         updated.window.scale = self.scale_input.value()
         updated.physics.enabled = self.physics_input.isChecked()
         updated.behavior.idle_animation = self.idle_input.isChecked()
+        updated.behavior.react_to_click = self.react_click_input.isChecked()
+        updated.behavior.react_to_drag = self.react_drag_input.isChecked()
         updated.window.click_through_transparent = self.click_through_input.isChecked()
         z_order = self.z_order_input.currentData()
         updated.window.mode = "desktop" if z_order == "desktop" else "overlay"

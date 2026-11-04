@@ -83,6 +83,7 @@ from .physics import ScreenSpacePhysics, create_physics, PhysicsState
 from .music import MusicListener
 from .ui import HotkeyManager, SettingsDialog
 from .debug import DebugTools, configure_logging
+from .interaction import MouseInteraction
 
 # ============================================================
 # Win32 Constants & Helpers
@@ -169,6 +170,34 @@ class Panda3DRenderer:
 
         self._setup_scene()
         self._load_model()
+        self._setup_picking()
+
+    def _setup_picking(self) -> None:
+        from panda3d.core import (
+            BitMask32, CollisionHandlerQueue, CollisionNode, CollisionRay, CollisionTraverser,
+        )
+
+        self._pick_ray = CollisionRay()
+        node = CollisionNode("mouse-pick-ray")
+        node.addSolid(self._pick_ray)
+        node.setFromCollideMask(BitMask32.bit(1))
+        node.setIntoCollideMask(BitMask32.allOff())
+        ray_np = self.showbase.cam.attachNewNode(node)
+        self.model_np.setCollideMask(BitMask32.bit(1))
+        self._pick_queue = CollisionHandlerQueue()
+        self._pick_traverser = CollisionTraverser("mouse-picking")
+        self._pick_traverser.addCollider(ray_np, self._pick_queue)
+
+    def hit_test(self, x: float, y: float) -> bool:
+        """Testa a malha na pose atual, em pixels da área cliente da janela."""
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return False
+        self._pick_ray.setFromLens(
+            self.showbase.cam.node(), 2.0 * x / self.width - 1.0, 1.0 - 2.0 * y / self.height
+        )
+        self._pick_queue.clearEntries()
+        self._pick_traverser.traverse(self.model_np)
+        return self._pick_queue.getNumEntries() > 0
 
     def _setup_scene(self) -> None:
         render = self.showbase.render
@@ -356,6 +385,10 @@ class OverlayApp(ShowBase):
         self._window_start_pos = (0, 0)
         self._drag_direction = 0.0
         self._animation_last_tick = time.perf_counter()
+        self._physics_last_tick = time.perf_counter()
+        self._mouse_hovered = False
+        self._mouse_local = (0, 0)
+        self.mouse_interaction = MouseInteraction(buttons=self._mouse_buttons())
         self.animation_controller: Optional[AnimationController] = None
 
         self.qt_app: Optional = None
@@ -378,6 +411,7 @@ class OverlayApp(ShowBase):
         self._setup_win32()
         self._init_renderer()
         self._init_physics()
+        self._setup_mouse_hooks()
         if self.renderer and self.renderer.rig:
             self.animation_controller = AnimationController(self.renderer.rig)
         if self.renderer:
@@ -476,12 +510,12 @@ class OverlayApp(ShowBase):
         except Exception:
             pass
 
-    def _update_click_through(self) -> None:
+    def _update_click_through(self, over_model: bool = False) -> None:
         ex_style = win32gui.GetWindowLong(self.hwnd, -20)
-        if self._click_through:
-            win32gui.SetWindowLong(self.hwnd, -20, ex_style | 0x00000020)
-        else:
-            win32gui.SetWindowLong(self.hwnd, -20, ex_style & ~0x00000020)
+        passthrough = self._click_through and not over_model and not self._drag_active
+        updated = ex_style | WS_EX_TRANSPARENT if passthrough else ex_style & ~WS_EX_TRANSPARENT
+        if updated != ex_style:
+            win32gui.SetWindowLong(self.hwnd, -20, updated)
 
     def _update_z_order(self) -> None:
         if self._is_bottom:
@@ -503,6 +537,12 @@ class OverlayApp(ShowBase):
         else:
             x, y = (int(start_position[0]), int(start_position[1]))
 
+        # Panda applies pending window properties on its next frame. Keep its
+        # requested origin in sync so it cannot overwrite the saved position.
+        properties = WindowProperties()
+        properties.setOrigin(x, y)
+        properties.setSize(size, size)
+        self.win.requestProperties(properties)
         # SWP_NOZORDER | SWP_NOACTIVATE; z-order is applied separately below.
         win32gui.SetWindowPos(self.hwnd, 0, x, y, size, size, 0x0004 | 0x0010)
         self._update_click_through()
@@ -549,9 +589,6 @@ class OverlayApp(ShowBase):
         # Adiciona task de física (120 Hz)
         self.taskMgr.add(self._physics_tick, "physics-tick", priority=10)
 
-        # Substitui mouse hooks pelo sistema de física
-        self._setup_mouse_hooks()
-
     def _on_physics_state_change(self, state) -> None:
         """Callback quando estado da física muda."""
         if self.renderer:
@@ -562,8 +599,11 @@ class OverlayApp(ShowBase):
         if not self.physics:
             return Task.cont
 
-        dt = 1.0 / 120.0  # fixed timestep
-        state = self.physics.step(1.0 / 120.0)
+        now = time.perf_counter()
+        dt = now - self._physics_last_tick
+        self._physics_last_tick = now
+        if not self._drag_active:
+            self.physics.step(dt)
         return Task.cont
 
     def _sync_model_with_physics(self) -> None:
@@ -604,6 +644,8 @@ class OverlayApp(ShowBase):
             music_intensity=music_intensity,
             idle_enabled=self.settings.behavior.idle_animation,
             sleep_after_idle_seconds=self.settings.behavior.sleep_after_idle_seconds,
+            hovered=self._mouse_hovered and self.settings.behavior.react_to_click,
+            look_direction=(self._mouse_local[0] / self.renderer.width - 0.5) * 2.0,
         )
         self.renderer.apply_rig_pose(pose)
         if state:
@@ -676,7 +718,7 @@ class OverlayApp(ShowBase):
         self._topmost_action.setChecked(self._is_topmost)
         self._topmost_action.toggled.connect(self.set_topmost)
 
-        self._click_through_action = self.tray_menu.addAction("Cliques atravessam o mascote")
+        self._click_through_action = self.tray_menu.addAction("Cliques atravessam as áreas vazias")
         self._click_through_action.setCheckable(True)
         self._click_through_action.setChecked(self._click_through)
         self._click_through_action.toggled.connect(self.set_click_through)
@@ -723,35 +765,61 @@ class OverlayApp(ShowBase):
     def _setup_mouse_hooks(self) -> None:
         self.taskMgr.add(self._mouse_poll, "mouse-poll")
 
+    @staticmethod
+    def _mouse_buttons() -> frozenset[str]:
+        return frozenset(
+            name for name, key in (
+                ("left", win32con.VK_LBUTTON),
+                ("right", win32con.VK_RBUTTON),
+                ("middle", win32con.VK_MBUTTON),
+            ) if win32api.GetAsyncKeyState(key) & 0x8000
+        )
+
     def _mouse_poll(self, task: Task) -> int:
-        import win32api
-        import win32con
-
-        left_down = win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000
-
-        if left_down and not self._drag_active:
-            self._drag_active = True
-            x, y = win32gui.GetCursorPos()
-            self._drag_start_pos = (x, y)
-            self._window_start_pos = win32gui.GetWindowRect(self.hwnd)[:2]
-
-        elif not left_down and self._drag_active:
-            self._drag_active = False
-            self._drag_direction = 0.0
-            rect = win32gui.GetWindowRect(self.hwnd)
-            self.settings.window.start_position = (rect[0], rect[1])
-            self._persist_settings()
-
-        elif self._drag_active:
-            x, y = win32gui.GetCursorPos()
-            dx = x - self._drag_start_pos[0]
-            dy = y - self._drag_start_pos[1]
-            self._drag_direction = max(-1.0, min(1.0, dx / 80.0))
-            new_x = self._window_start_pos[0] + dx
-            new_y = self._window_start_pos[1] + dy
-            win32gui.SetWindowPos(self.hwnd, 0, new_x, new_y, 0, 0,
-                                 0x0001 | 0x0002 | 0x0010)
-
+        position = win32gui.GetCursorPos()
+        buttons = self._mouse_buttons()
+        self._mouse_local = win32gui.ScreenToClient(self.hwnd, position)
+        enabled = bool(win32gui.IsWindowVisible(self.hwnd)) and self._settings_dialog is None
+        enabled = enabled and not bool(win32api.GetAsyncKeyState(win32con.VK_ESCAPE) & 0x8000)
+        hit = enabled and self.renderer.hit_test(*self._mouse_local)
+        # An external drag that crosses the mascot must stay with its original app.
+        external_press = bool(buttons & self.mouse_interaction.buttons) and not self.mouse_interaction.has_press
+        self._update_click_through(hit and not external_press)
+        if hit and not self._drag_active:
+            target = win32gui.WindowFromPoint(position)
+            hit = target == self.hwnd or win32gui.IsChild(self.hwnd, target)
+        events = self.mouse_interaction.update(
+            position, buttons, hit=hit, enabled=enabled,
+            allow_drag=self.settings.behavior.react_to_drag,
+            allow_click=self.settings.behavior.react_to_click,
+        )
+        self._mouse_hovered = self.mouse_interaction.hovered
+        for event in events:
+            if event.kind in ("hover_enter", "click", "pet", "poke"):
+                if self.settings.behavior.react_to_click and self.animation_controller:
+                    self.animation_controller.interact(event.kind)
+            elif event.kind == "drag_start":
+                self._drag_active = True
+                self._drag_start_pos = self.mouse_interaction.press_position
+                self._window_start_pos = win32gui.GetWindowRect(self.hwnd)[:2]
+                if self.animation_controller:
+                    self.animation_controller.interact("drag_start")
+            elif event.kind in ("drag_move", "drag_end"):
+                dx = position[0] - self._drag_start_pos[0]
+                dy = position[1] - self._drag_start_pos[1]
+                self._drag_direction = max(-1.0, min(1.0, dx / 80.0))
+                win32gui.SetWindowPos(
+                    self.hwnd, 0,
+                    self._window_start_pos[0] + dx, self._window_start_pos[1] + dy,
+                    0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+                )
+            if event.kind in ("drag_end", "drag_cancel"):
+                self._drag_active = False
+                self._drag_direction = 0.0
+                self.settings.window.start_position = win32gui.GetWindowRect(self.hwnd)[:2]
+                self._persist_settings()
+            if event.kind != "drag_move":
+                self.logger.info("Mouse %s at %s", event.kind, position)
         return Task.cont
 
     def toggle_visibility(self) -> None:
@@ -873,12 +941,6 @@ class OverlayApp(ShowBase):
             save_settings(self.settings)
         except OSError as exc:
             print(f"[settings] failed to save configuration: {exc}")
-
-    def toggle_visibility(self) -> None:
-        if win32gui.IsWindowVisible(self.hwnd):
-            win32gui.ShowWindow(self.hwnd, 0)
-        else:
-            win32gui.ShowWindow(self.hwnd, 5)
 
     def quit_app(self) -> None:
         self.userExit()

@@ -17,6 +17,7 @@ from .rig import (
     pose_dance,
     pose_drag,
     pose_idle,
+    pose_interaction,
     pose_sleep,
     pose_thrown,
     pose_walk,
@@ -31,6 +32,11 @@ class AnimationState(StrEnum):
     FALL = "fall"
     DANCE = "dance"
     SLEEP = "sleep"
+    HOVER = "hover"
+    CLICK = "click"
+    PET = "pet"
+    POKE = "poke"
+    WAKE = "wake"
 
 
 class AnimationController:
@@ -50,6 +56,31 @@ class AnimationController:
         self._personality_interval = self._personality_rng.uniform(10.0, 14.0)
         self._pose = {group: Rotation3() for group in rig.groups}
         self._transition_from = dict(self._pose)
+        self._reaction: AnimationState | None = None
+        self._reaction_time = 0.0
+        self._cooldowns: dict[str, float] = {}
+        self._look_direction = 0.0
+
+    REACTION_SECONDS = {
+        AnimationState.CLICK: 0.5,
+        AnimationState.PET: 1.5,
+        AnimationState.POKE: 0.4,
+        AnimationState.WAKE: 1.2,
+    }
+
+    def interact(self, kind: str) -> None:
+        """Interação acorda o mascote e dispara uma reação com cooldown."""
+        self.idle_time = 0.0
+        if kind == "drag_start":
+            self._reaction = None
+            return
+        if self.state == AnimationState.SLEEP:
+            kind = "wake"
+        if kind not in self.REACTION_SECONDS or self.clock < self._cooldowns.get(kind, 0.0):
+            return
+        self._reaction = AnimationState(kind)
+        self._reaction_time = 0.0
+        self._cooldowns[kind] = self.clock + {"click": 0.5, "pet": 2.0, "poke": 1.0, "wake": 1.2}[kind]
 
     @staticmethod
     def _choose_state(
@@ -86,10 +117,17 @@ class AnimationController:
         music_intensity: float = 0.0,
         idle_enabled: bool = True,
         sleep_after_idle_seconds: int = 0,
+        hovered: bool = False,
+        look_direction: float = 0.0,
     ) -> dict[str, Rotation3]:
         """Atualiza o estado e devolve um snapshot de rotações em radianos."""
         dt = min(0.1, max(0.0, dt))
         self.clock += dt
+        self._look_direction += (max(-1.0, min(1.0, look_direction)) - self._look_direction) * min(1.0, dt * 10.0)
+        if self._reaction is not None:
+            self._reaction_time += dt
+            if self._reaction_time >= self.REACTION_SECONDS[self._reaction]:
+                self._reaction = None
 
         speed = (velocity[0] ** 2 + velocity[1] ** 2) ** 0.5
         next_state = self._choose_state(
@@ -100,6 +138,11 @@ class AnimationController:
             music_playing=music_playing,
             music_intensity=music_intensity,
         )
+        if next_state not in (AnimationState.DRAG, AnimationState.FALL):
+            if self._reaction is not None:
+                next_state = self._reaction
+            elif hovered and next_state == AnimationState.IDLE:
+                next_state = AnimationState.HOVER
         if next_state == AnimationState.IDLE:
             self.idle_time += dt
             if sleep_after_idle_seconds > 0 and self.idle_time >= sleep_after_idle_seconds:
@@ -148,6 +191,8 @@ class AnimationController:
             pose_dance(self.rig, self.clock, music_intensity)
         elif self.state == AnimationState.SLEEP:
             pose_sleep(self.rig, self.clock)
+        elif self.state == AnimationState.HOVER or self.state in self.REACTION_SECONDS:
+            pose_interaction(self.rig, self.state.value, self._reaction_time, self._look_direction)
 
         target = self.rig.pose()
         if self._active_transition_seconds == 0.0:

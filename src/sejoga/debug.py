@@ -185,6 +185,11 @@ class DebugTools:
             "fps": round(self._fps, 2),
             "animation_state": animation.state.value if animation and animation.state else None,
             "idle_personality": animation.idle_personality.value if animation else None,
+            "mouse": {
+                "local_position": list(self.app._mouse_local),
+                "hovered": self.app._mouse_hovered,
+                "dragging": self.app._drag_active,
+            },
             "window_pixels": [renderer.width, renderer.height],
             "model_scale": round(float(renderer.model_np.getScale().x), 4),
             "model_bounds_units": list(map(float, renderer._model_dimensions)),
@@ -235,6 +240,7 @@ class DebugTools:
             f"SEJOGA DEBUG  |  {self.debug_hotkey} fecha\n"
             f"FPS {self._fps:5.1f}   Janela {meta['window_pixels'][0]}x{meta['window_pixels'][1]}\n"
             f"Estado {meta['animation_state']}   Persona {meta['idle_personality']}\n"
+            f"Mouse {meta['mouse']['local_position']} Hover {meta['mouse']['hovered']} Drag {meta['mouse']['dragging']}\n"
             f"Pos {state['position'][0]:.1f}, {state['position'][1]:.1f} px\n"
             f"Vel {state['velocity'][0]:.1f}, {state['velocity'][1]:.1f} px/s\n"
             f"Chão {state['grounded']}   Gravidade {state.get('gravity_active', False)}\n"
