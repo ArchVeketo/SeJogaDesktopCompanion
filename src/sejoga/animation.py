@@ -67,7 +67,8 @@ class AnimationController:
         self._cooldowns: dict[str, float] = {}
         self._look_direction = 0.0
         self._look_vertical = 0.0
-        self._ambient_in = 9.0
+        self._ambient_in = 15.0
+        self._peek_in = self._personality_rng.uniform(60, 100)
         self._dance_remaining = 0.0
         self._dance_decision_in = 0.0
         self._previous_beat = False
@@ -81,7 +82,7 @@ class AnimationController:
         AnimationState.LAND: 0.45,
         AnimationState.WAVE: 2.0,
         AnimationState.STRETCH: 2.8,
-        AnimationState.PEEK: 3.5,
+        AnimationState.PEEK: 9.0,
         AnimationState.HIT: 0.65,
     }
 
@@ -176,12 +177,17 @@ class AnimationController:
         )
         if next_state == AnimationState.IDLE and grounded and idle_enabled and not hovered:
             self._ambient_in -= dt
+            self._peek_in -= dt
+            if self._peek_in <= 0 and self._reaction is None:
+                self._reaction = AnimationState.PEEK
+                self._reaction_time = 0.0
+                self._peek_in = self._personality_rng.uniform(60, 100)
             if self._ambient_in <= 0 and self._reaction is None:
                 self._reaction = self._personality_rng.choice(
-                    [AnimationState.WAVE, AnimationState.STRETCH, AnimationState.PEEK]
+                    [AnimationState.WAVE, AnimationState.STRETCH]
                 )
                 self._reaction_time = 0.0
-                self._ambient_in = self._personality_rng.uniform(10.0, 17.0)
+                self._ambient_in = self._personality_rng.uniform(18.0, 30.0)
         if next_state != AnimationState.DRAG and (next_state != AnimationState.FALL or self._reaction == AnimationState.HIT):
             if self._reaction is not None:
                 next_state = self._reaction

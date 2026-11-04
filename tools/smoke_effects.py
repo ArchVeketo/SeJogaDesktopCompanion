@@ -54,13 +54,13 @@ def main():
             for obstacle in ("body", "legs"):
                 body = app.renderer._rig_nodes[obstacle].getTightBounds(app.renderer.model_np)
                 if bounds[0].z < body[1].z and bounds[1].z > body[0].z and bounds[0].y < body[1].y and bounds[1].y > body[0].y:
-                    assert bounds[0].x >= body[1].x if direction > 0 else bounds[1].x <= body[0].x
+                    assert (bounds[0].x >= body[1].x if direction > 0 else bounds[1].x <= body[0].x), (forearm, obstacle, bounds, body, app.renderer._rig_nodes["right-arm"].getHpr(), app.renderer._rig_nodes["ant-arm"].getHpr())
 
     try:
         for _ in range(20):
             app.taskMgr.step()
             time.sleep(.02)
-        app.animation_timer.stop()
+        app.taskMgr.remove("animation-frame")
         app.taskMgr.remove("mouse-poll")
         assert win32gui.GetWindowLong(app.hwnd, -20) & win32con.WS_EX_APPWINDOW
         assert win32gui.SendMessage(app.hwnd, win32con.WM_GETICON, win32con.ICON_BIG, 0)
@@ -86,19 +86,23 @@ def main():
                 pose_idle(app.renderer.rig, phase, personality)
                 app.renderer.apply_rig_pose(app.renderer.rig.pose())
                 app.renderer.update_appendages(.033)
+                capture(f"idle-{personality}-{phase}")
                 check_clearance()
         for kind in ("wave", "stretch", "peek", "hit"):
             app.animation_controller.interact(kind)
-            for _ in range(18):
+            frames = int(app.animation_controller.REACTION_SECONDS[kind] / .033)
+            for step in range(frames):
                 pose = app.animation_controller.update(.033, idle_enabled=False)
                 app.renderer.apply_rig_pose(pose)
                 app.renderer.update_appendages(.033)
                 check_clearance()
+                if step in (0, frames//2, frames-1):
+                    capture(f"{kind}-{step}")
             capture(kind)
         # Full opening, then a half-retracted frame and a closed frame.
         from sejoga.rig import Rotation3
         import math
-        for _ in range(30):
+        for _ in range(150):
             app.renderer.apply_rig_pose({"door": Rotation3(y=math.radians(85))})
             app.renderer.update_appendages(.033)
             check_clearance()
@@ -116,7 +120,7 @@ def main():
         assert 0 < app.renderer.tentacles.motion.extension < .9
         assert app.renderer.tentacles.drops
         capture("tentacles-retract")
-        for _ in range(40):
+        for _ in range(160):
             app.renderer.apply_rig_pose({"door": Rotation3()})
             app.renderer.update_appendages(.033)
             check_clearance()

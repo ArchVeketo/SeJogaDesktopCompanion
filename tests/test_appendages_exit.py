@@ -6,12 +6,12 @@ from sejoga.appendages import DoorJoint, tentacle_center
 
 def test_tentacles_retract_progressively_instead_of_popping():
     motion = AppendageMotion()
-    for _ in range(30):
+    for _ in range(120):
         motion.update(.033, 85)
     assert motion.extension == 1
     first = motion.update(.033, 0)
     assert .9 < first < 1
-    samples = [motion.update(.033, 0) for _ in range(30)]
+    samples = [motion.update(.033, 0) for _ in range(150)]
     assert samples[-1] == 0
     assert samples == sorted(samples, reverse=True)
 
@@ -44,11 +44,11 @@ def test_exit_freezes_then_spins_outside_desktop_both_directions():
 def test_door_is_pushed_open_by_contact_and_closes_after_retraction():
     door = DoorJoint()
     sphere = ((0, .155, .15), .04)
-    for _ in range(30):
+    for _ in range(120):
         door.update(.033, 0, [sphere])
     assert door.angle > 20
     assert door.distance(sphere[0], door.angle) >= sphere[1]
-    for _ in range(60):
+    for _ in range(150):
         door.update(.033, 0, [])
     assert door.angle == 0
 
@@ -74,3 +74,16 @@ def test_tentacle_roots_are_inside_opening_and_tips_move_in_depth():
     motion = AppendageMotion()
     motion.update(.1, 85, actual_door=0)
     assert motion.extension == 0  # The mesh waits for room at the hinge.
+
+
+def test_door_contact_never_teleports_and_common_poses_keep_tentacles_hidden():
+    door = DoorJoint()
+    previous = 0
+    for _ in range(180):
+        door.update(1/60, 85, [((0, .155, .15), .04)])
+        assert abs(door.angle-previous) <= 38/60 + 1e-6
+        previous = door.angle
+    motion = AppendageMotion()
+    for _ in range(600):
+        motion.update(1/60, 48, actual_door=85)
+    assert motion.extension == 0

@@ -20,7 +20,6 @@ from typing import Optional, Tuple
 
 # Load Qt before Panda3D: their Windows bundles ship different MSVC runtime
 # DLLs, and the first loaded copy wins for the whole process.
-from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
@@ -75,7 +74,7 @@ from ctypes import wintypes
 
 # Project imports
 from .assets import brand_dir, resolve_model
-from .animation import AnimationController
+from .animation import AnimationController, AnimationState
 from .model import load_model
 from .rig import Rig, ALL_GROUPS
 from .config import load_settings, save_settings, Settings
@@ -424,9 +423,9 @@ void main() {
                 x, y, z = rotation
             # Beyond vertical the upper arms fold inward through the torso.
             if group_name == "right-arm":
-                z = max(math.radians(-75), min(math.radians(50), z))
+                z = max(math.radians(-75), min(math.radians(65), z))
             elif group_name == "left-arm":
-                z = max(math.radians(-50), min(math.radians(75), z))
+                z = max(math.radians(-65), min(math.radians(75), z))
             base_h, base_p, base_r = self._rig_base_hpr.get(group_name, (0.0, 0.0, 0.0))
             if group_name == "door":
                 self._door_requested = max(0.0, math.degrees(y))
@@ -443,32 +442,22 @@ void main() {
         self._resolve_arm_clearance()
 
     def _resolve_arm_clearance(self):
-        for arm, forearm, hand, direction in (("right-arm", "ant-arm", "hand", 1),
-                                               ("left-arm", "ant-arm2", "hand2", -1)):
-            # Shoulders stay attached. Open the elbow outward if the hand enters
-            # the torso/pelvis, instead of translating the whole arm off its socket.
+        # Hands inherit the forearm transform. Keep a continuous outward elbow
+        # bend instead of solving bounding boxes in discrete five-degree jumps.
+        for arm, forearm, direction in (("right-arm", "ant-arm", 1),
+                                         ("left-arm", "ant-arm2", -1)):
+            upper = self._rig_nodes[arm]
             node = self._rig_nodes[forearm]
-            for _ in range(13):
-                clear = True
-                bounds = self._rig_nodes[hand].getTightBounds(self.model_np)
-                for obstacle in ("body", "legs"):
-                    body = self._rig_nodes[obstacle].getTightBounds(self.model_np)
-                    if not body or not bounds:
-                        continue
-                    overlap_z = bounds[0].z < body[1].z and bounds[1].z > body[0].z
-                    overlap_y = bounds[0].y < body[1].y and bounds[1].y > body[0].y
-                    inside_x = bounds[0].x < body[1].x+.01 if direction > 0 else bounds[1].x > body[0].x-.01
-                    if overlap_z and overlap_y and inside_x:
-                        clear = False
-                if clear:
-                    break
-                node.setR(node.getR()-direction*5)
+            base = self._rig_base_hpr[forearm][2]
+            bend = direction * (node.getR()-base)
+            inward = max(0.0, direction*(upper.getR()-self._rig_base_hpr[arm][2]))
+            bend = min(bend, -max(0.0, inward-20)*1.2)
+            node.setR(base + direction*bend)
             self._outline_nodes[forearm].setHpr(node.getHpr())
-            self._outline_nodes[arm].setPos(self._rig_nodes[arm].getPos())
 
-    def update_appendages(self, dt):
+    def update_appendages(self, dt, visible=True):
         if self.tentacles:
-            self.tentacles.update(dt, self._door_requested)
+            self.tentacles.update(dt, self._door_requested, visible)
             door = self._rig_nodes["door"]
             base_h, base_p, base_r = self._rig_base_hpr["door"]
             door.setHpr(base_h+self.tentacles.door.angle, base_p, base_r)
@@ -858,7 +847,7 @@ class OverlayApp(ShowBase):
             look_vertical=(self._mouse_local[1] / self.renderer.height - .52) * 2.0,
         )
         self.renderer.apply_rig_pose(pose)
-        self.renderer.update_appendages(dt)
+        self.renderer.update_appendages(dt, self.animation_controller.state == AnimationState.PEEK)
         if state:
             self._sync_model_with_physics()
         if self.debug_tools:
@@ -958,12 +947,16 @@ class OverlayApp(ShowBase):
 
     def _setup_timers(self) -> None:
         """Agenda a animação e bombeia os eventos do Qt junto ao loop Panda3D."""
-        interval_ms = max(1, round(1000 / self.settings.window.fps))
-        self.animation_timer = QTimer(self.qt_app)
-        self.animation_timer.setInterval(interval_ms)
-        self.animation_timer.timeout.connect(self._animation_tick)
-        self.animation_timer.start()
-        self.taskMgr.add(self._process_qt_events, "qt-event-pump")
+        from panda3d.core import ClockObject
+        clock = ClockObject.getGlobalClock()
+        clock.setMode(ClockObject.MLimited)
+        clock.setFrameRate(self.settings.window.fps)
+        self.taskMgr.add(self._process_qt_events, "qt-event-pump", sort=40)
+        self.taskMgr.add(self._animate_frame, "animation-frame", sort=45)
+
+    def _animate_frame(self, task):
+        self._animation_tick()
+        return Task.cont
 
     def _process_qt_events(self, task: Task) -> int:
         QApplication.processEvents()
@@ -1257,8 +1250,7 @@ class OverlayApp(ShowBase):
         if self.desktop:
             self.desktop.close()
             self.desktop = None
-        if hasattr(self, 'animation_timer') and self.animation_timer:
-            self.animation_timer.stop()
+        self.taskMgr.remove("animation-frame")
         if hasattr(self, 'tray_icon') and self.tray_icon:
             self.tray_icon.hide()
         if self.music_listener:

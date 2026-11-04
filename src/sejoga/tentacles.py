@@ -15,8 +15,6 @@ class TentacleRenderer:
         self.root = head.attachNewNode("procedural-tentacles")
         self.motion = AppendageMotion()
         self.door = DoorJoint()
-        self._geometry_elapsed = 0.0
-        self._last_spheres = []
         self.clock = 0.0
         self._rng = random.Random()
         self._slime_cooldown = 5.0
@@ -28,6 +26,8 @@ class TentacleRenderer:
         texture.setRamImage(bytes([255, 255, 255, 255]))
         self.root.setTexture(texture, 1)
         self.vertices, _, colors, indices = build_tentacle()
+        self._rest_vertices = [(max(0, min(1, z/.432)), x-self._rest_center(z), y)
+                               for x, y, z in self.vertices]
         self._data = []
         self._slices = {}
         for x, y, z in self.vertices:
@@ -36,7 +36,7 @@ class TentacleRenderer:
             radius = math.hypot(rx, y)
             self._slices[u] = max(self._slices.get(u, 0), radius)
         self._contact_slices = sorted(self._slices)[::max(1, len(self._slices)//12)]
-        for index in range(4):
+        for index in range(2):
             data = GeomVertexData(f"deformable-tentacle-{index}", GeomVertexFormat.getV3n3c4t2(), Geom.UHDynamic)
             data.setNumRows(len(self.vertices))
             color, uv = GeomVertexWriter(data, 'color'), GeomVertexWriter(data, 'texcoord')
@@ -90,21 +90,19 @@ class TentacleRenderer:
         node.addGeom(geom)
         return node
 
-    def update(self, dt, door_degrees):
+    def update(self, dt, door_degrees, visible=True):
         dt = min(.1, max(0.0, dt))
         self.clock += dt
-        extent = self.motion.update(dt, door_degrees, self.door.angle)
+        extent = self.motion.update(dt, door_degrees if visible else 0, self.door.angle)
         spheres = []
-        for index in range(4):
+        for index in range(2):
             local_extent = self._extension(index, extent)
             if local_extent > .02:
                 for u in self._contact_slices:
                     center = tentacle_center(index, u, self.clock, local_extent)
                     radius = self._radius(self._slices[u], center, local_extent)
                     spheres.append((center, radius))
-        if extent <= .001:
-            self._last_spheres = []
-        self.door.update(dt, door_degrees, spheres+self._last_spheres)
+        self.door.update(dt, door_degrees, spheres)
         if extent <= .001 and not self.drops:
             self.root.hide()
             return
@@ -124,11 +122,6 @@ class TentacleRenderer:
             if age > .85:
                 np.removeNode()
                 self.drops.remove(drop)
-        self._geometry_elapsed += dt
-        if self._geometry_elapsed < 1/30 and not self.door.contacts:
-            return
-        self._geometry_elapsed = 0.0
-        self._last_spheres = []
         for index, np in enumerate(self.meshes):
             extent_here = self._extension(index, extent)
             if extent_here < .01:
@@ -140,7 +133,6 @@ class TentacleRenderer:
                 p = tentacle_center(index, u, self.clock, extent_here)
                 radius_here = self._radius(radius, p, extent_here)
                 center = Vec3(*self.door.project(p, radius_here))
-                self._last_spheres.append((tuple(center), radius_here))
                 a = Vec3(*tentacle_center(index, max(0, u-.005), self.clock, extent_here))
                 b = Vec3(*tentacle_center(index, min(1, u+.005), self.clock, extent_here))
                 tangent = (b-a).normalized()
@@ -155,10 +147,13 @@ class TentacleRenderer:
                 scale = radius_here/radius if radius > 1e-8 else 0
                 frames[u] = (center, x_axis, y_axis, scale)
             points = []
-            for x, y, z in self.vertices:
-                u = max(0.0, min(1.0, z/.432))
+            cache = {}
+            for u, x, y in self._rest_vertices:
                 center, axis, side, scale = frames[u]
-                points.append(center + axis*((x-self._rest_center(z))*scale) + side*(y*scale))
+                key = (u, x, y)
+                if key not in cache:
+                    cache[key] = center + axis*(x*scale) + side*(y*scale)
+                points.append(cache[key])
             vertex, normal = GeomVertexWriter(self._data[index], 'vertex'), GeomVertexWriter(self._data[index], 'normal')
             for i in range(0, len(points), 3):
                 face_normal = (points[i+1]-points[i]).cross(points[i+2]-points[i])
@@ -172,7 +167,7 @@ class TentacleRenderer:
 
     @staticmethod
     def _extension(index, extent):
-        return max(0.0, min(1.0, (extent-index*.12)/.64))
+        return max(0.0, min(1.0, (extent-index*.22)/.78))
 
     @staticmethod
     def _rest_center(z):

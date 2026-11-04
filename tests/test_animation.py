@@ -106,3 +106,22 @@ def test_hover_tracks_both_axes_and_new_reactions_generate_distinct_poses():
         frames.append(tuple(pose.values()))
         assert other.state.value == kind
     assert len(set(frames)) == 4
+
+
+def test_tentacle_peeks_are_rare_but_manual_peek_remains_available():
+    animation = controller()
+    animation._personality_rng.seed(1)
+    animation._peek_in = 60
+    starts = []
+    previous = None
+    for frame in range(1800):
+        animation.update(.1)
+        if animation.state == AnimationState.PEEK and previous != animation.state:
+            starts.append(frame/10)
+        previous = animation.state
+    assert starts and starts[0] >= 59.9
+    assert all(b-a >= 60 for a,b in zip(starts, starts[1:]))
+    other = controller()
+    other.interact("peek")
+    other.update(.1)
+    assert other.state == AnimationState.PEEK

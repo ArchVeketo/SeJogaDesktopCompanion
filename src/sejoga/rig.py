@@ -118,7 +118,7 @@ def pose_idle(
     personality: IdlePersonality = IdlePersonality.CALM,
 ) -> None:
     """Idle com personalidade própria, sem deixar de respeitar a dobradiça."""
-    from math import cos, sin
+    from math import sin
 
     breath = sin(t * 0.8)
     sway = sin(t * 0.55)
@@ -126,47 +126,43 @@ def pose_idle(
     if personality == IdlePersonality.CURIOUS:
         look = sin(t * 0.7)
         tilt = sin(t * 0.39)
-        door_open = max(0.0, sin(t * 0.42))
         rig.set_rotation("body", x=breath * 1.1, y=sway * 2.0, z=tilt * 1.5)
         rig.set_rotation("head", x=-4.0 + sin(t * 0.9) * 2.0, y=look * 15.0, z=tilt * 7.0)
-        rig.set_rotation("door", y=door_open * 24.0)
-        rig.set_rotation("right-arm", x=sin(t * 0.8) * 5.0, z=42.0)
+        rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
+        rig.set_rotation("right-arm", x=sin(t * 0.8) * 5.0, z=36.0)
         rig.set_rotation("left-arm", x=-sin(t * 0.8) * 3.0, z=-22.0)
         rig.set_rotation("ant-arm", x=4.0 + sin(t * 0.9) * 7.0, z=tilt * 8.0)
         rig.set_rotation("ant-arm2", x=4.0 - sin(t * 0.9) * 4.0, z=-tilt * 5.0)
     elif personality == IdlePersonality.PLAYFUL:
         bounce = sin(t * 2.0)
-        door_open = max(0.0, sin(t * 2.0))
         rig.set_rotation("body", x=abs(bounce) * 3.2, y=sway * 3.0, z=bounce * 3.0)
         rig.set_rotation("head", x=-abs(bounce) * 2.5, y=sin(t * 1.0) * 7.0, z=bounce * 4.0)
-        rig.set_rotation("door", y=door_open * 38.0)
-        rig.set_rotation("right-arm", x=bounce * 12.0, z=66.0)
-        rig.set_rotation("left-arm", x=-bounce * 12.0, z=-66.0)
+        rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
+        rig.set_rotation("right-arm", x=bounce * 12.0, z=38.0)
+        rig.set_rotation("left-arm", x=-bounce * 12.0, z=-38.0)
         rig.set_rotation("ant-arm", x=sin(t * 2.0 + 0.5) * 13.0, z=bounce * 10.0)
         rig.set_rotation("ant-arm2", x=-sin(t * 2.0 + 0.5) * 13.0, z=-bounce * 10.0)
     elif personality == IdlePersonality.SHY:
-        peek = max(0.0, sin(t * 0.36))
         rig.set_rotation("body", x=1.0 + breath * 0.7, y=-3.0 + sway * 1.2, z=-2.0)
         rig.set_rotation("head", x=8.0 + breath, y=sin(t * 0.42) * 5.0, z=-6.0 + sway * 2.0)
-        rig.set_rotation("door", y=peek * 13.0)
-        rig.set_rotation("right-arm", x=3.0, z=58.0)
-        rig.set_rotation("left-arm", x=-3.0, z=-58.0)
+        rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
+        rig.set_rotation("right-arm", x=3.0, z=36.0)
+        rig.set_rotation("left-arm", x=-3.0, z=-36.0)
         rig.set_rotation("ant-arm", x=10.0 + breath, z=sin(t * 0.7) * 3.0)
         rig.set_rotation("ant-arm2", x=10.0 + breath, z=-sin(t * 0.7) * 3.0)
     elif personality == IdlePersonality.CONFIDENT:
         nod = sin(t * 0.46)
         rig.set_rotation("body", x=-2.5 + breath * 0.8, y=sway * 1.0, z=sin(t * 0.34) * 1.5)
         rig.set_rotation("head", x=-5.0 + nod * 2.0, y=sin(t * 0.32) * 5.0, z=nod * 2.0)
-        rig.set_rotation("door", y=max(0.0, sin(t * 0.28)) * 18.0)
-        rig.set_rotation("right-arm", x=1.0, z=54.0)
-        rig.set_rotation("left-arm", x=-1.0, z=-54.0)
+        rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
+        rig.set_rotation("right-arm", x=1.0, z=40.0)
+        rig.set_rotation("left-arm", x=-1.0, z=-40.0)
         rig.set_rotation("ant-arm", x=2.0 + sin(t * 0.5) * 3.0, z=2.0)
         rig.set_rotation("ant-arm2", x=2.0 - sin(t * 0.5) * 3.0, z=-2.0)
     else:
-        door_open = (1.0 - cos(t * 0.75)) * 0.5
         rig.set_rotation("body", x=breath * 1.1, y=sway * 1.7, z=sway * 1.2)
         rig.set_rotation("head", x=sin(t * 0.7) * 1.5, y=sin(t * 0.48) * 3.5)
-        rig.set_rotation("door", y=door_open * 40.0)
+        rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
         rig.set_rotation("right-arm", x=sin(t * 0.7) * 3.0, z=28.0 - breath * 2.0)
         rig.set_rotation("left-arm", x=-sin(t * 0.7) * 3.0, z=-28.0 + breath * 2.0)
         rig.set_rotation("ant-arm", x=4.0, z=sin(t * 0.9) * 5.0)
@@ -303,7 +299,7 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
 def pose_flourish(rig: Rig, kind: str, t: float) -> None:
     """Aceno, alongamento, espiada e recuperação de impacto."""
     from math import pi, sin
-    durations = {"wave": 2.0, "stretch": 2.8, "peek": 3.5, "hit": .65}
+    durations = {"wave": 2.0, "stretch": 2.8, "peek": 9.0, "hit": .65}
     phase = min(1.0, max(0.0, t / durations[kind]))
     envelope = sin(phase * pi)
     rig.set_rotation("right-arm", z=65)
@@ -321,7 +317,9 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
         rig.set_rotation("door", y=60 * envelope)
     elif kind == "peek":
         rig.set_rotation("head", y=sin(t * 2) * 12 * envelope, z=5 * envelope)
-        rig.set_rotation("door", y=85 * envelope)
+        opening = min(1.0, t / 2.5, max(0.0, (9.0-t) / 2.5))
+        opening = opening*opening*(3-2*opening)
+        rig.set_rotation("door", y=85 * opening)
         rig.set_rotation("ant-arm", x=-12 * envelope)
         rig.set_rotation("ant-arm2", x=-12 * envelope)
     else:

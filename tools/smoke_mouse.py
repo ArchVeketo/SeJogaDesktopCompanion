@@ -47,7 +47,7 @@ def main():
             app.taskMgr.step()
             time.sleep(0.017)
         app.taskMgr.remove("mouse-poll")
-        app.animation_timer.stop()
+        app.taskMgr.remove("animation-frame")
         with patch("sejoga.window.win32api.GetAsyncKeyState", return_value=0):
             app._native_mouse_button("left", True)
             assert "left" in app._mouse_buttons(), "Native input must survive a zero async key state"

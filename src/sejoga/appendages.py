@@ -9,29 +9,29 @@ class AppendageMotion:
 
     def update(self, dt, door_degrees, actual_door=None):
         self.previous_extension = self.extension
-        target = max(0.0, min(1.0, (door_degrees - 10.0) / 60.0))
+        target = max(0.0, min(1.0, (door_degrees - 55.0) / 25.0))
         if actual_door is not None and target > self.extension:
-            target = min(target, max(0.0, min(1.0, (actual_door - 25) / 55)))
-        rate = 2.8 if target > self.extension else 1.5
-        distance = max(0.0, min(.1, dt)) * rate
-        delta = target - self.extension
-        self.extension += max(-distance, min(distance, delta))
+            target = min(target, max(0.0, min(1.0, (actual_door - 35) / 40)))
+        rate = 2.4 if target > self.extension else 2.0
+        self.extension += (target-self.extension) * (1-math.exp(-rate*max(0, min(.1, dt))))
+        if abs(target-self.extension) < .001:
+            self.extension = target
         return self.extension
 
 
 def tentacle_center(index, u, clock, extent):
-    roots = [(-.057, .065, .235), (.057, .065, .235), (-.055, .065, .045), (.055, .065, .045)]
-    directions = [(-.9, .65), (.85, .7), (-.85, -.18), (.7, -.8)]
+    roots = [(.025, .065, .19), (-.035, .065, .085), (-.02, .065, .16), (.035, .065, .10)]
+    directions = [(.70, .28), (-.48, -.38), (.45, .20), (-.35, -.25)]
     root = roots[index]
     x, z = directions[index]
     a = (root[0], root[1]+.14, root[2])
-    b = (root[0]+x*.27, root[1]+.35, root[2]+z*.05)
-    end = (root[0]+x*.23, root[1]+.26, root[2]+z*.25)
+    b = (root[0]+x*.27, root[1]+.34, root[2]+z*.05)
+    end = (root[0]+x*.23, root[1]+.29, root[2]+z*.23)
     v = 1-u
     point = [v**3*root[k]+3*v*v*u*a[k]+3*v*u*u*b[k]+u**3*end[k] for k in range(3)]
-    point[0] += math.sin(clock*1.4 + index*1.7 + u*3)*.027*u*u
-    point[1] += math.sin(clock*1.1 + index + u*4)*.025*u*u
-    point[2] += math.sin(clock*1.7 + index*2 + u*3.5)*.026*u*u
+    point[0] += math.sin(clock*.85 + index*1.7 + u*3)*.027*u*u
+    point[1] += math.sin(clock*.7 + index + u*4)*.025*u*u
+    point[2] += math.sin(clock*.9 + index*2 + u*3.5)*.026*u*u
     return tuple(root[k] + (point[k]-root[k])*extent for k in range(3))
 
 
@@ -64,22 +64,20 @@ class DoorJoint:
     def update(self, dt, requested, spheres):
         remaining = max(0.0, min(.1, dt))
         target = max(0.0, min(self.MAX_ANGLE, requested))
-        while remaining > 1e-8:
-            step = min(remaining, 1/120)
-            self.velocity += ((target-self.angle)*110 - self.velocity*21)*step
-            self.angle = max(0.0, min(self.MAX_ANGLE, self.angle+self.velocity*step))
-            remaining -= step
         self.contacts = sum(self.distance(p, self.angle) < radius+.002 for p, radius in spheres)
         if self.contacts:
-            # Positional contact constraint: the tentacle pushes the hinged leaf
-            # outward; closing resumes as its occupied volume retracts.
-            candidate = self.angle
-            while candidate < self.MAX_ANGLE:
+            # Contact changes the spring target, never teleports the leaf. Mesh
+            # projection supplies clearance while the door catches up.
+            for candidate in range(math.ceil(self.angle), 121, 5):
                 if all(self.distance(p, candidate) >= radius+.002 for p, radius in spheres):
+                    target = max(target, candidate)
                     break
-                candidate += .75
-            self.angle = min(self.MAX_ANGLE, candidate)
-            self.velocity = max(0.0, self.velocity)
+        while remaining > 1e-8:
+            step = min(remaining, 1/120)
+            self.velocity += ((target-self.angle)*12 - self.velocity*7)*step
+            self.velocity = max(-38, min(38, self.velocity))
+            self.angle = max(0.0, min(self.MAX_ANGLE, self.angle+self.velocity*step))
+            remaining -= step
         if self.angle < .15 and abs(self.velocity) < 1 and target == 0:
             self.angle = self.velocity = 0.0
         return self.angle
