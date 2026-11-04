@@ -1,5 +1,7 @@
 # Do not let Codex's private runtime DLLs enter the application bundle.
-$env:PATH = (($env:PATH -split ';' | Where-Object { $_ -notmatch 'codex-runtimes' }) -join ';')
+# CodexPrimaryRuntime also ships Poppler's ICU. Its icuuc.dll exports versioned
+# symbols and cannot replace Windows ICU, which Qt uses (e.g. ucnv_open).
+$env:PATH = (($env:PATH -split ';' | Where-Object { $_ -notmatch 'codex-runtimes|OpenAI\.CodexPrimaryRuntime' }) -join ';')
 $env:PATH += ";C:\Users\victh\AppData\Roaming\Python\Python314\Scripts"
 $panda3dDir = Join-Path $env:APPDATA 'Python\Python314\site-packages\panda3d'
 

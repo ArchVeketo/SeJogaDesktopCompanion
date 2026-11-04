@@ -17,7 +17,7 @@ Este é o roadmap canônico do projeto. As listas de próximos passos nos docume
 - **Música:** `music.py` consulta a sessão GSMTC e, no modo loopback, estima nível e batidas por RMS em worker de fundo.
 - **Bandeja e loop:** `window.py` implementa menu da bandeja, polling de eventos Qt, timers de animação/física e entrada de mouse.
 - **Configurações e atalhos:** diálogo da bandeja salva em TOML; escala, música, cliques, z-order e atalhos aplicam na hora. Tamanho e física pedem reinício. Atalhos incluem visibilidade, configurações, convocação, diagnóstico e captura.
-- **Build:** PyInstaller conclui o bundle `onedir`, mas neste ambiente ele falha ao iniciar em `from PySide6.QtCore import QTimer` com `DLL load failed: o procedimento especificado não foi encontrado`. A falha também ocorreu num probe Qt mínimo empacotado com PyInstaller e cx_Freeze; a execução fonte importa Qt e abre a aplicação.
+- **Build:** `build.ps1` recompila o bundle `onedir`, e o executável foi iniciado e conferido por captura de tela, com o modelo renderizado. A falha de importação de `QtCore` foi causada por `icuuc.dll` do Poppler incluída pelo PyInstaller a partir do PATH privado do Codex. Essa DLL não exporta `ucnv_open`, exigido pelo Qt; a ICU do Windows exporta. O filtro de PATH agora também exclui `OpenAI.CodexPrimaryRuntime`, além de `codex-runtimes`; o bundle reconstruído não inclui essa ICU incompatível.
 - **Ferramentas de diagnóstico:** no runtime fonte, o HUD foi conferido visualmente; atalhos `Ctrl+Alt+F11`, `Ctrl+Alt+P` e `Ctrl+Alt+R`, eixos locais e globais, captura avulsa, gravação limitada a 300 frames e metadados JSONL funcionaram. Uma gravação curta salvou 102 PNGs e 102 linhas JSONL. A gravação é opt-in; imagens são gravadas em segundo plano em `%LOCALAPPDATA%/ArchVeketo/SeJogaDesktopCompanion/debug-captures/`.
 - **Logs:** exceções não tratadas vão para `logs/companion.log`, com rotação e até três cópias antigas.
 
@@ -30,8 +30,7 @@ Essa verificação confirma o funcionamento no ambiente usado para o desenvolvim
 - **Configuração persistente:** carregamento e gravação TOML estão em `config.py`; não há hot-reload de um arquivo TOML alterado externamente.
 - **Música:** o módulo está integrado, mas ainda precisa ser validado com sessões reais e diferentes dispositivos. A arte do álbum ainda não é lida como imagem; a detecção de beat é inicial e precisa ser ajustada. `react_to_beat` e `dance_chance` existem na configuração, mas ainda não controlam as animações; a semântica deve ser definida após observar sessões reais.
 - **Distribuição:** não há instalador Inno Setup, assinatura ou teste em instalação limpa.
-- **Diagnóstico:** a captura registra o fundo magenta usado pelo chroma key do overlay. O HUD cabe na janela quadrada após ajustar sua margem; falta verificar a mesma interface no bundle executável quando o problema de QtCore for resolvido.
-- **Inicialização congelada:** localizar por que os probes empacotados não conseguem importar `QtCore`, apesar de o mesmo pacote importar no Python normal, antes de distribuir um novo executável.
+- **Diagnóstico:** a captura registra o fundo magenta usado pelo chroma key do overlay. O HUD foi conferido no runtime fonte. No executável corrigido, o atalho de gravação chegou ao handler, mas a criação da pasta em AppData falhou com `PermissionError` no contexto de execução do agente; o arquivo de log também não pôde ser aberto. A renderização do executável foi conferida por captura externa. Revalidar logs e gravação ao abrir pela sessão normal do usuário; o perfil existente também mantém `Ctrl+Alt+D`, indisponível nesta sessão, apesar do novo padrão `Ctrl+Alt+F11`.
 - **Logs:** mecanismo de exceções não tratadas e rotação implementado; falta avaliar os logs após uma sessão prolongada.
 
 O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loopback, configure `music.source = "loopback"` e instale o extra `music-loopback`; essa opção é separada do modo padrão.
@@ -74,7 +73,7 @@ Execute no PowerShell:
 .\build.ps1
 ```
 
-O script e o entry point `run_companion.py` foram incluídos no commit `96fea79`. A compilação verificada usou uma invocação PyInstaller equivalente à configuração do script. O executável fica dentro da pasta `dist\\SeJogaCompanion`; distribua a pasta completa do bundle `onedir`, não apenas o `.exe`.
+O script e o entry point `run_companion.py` foram incluídos no commit `96fea79`. A compilação mais recente foi executada pelo próprio `build.ps1`, após corrigir o filtro do PATH, e o executável resultante abriu a janela OpenGL e renderizou o modelo. O executável fica dentro da pasta `dist\\SeJogaCompanion`; distribua a pasta completa do bundle `onedir`, não apenas o `.exe`.
 
 ## Notas de precisão sobre o empacotamento
 
