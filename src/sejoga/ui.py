@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QMessageBox,
+    QLineEdit,
     QSpinBox,
     QVBoxLayout,
 )
@@ -33,7 +34,7 @@ class SettingsDialog(QDialog):
         super().__init__()
         self._settings = settings.model_copy(deep=True)
         self.setWindowTitle("Configurações do SeJoga Companion")
-        self.setMinimumWidth(360)
+        self.setMinimumWidth(420)
 
         self.size_input = QSpinBox()
         self.size_input.setRange(240, 960)
@@ -71,6 +72,11 @@ class SettingsDialog(QDialog):
         self.music_input.addItem("Áudio do sistema (loopback)", "loopback")
         self.music_input.setCurrentIndex(self.music_input.findData(settings.music.source))
 
+        self.hotkey_inputs = {
+            name: QLineEdit(getattr(settings.hotkeys, name))
+            for name in settings.hotkeys.model_dump()
+        }
+
         form = QFormLayout()
         form.addRow("Tamanho da janela", self.size_input)
         form.addRow("Escala do mascote", self.scale_input)
@@ -79,6 +85,15 @@ class SettingsDialog(QDialog):
         form.addRow(self.click_through_input)
         form.addRow("Posição da janela", self.z_order_input)
         form.addRow("Reação à música", self.music_input)
+        for name, label in (
+            ("toggle_overlay", "Mostrar/ocultar"),
+            ("open_settings", "Abrir configurações"),
+            ("summon", "Chamar mascote"),
+            ("toggle_debug", "HUD de diagnóstico"),
+            ("capture_frame", "Capturar frame"),
+            ("toggle_frame_recording", "Gravar frames"),
+        ):
+            form.addRow(f"Atalho: {label}", self.hotkey_inputs[name])
 
         self.restart_notice = QLabel(
             "Tamanho da janela e física são aplicados ao reiniciar o companion."
@@ -88,15 +103,7 @@ class SettingsDialog(QDialog):
             "Loopback requer a dependência opcional soundcard (extra music-loopback)."
         )
         self.loopback_notice.setWordWrap(True)
-        self.hotkey_notice = QLabel(
-            "Atalhos: "
-            f"{settings.hotkeys.toggle_overlay.upper()} mostra/oculta, "
-            f"{settings.hotkeys.open_settings.upper()} abre aqui e "
-            f"{settings.hotkeys.summon.upper()} chama o mascote; "
-            f"{settings.hotkeys.toggle_debug.upper()} diagnóstico, "
-            f"{settings.hotkeys.capture_frame.upper()} captura frame e "
-            f"{settings.hotkeys.toggle_frame_recording.upper()} grava sequência."
-        )
+        self.hotkey_notice = QLabel("Use combinações como ctrl+alt+m. As alterações são aplicadas ao salvar.")
         self.hotkey_notice.setWordWrap(True)
 
         buttons = QDialogButtonBox(
@@ -123,6 +130,21 @@ class SettingsDialog(QDialog):
         updated.window.mode = "desktop" if z_order == "desktop" else "overlay"
         updated.window.always_on_top = z_order == "topmost"
         updated.music.source = self.music_input.currentData()
+
+        normalized_hotkeys: dict[tuple[int, int], str] = {}
+        try:
+            for name, field in self.hotkey_inputs.items():
+                shortcut = field.text().strip().lower()
+                parsed = HotkeyManager._parse_shortcut(shortcut)
+                if parsed in normalized_hotkeys:
+                    raise ValueError(
+                        f"{shortcut} conflita com {normalized_hotkeys[parsed]}. Cada ação precisa de um atalho único."
+                    )
+                normalized_hotkeys[parsed] = shortcut
+                setattr(updated.hotkeys, name, shortcut)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Atalho inválido", str(exc))
+            return
 
         try:
             save_settings(updated)
@@ -191,6 +213,7 @@ class HotkeyManager:
         self._callbacks: dict[int, Callable[[], None]] = {}
         self._shortcuts: list[tuple[int, str, int, int]] = []
         self._registered_ids: list[int] = []
+        self.unavailable_shortcuts: list[str] = []
         self._thread_id = 0
         self._ready = threading.Event()
         self._bridge = _HotkeyBridge()
@@ -227,7 +250,10 @@ class HotkeyManager:
         for part in parts[:-1]:
             if part not in cls._MODIFIERS:
                 raise ValueError(f"unknown modifier in shortcut: {shortcut}")
-            modifiers |= cls._MODIFIERS[part]
+            modifier = cls._MODIFIERS[part]
+            if modifiers & modifier:
+                raise ValueError(f"modifier repeated in shortcut: {shortcut}")
+            modifiers |= modifier
         key_name = parts[-1]
         if key_name in cls._KEYS:
             key = cls._KEYS[key_name]
@@ -253,6 +279,7 @@ class HotkeyManager:
             if self._register(None, hotkey_id, modifiers, key):
                 self._registered_ids.append(hotkey_id)
             else:
+                self.unavailable_shortcuts.append(shortcut)
                 print(f"[hotkeys] shortcut unavailable: {shortcut}")
         self._ready.set()
 

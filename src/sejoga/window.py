@@ -386,17 +386,22 @@ class OverlayApp(ShowBase):
         self.music_listener.start()
         self._setup_tray()
         self._setup_timers()
+        self._hotkey_callbacks = {
+            "toggle_overlay": self.toggle_visibility,
+            "open_settings": self.open_settings_dialog,
+            "summon": self.summon_overlay,
+            "toggle_debug": self.toggle_debug_overlay,
+            "capture_frame": self.capture_debug_frame,
+            "toggle_frame_recording": self.toggle_frame_recording,
+        }
         self.hotkey_manager = HotkeyManager(
-            self.settings.hotkeys.model_dump(),
-            {
-                "toggle_overlay": self.toggle_visibility,
-                "open_settings": self.open_settings_dialog,
-                "summon": self.summon_overlay,
-                "toggle_debug": self.toggle_debug_overlay,
-                "capture_frame": self.capture_debug_frame,
-                "toggle_frame_recording": self.toggle_frame_recording,
-            },
+            self.settings.hotkeys.model_dump(), self._hotkey_callbacks
         )
+        if self.hotkey_manager.unavailable_shortcuts:
+            self.logger.warning(
+                "Unavailable global shortcuts: %s",
+                ", ".join(self.hotkey_manager.unavailable_shortcuts),
+            )
         self._apply_window_state()
 
         print("OverlayApp initialized.")
@@ -803,6 +808,7 @@ class OverlayApp(ShowBase):
             or previous.physics != updated.physics
         )
         music_changed = previous.music != updated.music
+        hotkeys_changed = previous.hotkeys != updated.hotkeys
 
         self.settings = updated
         self.settings_obj = updated
@@ -813,6 +819,25 @@ class OverlayApp(ShowBase):
         self._update_z_order()
         self._set_action_checked(self._topmost_action, self._is_topmost)
         self._set_action_checked(self._click_through_action, self._click_through)
+        if hotkeys_changed:
+            if self.hotkey_manager:
+                self.hotkey_manager.close()
+            self.hotkey_manager = HotkeyManager(
+                updated.hotkeys.model_dump(), self._hotkey_callbacks
+            )
+            unavailable = self.hotkey_manager.unavailable_shortcuts
+            if unavailable:
+                self.logger.warning(
+                    "Unavailable global shortcuts after settings update: %s",
+                    ", ".join(unavailable),
+                )
+                if self.tray_icon:
+                    self.tray_icon.showMessage(
+                        "Atalho indisponível",
+                        "Já está sendo usado por outro programa: " + ", ".join(unavailable),
+                        QSystemTrayIcon.MessageIcon.Warning,
+                        6000,
+                    )
         if self.renderer:
             self.renderer.set_visual_scale(updated.window.scale)
 

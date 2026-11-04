@@ -16,7 +16,7 @@ Este é o roadmap canônico do projeto. As listas de próximos passos nos docume
 - **Animação procedural:** `animation.py` escolhe idle, walk, run, drag, fall, dance ou sleep e interpola as poses do `rig.py`; idle alterna entre cinco personalidades, a porta abre para a frente e os braços da dança ficam recolhidos.
 - **Música:** `music.py` consulta a sessão GSMTC e, no modo loopback, estima nível e batidas por RMS em worker de fundo.
 - **Bandeja e loop:** `window.py` implementa menu da bandeja, polling de eventos Qt, timers de animação/física e entrada de mouse.
-- **Configurações e atalhos:** diálogo da bandeja salva em TOML; escala, música, cliques e z-order aplicam na hora. Tamanho e física pedem reinício. Atalhos globais mostram/ocultam, abrem as configurações e chamam o mascote.
+- **Configurações e atalhos:** diálogo da bandeja salva em TOML; escala, música, cliques, z-order e atalhos aplicam na hora. Tamanho e física pedem reinício. Atalhos incluem visibilidade, configurações, convocação, diagnóstico e captura.
 - **Build:** o bundle PyInstaller `onedir` foi recompilado com sucesso por `build.ps1`; nesta etapa o executável não foi iniciado.
 - **Ferramentas de diagnóstico:** HUD alternável por `Ctrl+Alt+D`, eixos locais e globais, captura avulsa por `Ctrl+Alt+P`, gravação limitada a 300 frames por `Ctrl+Alt+R` e metadados JSONL. A gravação é opt-in; imagens são gravadas em segundo plano em `%LOCALAPPDATA%/ArchVeketo/SeJogaDesktopCompanion/debug-captures/`.
 - **Logs:** exceções não tratadas vão para `logs/companion.log`, com rotação e até três cópias antigas.
@@ -26,7 +26,7 @@ Essa verificação confirma o funcionamento no ambiente usado para o desenvolvim
 ### Parcial ou ainda pendente
 
 - **Animação:** o controlador procedural cobre os estados básicos; ainda faltam reações acionadas pela música, mais poses/eventos e clipes exportados do Blockbench.
-- **Configuração visual:** o diálogo e os atalhos principais estão integrados; alterar tamanho ou física exige reiniciar o app.
+- **Configuração visual:** o diálogo e os atalhos editáveis estão integrados; atalhos são validados e reaplicados na hora. Se outro programa já usa uma combinação, o companion avisa. Alterar tamanho ou física exige reiniciar o app.
 - **Configuração persistente:** carregamento e gravação TOML estão em `config.py`; não há hot-reload de um arquivo TOML alterado externamente.
 - **Música:** o módulo está integrado, mas ainda precisa ser validado com sessões reais e diferentes dispositivos. A arte do álbum ainda não é lida como imagem; a detecção de beat é inicial e precisa ser ajustada.
 - **Distribuição:** não há instalador Inno Setup, assinatura ou teste em instalação limpa.
@@ -47,7 +47,6 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 
 ### 2. Configurações e controles — `src/sejoga/ui.py`
 
-- Permitir edição das hotkeys pelo diálogo; hoje elas são configuráveis pelo TOML.
 - Aplicar tamanho e ativação de física sem reiniciar, se a integração de janela e limites ficar estável.
 - Avaliar hot-reload de TOML com `QFileSystemWatcher`.
 
