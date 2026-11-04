@@ -649,9 +649,9 @@ def create_tentacle_geometry(
     profile = [(0, .044, 0), (.075, .083, -.007), (.15, .071, -.006),
                (.23, .056, .005), (.31, .041, .025), (.39, .023, .056), (.48, .001, .10)]
     profile = [(z * .9, radius * 1.15, bend * 1.15) for z, radius, bend in profile]
-    palette = [(.36, .09, .36, 1), (.48, .13, .40, 1), (.68, .17, .46, 1),
-               (.44, .10, .36, 1), (.27, .07, .32, 1), (.19, .055, .27, 1),
-               (.22, .06, .29, 1), (.28, .08, .34, 1)]
+    palette = [(.78, .045, .23, 1), (.94, .08, .32, 1), (1, .16, .42, 1),
+               (.86, .06, .28, 1), (.60, .025, .15, 1), (.42, .012, .085, 1),
+               (.49, .018, .11, 1), (.66, .03, .18, 1)]
     sides = 8
     rings = []
     for z, radius, bend in profile:
@@ -667,7 +667,7 @@ def create_tentacle_geometry(
         for side in range(sides):
             nxt = (side + 1) % sides
             add_quad(rings[row][side], rings[row][nxt], rings[row + 1][nxt], rings[row + 1][side])
-    center = add_vertex((0, 0, 0), (0, 0, -1), (.20, .06, .27, 1))
+    center = add_vertex((0, 0, 0), (0, 0, -1), (.42, .012, .085, 1))
     for side in range(sides):
         add_triangle(center, rings[0][(side + 1) % sides], rings[0][side])
 
@@ -678,10 +678,10 @@ def create_tentacle_geometry(
         base_y = body_radius * math.cos(math.pi / 8)
         cup_rings = []
         for ring_radius, depth, color in (
-            (radius, 0.0, (.72, .10, .43, 1)),
-            (radius, .025, (1, .25, .58, 1)),
-            (radius * .58, .026, (.47, .045, .30, 1)),
-            (radius * .45, .006, (.12, .025, .19, 1)),
+            (radius, 0.0, (.90, .055, .28, 1)),
+            (radius, .025, (1, .28, .52, 1)),
+            (radius * .58, .026, (.64, .02, .15, 1)),
+            (radius * .45, .006, (.25, .006, .045, 1)),
         ):
             cup = []
             for side in range(6):
@@ -695,7 +695,7 @@ def create_tentacle_geometry(
                 nxt = (side + 1) % 6
                 add_quad(cup_rings[row][side], cup_rings[row + 1][side],
                          cup_rings[row + 1][nxt], cup_rings[row][nxt])
-        cup_center = add_vertex((bend, base_y + .006, z), (0, 1, 0), (.12, .025, .19, 1))
+        cup_center = add_vertex((bend, base_y + .006, z), (0, 1, 0), (.25, .006, .045, 1))
         for side in range(6):
             add_triangle(cup_center, cup_rings[3][(side + 1) % 6], cup_rings[3][side])
 
