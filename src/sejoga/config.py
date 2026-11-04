@@ -113,6 +113,9 @@ class HotkeySettings(BaseModel):
     toggle_overlay: str = "ctrl+alt+t"
     open_settings: str = "ctrl+alt+s"
     summon: str = "ctrl+alt+m"
+    toggle_debug: str = "ctrl+alt+d"
+    capture_frame: str = "ctrl+alt+p"
+    toggle_frame_recording: str = "ctrl+alt+r"
 
 
 class Settings(BaseSettings):

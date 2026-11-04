@@ -61,6 +61,7 @@ sejoga/
 ├── physics.py           # (etapa 2) ScreenSpacePhysics: pymunk + shelves EnumWindows
 ├── music.py             # (etapa 2) MusicListener: GSMTU + soundcard + beat tracker
 ├── ui.py                # (etapa 2) SettingsDialog, TrayManager, hotkeys
+├── debug.py             # HUD/eixos, log rotativo e captura opcional com metadados
 └── app.py               # (etapa 2) Application: loop principal 60/120 Hz
 ```
 
@@ -297,4 +298,4 @@ O status detalhado e a ordem de prioridade ficam em [STATUS_E_PROXIMOS_PASSOS.md
 
 ---
 
-*Próximo marco sugerido: HUD de diagnóstico, eixos de referência e captura de frames sob demanda.*
+*Próximo marco sugerido: validar o HUD de diagnóstico e as capturas em uma sessão interativa.*

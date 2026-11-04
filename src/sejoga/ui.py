@@ -92,7 +92,10 @@ class SettingsDialog(QDialog):
             "Atalhos: "
             f"{settings.hotkeys.toggle_overlay.upper()} mostra/oculta, "
             f"{settings.hotkeys.open_settings.upper()} abre aqui e "
-            f"{settings.hotkeys.summon.upper()} chama o mascote."
+            f"{settings.hotkeys.summon.upper()} chama o mascote; "
+            f"{settings.hotkeys.toggle_debug.upper()} diagnóstico, "
+            f"{settings.hotkeys.capture_frame.upper()} captura frame e "
+            f"{settings.hotkeys.toggle_frame_recording.upper()} grava sequência."
         )
         self.hotkey_notice.setWordWrap(True)
 

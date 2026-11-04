@@ -1,7 +1,7 @@
 # SeJogaDesktopCompanion — Status atual e próximos passos
 
 **Atualizado:** 2026-11-04  
-**Base de trabalho:** commits `363276c` e seguintes.
+**Base de trabalho:** commits `363276c`, `039d97a` e seguintes.
 
 Este é o roadmap canônico do projeto. As listas de próximos passos nos documentos de pesquisa e arquitetura foram escritas antes de várias etapas serem implementadas; consulte esta página para o estado atual.
 
@@ -17,7 +17,9 @@ Este é o roadmap canônico do projeto. As listas de próximos passos nos docume
 - **Música:** `music.py` consulta a sessão GSMTC e, no modo loopback, estima nível e batidas por RMS em worker de fundo.
 - **Bandeja e loop:** `window.py` implementa menu da bandeja, polling de eventos Qt, timers de animação/física e entrada de mouse.
 - **Configurações e atalhos:** diálogo da bandeja salva em TOML; escala, música, cliques e z-order aplicam na hora. Tamanho e física pedem reinício. Atalhos globais mostram/ocultam, abrem as configurações e chamam o mascote.
-- **Build:** há configuração para o bundle PyInstaller `onedir` em `build.ps1`. O executável recém-compilado foi iniciado neste ambiente e permaneceu em execução durante a verificação.
+- **Build:** o bundle PyInstaller `onedir` foi recompilado com sucesso por `build.ps1`; nesta etapa o executável não foi iniciado.
+- **Ferramentas de diagnóstico:** HUD alternável por `Ctrl+Alt+D`, eixos locais e globais, captura avulsa por `Ctrl+Alt+P`, gravação limitada a 300 frames por `Ctrl+Alt+R` e metadados JSONL. A gravação é opt-in; imagens são gravadas em segundo plano em `%LOCALAPPDATA%/ArchVeketo/SeJogaDesktopCompanion/debug-captures/`.
+- **Logs:** exceções não tratadas vão para `logs/companion.log`, com rotação e até três cópias antigas.
 
 Essa verificação confirma o funcionamento no ambiente usado para o desenvolvimento. Não substitui teste em uma máquina limpa nem valida todas as interações do overlay.
 
@@ -28,19 +30,14 @@ Essa verificação confirma o funcionamento no ambiente usado para o desenvolvim
 - **Configuração persistente:** carregamento e gravação TOML estão em `config.py`; não há hot-reload de um arquivo TOML alterado externamente.
 - **Música:** o módulo está integrado, mas ainda precisa ser validado com sessões reais e diferentes dispositivos. A arte do álbum ainda não é lida como imagem; a detecção de beat é inicial e precisa ser ajustada.
 - **Distribuição:** não há instalador Inno Setup, assinatura ou teste em instalação limpa.
+- **Diagnóstico:** HUD, gravação e logs estão empacotados; a imagem salva e a sequência de frames ainda precisam de inspeção visual numa sessão interativa.
+- **Logs:** mecanismo de exceções não tratadas e rotação implementado; falta avaliar os logs após uma sessão prolongada.
 
 O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loopback, configure `music.source = "loopback"` e instale o extra `music-loopback`; essa opção é separada do modo padrão.
 
 ## Próximos passos priorizados
 
-### 1. Ferramentas de diagnóstico — criar HUD e captura
-
-- Mostrar FPS, estado/persona, posição e velocidade da física, dimensões do modelo e parâmetros de câmera.
-- Desenhar eixos locais do modelo e eixos globais da cena para facilitar o ajuste do rig.
-- Capturar screenshot sob demanda e oferecer gravação opcional de frames com metadados, sem gravar continuamente por padrão.
-- Registrar exceções e eventos relevantes em log com rotação ou limite de tamanho.
-
-### 2. Música — validar e refinar `src/sejoga/music.py`
+### 1. Música — validar e refinar `src/sejoga/music.py`
 
 - Validar título/artista/álbum e status com sessões GSMTC reais.
 - Instalar o extra `music-loopback` e validar captura WASAPI em diferentes saídas de áudio.
@@ -48,19 +45,19 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 - Ler e expor a arte do álbum quando houver uma interface que a apresente.
 - Ajustar a intensidade de dança e os gatilhos de beat com base na captura real.
 
-### 3. Configurações e controles — `src/sejoga/ui.py`
+### 2. Configurações e controles — `src/sejoga/ui.py`
 
 - Permitir edição das hotkeys pelo diálogo; hoje elas são configuráveis pelo TOML.
 - Aplicar tamanho e ativação de física sem reiniciar, se a integração de janela e limites ficar estável.
 - Avaliar hot-reload de TOML com `QFileSystemWatcher`.
 
-### 4. Animações — expansão de `animation.py` e Blockbench
+### 3. Animações — expansão de `animation.py` e Blockbench
 
 - Refinar o controlador e integrar eventos de clique/colisão/beat às transições já implementadas.
 - Criar/exportar clipes `idle`, `walk`, `run`, `jump`, `throw`, `dance`, `hit`, `sleep`, `wake`, `cling` e `peek` no Blockbench.
 - Ligar os estados a eventos de física, mouse e música.
 
-### 5. Build portável e instalador
+### 4. Build portável e instalador
 
 - Remover caminhos absolutos da instalação Python do ambiente atual em `build.ps1` e `SeJogaCompanion.spec`.
 - Manter um único fluxo de build documentado e conferir que o `.spec` inclua todos os dados e plugins necessários ao bundle.

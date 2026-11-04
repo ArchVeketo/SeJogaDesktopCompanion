@@ -82,6 +82,7 @@ from .config import load_settings, save_settings, Settings
 from .physics import ScreenSpacePhysics, create_physics, PhysicsState
 from .music import MusicListener
 from .ui import HotkeyManager, SettingsDialog
+from .debug import DebugTools, configure_logging
 
 # ============================================================
 # Win32 Constants & Helpers
@@ -161,6 +162,7 @@ class Panda3DRenderer:
         self._view_height = 1.0
         self._view_target_z = 1.0
         self._fit_scale = 1.0
+        self._model_dimensions = Vec3(0, 0, 0)
         self._model_center = Vec3(0, 0, 0)
         self._model_min_z = 0.0
         self._model_radius_px = 0.0
@@ -237,6 +239,7 @@ class Panda3DRenderer:
         target_height = self._view_height * self.FRAME_FILL
         fit_scale = min(target_width / dimensions.x, target_height / dimensions.z)
         self._fit_scale = fit_scale
+        self._model_dimensions = dimensions
         self._model_center = center
         self._model_min_z = float(minimum.z)
         self._model_radius_px = self.showbase.settings.physics.mascot_radius
@@ -343,6 +346,7 @@ class OverlayApp(ShowBase):
         self.renderer: Optional = None
         self.physics: Optional = None
         self.music_listener: Optional[MusicListener] = None
+        self.debug_tools: Optional[DebugTools] = None
 
         self._is_topmost = settings.window.always_on_top
         self._is_bottom = settings.window.mode == "desktop"
@@ -360,8 +364,11 @@ class OverlayApp(ShowBase):
         self._settings_dialog: Optional[SettingsDialog] = None
         self._topmost_action = None
         self._click_through_action = None
+        self._debug_action = None
+        self._recording_action = None
         self.hotkey_manager: Optional[HotkeyManager] = None
 
+        self.logger = configure_logging()
         self._drag_active = False
         self._drag_start_pos = (0, 0)
         self._window_start_pos = (0, 0)
@@ -373,6 +380,8 @@ class OverlayApp(ShowBase):
         self._init_physics()
         if self.renderer and self.renderer.rig:
             self.animation_controller = AnimationController(self.renderer.rig)
+        if self.renderer:
+            self.debug_tools = DebugTools(self, self._on_recording_changed)
         self.music_listener = MusicListener(self.settings.music)
         self.music_listener.start()
         self._setup_tray()
@@ -383,6 +392,9 @@ class OverlayApp(ShowBase):
                 "toggle_overlay": self.toggle_visibility,
                 "open_settings": self.open_settings_dialog,
                 "summon": self.summon_overlay,
+                "toggle_debug": self.toggle_debug_overlay,
+                "capture_frame": self.capture_debug_frame,
+                "toggle_frame_recording": self.toggle_frame_recording,
             },
         )
         self._apply_window_state()
@@ -587,6 +599,56 @@ class OverlayApp(ShowBase):
         self.renderer.apply_rig_pose(pose)
         if state:
             self._sync_model_with_physics()
+        if self.debug_tools:
+            self.debug_tools.update(dt)
+
+    def set_debug_overlay(self, enabled: bool) -> None:
+        if self.debug_tools:
+            self.debug_tools.set_visible(enabled)
+            self._set_action_checked(self._debug_action, enabled)
+
+    def toggle_debug_overlay(self) -> None:
+        if self.debug_tools:
+            self.set_debug_overlay(not self.debug_tools.visible)
+
+    def capture_debug_frame(self) -> None:
+        if not self.debug_tools:
+            return
+        path = self.debug_tools.capture_once()
+        if self.tray_icon:
+            if path:
+                self.tray_icon.showMessage(
+                    "Frame capturado",
+                    str(path),
+                    QSystemTrayIcon.MessageIcon.Information,
+                    4000,
+                )
+            else:
+                self.tray_icon.showMessage(
+                    "Captura falhou",
+                    "Veja o log para detalhes.",
+                    QSystemTrayIcon.MessageIcon.Warning,
+                    4000,
+                )
+
+    def set_frame_recording(self, enabled: bool) -> None:
+        if self.debug_tools:
+            self.debug_tools.set_recording(enabled)
+
+    def toggle_frame_recording(self) -> None:
+        if self.debug_tools:
+            self.debug_tools.toggle_recording()
+
+    def _on_recording_changed(self, recording: bool) -> None:
+        self._set_action_checked(self._recording_action, recording)
+        if self.tray_icon:
+            message = "Gravação iniciada (máximo 300 frames)." if recording else "Gravação encerrada."
+            self.tray_icon.showMessage(
+                "Diagnóstico",
+                message,
+                QSystemTrayIcon.MessageIcon.Information,
+                4000,
+            )
 
     def _setup_tray(self) -> None:
         """Cria o ícone e o menu da bandeja do sistema."""
@@ -612,6 +674,15 @@ class OverlayApp(ShowBase):
 
         settings_action = self.tray_menu.addAction("Configurações...")
         settings_action.triggered.connect(lambda _checked=False: self.open_settings_dialog())
+
+        self._debug_action = self.tray_menu.addAction("Diagnóstico (Ctrl+Alt+D)")
+        self._debug_action.setCheckable(True)
+        self._debug_action.toggled.connect(self.set_debug_overlay)
+        capture_action = self.tray_menu.addAction("Capturar frame (Ctrl+Alt+P)")
+        capture_action.triggered.connect(lambda _checked=False: self.capture_debug_frame())
+        self._recording_action = self.tray_menu.addAction("Gravar frames (Ctrl+Alt+R)")
+        self._recording_action.setCheckable(True)
+        self._recording_action.toggled.connect(self.set_frame_recording)
 
         self.tray_menu.addSeparator()
         quit_action = self.tray_menu.addAction("Sair")
@@ -789,6 +860,8 @@ class OverlayApp(ShowBase):
             self.tray_icon.hide()
         if self.music_listener:
             self.music_listener.stop()
+        if self.debug_tools:
+            self.debug_tools.close()
         if self.hotkey_manager:
             self.hotkey_manager.close()
         self._persist_settings()
