@@ -21,7 +21,7 @@ from typing import Optional, Tuple
 
 # Load Qt before Panda3D: their Windows bundles ship different MSVC runtime
 # DLLs, and the first loaded copy wins for the whole process.
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QActionGroup, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 # Win32 API
@@ -293,12 +293,12 @@ class Panda3DRenderer:
         unit_scale = float(self._view_height / self.height / self.model_np.getScale().x)
         head_node = self._rig_nodes["head"]
         spawn_points = [
-            self.model_np.getRelativePoint(head_node, Vec3(.025, .065, .19)),
-            self.model_np.getRelativePoint(head_node, Vec3(-.035, .065, .085)),
-            self.model_np.getRelativePoint(head_node, Vec3(-.02, .065, .16)),
-            self.model_np.getRelativePoint(head_node, Vec3(.035, .065, .10)),
-            self.model_np.getRelativePoint(head_node, Vec3(0, .1, .12)),
-            self.model_np.getRelativePoint(head_node, Vec3(0, .03, .14)),
+            self.model_np.getRelativePoint(head_node, Vec3(.025, .20, .19)),
+            self.model_np.getRelativePoint(head_node, Vec3(-.035, .20, .085)),
+            self.model_np.getRelativePoint(head_node, Vec3(-.02, .20, .16)),
+            self.model_np.getRelativePoint(head_node, Vec3(.035, .20, .10)),
+            self.model_np.getRelativePoint(head_node, Vec3(0, .23, .12)),
+            self.model_np.getRelativePoint(head_node, Vec3(0, .16, .14)),
         ]
         self.tentacle_pool = TentaclePool(
             self.rig, self.model_np, self.outline_np, spawn_points,
@@ -351,11 +351,12 @@ void main() {
 """
         fragment = """#version 130
 uniform vec4 outline_color;
+uniform bool outline_enabled;
 uniform sampler2D p3d_Texture0;
 in vec2 outline_uv;
 out vec4 fragColor;
 void main() {
-    if (texture(p3d_Texture0, outline_uv).a < 0.05) discard;
+    if (!outline_enabled || texture(p3d_Texture0, outline_uv).a < 0.05) discard;
     fragColor = outline_color;
 }
 """
@@ -369,12 +370,15 @@ void main() {
     def set_outline_settings(self, settings) -> None:
         if not self.outline_np:
             return
+        self.outline_np.setShaderInput("outline_enabled", bool(settings.outline_enabled))
         if not settings.outline_enabled:
-            # Stash the whole duplicate subtree so child geometry added under
-            # the outline root can never remain visible on its own.
+            # Disable both the duplicate model and all child shells. The shader
+            # guard also suppresses stale per-mesh copies after live settings changes.
+            self.outline_np.hide()
             self.outline_np.stash()
             return
         self.outline_np.unstash()
+        self.outline_np.show()
         color = settings.outline_color.lstrip("#")
         rgb = tuple(int(color[index:index + 2], 16) / 255 for index in (0, 2, 4))
         self.outline_np.setShaderInput("outline_color", (*rgb, 1.0))
@@ -479,7 +483,7 @@ void main() {
             base = self._rig_base_hpr[forearm][2]
             bend = direction * (node.getR()-base)
             inward = max(0.0, direction*(upper.getR()-self._rig_base_hpr[arm][2]))
-            bend = min(bend, -max(0.0, inward-20)*1.2)
+            bend = min(bend, -max(0.0, inward-42)*.32)
             node.setR(base + direction*bend)
             self._outline_nodes[forearm].setHpr(node.getHpr())
 
@@ -498,13 +502,13 @@ void main() {
             self.tentacle_director.update(dt, 0.0, controller.idle_personality)
         self._tentacles_were_visible = visible
         for tentacle in self.tentacle_pool.tentacles:
-            update_tentacle_render(tentacle)
             active = tentacle.state != TentacleState.DORMANT
-            for seg in tentacle.segments:
-                if seg.node:
-                    (seg.node.show if active else seg.node.hide)()
-                if seg.outline_node:
-                    (seg.outline_node.show if active else seg.outline_node.hide)()
+            if active:
+                update_tentacle_render(tentacle)
+            if tentacle.mesh_node:
+                (tentacle.mesh_node.show if active else tentacle.mesh_node.hide)()
+            if tentacle.outline_mesh_node:
+                (tentacle.outline_mesh_node.show if active else tentacle.outline_mesh_node.hide)()
         door = self._rig_nodes.get("door")
         if door:
             base_h, base_p, base_r = self._rig_base_hpr["door"]
@@ -596,6 +600,7 @@ class OverlayApp(ShowBase):
         self._setup_mouse_hooks()
         if self.renderer and self.renderer.rig:
             self.animation_controller = AnimationController(self.renderer.rig)
+            self.animation_controller.set_idle_personality(self.settings.behavior.idle_personality)
         if self.renderer:
             self.debug_tools = DebugTools(
                 self,
@@ -965,7 +970,10 @@ class OverlayApp(ShowBase):
     def _setup_tray(self) -> None:
         """Cria o ícone e o menu da bandeja do sistema."""
         icon_path = brand_dir() / "companion.ico"
-        self.tray_icon = QSystemTrayIcon(QIcon(str(icon_path)), self.qt_app)
+        icon = QIcon(str(icon_path))
+        if icon.isNull():
+            icon = QIcon(str(icon_path.with_suffix(".png")))
+        self.tray_icon = QSystemTrayIcon(icon, self.qt_app)
         self.tray_icon.setToolTip("SeJoga Desktop Companion")
 
         self.tray_menu = QMenu()
@@ -993,6 +1001,27 @@ class OverlayApp(ShowBase):
         self._recording_action.toggled.connect(self.set_frame_recording)
 
         self.tray_menu.addSeparator()
+        personality_menu = self.tray_menu.addMenu("Personalidade do idle")
+        personality_group = QActionGroup(personality_menu)
+        personality_group.setExclusive(True)
+        self._personality_actions = {}
+        for value, label in (
+            ("auto", "Automática"),
+            ("calm", "Tranquila"),
+            ("curious", "Curiosa"),
+            ("playful", "Brincalhona"),
+            ("shy", "Tímida"),
+            ("confident", "Confiante"),
+        ):
+            action = personality_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(self.settings.behavior.idle_personality == value)
+            personality_group.addAction(action)
+            action.triggered.connect(
+                lambda _checked=False, personality=value: self._set_idle_personality(personality)
+            )
+            self._personality_actions[value] = action
+
         for label, kind in (("Acenar", "wave"), ("Alongar", "stretch"), ("Mostrar tentáculos", "peek")):
             action = self.tray_menu.addAction(label)
             action.triggered.connect(lambda _checked=False, kind=kind: self.animation_controller.interact(kind))
@@ -1002,7 +1031,21 @@ class OverlayApp(ShowBase):
 
         self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.activated.connect(self._on_tray_activated)
+        self.tray_icon.setVisible(True)
         self.tray_icon.show()
+        QApplication.processEvents()
+        if icon.isNull() or not self.tray_icon.isVisible():
+            self.logger.warning("System tray icon did not become visible (icon=%s, tray_available=%s)",
+                                icon_path, QSystemTrayIcon.isSystemTrayAvailable())
+
+    def _set_idle_personality(self, personality: str) -> None:
+        """Aplica e salva a personalidade sem interromper o gesto atual."""
+        if personality not in {"auto", "calm", "curious", "playful", "shy", "confident"}:
+            return
+        self.settings.behavior.idle_personality = personality
+        if self.animation_controller:
+            self.animation_controller.set_idle_personality(personality)
+        self._persist_settings()
 
     def _setup_timers(self) -> None:
         """Agenda a animação e bombeia os eventos do Qt junto ao loop Panda3D."""

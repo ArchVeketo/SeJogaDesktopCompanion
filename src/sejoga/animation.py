@@ -78,6 +78,24 @@ class AnimationController:
         self.drag_intensity = 0.0
         self._release_time = 1.0
         self._release_grip = 0.0
+        self._personality_locked = False
+
+    def set_idle_personality(self, personality: IdlePersonality | str | None) -> None:
+        """Escolhe uma personalidade ou devolve o idle à rotação automática."""
+        if personality is None or personality == "auto":
+            self._personality_locked = False
+            self._personality_elapsed = 0.0
+            self._personality_interval = self._personality_rng.uniform(10.0, 16.0)
+            return
+        selected = IdlePersonality(personality)
+        if selected == self.idle_personality and self._personality_locked:
+            return
+        self.idle_personality = selected
+        self._personality_locked = True
+        self._personality_elapsed = 0.0
+        self._transition_from = dict(self._pose)
+        self._active_transition_seconds = max(self.transition_seconds, 1.0)
+        self.state_time = 0.0
 
     REACTION_SECONDS = {
         AnimationState.CLICK: 0.5,
@@ -212,7 +230,7 @@ class AnimationController:
         else:
             self.idle_time = 0.0
 
-        if next_state == AnimationState.IDLE and idle_enabled:
+        if next_state == AnimationState.IDLE and idle_enabled and not self._personality_locked:
             self._personality_elapsed += dt
             if self._personality_elapsed >= self._personality_interval:
                 choices = [

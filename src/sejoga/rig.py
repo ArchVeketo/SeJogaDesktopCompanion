@@ -21,6 +21,25 @@ from math import radians
 
 from .model import Model
 
+
+def _idle_pulse(t: float, period: float, attack: float, hold: float, release: float, offset: float = 0.0) -> float:
+    """One eased gesture followed by a readable rest inside an idle loop."""
+    phase = (t + offset) % period
+
+    def ease(value: float) -> float:
+        value = max(0.0, min(1.0, value))
+        return value * value * (3.0 - 2.0 * value)
+
+    if phase < attack:
+        return ease(phase / attack)
+    phase -= attack
+    if phase < hold:
+        return 1.0
+    phase -= hold
+    if phase < release:
+        return 1.0 - ease(phase / release)
+    return 0.0
+
 #: Grupos que formam o rig animável, por região do corpo.
 HEAD_GROUPS = ("head", "door")
 BODY_GROUPS = ("body", "legs")
@@ -120,70 +139,65 @@ def pose_idle(
     """Idle com personalidade própria, sem deixar de respeitar a dobradiça."""
     from math import sin
 
-    breath = sin(t * 0.8)
-    sway = sin(t * 0.55)
-
-    # Finger micro-movement: breathing + occasional twitch
-    finger_breath = sin(t * 0.8) * 3.0
-    finger_twitch = sin(t * 7.3) * 1.5
+    breath = sin(t * 0.72)
+    sway = sin(t * 0.42)
+    # Keep small movements slow enough to read as weight shifts, not vibration.
+    finger_breath = sin(t * 0.48) * 2.0
 
     if personality == IdlePersonality.CURIOUS:
-        look = sin(t * 0.7)
-        tilt = sin(t * 0.39)
-        rig.set_rotation("body", x=breath * 1.1, y=sway * 2.0, z=tilt * 1.5)
-        rig.set_rotation("head", x=-4.0 + sin(t * 0.9) * 2.0, y=look * 15.0, z=tilt * 7.0)
+        look = sin(t * 0.43)
+        tilt = sin(t * 0.31)
+        rig.set_rotation("body", x=breath * 0.9, y=sway * 1.5, z=tilt * 1.2)
+        rig.set_rotation("head", x=-3.0 + sin(t * 0.62) * 1.5, y=look * 16.0, z=tilt * 8.0)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=sin(t * 0.8) * 5.0, z=36.0)
-        rig.set_rotation("left-arm", x=-sin(t * 0.8) * 3.0, z=-22.0)
-        rig.set_rotation("ant-arm", x=4.0 + sin(t * 0.9) * 7.0, z=tilt * 8.0)
-        rig.set_rotation("ant-arm2", x=4.0 - sin(t * 0.9) * 4.0, z=-tilt * 5.0)
-        # Fingers: curious = more expressive
-        rig.set_rotation("fingers", z=finger_breath + finger_twitch)
-        rig.set_rotation("fingers2", z=finger_breath - finger_twitch)
+        rig.set_rotation("right-arm", x=sin(t * 0.43) * 3.0, z=14.0)
+        rig.set_rotation("left-arm", x=-sin(t * 0.43 + .4) * 2.5, z=-38.0)
+        rig.set_rotation("ant-arm", x=3.0 + sin(t * 0.48) * 4.5, z=9.0 + tilt * 5.0)
+        rig.set_rotation("ant-arm2", x=3.0 - sin(t * 0.48 + .5) * 3.5, z=-5.0 - tilt * 4.0)
+        rig.set_rotation("fingers", z=finger_breath + sin(t * .33) * 1.0)
+        rig.set_rotation("fingers2", z=finger_breath - sin(t * .33 + .6) * 1.0)
     elif personality == IdlePersonality.PLAYFUL:
-        bounce = sin(t * 2.0)
-        rig.set_rotation("body", x=abs(bounce) * 3.2, y=sway * 3.0, z=bounce * 3.0)
-        rig.set_rotation("head", x=-abs(bounce) * 2.5, y=sin(t * 1.0) * 7.0, z=bounce * 4.0)
+        bounce = sin(t * 1.12)
+        rig.set_rotation("body", x=abs(bounce) * 2.2, y=sway * 2.2, z=bounce * 2.2)
+        rig.set_rotation("head", x=-abs(bounce) * 1.8, y=sin(t * .72) * 6.0, z=bounce * 3.0)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=bounce * 12.0, z=38.0)
-        rig.set_rotation("left-arm", x=-bounce * 12.0, z=-38.0)
-        rig.set_rotation("ant-arm", x=sin(t * 2.0 + 0.5) * 13.0, z=bounce * 10.0)
-        rig.set_rotation("ant-arm2", x=-sin(t * 2.0 + 0.5) * 13.0, z=-bounce * 10.0)
-        # Fingers: playful = more movement
-        rig.set_rotation("fingers", z=finger_breath * 1.5 + finger_twitch * 2.0)
-        rig.set_rotation("fingers2", z=finger_breath * 1.5 - finger_twitch * 2.0)
+        rig.set_rotation("right-arm", x=bounce * 6.0, z=27.0 + bounce * 4.0)
+        rig.set_rotation("left-arm", x=-bounce * 6.0, z=-28.0 - bounce * 4.0)
+        rig.set_rotation("ant-arm", x=sin(t * 1.12 + .35) * 8.0, z=7.0 + bounce * 8.0)
+        rig.set_rotation("ant-arm2", x=-sin(t * 1.12 + .35) * 8.0, z=-7.0 - bounce * 8.0)
+        rig.set_rotation("fingers", z=finger_breath * 1.4 + sin(t * .78) * 2.0)
+        rig.set_rotation("fingers2", z=finger_breath * 1.4 - sin(t * .78 + .45) * 2.0)
     elif personality == IdlePersonality.SHY:
-        rig.set_rotation("body", x=1.0 + breath * 0.7, y=-3.0 + sway * 1.2, z=-2.0)
-        rig.set_rotation("head", x=8.0 + breath, y=sin(t * 0.42) * 5.0, z=-6.0 + sway * 2.0)
+        rig.set_rotation("body", x=1.0 + breath * 0.6, y=-2.0 + sway * 1.0, z=-1.5)
+        rig.set_rotation("head", x=6.0 + breath * .7, y=sin(t * 0.34) * 4.0, z=-5.0 + sway * 1.5)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=3.0, z=36.0)
-        rig.set_rotation("left-arm", x=-3.0, z=-36.0)
-        rig.set_rotation("ant-arm", x=10.0 + breath, z=sin(t * 0.7) * 3.0)
-        rig.set_rotation("ant-arm2", x=10.0 + breath, z=-sin(t * 0.7) * 3.0)
-        # Fingers: shy = subtle
-        rig.set_rotation("fingers", z=finger_breath * 0.5)
-        rig.set_rotation("fingers2", z=finger_breath * 0.5)
+        rig.set_rotation("right-arm", x=2.0, z=42.0)
+        rig.set_rotation("left-arm", x=-2.0, z=-42.0)
+        rig.set_rotation("ant-arm", x=7.0 + breath * 1.5, z=16.0 + sin(t * 0.36) * 3.0)
+        rig.set_rotation("ant-arm2", x=7.5 + breath * 1.2, z=-16.0 - sin(t * 0.36 + .25) * 3.0)
+        rig.set_rotation("fingers", z=finger_breath * .7)
+        rig.set_rotation("fingers2", z=finger_breath * .7 + 1.0)
     elif personality == IdlePersonality.CONFIDENT:
-        nod = sin(t * 0.46)
-        rig.set_rotation("body", x=-2.5 + breath * 0.8, y=sway * 1.0, z=sin(t * 0.34) * 1.5)
-        rig.set_rotation("head", x=-5.0 + nod * 2.0, y=sin(t * 0.32) * 5.0, z=nod * 2.0)
+        nod = sin(t * 0.4)
+        punctuation = _idle_pulse(t, 6.4, .3, .18, .7, offset=1.1)
+        rig.set_rotation("body", x=-2.5 + breath * 0.6, y=sway * 1.0, z=sin(t * 0.3) * 1.2)
+        rig.set_rotation("head", x=-4.0 + nod * 1.8 - punctuation * 3.0, y=sin(t * 0.29) * 5.0, z=nod * 1.5)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=1.0, z=40.0)
-        rig.set_rotation("left-arm", x=-1.0, z=-40.0)
-        rig.set_rotation("ant-arm", x=2.0 + sin(t * 0.5) * 3.0, z=2.0)
-        rig.set_rotation("ant-arm2", x=2.0 - sin(t * 0.5) * 3.0, z=-2.0)
-        # Fingers: confident = relaxed but alive
-        rig.set_rotation("fingers", z=finger_breath + finger_twitch * 0.5)
-        rig.set_rotation("fingers2", z=finger_breath - finger_twitch * 0.5)
+        rig.set_rotation("right-arm", x=sin(t * .3) * 1.5, z=8.0)
+        rig.set_rotation("left-arm", x=-sin(t * .3 + .4) * 1.5, z=-8.0)
+        rig.set_rotation("ant-arm", x=2.0 + sin(t * 0.4) * 2.5, z=3.0 + sway * 2.0)
+        rig.set_rotation("ant-arm2", x=2.0 - sin(t * 0.4 + .4) * 2.5, z=-3.0 - sway * 2.0)
+        rig.set_rotation("fingers", z=finger_breath)
+        rig.set_rotation("fingers2", z=finger_breath - 1.0)
     else:
-        rig.set_rotation("body", x=breath * 1.1, y=sway * 1.7, z=sway * 1.2)
-        rig.set_rotation("head", x=sin(t * 0.7) * 1.5, y=sin(t * 0.48) * 3.5)
+        rig.set_rotation("body", x=breath * 0.9, y=sway * 1.5, z=sway * 1.0)
+        rig.set_rotation("head", x=sin(t * 0.52) * 1.3, y=sin(t * 0.36) * 3.0)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=sin(t * 0.7) * 3.0, z=28.0 - breath * 2.0)
-        rig.set_rotation("left-arm", x=-sin(t * 0.7) * 3.0, z=-28.0 + breath * 2.0)
-        rig.set_rotation("ant-arm", x=4.0, z=sin(t * 0.9) * 5.0)
-        rig.set_rotation("ant-arm2", x=4.0, z=-sin(t * 0.9) * 5.0)
-        # Fingers: calm = subtle breathing
+        rig.set_rotation("right-arm", x=sin(t * 0.36) * 2.5, z=34.0 + sin(t * .4) * 2.5 - breath * .6)
+        rig.set_rotation("left-arm", x=-sin(t * 0.36) * 2.5, z=-35.0 - sin(t * .4 + .3) * 2.5 + breath * .6)
+        rig.set_rotation("ant-arm", x=3.0 + sin(t * .42) * 2.0, z=sin(t * 0.42) * 5.0)
+        rig.set_rotation("ant-arm2", x=3.0 - sin(t * .42 + .35) * 2.0, z=-sin(t * 0.42 + .35) * 5.0)
+        # Calm hands breathe with the shoulders; no rapid idle twitch.
         rig.set_rotation("fingers", z=finger_breath)
         rig.set_rotation("fingers2", z=finger_breath)
 
@@ -254,8 +268,8 @@ def pose_drag(rig: Rig, t: float, direction: float = 0.0, drag_intensity: float 
     grip = max(0, min(1, drag_intensity))
     # Finger curl: 0° = open, 45° = closed
     finger_curl = 45.0 * grip
-    rig.set_rotation("fingers", z=finger_curl)
-    rig.set_rotation("fingers2", z=-finger_curl)
+    rig.set_rotation("fingers", z=8 + 24*grip + sin(t*5)*3)
+    rig.set_rotation("fingers2", z=-8 - 24*grip - sin(t*5+.4)*3)
 
     direction = max(-1.0, min(1.0, direction))
     rig.set_rotation("body", y=-direction * 10.0, z=direction * 8.0)
@@ -412,11 +426,26 @@ def pose_secondary(rig: Rig, t: float, state: str, personality=IdlePersonality.C
     ):
         arm = rig.current[forearm]
         rig.set_rotation(shoulder, x=max(-3, min(3, degrees(arm.x)*.12)))
-        rig.set_rotation(hand, x=-degrees(arm.x)*.12 + sin(t*.8-side*.35)*1.5,
-                         z=side*sin(t*.65-side*.3)*2)
+        arm_roll = degrees(arm.z)
+        wrist_follow = max(-12.0, min(12.0, -arm_roll*.28))
+        hand_sway = sin(t*.58-side*.35)*4.5
+        rig.set_rotation(hand, x=-degrees(arm.x)*.24 + sin(t*.52-side*.3)*2.0,
+                         z=wrist_follow + side*hand_sway)
         if state != "drag":
-            amplitude = 2.5 if personality in (IdlePersonality.CURIOUS, IdlePersonality.PLAYFUL) else 1.2
-            curl = 3 + sin(t*.8-side*.35)*amplitude
+            amplitude = 7.0 if personality in (IdlePersonality.CURIOUS, IdlePersonality.PLAYFUL) else 4.5
+            curl = 12 + sin(t*.62-side*.3)*amplitude + wrist_follow*.3
+            idle_wrist = 0.0
+            if state == "idle" and personality == IdlePersonality.CURIOUS and side == 1:
+                reach = _idle_pulse(t, 7.8, .65, .55, .9, offset=1.0)
+                idle_wrist += 15.0 * reach
+                curl -= 5.0 * reach
+            elif state == "idle" and personality == IdlePersonality.PLAYFUL and side == 1:
+                flick = _idle_pulse(t, 4.8, .18, .08, .35, offset=.7)
+                idle_wrist += 10.0 * flick
+                curl -= 8.0 * flick
+            elif state == "idle" and personality == IdlePersonality.SHY:
+                fidget = _idle_pulse(t, 6.2, .5, .2, .6, offset=side * .8)
+                idle_wrist += side * 4.0 * fidget
             if state == "sleep":
                 curl = 8 + sin(t*.6)*.7
             elif state == "fall":
@@ -424,7 +453,8 @@ def pose_secondary(rig: Rig, t: float, state: str, personality=IdlePersonality.C
                 curl = -5 + sin(t * 4.0) * 3.0
             elif state in ("wave", "stretch", "peek", "hit"):
                 # Reactive finger movement during flourishes
-                curl = 5 + sin(t * 3.0 + side) * 4.0
+                curl = 5 + sin(t * 1.3 + side) * 4.0
+            rig.set_rotation(hand, z=wrist_follow + side * hand_sway + idle_wrist)
             rig.set_rotation(fingers, z=side*curl)
 
 

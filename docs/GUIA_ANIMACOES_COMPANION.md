@@ -20,9 +20,9 @@
 ### Comportamento já aplicado no runtime
 
 - No **idle**, a porta apenas entreabre até 3°; os tentáculos são reservados à espiada; ela não gira para trás do monitor.
-- O idle começa **tranquilo** e, a cada 10–16 segundos, troca suavemente e sem repetir imediatamente entre cinco personalidades: tranquilo, curioso, brincalhão, tímido e confiante. Cada uma muda o balanço do corpo e o olhar, com braços e cotovelos coordenados.
+- O idle começa em **automático** e troca suavemente, a cada 10–16 segundos, entre cinco personalidades: tranquilo, curioso, brincalhão, tímido e confiante. O submenu **Personalidade do idle** na bandeja permite fixar uma delas; a escolha fica salva entre execuções. As poses usam pausas e gestos amortecidos: alcance curioso, flick brincalhão, recolhimento tímido e postura aberta confiante.
 - Na **dança**, a porta pede até 48°, com movimento amortecido e sem tentáculos.
-- A **espiada** dura 9 s: abertura gradual de 2,5 s, sustentação e recolhimento. Aparece após 60–100 s acumulados de idle disponível ou pela ação manual Mostrar tentáculos. Dois tentáculos grossos emergem em sequência, em alturas diferentes.
+- A **espiada** dura 9 s: abertura gradual de 2,5 s, sustentação e recolhimento. Aparece após 60–100 s acumulados de idle disponível ou pela ação manual Mostrar tentáculos. Dois tentáculos low-poly grossos, com quatro ventosas cada, emergem em sequência; a malha segue a curva da mola e atualiza apenas enquanto está ativa.
 - Porta limitada a 38°/s; contatos mudam o alvo da mola sem saltar o ângulo. O recolhimento libera o fechamento.
 - Na dança, os braços longos ficam recolhidos para baixo, junto às laterais do corpo. Os demais estados ainda usam suas poses próprias.
 - Esses movimentos são poses procedurais em `src/sejoga/rig.py`; a tabela completa abaixo continua sendo a especificação para animações futuras.

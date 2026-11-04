@@ -124,6 +124,7 @@ class BehaviorSettings(BaseModel):
     """Personalidade e autonomia."""
 
     idle_animation: bool = True
+    idle_personality: Literal["auto", "calm", "curious", "playful", "shy", "confident"] = "auto"
     wander: bool = True
     react_to_click: bool = True
     react_to_drag: bool = True
