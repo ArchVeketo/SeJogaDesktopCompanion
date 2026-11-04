@@ -447,6 +447,8 @@ Blockbench 5.x
 
 ## 6. Checklist de Implementação (Etapa 2+)
 
+> **Nota:** checklist histórico; consulte [STATUS_E_PROXIMOS_PASSOS.md](STATUS_E_PROXIMOS_PASSOS.md) para as etapas já concluídas e o roadmap atual.
+
 | Fase | Tarefa | Status |
 |------|--------|--------|
 | **2.1** | `window.py` — OverlayWindow (Panda3D+Qt bridge, color key magenta, click-through seletivo, z-order toggle) | ⏳ |
@@ -464,9 +466,11 @@ Blockbench 5.x
 
 ## 7. Próximos Passos Imediatos
 
+> **Nota:** instruções originais mantidas como referência. O roadmap vigente está em [STATUS_E_PROXIMOS_PASSOS.md](STATUS_E_PROXIMOS_PASSOS.md).
+
 1. **Instalar dependências da Etapa 2:**
    ```bash
-   pip install -e ".[panda3d,win32,tray,music-analysis]"
+   pip install -e ".[panda3d,windows,tray,music-analysis]"
    ```
 
 2. **Criar `src/sejoga/animation.py`** com:
@@ -483,4 +487,4 @@ Blockbench 5.x
 
 ---
 
-*Fim do documento de referência de animações. Próximo: implementação da Etapa 2.1 (`window.py`).*
+*Fim do documento de referência de animações. Para o roadmap vigente, consulte [STATUS_E_PROXIMOS_PASSOS.md](STATUS_E_PROXIMOS_PASSOS.md).*

@@ -17,6 +17,14 @@
 
 **Rig:** Hierarquia de nós (61 nós, 43 meshes, **sem skin**, **sem animações baked**). Animação 100% procedural + keyframes opcionais.
 
+### Comportamento já aplicado no runtime
+
+- No **idle**, a porta abre lentamente para a frente até 40° e volta a fechar; ela não gira para trás do monitor.
+- O idle começa **tranquilo** e, a cada 10–16 segundos, troca suavemente e sem repetir imediatamente entre cinco personalidades: tranquilo, curioso, brincalhão, tímido e confiante. Cada uma muda o balanço do corpo, o olhar, a porta e os tentáculos.
+- Na **dança**, a porta pulsa para a frente até 48° no ritmo procedural.
+- Na dança, os braços longos ficam recolhidos para baixo, junto às laterais do corpo. Os demais estados ainda usam suas poses próprias.
+- Esses movimentos são poses procedurais em `src/sejoga/rig.py`; a tabela completa abaixo continua sendo a especificação para animações futuras.
+
 ---
 
 ## 2. State Machine de Animação
@@ -437,6 +445,8 @@ Blockbench 5.x
 
 ## 10. Próximos Passos (Implementation Checklist)
 
+> **Nota:** checklist histórico; várias etapas abaixo já foram implementadas. Use [STATUS_E_PROXIMOS_PASSOS.md](STATUS_E_PROXIMOS_PASSOS.md) como roadmap atual.
+
 | Fase | Tarefa | Status |
 |------|--------|--------|
 | **2.1** | `animation.py` — AnimationController (state machine, blend tree, beat sync) | ⏳ |
@@ -454,9 +464,11 @@ Blockbench 5.x
 
 ## 11. Próximos Passos Imediatos
 
+> **Nota:** instruções originais mantidas como referência. O estado atual e as prioridades foram atualizados em [STATUS_E_PROXIMOS_PASSOS.md](STATUS_E_PROXIMOS_PASSOS.md).
+
 1. **Instalar dependências da Etapa 2:**
    ```bash
-   pip install -e ".[panda3d,win32,tray,music-analysis]"
+   pip install -e ".[panda3d,windows,tray,music-analysis]"
    ```
 
 2. **Criar `src/sejoga/animation.py`** com:
@@ -473,4 +485,4 @@ Blockbench 5.x
 
 ---
 
-*Fim do guia de animações. Próximo: implementação da Etapa 2.1 (`animation.py` + `window.py`).*
+*Fim do guia de animações. Para o roadmap vigente, consulte [STATUS_E_PROXIMOS_PASSOS.md](STATUS_E_PROXIMOS_PASSOS.md).*

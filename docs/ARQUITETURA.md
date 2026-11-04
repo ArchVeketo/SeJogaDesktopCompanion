@@ -282,17 +282,19 @@ coll = COLLECT(exe, a.binaries, a.datas, name="SeJogaCompanion")
 
 ## 12. Roadmap (Próximos Passos)
 
+O status detalhado e a ordem de prioridade ficam em [STATUS_E_PROXIMOS_PASSOS.md](STATUS_E_PROXIMOS_PASSOS.md). Resumo desta arquitetura:
+
 | Etapa | Entregável | Status |
 |-------|------------|--------|
 | **1** | Pesquisa, assets organizados, scaffolding Python, testes, CLI, docs | ✅ Concluída |
-| **2** | `OverlayWindow` (Panda3D+Qt bridge, color key, click-through) | 🔄 Próxima |
-| **3** | `ScreenSpacePhysics` (pymunk + shelves EnumWindows) | ⏳ |
-| **4** | `MusicListener` (GSMTU + soundcard + beat tracker) | ⏳ |
-| **5** | `SettingsDialog` + `TrayManager` + hotkeys | ⏳ |
-| **6** | `App` loop principal 60/120Hz + integração completa | ⏳ |
-| **7** | Build PyInstaller + Inno Setup + teste em máquina limpa | ⏳ |
-| **8** | Animações no Blockbench (idle/walk/throw/hit/dance) → export glb | ⏳ |
+| **2** | Overlay Panda3D + Win32 + bandeja | ✅ Implementado; validado no ambiente de desenvolvimento |
+| **3** | Física Pymunk + detecção de janelas/prateleiras | ✅ Implementada; integração e interações ainda podem ser refinadas |
+| **4** | Música (GSMTC + captura WASAPI + beat) | 🟡 Módulo integrado; validação de áudio e refinamento pendentes |
+| **5** | `SettingsDialog` + hotkeys globais | 🟡 Parcial: menu básico da bandeja existe |
+| **6** | Loop de render/física + mouse | 🟡 Integrado em `OverlayApp`; falta consolidar/refinar |
+| **7** | PyInstaller + Inno Setup + teste em máquina limpa | 🟡 Build onedir validado localmente; instalador/teste limpo pendentes |
+| **8** | Animações no Blockbench + controlador de estados | 🟡 Controlador procedural básico implementado; clipes e reação musical pendentes |
 
 ---
 
-*Próximo artefato: implementar `src/sejoga/window.py` (Etapa 2.1).*
+*Próximo marco sugerido: validar a captura de áudio e calibrar as reações musicais.*

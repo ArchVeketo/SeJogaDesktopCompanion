@@ -52,6 +52,7 @@ class WindowSettings(BaseModel):
     """Lado (px) da janela quadrada que contém o modelo."""
 
     scale: float = Field(default=1.0, gt=0.1, le=4.0)
+    """Multiplicador do enquadramento automático (1.0 ocupa até 70% do overlay)."""
     fps: int = Field(default=60, ge=15, le=240)
     start_position: tuple[int, int] | None = None
     """Canto superior esquerdo em coordenadas de tela; ``None`` = canto inferior direito."""

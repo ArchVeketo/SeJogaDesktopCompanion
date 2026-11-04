@@ -12,16 +12,16 @@ $panda3dDir = Join-Path $env:APPDATA 'Python\Python314\site-packages\panda3d'
     --add-binary "$panda3dDir\libpandagl.dll;panda3d" `
     --add-binary "$panda3dDir\libp3windisplay.dll;panda3d" `
     --add-binary "$panda3dDir\libp3tinydisplay.dll;panda3d" `
-    --hidden-import=panda3d_gltf `
-    --hidden-import=panda3d.simplepbr `
+    --hidden-import=simplepbr `
     --hidden-import=gltf `
     --hidden-import=pymunk `
     --hidden-import=pystray `
     --hidden-import=PIL `
-    --hidden-import=winrt_Windows.Media.Control `
-    --hidden-import=winrt_Windows.Foundation `
-    --hidden-import=winrt_Windows.Foundation.Collections `
-    --hidden-import=winrt_Windows.Media `
+    --hidden-import=winrt.windows.media.control `
+    --hidden-import=winrt.windows.foundation `
+    --hidden-import=winrt.windows.foundation.collections `
+    --hidden-import=winrt.windows.media `
+    --hidden-import=winrt.windows.storage.streams `
     --hidden-import=winrt `
     --hidden-import=win32gui `
     --hidden-import=win32con `

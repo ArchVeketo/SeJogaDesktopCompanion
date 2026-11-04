@@ -54,6 +54,7 @@ music = [
     "winrt-runtime>=4.0",
     "winrt-Windows.Media.Control>=4.0",
 ]
+music-loopback = ["soundcard>=0.4.3"]
 music-analysis = ["numpy>=2.0", "scipy>=1.14"]
 
 # Desenvolvimento.

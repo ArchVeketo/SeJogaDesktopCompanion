@@ -1,0 +1,173 @@
+"""Controlador procedural de animação do mascote.
+
+As poses são produzidas pelo rig sem depender de clipes exportados. O
+controlador escolhe um estado a partir da interação/física e faz crossfade
+entre poses para evitar saltos bruscos.
+"""
+
+from __future__ import annotations
+
+import random
+from enum import StrEnum
+
+from .rig import (
+    IdlePersonality,
+    Rig,
+    Rotation3,
+    pose_dance,
+    pose_drag,
+    pose_idle,
+    pose_sleep,
+    pose_thrown,
+    pose_walk,
+)
+
+
+class AnimationState(StrEnum):
+    IDLE = "idle"
+    WALK = "walk"
+    RUN = "run"
+    DRAG = "drag"
+    FALL = "fall"
+    DANCE = "dance"
+    SLEEP = "sleep"
+
+
+class AnimationController:
+    """Gera poses a cada frame e interpola mudanças de estado."""
+
+    def __init__(self, rig: Rig, transition_seconds: float = 0.24) -> None:
+        self.rig = rig
+        self.transition_seconds = max(0.0, transition_seconds)
+        self._active_transition_seconds = self.transition_seconds
+        self.state: AnimationState | None = None
+        self.state_time = 0.0
+        self.idle_time = 0.0
+        self.clock = 0.0
+        self.idle_personality = IdlePersonality.CALM
+        self._personality_rng = random.Random()
+        self._personality_elapsed = 0.0
+        self._personality_interval = self._personality_rng.uniform(10.0, 14.0)
+        self._pose = {group: Rotation3() for group in rig.groups}
+        self._transition_from = dict(self._pose)
+
+    @staticmethod
+    def _choose_state(
+        *,
+        speed: float,
+        grounded: bool,
+        gravity_active: bool,
+        dragging: bool,
+        music_playing: bool,
+        music_intensity: float,
+    ) -> AnimationState:
+        if dragging:
+            return AnimationState.DRAG
+        if gravity_active or (not grounded and speed > 250.0):
+            return AnimationState.FALL
+        if music_playing and music_intensity > 0.12:
+            return AnimationState.DANCE
+        if grounded and speed > 700.0:
+            return AnimationState.RUN
+        if grounded and speed > 120.0:
+            return AnimationState.WALK
+        return AnimationState.IDLE
+
+    def update(
+        self,
+        dt: float,
+        *,
+        velocity: tuple[float, float] = (0.0, 0.0),
+        grounded: bool = True,
+        gravity_active: bool = False,
+        dragging: bool = False,
+        drag_direction: float = 0.0,
+        music_playing: bool = False,
+        music_intensity: float = 0.0,
+        idle_enabled: bool = True,
+        sleep_after_idle_seconds: int = 0,
+    ) -> dict[str, Rotation3]:
+        """Atualiza o estado e devolve um snapshot de rotações em radianos."""
+        dt = min(0.1, max(0.0, dt))
+        self.clock += dt
+
+        speed = (velocity[0] ** 2 + velocity[1] ** 2) ** 0.5
+        next_state = self._choose_state(
+            speed=speed,
+            grounded=grounded,
+            gravity_active=gravity_active,
+            dragging=dragging,
+            music_playing=music_playing,
+            music_intensity=music_intensity,
+        )
+        if next_state == AnimationState.IDLE:
+            self.idle_time += dt
+            if sleep_after_idle_seconds > 0 and self.idle_time >= sleep_after_idle_seconds:
+                next_state = AnimationState.SLEEP
+        else:
+            self.idle_time = 0.0
+
+        if next_state == AnimationState.IDLE and idle_enabled:
+            self._personality_elapsed += dt
+            if self._personality_elapsed >= self._personality_interval:
+                choices = [
+                    personality
+                    for personality in IdlePersonality
+                    if personality != self.idle_personality
+                ]
+                self.idle_personality = self._personality_rng.choice(choices)
+                self._personality_elapsed = 0.0
+                self._personality_interval = self._personality_rng.uniform(10.0, 16.0)
+                self._transition_from = dict(self._pose)
+                self._active_transition_seconds = max(self.transition_seconds, 0.8)
+                self.state_time = 0.0
+        elif next_state != AnimationState.IDLE:
+            self._personality_elapsed = 0.0
+
+        if next_state != self.state:
+            self._transition_from = dict(self._pose)
+            self.state = next_state
+            self.state_time = 0.0
+            self._active_transition_seconds = self.transition_seconds
+        else:
+            self.state_time += dt
+
+        self.rig.reset()
+        if self.state == AnimationState.IDLE:
+            if idle_enabled:
+                pose_idle(self.rig, self.clock, self.idle_personality)
+        elif self.state == AnimationState.WALK:
+            pose_walk(self.rig, self.clock)
+        elif self.state == AnimationState.RUN:
+            pose_walk(self.rig, self.clock, run=True)
+        elif self.state == AnimationState.DRAG:
+            pose_drag(self.rig, self.clock, drag_direction)
+        elif self.state == AnimationState.FALL:
+            pose_thrown(self.rig, self.clock)
+        elif self.state == AnimationState.DANCE:
+            pose_dance(self.rig, self.clock, music_intensity)
+        elif self.state == AnimationState.SLEEP:
+            pose_sleep(self.rig, self.clock)
+
+        target = self.rig.pose()
+        if self._active_transition_seconds == 0.0:
+            alpha = 1.0
+        else:
+            linear = min(1.0, self.state_time / self._active_transition_seconds)
+            alpha = linear * linear * (3.0 - 2.0 * linear)
+
+        self._pose = {
+            group: self._blend(self._transition_from.get(group, Rotation3()), rotation, alpha)
+            for group, rotation in target.items()
+        }
+        self.rig.current = dict(self._pose)
+        return dict(self._pose)
+
+    @staticmethod
+    def _blend(start: Rotation3, end: Rotation3, amount: float) -> Rotation3:
+        inverse = 1.0 - amount
+        return Rotation3(
+            x=start.x * inverse + end.x * amount,
+            y=start.y * inverse + end.y * amount,
+            z=start.z * inverse + end.z * amount,
+        )

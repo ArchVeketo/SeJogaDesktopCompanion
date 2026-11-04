@@ -1,0 +1,231 @@
+"""Leitura não bloqueante de metadados de música e energia de loopback.
+
+As APIs WinRT e SoundCard rodam em workers próprios. Áudio capturado é
+processado em memória e descartado; nenhum buffer é salvo em disco.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import math
+import statistics
+import threading
+import time
+from collections import deque
+from dataclasses import dataclass, replace
+from typing import Callable
+
+from .config import MusicSettings
+
+
+@dataclass(frozen=True, slots=True)
+class MusicSnapshot:
+    """Snapshot imutável, seguro para leitura pelo loop gráfico."""
+
+    source_app_id: str | None = None
+    title: str | None = None
+    artist: str | None = None
+    album: str | None = None
+    is_playing: bool = False
+    playback_status: str = "unknown"
+    thumbnail_available: bool = False
+    audio_level: float = 0.0
+    beat_detected: bool = False
+    bpm: float | None = None
+    beat_phase: float = 0.0
+    media_error: str | None = None
+    audio_error: str | None = None
+    updated_at: float = 0.0
+
+
+class _BeatTracker:
+    """Estimativa leve de onset/RMS adequada para resposta visual, não análise musical."""
+
+    def __init__(self) -> None:
+        self._levels: deque[float] = deque(maxlen=32)
+        self._beat_times: deque[float] = deque(maxlen=12)
+        self._last_beat = 0.0
+        self._bpm: float | None = None
+        self._period = 0.0
+
+    def update(self, rms: float, now: float, sensitivity: float) -> tuple[bool, float | None, float]:
+        baseline = statistics.median(self._levels) if self._levels else 0.0
+        self._levels.append(rms)
+
+        multiplier = 2.4 - 1.7 * max(0.0, min(1.0, sensitivity))
+        threshold = max(0.012, baseline * multiplier)
+        detected = (
+            len(self._levels) >= 5
+            and rms >= threshold
+            and rms >= 0.018
+            and now - self._last_beat >= 0.26
+        )
+        if detected:
+            self._last_beat = now
+            if self._beat_times:
+                interval = now - self._beat_times[-1]
+                if 0.30 <= interval <= 1.50:
+                    self._beat_times.append(now)
+                    intervals = [
+                        current - previous
+                        for previous, current in zip(self._beat_times, list(self._beat_times)[1:])
+                    ]
+                    if intervals:
+                        self._period = statistics.median(intervals)
+                        self._bpm = 60.0 / self._period
+                else:
+                    self._beat_times.clear()
+                    self._beat_times.append(now)
+            else:
+                self._beat_times.append(now)
+
+        phase = 0.0
+        if self._period and self._last_beat:
+            phase = ((now - self._last_beat) / self._period) % 1.0
+        return detected, self._bpm, phase
+
+
+class MusicListener:
+    """Monitora a sessão de mídia e, opcionalmente, o loopback WASAPI."""
+
+    def __init__(
+        self,
+        settings: MusicSettings,
+        *,
+        poll_interval: float = 1.0,
+        on_update: Callable[[MusicSnapshot], None] | None = None,
+    ) -> None:
+        self.settings = settings
+        self.poll_interval = max(0.25, poll_interval)
+        self.on_update = on_update
+        self._snapshot = MusicSnapshot()
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._threads: list[threading.Thread] = []
+
+    @property
+    def snapshot(self) -> MusicSnapshot:
+        with self._lock:
+            return self._snapshot
+
+    def start(self) -> None:
+        if not self.settings.enabled or self.settings.source == "off" or self._threads:
+            return
+
+        self._stop.clear()
+        self._start_worker(self._media_worker, "music-media-session")
+        if self.settings.source == "loopback":
+            self._start_worker(self._loopback_worker, "music-wasapi-loopback")
+
+    def _start_worker(self, target: Callable[[], None], name: str) -> None:
+        thread = threading.Thread(target=target, name=name, daemon=True)
+        self._threads.append(thread)
+        thread.start()
+
+    def stop(self, timeout: float = 2.0) -> None:
+        self._stop.set()
+        for thread in self._threads:
+            thread.join(timeout=timeout)
+        self._threads.clear()
+
+    def _publish(self, **changes: object) -> None:
+        with self._lock:
+            self._snapshot = replace(self._snapshot, updated_at=time.time(), **changes)
+            snapshot = self._snapshot
+        if self.on_update:
+            try:
+                self.on_update(snapshot)
+            except Exception:
+                pass
+
+    def _media_worker(self) -> None:
+        apartment_initialized = False
+        try:
+            from winrt.runtime import MTA, init_apartment, uninit_apartment
+
+            init_apartment(MTA)
+            apartment_initialized = True
+            asyncio.run(self._poll_media_sessions())
+        except Exception as exc:
+            self._publish(media_error=f"Media session indisponível: {exc}")
+            print(f"[music] media session unavailable: {exc}")
+        finally:
+            if apartment_initialized:
+                try:
+                    uninit_apartment()
+                except Exception:
+                    pass
+
+    async def _poll_media_sessions(self) -> None:
+        from winrt.windows.media.control import (
+            GlobalSystemMediaTransportControlsSessionManager as SessionManager,
+            GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
+        )
+
+        manager = await SessionManager.request_async()
+        while not self._stop.is_set():
+            try:
+                session = manager.get_current_session()
+                if session is None:
+                    self._publish(
+                        source_app_id=None,
+                        title=None,
+                        artist=None,
+                        album=None,
+                        is_playing=False,
+                        playback_status="none",
+                        thumbnail_available=False,
+                        media_error=None,
+                    )
+                else:
+                    playback = session.get_playback_info()
+                    status = playback.playback_status
+                    properties = await session.try_get_media_properties_async()
+                    status_name = str(status).rsplit(".", 1)[-1].lower()
+                    self._publish(
+                        source_app_id=session.source_app_user_model_id,
+                        title=properties.title or None,
+                        artist=properties.artist or None,
+                        album=properties.album_title or None,
+                        is_playing=status == PlaybackStatus.PLAYING,
+                        playback_status=status_name,
+                        thumbnail_available=properties.thumbnail is not None,
+                        media_error=None,
+                    )
+            except Exception as exc:
+                self._publish(media_error=f"Falha ao consultar a sessão: {exc}")
+            await asyncio.sleep(self.poll_interval)
+
+    def _loopback_worker(self) -> None:
+        try:
+            import numpy as np
+            import soundcard as sc
+
+            speaker = sc.default_speaker()
+            microphone = sc.get_microphone(id=str(speaker.name), include_loopback=True)
+            tracker = _BeatTracker()
+            sample_rate = 16_000
+            block_size = 1024
+            with microphone.recorder(samplerate=sample_rate, blocksize=block_size) as recorder:
+                self._publish(audio_error=None)
+                while not self._stop.is_set():
+                    samples = recorder.record(numframes=block_size)
+                    if samples.size == 0:
+                        continue
+                    rms = float(np.sqrt(np.mean(np.square(samples), dtype=np.float64)))
+                    now = time.monotonic()
+                    beat, bpm, phase = tracker.update(rms, now, self.settings.sensitivity)
+                    self._publish(
+                        audio_level=max(0.0, min(1.0, rms * 5.0)),
+                        beat_detected=beat,
+                        bpm=bpm,
+                        beat_phase=phase,
+                        audio_error=None,
+                    )
+        except ImportError:
+            message = "Loopback requer a dependência opcional soundcard."
+            self._publish(audio_error=message)
+            print(f"[music] {message}")
+        except Exception as exc:
+            self._publish(audio_error=f"Loopback indisponível: {exc}")
+            print(f"[music] loopback unavailable: {exc}")

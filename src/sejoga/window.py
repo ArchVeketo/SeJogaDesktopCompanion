@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 import os
 import math
+import time
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -74,10 +75,12 @@ from ctypes import wintypes
 
 # Project imports
 from .assets import brand_dir, resolve_model
+from .animation import AnimationController
 from .model import load_model
 from .rig import Rig, ALL_GROUPS
 from .config import load_settings, Settings
 from .physics import ScreenSpacePhysics, create_physics, PhysicsState
+from .music import MusicListener
 
 # ============================================================
 # Win32 Constants & Helpers
@@ -140,14 +143,22 @@ COLOR_KEY = 0x00FF00FF
 class Panda3DRenderer:
     """Encapsula Panda3D render e modelo."""
 
+    FRAME_FILL = 0.70
+    MODEL_FACING_HEADING = 180
+
     def __init__(self, showbase: ShowBase, hwnd: int, width: int, height: int):
         self.showbase = showbase
         self.hwnd = hwnd
         self.width = width
         self.height = height
         self.model_np: Optional[NodePath] = None
+        self.model_anchor: Optional[NodePath] = None
         self.rig: Optional[Rig] = None
-        self.model_np: Optional[NodePath] = None
+        self._rig_nodes: dict[str, NodePath] = {}
+        self._rig_base_hpr: dict[str, tuple[float, float, float]] = {}
+        self._view_width = 1.0
+        self._view_height = 1.0
+        self._view_target_z = 1.0
 
         self._setup_scene()
         self._load_model()
@@ -186,8 +197,9 @@ class Panda3DRenderer:
 
         # SimplePBR
         try:
-            from panda3d.simplepbr import simplepbr
-            simplepbr(use_normal_maps=False, use_emission_maps=False, max_lights=8)
+            import simplepbr
+
+            simplepbr.init(use_normal_maps=False, use_emission_maps=False, max_lights=8)
         except ImportError:
             pass
 
@@ -203,12 +215,50 @@ class Panda3DRenderer:
 
         # panda3d-gltf 1.x expõe load_model diretamente no módulo.
         model_np = NodePath(gltf.load_model(str(model_path)))
-        model_np.reparentTo(self.showbase.render)
-        model_np.setScale(1.0)
-        model_np.setPos(0, 0, -0.5)
+        # O glTF foi exportado com a frente apontando para +Y. Como a câmera
+        # observa o mascote pelo lado -Y, giramos a malha para mostrar o rosto.
+        model_np.setH(self.MODEL_FACING_HEADING)
+        bounds = model_np.getTightBounds()
+        if not bounds:
+            raise ValueError(f"não foi possível calcular os limites do modelo: {model_path}")
+        minimum, maximum = bounds
+        dimensions = maximum - minimum
+        if dimensions.x <= 0 or dimensions.z <= 0:
+            raise ValueError(f"modelo sem largura/altura utilizável: {model_path}")
+
+        center = (minimum + maximum) * 0.5
+        self._update_view_dimensions()
+        target_width = self._view_width * self.FRAME_FILL
+        target_height = self._view_height * self.FRAME_FILL
+        fit_scale = min(target_width / dimensions.x, target_height / dimensions.z)
+        model_scale = fit_scale * self.showbase.settings.window.scale
+
+        self.model_anchor = self.showbase.render.attachNewNode("mascot-motion-root")
+        model_np.reparentTo(self.model_anchor)
+        model_np.setScale(model_scale)
+
+        # Alinha a largura ao centro e os pés ao círculo da física. A física
+        # move o anchor; a escala e o offset visual permanecem independentes.
+        radius_px = self.showbase.settings.physics.mascot_radius
+        units_per_pixel_z = self._view_height / self.height
+        model_np.setPos(
+            -center.x * model_scale,
+            -center.y * model_scale,
+            -minimum.z * model_scale - radius_px * units_per_pixel_z,
+        )
         self.model_np = model_np
 
         self._apply_rig_to_model()
+        self.set_model_screen_position(self.width / 2, self.height - radius_px - 35)
+
+    def _update_view_dimensions(self) -> None:
+        lens = self.showbase.cam.node().getLens()
+        fov_x, fov_y = lens.getFov()
+        camera_pos = self.showbase.cam.getPos(self.showbase.render)
+        target = Vec3(0, 0, self._view_target_z)
+        distance = (camera_pos - target).length()
+        self._view_width = 2.0 * distance * math.tan(math.radians(float(fov_x)) / 2.0)
+        self._view_height = 2.0 * distance * math.tan(math.radians(float(fov_y)) / 2.0)
 
     def _apply_rig_to_model(self) -> None:
         if not self.model_np or not self.rig:
@@ -217,7 +267,9 @@ class Panda3DRenderer:
         for group_name in self.rig.groups:
             node = self.model_np.find(f"**/{group_name}")
             if not node.isEmpty():
-                pass
+                self._rig_nodes[group_name] = node
+                hpr = node.getHpr()
+                self._rig_base_hpr[group_name] = (float(hpr.x), float(hpr.y), float(hpr.z))
 
     def resize(self, width: int, height: int) -> None:
         self.width = width
@@ -227,22 +279,39 @@ class Panda3DRenderer:
             lens.setAspectRatio(width / height)
 
     def set_model_rotation(self, x: float = 0, y: float = 0, z: float = 0) -> None:
-        if hasattr(self, 'model_np') and self.model_np:
-            self.model_np.setHpr(y, x, z)
+        if self.model_anchor:
+            self.model_anchor.setHpr(y, x, z)
 
     def set_model_position(self, x: float, y: float, z: float) -> None:
-        if hasattr(self, 'model_np') and self.model_np:
-            self.model_np.setPos(x, y, z)
+        if self.model_anchor:
+            self.model_anchor.setPos(x, y, z)
+
+    def set_model_screen_position(self, x: float, y: float) -> None:
+        """Converte pixels locais da janela para o plano X/Z do mundo Panda3D."""
+        if not self.model_anchor:
+            return
+        world_x = (x - self.width / 2.0) * self._view_width / self.width
+        world_z = self._view_target_z + (self.height / 2.0 - y) * self._view_height / self.height
+        self.model_anchor.setPos(world_x, 0.0, world_z)
 
     def apply_rig_pose(self, pose_dict: dict) -> None:
         if not self.model_np:
             return
 
         for group_name, rotation in pose_dict.items():
-            node = self.model_np.find(f"**/{group_name}")
-            if not node.isEmpty():
+            node = self._rig_nodes.get(group_name)
+            if not node:
+                continue
+            if hasattr(rotation, "x"):
+                x, y, z = rotation.x, rotation.y, rotation.z
+            else:
                 x, y, z = rotation
-                node.setHpr(y, x, z)
+            base_h, base_p, base_r = self._rig_base_hpr.get(group_name, (0.0, 0.0, 0.0))
+            node.setHpr(
+                base_h + math.degrees(y),
+                base_p + math.degrees(x),
+                base_r + math.degrees(z),
+            )
 
 
 # ============================================================
@@ -259,6 +328,7 @@ class OverlayApp(ShowBase):
         self.settings_obj = settings
         self.renderer: Optional = None
         self.physics: Optional = None
+        self.music_listener: Optional[MusicListener] = None
 
         self._is_topmost = settings.window.always_on_top
         self._is_bottom = settings.window.mode == "desktop"
@@ -266,6 +336,9 @@ class OverlayApp(ShowBase):
         self._drag_active = False
         self._drag_start_pos = (0, 0)
         self._window_start_pos = (0, 0)
+        self._drag_direction = 0.0
+        self._animation_last_tick = time.perf_counter()
+        self.animation_controller: Optional[AnimationController] = None
 
         self.qt_app: Optional = None
         self.tray_icon: Optional = None
@@ -280,11 +353,15 @@ class OverlayApp(ShowBase):
         self._setup_win32()
         self._init_renderer()
         self._init_physics()
+        if self.renderer and self.renderer.rig:
+            self.animation_controller = AnimationController(self.renderer.rig)
+        self.music_listener = MusicListener(self.settings.music)
+        self.music_listener.start()
         self._setup_tray()
         self._setup_timers()
         self._apply_window_state()
 
-        print("✅ OverlayApp inicializado!")
+        print("OverlayApp initialized.")
 
     def _init_pyside(self) -> None:
         self.qt_app = QApplication.instance() or QApplication(sys.argv)
@@ -414,7 +491,10 @@ class OverlayApp(ShowBase):
 
         # Posiciona o mascote no centro inferior da janela
         size = self.settings.window.size
-        self.physics.set_position(size / 2, size - 50)
+        self.physics.set_position(
+            size / 2,
+            size - self.settings.physics.mascot_radius - 35,
+        )
 
         # Configura callback de mudança de estado
         self.physics.on_state_change = self._on_physics_state_change
@@ -427,20 +507,8 @@ class OverlayApp(ShowBase):
 
     def _on_physics_state_change(self, state) -> None:
         """Callback quando estado da física muda."""
-        # Sincroniza modelo 3D com física
-        if self.renderer and self.renderer.model_np:
-            x, y = state.position
-            # Converte coordenadas de tela para coordenadas Panda3D
-            size = self.settings.window.size
-            panda_x = (state.position[0] - size / 2) / 100.0
-            panda_y = (size / 2 - state.position[1]) / 100.0
-            self.renderer.set_model_position(panda_x, panda_y, 0)
-
-            # Aplica rotação baseada na velocidade
-            vx, vy = state.velocity
-            if abs(vx) > 10 or abs(vy) > 10:
-                angle = math.atan2(-vy, vx)
-                self.renderer.set_model_rotation(0, 0, math.degrees(angle))
+        if self.renderer:
+            self.renderer.set_model_screen_position(*state.position)
 
     def _physics_tick(self, task: Task) -> int:
         """Task de física - roda a 120 Hz."""
@@ -457,25 +525,41 @@ class OverlayApp(ShowBase):
             return
 
         state = self.physics.get_state()
-        size = self.settings.window.size
+        self.renderer.set_model_screen_position(*state.position)
 
-        # Converte coordenadas tela -> Panda3D
-        panda_x = (self.physics.state.position[0] - size / 2) / 100.0
-        panda_y = (size / 2 - self.physics.state.position[1]) / 100.0
-        self.renderer.set_model_position(panda_x, panda_y, 0)
-
-        # Rotação baseada na velocidade
         vx, vy = state.velocity
-        if abs(vx) > 10 or abs(vy) > 10:
-            angle = math.atan2(-vy, vx)
-            self.renderer.set_model_rotation(0, 0, math.degrees(angle))
+        if math.hypot(vx, vy) > 80:
+            self.renderer.set_model_rotation(z=math.degrees(math.atan2(vy, vx)))
+        else:
+            self.renderer.set_model_rotation()
 
     def _animation_tick(self) -> None:
-        if self.renderer and self.renderer.rig:
-            pass
+        if not self.renderer or not self.animation_controller:
+            return
 
-        # Sincroniza modelo com física
-        if self.physics:
+        now = time.perf_counter()
+        dt = now - self._animation_last_tick
+        self._animation_last_tick = now
+        state = self.physics.get_state() if self.physics else None
+        music = self.music_listener.snapshot if self.music_listener else None
+        music_playing = bool(music and music.is_playing)
+        music_intensity = music.audio_level if music else 0.0
+        if music_playing and music_intensity == 0.0:
+            music_intensity = 0.25
+        pose = self.animation_controller.update(
+            dt,
+            velocity=state.velocity if state else (0.0, 0.0),
+            grounded=state.grounded if state else True,
+            gravity_active=state.gravity_active if state else False,
+            dragging=self._drag_active,
+            drag_direction=self._drag_direction,
+            music_playing=music_playing,
+            music_intensity=music_intensity,
+            idle_enabled=self.settings.behavior.idle_animation,
+            sleep_after_idle_seconds=self.settings.behavior.sleep_after_idle_seconds,
+        )
+        self.renderer.apply_rig_pose(pose)
+        if state:
             self._sync_model_with_physics()
 
     def _setup_tray(self) -> None:
@@ -543,6 +627,7 @@ class OverlayApp(ShowBase):
 
         elif not left_down and self._drag_active:
             self._drag_active = False
+            self._drag_direction = 0.0
             rect = win32gui.GetWindowRect(self.hwnd)
             self.settings.window.start_position = [rect[0], rect[1]]
 
@@ -550,6 +635,7 @@ class OverlayApp(ShowBase):
             x, y = win32gui.GetCursorPos()
             dx = x - self._drag_start_pos[0]
             dy = y - self._drag_start_pos[1]
+            self._drag_direction = max(-1.0, min(1.0, dx / 80.0))
             new_x = self._window_start_pos[0] + dx
             new_y = self._window_start_pos[1] + dy
             win32gui.SetWindowPos(self.hwnd, 0, new_x, new_y, 0, 0,
@@ -595,10 +681,12 @@ class OverlayApp(ShowBase):
             self.animation_timer.stop()
         if hasattr(self, 'tray_icon') and self.tray_icon:
             self.tray_icon.hide()
+        if self.music_listener:
+            self.music_listener.stop()
         ShowBase.userExit(self)
 
     def run(self) -> None:
-        print("🚀 Iniciando SeJogaDesktopCompanion...")
+        print("Starting SeJogaDesktopCompanion...")
         try:
             ShowBase.run(self)
         except KeyboardInterrupt:
