@@ -38,14 +38,14 @@ loadPrcFileData("", "window-type none")
 loadPrcFileData("", "load-display pandagl")
 loadPrcFileData("", "aux-display p3tinydisplay")
 loadPrcFileData("", "framebuffer-alpha 1")
-loadPrcFileData("", "framebuffer-multisample 1")
-loadPrcFileData("", "multisamples 4")
+loadPrcFileData("", "framebuffer-multisample 0")
+loadPrcFileData("", "multisamples 0")
 loadPrcFileData("", "win-size 480 480")
 loadPrcFileData("", "win-origin 0 0")
 loadPrcFileData("", "undecorated 1")
 loadPrcFileData("", "cursor-hidden 0")
 loadPrcFileData("", "framebuffer-alpha 1")
-loadPrcFileData("", "framebuffer-multisample 1")
+loadPrcFileData("", "framebuffer-multisample 0")
 
 # Panda3D imports (depois do loadPrcFileData)
 from direct.showbase.ShowBase import ShowBase
@@ -182,6 +182,8 @@ class Panda3DRenderer:
 
         self._setup_scene()
         self._load_model()
+        from .lower_body import LowerBody
+        self.lower_body = LowerBody(self)
         self._setup_picking()
 
     def _setup_picking(self) -> None:
@@ -220,7 +222,10 @@ class Panda3DRenderer:
     def _setup_scene(self) -> None:
         render = self.showbase.render
         render.setShaderAuto()
-        render.setAntialias(1)  # AntialiasAttrib.MMultisample
+        # Color-key transparency cannot represent partial pixel coverage.
+        # MSAA blends the magenta clear color into silhouette pixels, leaving
+        # a pink fringe even when the separate outline is completely stashed.
+        render.setAntialias(AntialiasAttrib.MNone)
 
         # Câmera
         cam = self.showbase.cam
@@ -252,9 +257,12 @@ class Panda3DRenderer:
         try:
             import simplepbr
 
-            simplepbr.init(use_normal_maps=False, use_emission_maps=False, max_lights=8)
+            simplepbr.init(use_normal_maps=False, use_emission_maps=False, max_lights=8,
+                           msaa_samples=0)
         except ImportError:
             pass
+        except Exception as e:
+            print(f"[ERROR] SimplePBR initialization failed: {e}")
 
     def _load_model(self) -> None:
         model_path = resolve_model()
@@ -777,7 +785,7 @@ class OverlayApp(ShowBase):
         fbprops.setAlphaBits(8)
         fbprops.setDepthBits(24)
         fbprops.setStencilBits(8)
-        fbprops.setMultisamples(4)
+        fbprops.setMultisamples(0)
 
         self.openDefaultWindow(props=wp, fbprops=fbprops)
 
@@ -1032,6 +1040,8 @@ class OverlayApp(ShowBase):
             self.animation_controller.body_motion.snapshot, self._body_grab_point,
             grounded=state.grounded if state else True, dragging=self._drag_active,
         )
+        self.renderer.lower_body.apply(self.animation_controller.leg_motion.pose,
+                                       bool(not self._drag_active and (state.grounded if state else True)))
         self.renderer.update_appendages(dt, self.animation_controller.state == AnimationState.PEEK)
         if self.renderer.tentacle_director:
             mouse_world = Point3(
@@ -1155,7 +1165,7 @@ class OverlayApp(ShowBase):
             )
             self._personality_actions[value] = action
 
-        for label, kind in (("Acenar", "wave"), ("Alongar", "stretch"), ("Mostrar tentáculos", "peek")):
+        for label, kind in (("Acenar", "wave"), ("Soltar os ombros", "stretch"), ("Mostrar tentáculos", "peek")):
             action = self.tray_menu.addAction(label)
             action.triggered.connect(lambda _checked=False, kind=kind: self.animation_controller.interact(kind))
         self.tray_menu.addSeparator()
@@ -1429,6 +1439,10 @@ class OverlayApp(ShowBase):
         if self.renderer:
             self.renderer.set_visual_scale(updated.window.scale)
             self.renderer.set_outline_settings(updated.window)
+        if self.animation_controller:
+            self.animation_controller.set_idle_personality(updated.behavior.idle_personality)
+        for value, action in self._personality_actions.items():
+            self._set_action_checked(action, value == updated.behavior.idle_personality)
 
         if music_changed:
             if self.music_listener:
