@@ -61,6 +61,10 @@ class AnimationController:
         self._reaction_time = 0.0
         self._cooldowns: dict[str, float] = {}
         self._look_direction = 0.0
+        self._dance_remaining = 0.0
+        self._dance_decision_in = 0.0
+        self._previous_beat = False
+        self._dance_rng = random.Random()
 
     REACTION_SECONDS = {
         AnimationState.CLICK: 0.5,
@@ -117,6 +121,9 @@ class AnimationController:
         drag_direction: float = 0.0,
         music_playing: bool = False,
         music_intensity: float = 0.0,
+        dance_chance: float = 1.0,
+        react_to_beat: bool = True,
+        beat_detected: bool = False,
         idle_enabled: bool = True,
         sleep_after_idle_seconds: int = 0,
         hovered: bool = False,
@@ -125,6 +132,20 @@ class AnimationController:
         """Atualiza o estado e devolve um snapshot de rotações em radianos."""
         dt = min(0.1, max(0.0, dt))
         self.clock += dt
+        self._dance_remaining = max(0.0, self._dance_remaining - dt)
+        self._dance_decision_in = max(0.0, self._dance_decision_in - dt)
+        if not music_playing or not react_to_beat or dance_chance <= 0:
+            self._dance_remaining = 0.0
+            self._dance_decision_in = 0.0
+        elif self._dance_decision_in == 0:
+            # One decision per phrase, never one random draw per rendered frame.
+            self._dance_decision_in = 8.0
+            if self._dance_rng.random() < min(1.0, dance_chance):
+                self._dance_remaining = 8.0
+        beat_edge = beat_detected and not self._previous_beat
+        self._previous_beat = beat_detected
+        if react_to_beat and beat_edge and self._dance_remaining > 0:
+            music_intensity = max(music_intensity, 0.75)
         self._look_direction += (max(-1.0, min(1.0, look_direction)) - self._look_direction) * min(1.0, dt * 10.0)
         if self._reaction is not None:
             self._reaction_time += dt
@@ -137,7 +158,7 @@ class AnimationController:
             grounded=grounded,
             gravity_active=gravity_active,
             dragging=dragging,
-            music_playing=music_playing,
+            music_playing=music_playing and self._dance_remaining > 0,
             music_intensity=music_intensity,
         )
         if next_state not in (AnimationState.DRAG, AnimationState.FALL):

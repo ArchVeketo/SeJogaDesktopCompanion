@@ -61,3 +61,25 @@ def test_landing_reaction_finishes_and_returns_to_idle():
     for _ in range(5):
         animation.update(0.1)
     assert animation.state == AnimationState.IDLE
+
+
+def test_music_preferences_disable_and_enable_dance():
+    animation = controller()
+    animation.update(.1, music_playing=True, music_intensity=.5, dance_chance=0)
+    assert animation.state == AnimationState.IDLE
+    animation.update(.1, music_playing=True, music_intensity=.5, react_to_beat=False)
+    assert animation.state == AnimationState.IDLE
+    animation.update(.1, music_playing=True, music_intensity=.5)
+    assert animation.state == AnimationState.DANCE
+    animation.update(.1, music_playing=False)
+    assert animation.state == AnimationState.IDLE
+
+
+def test_music_probability_is_not_sampled_every_frame():
+    from unittest.mock import Mock
+    animation = controller()
+    animation._dance_rng.random = Mock(return_value=.9)
+    for _ in range(60):
+        animation.update(.016, music_playing=True, music_intensity=.5, dance_chance=.35)
+    assert animation.state == AnimationState.IDLE
+    assert animation._dance_rng.random.call_count == 1
