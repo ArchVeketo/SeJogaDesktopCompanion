@@ -1,0 +1,33 @@
+import sys
+import pytest
+
+if sys.platform != "win32":
+    pytest.skip("Windows settings dialog", allow_module_level=True)
+pytest.importorskip("PySide6")
+
+
+def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QApplication, QDialog
+    from sejoga import config
+    from sejoga.ui import SettingsDialog
+    app = QApplication.instance() or QApplication([])
+    primary = tmp_path / "locked" / "config.toml"
+    fallback = tmp_path / "fallback" / "config.toml"
+    original = config._write_settings
+    monkeypatch.delenv("SEJOGA_CONFIG_PATH", raising=False)
+    monkeypatch.setattr(config, "default_config_path", lambda: primary)
+    monkeypatch.setattr(config, "fallback_config_path", lambda: fallback)
+    def write(path, payload):
+        if path == primary:
+            raise PermissionError("locked profile")
+        original(path, payload)
+    monkeypatch.setattr(config, "_write_settings", write)
+    dialog = SettingsDialog(config.Settings())
+    updates = []
+    dialog.settings_applied.connect(updates.append)
+    dialog.outline_width_input.setValue(4.5)
+    dialog._save()
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    assert updates[0].window.outline_width == 4.5
+    assert config.load_settings(fallback).window.outline_width == 4.5
+    dialog.close()

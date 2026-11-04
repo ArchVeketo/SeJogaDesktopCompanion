@@ -1,4 +1,11 @@
 # Do not let Codex's private runtime DLLs enter the application bundle.
+# PyInstaller replaces the onedir output. Preserve the user's portable profile.
+$profileSource = Join-Path $PSScriptRoot 'dist\SeJogaCompanion\user-data'
+$profileBackup = Join-Path $PSScriptRoot '.local\user-data'
+if (Test-Path -LiteralPath $profileSource) {
+    New-Item -ItemType Directory -Force -Path $profileBackup | Out-Null
+    Copy-Item -Path (Join-Path $profileSource '*') -Destination $profileBackup -Recurse -Force
+}
 # CodexPrimaryRuntime also ships Poppler's ICU. Its icuuc.dll exports versioned
 # symbols and cannot replace Windows ICU, which Qt uses (e.g. ucnv_open).
 $env:PATH = (($env:PATH -split ';' | Where-Object { $_ -notmatch 'codex-runtimes|OpenAI\.CodexPrimaryRuntime' }) -join ';')
@@ -39,4 +46,8 @@ $panda3dDir = Join-Path $env:APPDATA 'Python\Python314\site-packages\panda3d'
 
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
+}
+if (Test-Path -LiteralPath $profileBackup) {
+    New-Item -ItemType Directory -Force -Path $profileSource | Out-Null
+    Copy-Item -Path (Join-Path $profileBackup '*') -Destination $profileSource -Recurse -Force
 }

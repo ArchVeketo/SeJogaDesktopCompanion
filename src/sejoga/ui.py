@@ -8,8 +8,10 @@ from ctypes import wintypes
 from typing import Callable
 
 from PySide6.QtCore import QObject, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -17,6 +19,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QMessageBox,
+    QPushButton,
     QLineEdit,
     QSpinBox,
     QVBoxLayout,
@@ -48,6 +51,19 @@ class SettingsDialog(QDialog):
         self.scale_input.setDecimals(1)
         self.scale_input.setValue(settings.window.scale)
 
+        self.outline_input = QCheckBox("Mostrar contorno")
+        self.outline_input.setChecked(settings.window.outline_enabled)
+        self.outline_width_input = QDoubleSpinBox()
+        self.outline_width_input.setRange(0.5, 8.0)
+        self.outline_width_input.setSingleStep(0.5)
+        self.outline_width_input.setDecimals(1)
+        self.outline_width_input.setSuffix(" px")
+        self.outline_width_input.setValue(settings.window.outline_width)
+        self._outline_color = settings.window.outline_color.upper()
+        self.outline_color_button = QPushButton()
+        self._show_outline_color()
+        self.outline_color_button.clicked.connect(self._choose_outline_color)
+
         self.physics_input = QCheckBox("Ativar física de tela")
         self.physics_input.setChecked(settings.physics.enabled)
 
@@ -58,9 +74,6 @@ class SettingsDialog(QDialog):
         self.react_click_input.setChecked(settings.behavior.react_to_click)
         self.react_drag_input = QCheckBox("Permitir arrastar o mascote")
         self.react_drag_input.setChecked(settings.behavior.react_to_drag)
-
-        self.click_through_input = QCheckBox("Cliques atravessam as áreas transparentes")
-        self.click_through_input.setChecked(settings.window.click_through_transparent)
 
         self.z_order_input = QComboBox()
         self.z_order_input.addItem("Sempre no topo", "topmost")
@@ -85,11 +98,13 @@ class SettingsDialog(QDialog):
         form = QFormLayout()
         form.addRow("Tamanho da janela", self.size_input)
         form.addRow("Escala do mascote", self.scale_input)
+        form.addRow(self.outline_input)
+        form.addRow("Cor do contorno", self.outline_color_button)
+        form.addRow("Espessura do contorno", self.outline_width_input)
         form.addRow(self.physics_input)
         form.addRow(self.idle_input)
         form.addRow(self.react_click_input)
         form.addRow(self.react_drag_input)
-        form.addRow(self.click_through_input)
         form.addRow("Posição da janela", self.z_order_input)
         form.addRow("Reação à música", self.music_input)
         for name, label in (
@@ -126,15 +141,29 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.hotkey_notice)
         layout.addWidget(buttons)
 
+    def _show_outline_color(self) -> None:
+        self.outline_color_button.setText(self._outline_color)
+        self.outline_color_button.setStyleSheet(
+            f"background-color: {self._outline_color}; color: #202020;"
+        )
+
+    def _choose_outline_color(self) -> None:
+        color = QColorDialog.getColor(QColor(self._outline_color), self, "Cor do contorno")
+        if color.isValid():
+            self._outline_color = color.name().upper()
+            self._show_outline_color()
+
     def _save(self) -> None:
         updated = self._settings.model_copy(deep=True)
         updated.window.size = self.size_input.value()
         updated.window.scale = self.scale_input.value()
+        updated.window.outline_enabled = self.outline_input.isChecked()
+        updated.window.outline_color = self._outline_color
+        updated.window.outline_width = self.outline_width_input.value()
         updated.physics.enabled = self.physics_input.isChecked()
         updated.behavior.idle_animation = self.idle_input.isChecked()
         updated.behavior.react_to_click = self.react_click_input.isChecked()
         updated.behavior.react_to_drag = self.react_drag_input.isChecked()
-        updated.window.click_through_transparent = self.click_through_input.isChecked()
         z_order = self.z_order_input.currentData()
         updated.window.mode = "desktop" if z_order == "desktop" else "overlay"
         updated.window.always_on_top = z_order == "topmost"

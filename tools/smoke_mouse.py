@@ -23,6 +23,7 @@ def main():
     from sejoga.window import OverlayApp, WS_EX_TRANSPARENT
     from sejoga.animation import AnimationState
     import win32gui
+    from PIL import ImageGrab
 
     settings = config.Settings()
     settings.physics.enabled = "--physics" in sys.argv
@@ -47,8 +48,31 @@ def main():
             time.sleep(0.017)
         app.taskMgr.remove("mouse-poll")
         app.animation_timer.stop()
+        with patch("sejoga.window.win32api.GetAsyncKeyState", return_value=0):
+            app._native_mouse_button("left", True)
+            assert "left" in app._mouse_buttons(), "Native input must survive a zero async key state"
+            app._native_mouse_button("left", False)
+            assert not app._mouse_buttons()
         assert win32gui.GetWindowRect(app.hwnd)[:2] == settings.window.start_position
         assert win32gui.GetWindowLong(app.hwnd, -20) & 0x00000008, "Panda reset always-on-top"
+        assert app.renderer._outline_nodes
+        for _ in range(2):
+            app.graphicsEngine.renderFrame()
+        outline_default = bytes(app.win.getScreenshot().getRamImageAs("RGB"))
+        settings.window.outline_color = "#00FF00"
+        app.renderer.set_outline_settings(settings.window)
+        for _ in range(2):
+            app.graphicsEngine.renderFrame()
+        outline_green = bytes(app.win.getScreenshot().getRamImageAs("RGB"))
+        assert outline_green != outline_default, "Changing outline color did not change the rendered frame"
+        settings.window.outline_enabled = False
+        app.renderer.set_outline_settings(settings.window)
+        for _ in range(2):
+            app.graphicsEngine.renderFrame()
+        assert bytes(app.win.getScreenshot().getRamImageAs("RGB")) != outline_green
+        settings.window.outline_enabled = True
+        settings.window.outline_color = "#FF65CC"
+        app.renderer.set_outline_settings(settings.window)
         points = [(x, y) for y in range(50, 440, 10) for x in range(60, 420, 10)
                   if app.renderer.hit_test(x, y)]
         assert points, "Picking did not find any model geometry"
@@ -56,7 +80,10 @@ def main():
         assert not app.renderer.hit_test(5, 5)
         results["pick_point"] = point
         poll((5, 5))
-        assert win32gui.GetWindowLong(app.hwnd, -20) & WS_EX_TRANSPARENT
+        assert not win32gui.GetWindowLong(app.hwnd, -20) & WS_EX_TRANSPARENT
+        corner = win32gui.ClientToScreen(app.hwnd, (5, 5))
+        assert win32gui.WindowFromPoint(corner) != app.hwnd
+        assert ImageGrab.grab(bbox=(corner[0], corner[1], corner[0] + 1, corner[1] + 1)).getpixel((0, 0)) != (214, 0, 214)
         poll(point)
         assert app._mouse_hovered, "Model must be accessible to Windows hit testing"
         assert not win32gui.GetWindowLong(app.hwnd, -20) & WS_EX_TRANSPARENT
@@ -113,6 +140,14 @@ def main():
             results["throw"] = {"release_velocity": velocity, "rest": list(p.state.position), "origin": origin}
 
         app.set_debug_overlay(True)
+        app.graphicsEngine.renderFrame()
+        time.sleep(0.1)
+        debug_corner = win32gui.ClientToScreen(app.hwnd, (5, 5))
+        debug_pixel = ImageGrab.grab(bbox=(debug_corner[0], debug_corner[1], debug_corner[0] + 1, debug_corner[1] + 1)).getpixel((0, 0))
+        assert debug_pixel == (214, 0, 214), (debug_pixel, hex(app._background_key))
+        face_point = win32gui.ClientToScreen(app.hwnd, (240, 260))
+        face_pixel = ImageGrab.grab(bbox=(face_point[0], face_point[1], face_point[0] + 1, face_point[1] + 1)).getpixel((0, 0))
+        assert face_pixel[0] < 200, (face_pixel, "outline is filling the transparent face")
         for _ in range(10):
             pose = app.animation_controller.update(0.016, hovered=True, look_direction=0.5)
             app.renderer.apply_rig_pose(pose)
@@ -120,7 +155,7 @@ def main():
         for _ in range(3):
             app.graphicsEngine.renderFrame()
         results["capture"] = str(app.debug_tools.capture_once())
-        results["checks"] = "picking, pass-through, click/pet/poke, drag, saved position, external drag, disabled drag"
+        results["checks"] = "outline color/toggle, transparent background/debug pink, picking, click/pet/poke, drag, saved position, external drag, disabled drag"
         print(json.dumps(results, indent=2))
     finally:
         app.debug_tools.close()

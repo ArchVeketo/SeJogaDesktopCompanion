@@ -38,6 +38,8 @@ desktop.ini
 config.local.toml
 *.local.toml
 state/
+.local/
+user-data/
 logs/
 
 # Modelo derivado gerado por tools/gltf_to_glb.py (regenerável)

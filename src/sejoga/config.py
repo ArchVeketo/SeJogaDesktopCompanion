@@ -21,6 +21,10 @@ Uso::
 from __future__ import annotations
 
 import errno
+import logging
+import os
+import sys
+import tempfile
 import tomllib
 from pathlib import Path
 from typing import Literal
@@ -36,7 +40,30 @@ def default_config_path() -> Path:
     """``%LOCALAPPDATA%/SeJogaDesktopCompanion/config.toml`` no Windows."""
     from platformdirs import user_config_dir
 
+    override = os.environ.get("SEJOGA_CONFIG_PATH")
+    if override:
+        return Path(override).expanduser().resolve()
+    portable = portable_config_path()
+    if portable is not None and portable.is_file():
+        return portable
+    fallback = fallback_config_path()
+    if fallback.is_file():
+        return fallback
     return Path(user_config_dir(APP_NAME, APP_AUTHOR)) / "config.toml"
+
+
+def fallback_config_path() -> Path:
+    """Perfil persistente alternativo quando a pasta original recusa escrita."""
+    from platformdirs import user_config_dir
+
+    return Path(user_config_dir(APP_NAME, appauthor=False, roaming=True)) / "config.toml"
+
+
+def portable_config_path() -> Path | None:
+    """Última alternativa para bundles executados em ambientes restritos."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent / "user-data" / "config.toml"
+    return None
 
 
 class WindowSettings(BaseModel):
@@ -54,6 +81,9 @@ class WindowSettings(BaseModel):
 
     scale: float = Field(default=1.0, gt=0.1, le=4.0)
     """Multiplicador do enquadramento automático (1.0 ocupa até 70% do overlay)."""
+    outline_enabled: bool = True
+    outline_color: str = Field(default="#FF65CC", pattern=r"^#[0-9A-Fa-f]{6}$")
+    outline_width: float = Field(default=2.5, ge=0.5, le=8.0)
     fps: int = Field(default=60, ge=15, le=240)
     start_position: tuple[int, int] | None = None
     """Canto superior esquerdo em coordenadas de tela; ``None`` = canto inferior direito."""
@@ -158,19 +188,41 @@ def save_settings(settings: Settings, path: Path | None = None) -> Path:
     """Grava o config atomicamente (arquivo temporário + ``os.replace``)."""
     from tomli_w import dumps
 
-    path = path or default_config_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Exclui None para serialização TOML válida
     payload = dumps(settings.model_dump(mode="json", exclude_none=True))
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(payload, encoding="utf-8")
+    explicit = path is not None or bool(os.environ.get("SEJOGA_CONFIG_PATH"))
+    path = path or default_config_path()
     try:
-        tmp.replace(path)
-    except OSError as exc:
-        # Algumas pastas de perfil Windows (por exemplo, EFS/redirecionadas)
-        # recusam rename atômico mesmo com origem e destino no mesmo diretório.
-        if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != 17:
+        _write_settings(path, payload)
+    except PermissionError:
+        fallback = fallback_config_path()
+        if explicit:
             raise
-        path.write_text(payload, encoding="utf-8")
-        tmp.unlink(missing_ok=True)
+        try:
+            _write_settings(fallback, payload)
+        except PermissionError:
+            portable = portable_config_path()
+            if portable is None:
+                raise
+            _write_settings(portable, payload)
+            fallback = portable
+        logging.getLogger("sejoga").warning("Configuration moved from %s to %s (permission denied)", path, fallback)
+        path = fallback
     return path
+
+
+def _write_settings(path: Path, payload: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # A stale shared .tmp can have different ACLs or belong to another instance.
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                     prefix="config-", suffix=".tmp", delete=False) as stream:
+        tmp = Path(stream.name)
+        stream.write(payload)
+    try:
+        try:
+            tmp.replace(path)
+        except OSError as exc:
+            if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != 17:
+                raise
+            path.write_text(payload, encoding="utf-8")
+    finally:
+        tmp.unlink(missing_ok=True)

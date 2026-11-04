@@ -113,7 +113,7 @@ SWP_NOZORDER = 0x0004
 SWP_SHOWWINDOW = 0x0040
 
 # Magenta color key (0xFF00FF = RGB(255, 0, 255)) - BGR format for Win32
-COLOR_KEY = 0x00FF00FF
+COLOR_KEY = 0x00D600D6  # simplepbr maps magenta clear color to RGB(214, 0, 214)
 
 user32 = ctypes.windll.user32
 dwmapi = ctypes.windll.dwmapi
@@ -126,7 +126,7 @@ def set_window_ex_style(hwnd: int, add_flags: int = 0, remove_flags: int = 0) ->
     win32gui.SetWindowLong(hwnd, -20, ex_style)
 
 
-def set_layered_window_attributes(hwnd: int, color_key: int = 0x00FF00FF, alpha: int = 255, flags: int = 0x00000001) -> bool:
+def set_layered_window_attributes(hwnd: int, color_key: int = COLOR_KEY, alpha: int = 255, flags: int = LWA_COLORKEY) -> bool:
     """Define color key e/ou alpha para layered window."""
     return ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, color_key, alpha, flags)
 
@@ -135,9 +135,6 @@ def set_window_pos_zorder(hwnd: int, zorder: int) -> bool:
     """Define Z-order: HWND_TOPMOST (-1), HWND_NOTOPMOST (-2), HWND_BOTTOM (1)."""
     return ctypes.windll.user32.SetWindowPos(hwnd, zorder, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0010)
 
-
-# Magenta color key (0xFF00FF = RGB(255, 0, 255)) - BGR format for Win32
-COLOR_KEY = 0x00FF00FF
 
 # ============================================================
 # Panda3D Renderer
@@ -158,6 +155,7 @@ class Panda3DRenderer:
         self.model_anchor: Optional[NodePath] = None
         self.rig: Optional[Rig] = None
         self._rig_nodes: dict[str, NodePath] = {}
+        self._outline_nodes: dict[str, NodePath] = {}
         self._rig_base_hpr: dict[str, tuple[float, float, float]] = {}
         self._view_width = 1.0
         self._view_height = 1.0
@@ -276,9 +274,11 @@ class Panda3DRenderer:
         self.model_anchor = self.showbase.render.attachNewNode("mascot-motion-root")
         model_np.reparentTo(self.model_anchor)
         self.model_np = model_np
+        self._setup_outline()
         self.set_visual_scale(self.showbase.settings.window.scale)
 
         self._apply_rig_to_model()
+        self.set_outline_settings(self.showbase.settings.window)
         self.set_model_screen_position(
             self.width / 2,
             self.height - self._model_radius_px - 35,
@@ -296,6 +296,57 @@ class Panda3DRenderer:
             -self._model_center.y * model_scale,
             -self._model_min_z * model_scale - self._model_radius_px * units_per_pixel_z,
         )
+        if self.outline_np:
+            self.outline_np.setScale(self.model_np.getScale())
+            self.outline_np.setPos(self.model_np.getPos())
+
+    def _setup_outline(self) -> None:
+        from panda3d.core import CullFaceAttrib, Shader
+
+        vertex = """#version 130
+in vec4 p3d_Vertex;
+in vec3 p3d_Normal;
+in vec2 p3d_MultiTexCoord0;
+out vec2 outline_uv;
+uniform mat4 p3d_ModelViewProjectionMatrix;
+uniform float outline_thickness;
+void main() {
+    outline_uv = p3d_MultiTexCoord0;
+    gl_Position = p3d_ModelViewProjectionMatrix *
+        (p3d_Vertex + vec4(normalize(p3d_Normal) * outline_thickness, 0.0));
+}
+"""
+        fragment = """#version 130
+uniform vec4 outline_color;
+uniform sampler2D p3d_Texture0;
+in vec2 outline_uv;
+out vec4 fragColor;
+void main() {
+    if (texture(p3d_Texture0, outline_uv).a < 0.05) discard;
+    fragColor = outline_color;
+}
+"""
+        self.outline_np = self.model_np.copyTo(self.model_anchor)
+        self.outline_np.setName("mascot-outline")
+        self.outline_np.setShader(Shader.make(Shader.SL_GLSL, vertex, fragment), 1000)
+        self.outline_np.setAttrib(CullFaceAttrib.make(CullFaceAttrib.MCullCounterClockwise), 1000)
+        self.outline_np.setLightOff(1000)
+        self.outline_np.setCollideMask(0)
+
+    def set_outline_settings(self, settings) -> None:
+        if not self.outline_np:
+            return
+        if not settings.outline_enabled:
+            self.outline_np.hide()
+            return
+        self.outline_np.show()
+        color = settings.outline_color.lstrip("#")
+        rgb = tuple(int(color[index:index + 2], 16) / 255 for index in (0, 2, 4))
+        self.outline_np.setShaderInput("outline_color", (*rgb, 1.0))
+        # Model units per displayed pixel; the border follows each part's normals.
+        visible_height = self.height * self.FRAME_FILL * settings.scale
+        thickness = settings.outline_width * self._model_dimensions.z / visible_height
+        self.outline_np.setShaderInput("outline_thickness", thickness)
 
     def _update_view_dimensions(self) -> None:
         lens = self.showbase.cam.node().getLens()
@@ -314,6 +365,9 @@ class Panda3DRenderer:
             node = self.model_np.find(f"**/{group_name}")
             if not node.isEmpty():
                 self._rig_nodes[group_name] = node
+                outline_node = self.outline_np.find(f"**/{group_name}")
+                if not outline_node.isEmpty():
+                    self._outline_nodes[group_name] = outline_node
                 hpr = node.getHpr()
                 self._rig_base_hpr[group_name] = (float(hpr.x), float(hpr.y), float(hpr.z))
 
@@ -358,6 +412,9 @@ class Panda3DRenderer:
                 base_p + math.degrees(x),
                 base_r + math.degrees(z),
             )
+            outline_node = self._outline_nodes.get(group_name)
+            if outline_node:
+                outline_node.setHpr(node.getHpr())
 
 
 # ============================================================
@@ -379,7 +436,7 @@ class OverlayApp(ShowBase):
 
         self._is_topmost = settings.window.always_on_top
         self._is_bottom = settings.window.mode == "desktop"
-        self._click_through = settings.window.click_through_transparent
+        self._background_key = COLOR_KEY
         self._drag_active = False
         self._drag_start_pos = (0, 0)
         self._window_start_pos = (0, 0)
@@ -388,6 +445,7 @@ class OverlayApp(ShowBase):
         self._physics_last_tick = time.perf_counter()
         self._mouse_hovered = False
         self._mouse_local = (0, 0)
+        self._native_buttons: set[str] = set()
         self.mouse_interaction = MouseInteraction(buttons=self._mouse_buttons())
         self.animation_controller: Optional[AnimationController] = None
 
@@ -396,7 +454,6 @@ class OverlayApp(ShowBase):
         self.tray_menu: Optional = None
         self._settings_dialog: Optional[SettingsDialog] = None
         self._topmost_action = None
-        self._click_through_action = None
         self._debug_action = None
         self._recording_action = None
         self.hotkey_manager: Optional[HotkeyManager] = None
@@ -440,6 +497,8 @@ class OverlayApp(ShowBase):
                 ", ".join(self.hotkey_manager.unavailable_shortcuts),
             )
         self._apply_window_state()
+        self.taskMgr.doMethodLater(0.15, self._restore_z_order, "restore-z-order")
+        self.taskMgr.doMethodLater(0.2, self._calibrate_background_key, "background-key")
         self._init_physics()
 
         print("OverlayApp initialized.")
@@ -498,11 +557,7 @@ class OverlayApp(ShowBase):
             ex_style |= 0x00000008
         win32gui.SetWindowLong(self.hwnd, -20, ex_style)
 
-        ctypes.windll.user32.SetLayeredWindowAttributes(
-            self.hwnd, 0x00FF00FF, 255, 0x00000001
-        )
-
-        self._update_click_through()
+        self._refresh_background_mode()
         self._update_z_order()
 
         try:
@@ -510,20 +565,36 @@ class OverlayApp(ShowBase):
         except Exception:
             pass
 
-    def _update_click_through(self, over_model: bool = False) -> None:
+    def _refresh_background_mode(self) -> None:
+        """Windows uses the final framebuffer color, after PBR tone mapping."""
         ex_style = win32gui.GetWindowLong(self.hwnd, -20)
-        passthrough = self._click_through and not over_model and not self._drag_active
-        updated = ex_style | WS_EX_TRANSPARENT if passthrough else ex_style & ~WS_EX_TRANSPARENT
-        if updated != ex_style:
-            win32gui.SetWindowLong(self.hwnd, -20, updated)
+        if ex_style & WS_EX_TRANSPARENT:
+            win32gui.SetWindowLong(self.hwnd, -20, ex_style & ~WS_EX_TRANSPARENT)
+        if self.debug_tools and self.debug_tools.visible:
+            win32gui.SetLayeredWindowAttributes(self.hwnd, self._background_key, 255, LWA_ALPHA)
+        else:
+            win32gui.SetLayeredWindowAttributes(self.hwnd, self._background_key, 255, LWA_COLORKEY)
+
+    def _calibrate_background_key(self, task: Task) -> int:
+        if not win32gui.IsWindow(self.hwnd):
+            return Task.done
+        image = self.win.getScreenshot()
+        if image:
+            red, green, blue = bytes(image.getRamImageAs("RGB"))[:3]
+            if red > 128 and green < 20 and blue > 128:
+                self._background_key = red | (green << 8) | (blue << 16)
+                self._refresh_background_mode()
+        return Task.done
 
     def _update_z_order(self) -> None:
-        if self._is_bottom:
-            ctypes.windll.user32.SetWindowPos(self.hwnd, 1, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0010)
-        elif self._is_topmost:
-            ctypes.windll.user32.SetWindowPos(self.hwnd, -1, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0010)
-        else:
-            ctypes.windll.user32.SetWindowPos(self.hwnd, -2, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0010)
+        order = HWND_BOTTOM if self._is_bottom else HWND_TOPMOST if self._is_topmost else HWND_NOTOPMOST
+        win32gui.SetWindowPos(self.hwnd, order, 0, 0, 0, 0,
+                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+
+    def _restore_z_order(self, task: Task) -> int:
+        if win32gui.IsWindow(self.hwnd):
+            self._update_z_order()
+        return Task.done
 
     def _apply_window_state(self) -> None:
         """Aplica tamanho, posição inicial e estilos definidos nas configurações."""
@@ -549,7 +620,7 @@ class OverlayApp(ShowBase):
         self.win.requestProperties(properties)
         # SWP_NOZORDER | SWP_NOACTIVATE; z-order is applied separately below.
         win32gui.SetWindowPos(self.hwnd, 0, x, y, size, size, 0x0004 | 0x0010)
-        self._update_click_through()
+        self._refresh_background_mode()
         self._update_z_order()
 
     def _init_renderer(self) -> None:
@@ -601,13 +672,20 @@ class OverlayApp(ShowBase):
 
     def _on_physics_state_change(self, state) -> None:
         """Callback quando estado da física muda."""
+        if not win32gui.IsWindow(self.hwnd):
+            return
         if state.grounded and not self._was_grounded and self.animation_controller:
             self.animation_controller.interact("land")
         self._was_grounded = state.grounded
         x = round(state.position[0] - self._physics_local[0])
         y = round(state.position[1] - self._physics_local[1])
-        win32gui.SetWindowPos(self.hwnd, 0, x, y, 0, 0,
-                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+        try:
+            win32gui.SetWindowPos(self.hwnd, 0, x, y, 0, 0,
+                                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+        except win32gui.error as exc:
+            if exc.winerror != 1400:
+                raise
+            return
         self.settings.window.start_position = (x, y)
         if state.grounded and math.hypot(*state.velocity) < 5:
             if self._last_rest_position != (x, y):
@@ -627,6 +705,9 @@ class OverlayApp(ShowBase):
         """Task de física - roda a 120 Hz."""
         if not self.physics:
             return Task.cont
+        if not win32gui.IsWindow(self.hwnd):
+            self.userExit()
+            return Task.done
 
         now = time.perf_counter()
         dt = now - self._physics_last_tick
@@ -685,6 +766,7 @@ class OverlayApp(ShowBase):
     def set_debug_overlay(self, enabled: bool) -> None:
         if self.debug_tools:
             self.debug_tools.set_visible(enabled)
+            self._refresh_background_mode()
             self._set_action_checked(self._debug_action, enabled)
 
     def toggle_debug_overlay(self) -> None:
@@ -720,6 +802,7 @@ class OverlayApp(ShowBase):
             self.debug_tools.toggle_recording()
 
     def _on_recording_changed(self, recording: bool) -> None:
+        self._refresh_background_mode()
         self._set_action_checked(self._recording_action, recording)
         if self.tray_icon:
             message = "Gravação iniciada (máximo 300 frames)." if recording else "Gravação encerrada."
@@ -746,11 +829,6 @@ class OverlayApp(ShowBase):
         self._topmost_action.setCheckable(True)
         self._topmost_action.setChecked(self._is_topmost)
         self._topmost_action.toggled.connect(self.set_topmost)
-
-        self._click_through_action = self.tray_menu.addAction("Cliques atravessam as áreas vazias")
-        self._click_through_action.setCheckable(True)
-        self._click_through_action.setChecked(self._click_through)
-        self._click_through_action.toggled.connect(self.set_click_through)
 
         settings_action = self.tray_menu.addAction("Configurações...")
         settings_action.triggered.connect(lambda _checked=False: self.open_settings_dialog())
@@ -792,11 +870,24 @@ class OverlayApp(ShowBase):
             self.toggle_visibility()
 
     def _setup_mouse_hooks(self) -> None:
+        for event, button in (("mouse1", "left"), ("mouse2", "middle"), ("mouse3", "right")):
+            self.accept(event, self._native_mouse_button, [button, True])
+            self.accept(event + "-up", self._native_mouse_button, [button, False])
         self.taskMgr.add(self._mouse_poll, "mouse-poll")
 
-    @staticmethod
-    def _mouse_buttons() -> frozenset[str]:
-        return frozenset(
+    def _native_mouse_button(self, button: str, pressed: bool) -> None:
+        if pressed:
+            self._native_buttons.add(button)
+            if win32gui.IsWindow(self.hwnd) and self._settings_dialog is None:
+                win32gui.SetCapture(self.hwnd)
+        else:
+            self._native_buttons.discard(button)
+            if not self._native_buttons and win32gui.GetCapture() == self.hwnd:
+                win32gui.ReleaseCapture()
+        self.logger.info("Native mouse %s %s", button, "down" if pressed else "up")
+
+    def _mouse_buttons(self) -> frozenset[str]:
+        return frozenset(self._native_buttons) | frozenset(
             name for name, key in (
                 ("left", win32con.VK_LBUTTON),
                 ("right", win32con.VK_RBUTTON),
@@ -805,15 +896,20 @@ class OverlayApp(ShowBase):
         )
 
     def _mouse_poll(self, task: Task) -> int:
+        if not win32gui.IsWindow(self.hwnd):
+            return Task.done
         position = win32gui.GetCursorPos()
         buttons = self._mouse_buttons()
         self._mouse_local = win32gui.ScreenToClient(self.hwnd, position)
         enabled = bool(win32gui.IsWindowVisible(self.hwnd)) and self._settings_dialog is None
         enabled = enabled and not bool(win32api.GetAsyncKeyState(win32con.VK_ESCAPE) & 0x8000)
         hit = enabled and self.renderer.hit_test(*self._mouse_local)
-        # An external drag that crosses the mascot must stay with its original app.
-        external_press = bool(buttons & self.mouse_interaction.buttons) and not self.mouse_interaction.has_press
-        self._update_click_through(hit and not external_press)
+        newly_pressed = buttons - self.mouse_interaction.buttons
+        if newly_pressed:
+            self.logger.info(
+                "Mouse press buttons=%s hit=%s target=%s own=%s",
+                sorted(newly_pressed), hit, win32gui.WindowFromPoint(position), self.hwnd,
+            )
         if hit and not self._drag_active:
             target = win32gui.WindowFromPoint(position)
             hit = target == self.hwnd or win32gui.IsChild(self.hwnd, target)
@@ -890,12 +986,6 @@ class OverlayApp(ShowBase):
         self.settings.window.mode = "desktop" if checked else "overlay"
         self._persist_settings()
 
-    def set_click_through(self, enabled: bool) -> None:
-        self._click_through = enabled
-        self._update_click_through()
-        self.settings.window.click_through_transparent = enabled
-        self._persist_settings()
-
     def open_settings_dialog(self) -> None:
         if self._settings_dialog is not None:
             self._settings_dialog.show()
@@ -923,11 +1013,8 @@ class OverlayApp(ShowBase):
         self.settings_obj = updated
         self._is_bottom = updated.window.mode == "desktop"
         self._is_topmost = updated.window.always_on_top and not self._is_bottom
-        self._click_through = updated.window.click_through_transparent
-        self._update_click_through()
         self._update_z_order()
         self._set_action_checked(self._topmost_action, self._is_topmost)
-        self._set_action_checked(self._click_through_action, self._click_through)
         if hotkeys_changed:
             if self.hotkey_manager:
                 self.hotkey_manager.close()
@@ -949,6 +1036,7 @@ class OverlayApp(ShowBase):
                     )
         if self.renderer:
             self.renderer.set_visual_scale(updated.window.scale)
+            self.renderer.set_outline_settings(updated.window)
 
         if music_changed:
             if self.music_listener:
