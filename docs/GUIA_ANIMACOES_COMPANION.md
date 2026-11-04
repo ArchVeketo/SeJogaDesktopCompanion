@@ -50,8 +50,22 @@ capturas do início, gesto e retorno, com perfil temporário.
 Os tentáculos agora aguardam a porta abrir, mantêm a raiz fixa, saem em
 direções opostas e recolhem por 1,5 s sem colapsar no primeiro frame.
 A porta continua sendo atualizada até fechar após o último tentáculo.
-O contato geométrico com toda a malha da porta ainda precisa ser revalidado
-no novo sistema; abrir antes da saída não equivale a uma simulação de contato.
+Cada tentáculo possui doze articulações com um referencial local: X/Y são
+eixos transversais de dobra e Z segue a direção longitudinal. O referencial
+é transportado ao longo da curva com torção distribuída; não aponta para a
+câmera. O diagnóstico mostra as tríades RGB e inclui os eixos/posições de
+cada articulação no JSONL. A seção da malha mantém espessura durante a
+saída; a parte visível percorre a curva em vez de alterar opacidade.
+
+`tentacle_constraints.py` projeta cápsulas e vértices contra caixas orientadas
+que seguem as peças animadas. Há quarenta volumes neste asset: cinco painéis
+do armário oco, porta, fones e peças sólidas do tronco/braços/pernas. Planos
+decorativos transparentes e eixos de diagnóstico não bloqueiam a cadeia.
+As raízes acompanham a cabeça; a porta espera recolhimento e limita sua
+velocidade. `tools/verify_tentacle_contacts.py` verifica vértices renderizados,
+eixos ortogonais e fechamento durante um ciclo completo. São restrições
+geométricas aproximadas; não constituem física de tecido nem colisão por
+triângulo contra todos os pixels transparentes do GLTF.
 
 ---
 

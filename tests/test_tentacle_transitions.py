@@ -19,21 +19,21 @@ def scene():
 def test_retraction_preserves_volume_then_reaches_dormant_without_restarting():
     pool, director = scene()
     director.trigger_curious()
-    director._door_current = director._door_requested = 48
+    director._door_current = director._door_requested = 70
     for _ in range(120):
         director.update(1 / 60, 0, IdlePersonality.CALM)
     limb = pool.tentacles[0]
-    initial = (limb.segments[-1].pos - limb.anchor).length()
+    initial = (limb.visible_tip() - limb.anchor).length()
     assert initial > .1
     pool.release(limb)
     director.update(1 / 60, 0, IdlePersonality.CALM)
-    assert (limb.segments[-1].pos - limb.anchor).length() > initial * .99
+    assert (limb.visible_tip() - limb.anchor).length() > initial * .99
     previous = initial
     for _ in range(110):
         # Repeated cancellation must not reset the easing clock.
         pool.release(limb)
         director.update(1 / 60, 0, IdlePersonality.CALM)
-        distance = (limb.segments[-1].pos - limb.anchor).length()
+        distance = (limb.visible_tip() - limb.anchor).length()
         assert distance <= previous + 1e-6
         previous = distance
     assert limb.state == TentacleState.DORMANT
@@ -47,7 +47,8 @@ def test_emergence_waits_for_door_and_root_never_drifts():
     for _ in range(10):
         director.update(1 / 60, 0, IdlePersonality.PLAYFUL)
     assert limb.state_time == 0
-    director._door_current = 48
+    director._door_current = 70
+    director._door_requested = 70
     for _ in range(120):
         director.update(1 / 60, 0, IdlePersonality.PLAYFUL)
         assert limb.segments[0].pos.almostEqual(limb.anchor, 1e-7)

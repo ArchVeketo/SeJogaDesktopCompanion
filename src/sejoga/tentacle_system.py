@@ -15,6 +15,7 @@ from typing import Optional
 from panda3d.core import Vec3, Quat, NodePath, TransformState
 
 from .rig import Rig, IdlePersonality
+from .tentacle_constraints import TentacleContacts
 
 
 # ============================================================
@@ -109,7 +110,20 @@ class Tentacle:
     outline_vdata: object = None
     template_vertices: list = field(default_factory=list)
     template_normals: list = field(default_factory=list)
+    rest_vertices: list = field(default_factory=list)
     retract_from: list[Vec3] = field(default_factory=list)
+    reveal: float = 0.0
+    retract_reveal: float = 0.0
+    frames: list = field(default_factory=list)
+    axis_nodes: list = field(default_factory=list)
+    reference_front: Vec3 = field(default_factory=lambda: Vec3(0, 1, 0))
+    contacts: Optional[TentacleContacts] = None
+
+    def visible_tip(self):
+        sample = max(0.0, min(1.0, self.reveal)) * (len(self.segments) - 1)
+        index = min(len(self.segments) - 2, int(sample))
+        blend = sample - index
+        return self.segments[index].pos * (1 - blend) + self.segments[index + 1].pos * blend
 
     def __post_init__(self):
         if not self.params:
@@ -193,6 +207,7 @@ class TentaclePool:
         if tentacle.state in (TentacleState.DORMANT, TentacleState.RETRACTING):
             return
         tentacle.retract_from = [Vec3(segment.pos) for segment in tentacle.segments]
+        tentacle.retract_reveal = tentacle.reveal
         tentacle.state = TentacleState.RETRACTING
         tentacle.state_time = 0.0
         tentacle.params = dict(STATE_PARAMS["retracting"])
@@ -352,21 +367,20 @@ class TentacleDirector:
         self._door_requested = 0.0
 
     def _update_tentacle(self, tentacle: Tentacle, dt: float) -> None:
-        if tentacle.state == TentacleState.CURIOUS and self._door_current < 22.0:
+        if tentacle.state == TentacleState.CURIOUS and self._door_current < 50.0:
             return
         tentacle.state_time += dt
 
         if tentacle.state == TentacleState.RETRACTING:
             progress = min(1.0, max(0.0, tentacle.state_time / 1.5))
             eased = progress ** 3 * (10 - 15 * progress + 6 * progress * progress)
-            for index, segment in enumerate(tentacle.segments):
-                start = tentacle.retract_from[index]
-                segment.pos = tentacle.anchor + (start - tentacle.anchor) * (1 - eased)
-                segment.vel = Vec3(0)
+            tentacle.reveal = tentacle.retract_reveal * (1 - eased)
+            self._solve_contacts(tentacle)
             if progress >= 1.0:
                 tentacle.state = TentacleState.DORMANT
                 tentacle.params = dict(STATE_PARAMS["dormant"])
                 tentacle.retract_from.clear()
+                tentacle.reveal = 0.0
             return
 
         # Transições de estado
@@ -376,10 +390,11 @@ class TentacleDirector:
 
         # Parâmetros atuais
         p = tentacle.params
+        reveal_time = max(0.0, min(1.0, tentacle.state_time / 1.8))
+        tentacle.reveal = reveal_time ** 3 * (10 - 15 * reveal_time + 6 * reveal_time ** 2)
         max_len = p["max_len"]
         reach_speed = p["reach_speed"]
         target_curl = p["curl"]
-        jitter = p["jitter"]
 
         # Spring params
         spring = tentacle.spring
@@ -396,11 +411,18 @@ class TentacleDirector:
             # Target position para este segmento
             if tentacle.target is not None and reach_speed != 0:
                 # Interpola do anchor ao target baseado no progresso do tentáculo
-                progress = max(0.0, min(1.0, tentacle.state_time * abs(reach_speed) / 400.0))
-                base_progress = progress * progress * (3.0 - 2.0 * progress)
-                seg_progress = base_progress * t_param
-                target_pos = tentacle.anchor + (tentacle.target - tentacle.anchor) * seg_progress
-                arch = math.sin(math.pi * t_param) * base_progress
+                # Solve the complete curve; reveal samples a growing part of it.
+                # The cross section keeps its volume instead of growing from zero.
+                seg_progress = t_param
+                delta = tentacle.target - tentacle.anchor
+                forward = tentacle.reference_front
+                a = tentacle.anchor + forward * .22 + Vec3(0, 0, .02)
+                b = tentacle.anchor + delta * 1.15 + forward * .08 + Vec3(0, 0, .06 + target_curl * .04)
+                u = seg_progress
+                v = 1 - u
+                target_pos = (tentacle.anchor * (v ** 3) + a * (3 * v * v * u) +
+                              b * (3 * v * u * u) + tentacle.target * (u ** 3))
+                arch = math.sin(math.pi * t_param)
                 phase = tentacle.state_time * 1.5 - t_param * 2.0 + tentacle.seed * .001
                 target_pos += Vec3(
                     math.sin(phase) * 4.0 * tentacle.unit_scale * arch,
@@ -457,6 +479,39 @@ class TentacleDirector:
 
             # Sucker phase para animação visual
             seg.sucker_phase += dt * 3.0
+        self._solve_contacts(tentacle)
+
+    def _solve_contacts(self, tentacle):
+        if not tentacle.contacts:
+            return
+        # Alternate smoothing, link-length limits and swept-sphere projection.
+        # Radii include the suction cups and the mantle, not only the centerline.
+        nearby = tentacle.contacts.region([segment.pos for segment in tentacle.segments], .13)
+        for _ in range(3):
+            for index in range(1, len(tentacle.segments)):
+                segment = tentacle.segments[index]
+                u = index / (len(tentacle.segments) - 1)
+                radius = .072 * (1 - .88 * u) + .008
+                previous = tentacle.segments[index - 1]
+                if index + 1 < len(tentacle.segments):
+                    midpoint = (previous.pos + tentacle.segments[index + 1].pos) * .5
+                    segment.pos += (midpoint - segment.pos) * .18
+                delta = segment.pos - previous.pos
+                limit = segment.length * .65
+                if delta.lengthSquared() > limit * limit:
+                    segment.pos = previous.pos + delta.normalized() * limit
+                # Mid-link samples prevent a link cutting through a thin door.
+                midpoint = (previous.pos + segment.pos) * .5
+                projected_mid = tentacle.contacts.project(midpoint, radius, nearby)
+                segment.pos += (projected_mid - midpoint)
+                before = Vec3(segment.pos)
+                segment.pos = tentacle.contacts.project(segment.pos, radius, nearby)
+                correction = segment.pos - before
+                if correction.lengthSquared() > 1e-12:
+                    normal = correction.normalized()
+                    incoming = segment.vel.dot(normal)
+                    if incoming < 0:
+                        segment.vel -= normal * incoming
 
     def _check_state_transition(self, tentacle: Tentacle) -> None:
         st = tentacle.state
@@ -556,7 +611,7 @@ class TentacleDirector:
                 (50.0 if index % 2 == 0 else 25.0) * self.pool.unit_scale,
                 30.0 * self.pool.unit_scale,
             )
-        self._door_requested = max(self._door_requested, 38.0)
+        self._door_requested = max(self._door_requested, 85.0)
 
 
 # ============================================================
@@ -572,7 +627,7 @@ def create_tentacle_geometry(
     """Cria a malha grossa aprovada com poucos anéis e ventosas articuláveis."""
     from panda3d.core import (
         Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat,
-        GeomVertexWriter,
+        GeomVertexWriter, LineSegs, Texture,
     )
 
     vertices, normals, colors, indices = [], [], [], []
@@ -662,15 +717,52 @@ def create_tentacle_geometry(
     mesh_node = parent.attachNewNode(geom_node)
     mesh_node.setTwoSided(True)
     mesh_node.setName("procedural-tentacle")
+    # A real opaque white texture keeps the alpha-tested outline and exit
+    # shader independent from whatever texture the cabinet inherited.
+    white = Texture("tentacle-opaque")
+    white.setup2dTexture(1, 1, Texture.TUnsignedByte, Texture.FRgba)
+    white.setRamImage(bytes((255, 255, 255, 255)))
+    mesh_node.setTexture(white, 1)
 
     outline_node = mesh_node.copyTo(outline_parent)
     outline_node.setName("procedural-tentacle-outline")
     tentacle.mesh_node = mesh_node
     tentacle.outline_mesh_node = outline_node
     tentacle.mesh_vdata = vdata
-    tentacle.outline_vdata = outline_node.node().modifyGeom(0).modifyVertexData()
+    # Both shells share the same deforming vertex data. Rewriting a duplicate
+    # would double the skinning and collision work without changing the pose.
+    tentacle.outline_vdata = vdata
     tentacle.template_vertices = vertices
     tentacle.template_normals = normals
+    profile_center = ((0, 0), (.0675, -.00805), (.135, -.0069),
+                      (.207, .00575), (.279, .02875), (.351, .0644), (.432, .115))
+    for x, y, z in vertices:
+        bend = .115
+        for (za, xa), (zb, xb) in zip(profile_center, profile_center[1:]):
+            if z <= zb:
+                bend = xa + (xb - xa) * max(0, (z - za) / (zb - za))
+                break
+        tentacle.rest_vertices.append((z / .432, (x - bend) * .65, y * .65))
+    lines = LineSegs("tentacle-joint-axes")
+    lines.setThickness(1.5)
+    for color, endpoint in (((1, .15, .15, 1), (.035, 0, 0)),
+                            ((.15, 1, .2, 1), (0, .035, 0)),
+                            ((.2, .4, 1, 1), (0, 0, .05))):
+        lines.setColor(*color)
+        lines.moveTo(0, 0, 0)
+        lines.drawTo(*endpoint)
+    axes = lines.create()
+    for index in range(len(tentacle.segments)):
+        node = NodePath(axes).copyTo(parent)
+        node.setName(f"tentacle-joint-{index}")
+        node.setLightOff(1)
+        node.setCollideMask(0)
+        node.setDepthTest(False)
+        node.setDepthWrite(False)
+        node.setBin("fixed", 100)
+        node.setScale(1.8)
+        node.hide()
+        tentacle.axis_nodes.append(node)
     # Keep the small source profile so the per-frame curve update stays light.
 
 
@@ -678,40 +770,72 @@ def update_tentacle_render(tentacle: Tentacle) -> None:
     """Deforma a malha low-poly na curva procedural dos pontos da mola."""
     if not tentacle.mesh_node or not tentacle.segments or not tentacle.mesh_vdata:
         return
-    from panda3d.core import GeomVertexRewriter, Vec3
+    from panda3d.core import GeomVertexRewriter, Mat3, Quat, Vec3
 
     points = [Vec3(seg.pos) for seg in tentacle.segments]
-    path_length = sum((b - a).length() for a, b in zip(points, points[1:]))
-    width_scale = min(.75, max(.02, path_length / .432))
-
-    def frame_at(t: float):
-        sample = max(0.0, min(1.0, t)) * (len(points) - 1)
-        index = min(len(points) - 2, int(sample))
-        alpha = sample - index
-        center = points[index] * (1.0 - alpha) + points[index + 1] * alpha
-        tangent = points[index + 1] - points[index]
+    nearby = tentacle.contacts.region(points) if tentacle.contacts else []
+    # Rotation-minimizing frames: carry the previous transverse axis along
+    # the curve, then add distributed twist. No camera-facing/billboard axis.
+    frames = []
+    front = Vec3(tentacle.reference_front)
+    for index, center in enumerate(points):
+        tangent = points[min(index + 1, len(points) - 1)] - points[max(0, index - 1)]
         if tangent.lengthSquared() < 1e-10:
             tangent = Vec3(0, 0, 1)
-        else:
-            tangent.normalize()
-        front = Vec3(0, 1, 0) - tangent * tangent.y
+        tangent.normalize()
+        front -= tangent * front.dot(tangent)
         if front.lengthSquared() < 1e-6:
             front = Vec3(0, 0, 1) - tangent * tangent.z
+        if front.lengthSquared() < 1e-6:
+            front = Vec3(1, 0, 0) - tangent * tangent.x
         front.normalize()
-        right = front.cross(tangent)
-        if right.lengthSquared() < 1e-8:
-            right = Vec3(1, 0, 0)
-        else:
-            right.normalize()
+        right = front.cross(tangent).normalized()
+        u = index / (len(points) - 1)
+        twist = (.45 + math.sin(tentacle.state_time * .85 + tentacle.seed * .001) * .3) * u
+        transverse_x = right * math.cos(twist) + front * math.sin(twist)
+        transverse_y = front * math.cos(twist) - right * math.sin(twist)
+        frames.append((center, tangent, transverse_x, transverse_y))
+        orientation = Mat3(*transverse_x, *transverse_y, *tangent)
+        rotation = Quat()
+        rotation.setFromMatrix(orientation)
+        tentacle.segments[index].rot = rotation
+        if index < len(tentacle.axis_nodes):
+            tentacle.axis_nodes[index].setPos(center)
+            tentacle.axis_nodes[index].setQuat(rotation)
+    tentacle.frames = frames
+    cache = {}
+
+    def frame_at(t: float):
+        # Slide the visible length out of the opening while preserving radius.
+        sample = max(0.0, min(1.0, t)) * tentacle.reveal * (len(points) - 1)
+        index = min(len(points) - 2, int(sample))
+        alpha = sample - index
+        p0, p1 = points[max(0, index - 1)], points[index]
+        p2, p3 = points[index + 1], points[min(len(points) - 1, index + 2)]
+        a = -p0 + p2
+        b = p0 * 2 - p1 * 5 + p2 * 4 - p3
+        c = -p0 + p1 * 3 - p2 * 3 + p3
+        center = (p1 * 2 + a * alpha + b * alpha ** 2 + c * alpha ** 3) * .5
+        tangent = (a + b * (2 * alpha) + c * (3 * alpha ** 2)) * .5
+        if tangent.lengthSquared() < 1e-10:
+            tangent = frames[index][1]
+        tangent.normalize()
+        right = frames[index][2] * (1 - alpha) + frames[index + 1][2] * alpha
+        right -= tangent * right.dot(tangent)
+        right.normalize()
+        front = tangent.cross(right).normalized()
         return center, tangent, right, front
 
     def deform(vdata) -> None:
         vertex_writer = GeomVertexRewriter(vdata, "vertex")
         normal_writer = GeomVertexRewriter(vdata, "normal")
-        for local_vertex, local_normal in zip(tentacle.template_vertices, tentacle.template_normals):
-            x, y, z = local_vertex
-            center, tangent, right, front = frame_at(z / .432)
-            position = center + right * (x * width_scale) + front * (y * width_scale)
+        for (u, x, y), local_normal in zip(tentacle.rest_vertices, tentacle.template_normals):
+            if u not in cache:
+                cache[u] = frame_at(u)
+            center, tangent, right, front = cache[u]
+            position = center + right * x + front * y
+            for obstacle in nearby:
+                position = obstacle.project(position, .002)
             nx, ny, nz = local_normal
             normal = right * nx + front * ny + tangent * nz
             if normal.lengthSquared() > 1e-10:
@@ -720,5 +844,3 @@ def update_tentacle_render(tentacle: Tentacle) -> None:
             normal_writer.setData3(normal)
 
     deform(tentacle.mesh_vdata)
-    if tentacle.outline_vdata:
-        deform(tentacle.outline_vdata)

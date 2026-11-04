@@ -91,6 +91,7 @@ from .tentacle_system import (
     create_tentacle_geometry, update_tentacle_render,
 )
 from .attention import HoverAttention
+from .tentacle_constraints import ObstacleBox, TentacleContacts
 
 # ============================================================
 # Win32 Constants & Helpers
@@ -194,6 +195,9 @@ class Panda3DRenderer:
         node.setIntoCollideMask(BitMask32.allOff())
         ray_np = self.showbase.cam.attachNewNode(node)
         self.model_np.setCollideMask(BitMask32.bit(1))
+        for limb in self.tentacle_pool.tentacles:
+            for axis in limb.axis_nodes:
+                axis.setCollideMask(0)
         self._pick_queue = CollisionHandlerQueue()
         self._pick_traverser = CollisionTraverser("mouse-picking")
         self._pick_traverser.addCollider(ray_np, self._pick_queue)
@@ -293,8 +297,8 @@ class Panda3DRenderer:
         unit_scale = float(self._view_height / self.height / self.model_np.getScale().x)
         head_node = self._rig_nodes["head"]
         spawn_points = [
-            self.model_np.getRelativePoint(head_node, Vec3(.09, .20, .12)),
-            self.model_np.getRelativePoint(head_node, Vec3(-.09, .20, .20)),
+            self.model_np.getRelativePoint(head_node, Vec3(.035, .10, .12)),
+            self.model_np.getRelativePoint(head_node, Vec3(-.04, .10, .20)),
             self.model_np.getRelativePoint(head_node, Vec3(-.02, .20, .16)),
             self.model_np.getRelativePoint(head_node, Vec3(.035, .20, .10)),
             self.model_np.getRelativePoint(head_node, Vec3(0, .23, .12)),
@@ -311,6 +315,9 @@ class Panda3DRenderer:
             self._rig_nodes.get("door"), rng=random.Random(),
         )
         self._tentacles_were_visible = False
+        self._tentacle_anchor_local = [head_node.getRelativePoint(self.model_np, t.anchor)
+                                      for t in self.tentacle_pool.tentacles]
+        self._setup_tentacle_contacts()
         self.set_outline_settings(self.showbase.settings.window)
         self.set_model_screen_position(
             self.width / 2,
@@ -487,6 +494,55 @@ void main() {
             node.setR(base + direction*bend)
             self._outline_nodes[forearm].setHpr(node.getHpr())
 
+    def _setup_tentacle_contacts(self):
+        self.tentacle_contacts = TentacleContacts()
+        self._collider_sources = []
+        head = self._rig_nodes["head"]
+        door = self._rig_nodes["door"]
+        cabinet = head.find("**/mesh0")
+        if not cabinet.isEmpty():
+            low, high = cabinet.getTightBounds(head)
+            thickness = .022
+            # The cabinet is hollow. Its opening must remain traversable.
+            panels = [
+                (Vec3(low), Vec3(high.x, low.y + thickness, high.z)),
+                (Vec3(low), Vec3(low.x + thickness, high.y, high.z)),
+                (Vec3(high.x - thickness, low.y, low.z), Vec3(high)),
+                (Vec3(low), Vec3(high.x, high.y, low.z + thickness)),
+                (Vec3(low.x, low.y, high.z - thickness), Vec3(high)),
+            ]
+            for index, (minimum, maximum) in enumerate(panels):
+                self._collider_sources.append((f"cabinet-wall-{index}", head, minimum, maximum))
+        for mesh in self.model_np.findAllMatches("**/+GeomNode"):
+            if mesh == cabinet or mesh.getName().startswith(("procedural-tentacle", "tentacle-joint-")):
+                continue
+            # Decorative alpha planes are not solid obstacles.
+            if "plane" in mesh.getParent().getName().lower():
+                continue
+            bounds = mesh.getTightBounds(mesh)
+            if bounds and min(bounds[1][axis] - bounds[0][axis] for axis in range(3)) > .0001:
+                name = "door" if door.isAncestorOf(mesh) else mesh.getName()
+                self._collider_sources.append((name, mesh, Vec3(bounds[0]), Vec3(bounds[1])))
+        for tentacle in self.tentacle_pool.tentacles:
+            tentacle.contacts = self.tentacle_contacts
+
+    def _update_tentacle_contacts(self):
+        head = self._rig_nodes["head"]
+        self.tentacle_contacts.contacts = 0
+        self.tentacle_contacts.boxes = [
+            ObstacleBox(name, low, high, self.model_np.getMat(node), node.getMat(self.model_np))
+            for name, node, low, high in self._collider_sources
+        ]
+        for tentacle, local_anchor in zip(self.tentacle_pool.tentacles, self._tentacle_anchor_local):
+            anchor = self.model_np.getRelativePoint(head, local_anchor)
+            delta = anchor - tentacle.anchor
+            tentacle.anchor = Vec3(anchor)
+            for segment in tentacle.segments:
+                segment.pos += delta
+            if tentacle.target is not None:
+                tentacle.target += delta
+            tentacle.reference_front = self.model_np.getRelativeVector(head, Vec3(0, 1, 0)).normalized()
+
     def update_appendages(self, dt, visible=True):
         if not self.tentacle_director:
             return
@@ -497,17 +553,28 @@ void main() {
         elif self._tentacles_were_visible:
             self.tentacle_director._retract_all()
         active = any(t.state != TentacleState.DORMANT for t in self.tentacle_pool.tentacles)
-        self.tentacle_director._door_requested = max(self._door_requested, 48.0 if active else 0.0)
+        door = self._rig_nodes.get("door")
+        if door:
+            base_h, base_p, base_r = self._rig_base_hpr["door"]
+            door.setHpr(base_h + self.tentacle_director._door_current, base_p, base_r)
+        if active:
+            self._update_tentacle_contacts()
+        self.tentacle_director._door_requested = max(self._door_requested, 85.0 if active else 0.0)
         # The animation controller owns ambient timing. Keep updating the door
         # after the last limb is dormant, so it can finish closing smoothly.
         self.tentacle_director.update(dt, 0.0, controller.idle_personality)
         self._tentacles_were_visible = visible
         for tentacle in self.tentacle_pool.tentacles:
-            active = tentacle.state != TentacleState.DORMANT
+            active = tentacle.state != TentacleState.DORMANT and tentacle.reveal > .015
             if active:
                 update_tentacle_render(tentacle)
+            for index, axis in enumerate(tentacle.axis_nodes):
+                debug = self.showbase.debug_tools
+                shown = active and debug and debug.visible and index / (len(tentacle.segments) - 1) <= tentacle.reveal
+                (axis.show if shown else axis.hide)()
             if tentacle.mesh_node:
                 (tentacle.mesh_node.show if active else tentacle.mesh_node.hide)()
+                tentacle.mesh_node.setCollideMask(2 if active else 0)
             if tentacle.outline_mesh_node:
                 (tentacle.outline_mesh_node.show if active else tentacle.outline_mesh_node.hide)()
         door = self._rig_nodes.get("door")

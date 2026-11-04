@@ -185,6 +185,22 @@ class DebugTools:
             "fps": round(self._fps, 2),
             "animation_state": animation.state.value if animation and animation.state else None,
             "idle_personality": animation.idle_personality.value if animation else None,
+            "tentacle_contacts": renderer.tentacle_contacts.contacts,
+            "tentacles": [
+                {
+                    "state": limb.state.value,
+                    "reveal": round(limb.reveal, 4),
+                    "anchor": list(limb.anchor),
+                    "tip": list(limb.visible_tip()),
+                    "joints": [
+                        {"position": list(center), "x": list(right),
+                         "y": list(front), "z": list(tangent)}
+                        for center, tangent, right, front in limb.frames
+                    ],
+                }
+                for limb in renderer.tentacle_pool.tentacles
+                if limb.state.value != "dormant"
+            ],
             "mouse": {
                 "local_position": list(self.app._mouse_local),
                 "hovered": self.app._mouse_hovered,
@@ -240,6 +256,7 @@ class DebugTools:
             f"SEJOGA DEBUG  |  {self.debug_hotkey} fecha\n"
             f"FPS {self._fps:5.1f}   Janela {meta['window_pixels'][0]}x{meta['window_pixels'][1]}\n"
             f"Estado {meta['animation_state']}   Persona {meta['idle_personality']}\n"
+            f"Tentáculos {len(meta['tentacles'])}   Contatos {meta['tentacle_contacts']}\n"
             f"Mouse {meta['mouse']['local_position']} Hover {meta['mouse']['hovered']} Drag {meta['mouse']['dragging']}\n"
             f"Pos {state['position'][0]:.1f}, {state['position'][1]:.1f} px\n"
             f"Vel {state['velocity'][0]:.1f}, {state['velocity'][1]:.1f} px/s\n"
