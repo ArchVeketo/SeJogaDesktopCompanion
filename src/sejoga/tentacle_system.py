@@ -367,8 +367,15 @@ class TentacleDirector:
                 # Interpola do anchor ao target baseado no progresso do tentáculo
                 progress = max(0.0, min(1.0, tentacle.state_time * abs(reach_speed) / 400.0))
                 base_progress = progress * progress * (3.0 - 2.0 * progress)
-                seg_progress = min(1.0, base_progress * (1.0 + t_param * 0.5))
+                seg_progress = base_progress * t_param
                 target_pos = tentacle.anchor + (tentacle.target - tentacle.anchor) * seg_progress
+                arch = math.sin(math.pi * t_param) * base_progress
+                phase = tentacle.state_time * 1.5 - t_param * 2.0 + tentacle.seed * .001
+                target_pos += Vec3(
+                    math.sin(phase) * 4.0 * tentacle.unit_scale * arch,
+                    8.0 * tentacle.unit_scale * arch,
+                    12.0 * tentacle.unit_scale * arch,
+                )
             else:
                 target_pos = tentacle.anchor
 
@@ -471,7 +478,11 @@ class TentacleDirector:
         elif st == TentacleState.RETRACTING:
             if tentacle.state_time > 1.2:
                 tentacle.state = TentacleState.DORMANT
-                self.pool.release(tentacle)
+                tentacle.params = dict(STATE_PARAMS["dormant"])
+                tentacle.target = None
+                for segment in tentacle.segments:
+                    segment.pos = Vec3(tentacle.anchor)
+                    segment.vel = Vec3(0)
 
     def _update_frenzy(self, dt: float) -> None:
         # Targets caóticos que mudam frequentemente

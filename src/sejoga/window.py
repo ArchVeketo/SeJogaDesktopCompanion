@@ -500,6 +500,8 @@ void main() {
         elif self._tentacles_were_visible:
             self.tentacle_director._retract_all()
             self.tentacle_director.update(dt, 0.0, controller.idle_personality)
+        elif any(t.state != TentacleState.DORMANT for t in self.tentacle_pool.tentacles):
+            self.tentacle_director.update(dt, 0.0, controller.idle_personality)
         self._tentacles_were_visible = visible
         for tentacle in self.tentacle_pool.tentacles:
             active = tentacle.state != TentacleState.DORMANT

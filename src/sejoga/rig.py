@@ -158,8 +158,9 @@ def pose_idle(
         rig.set_rotation("fingers2", z=finger_breath - sin(t * .33 + .6) * 1.0)
     elif personality == IdlePersonality.PLAYFUL:
         bounce = sin(t * 1.12)
-        rig.set_rotation("body", x=abs(bounce) * 2.2, y=sway * 2.2, z=bounce * 2.2)
-        rig.set_rotation("head", x=-abs(bounce) * 1.8, y=sin(t * .72) * 6.0, z=bounce * 3.0)
+        compression = (1.0 - sin(t * 2.24 + 1.5707963268)) * .5
+        rig.set_rotation("body", x=compression * 2.2, y=sway * 2.2, z=bounce * 2.2)
+        rig.set_rotation("head", x=-compression * 1.8, y=sin(t * .72) * 6.0, z=bounce * 3.0)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
         rig.set_rotation("right-arm", x=bounce * 6.0, z=27.0 + bounce * 4.0)
         rig.set_rotation("left-arm", x=-bounce * 6.0, z=-28.0 - bounce * 4.0)
@@ -200,6 +201,41 @@ def pose_idle(
         # Calm hands breathe with the shoulders; no rapid idle twitch.
         rig.set_rotation("fingers", z=finger_breath)
         rig.set_rotation("fingers2", z=finger_breath)
+
+    # Short authored phrases interrupt breathing, then return to the same rest.
+    # Each phrase has anticipation, a readable hold and a slower recovery.
+    def add(group, x=0.0, y=0.0, z=0.0):
+        current = rig.current[group]
+        rig.set_rotation(group, x=current.x + radians(x), y=current.y + radians(y),
+                         z=current.z + radians(z), degrees=False)
+
+    if personality == IdlePersonality.CURIOUS:
+        inspect = _idle_pulse(t, 12.0, .8, 1.1, 1.2, offset=2.0)
+        follow = _idle_pulse(t, 12.0, 1.0, .9, 1.4, offset=1.8)
+        add("head", x=-5 * inspect, y=12 * inspect, z=4 * inspect)
+        add("body", y=3 * follow)
+        add("ant-arm", x=-8 * follow, z=12 * follow)
+    elif personality == IdlePersonality.PLAYFUL:
+        groove = _idle_pulse(t, 9.6, .65, 1.0, 1.1, offset=2.4)
+        add("body", y=sin(t * 2.2) * 5 * groove)
+        add("head", x=sin(t * 2.2 - .3) * 4 * groove)
+        add("right-arm", x=sin(t * 2.2 - .5) * 7 * groove)
+        add("left-arm", x=-sin(t * 2.2 - .5) * 7 * groove)
+    elif personality == IdlePersonality.CONFIDENT:
+        taunt = _idle_pulse(t, 13.0, .45, .7, 1.1, offset=3.0)
+        add("head", x=-4 * taunt, y=-10 * taunt)
+        add("body", y=4 * taunt, z=-2 * taunt)
+        add("ant-arm", x=-8 * taunt, z=10 * taunt)
+    elif personality == IdlePersonality.SHY:
+        glance = _idle_pulse(t, 11.0, .65, .45, 1.2, offset=2.0)
+        add("head", y=-12 * glance, x=-3 * glance)
+        add("body", y=-2 * glance)
+    else:
+        settle = _idle_pulse(t, 14.0, 1.4, .5, 1.8, offset=3.0)
+        add("body", z=2 * settle)
+        add("head", z=-2.5 * settle)
+        add("right-arm", z=-3 * settle)
+        add("left-arm", z=-3 * settle)
 
 
 def pose_walk(rig: Rig, t: float, *, run: bool = False) -> None:
