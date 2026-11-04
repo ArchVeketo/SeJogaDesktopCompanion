@@ -113,3 +113,42 @@ def test_moving_and_closing_shelf_updates_collision_shape_and_body_falls():
     advance(p)
     assert p.state.on_shelf is None
     assert p.body.position.y > 700
+
+
+def test_nearby_shelf_is_not_ground_without_actual_contact():
+    p = physics()
+    p.shelves = [Shelf(123, (100, 400, 700, 600), 400, 100, 700)]
+    p.set_position(300, 358)
+    p.update_grounded_state()
+    assert not p.state.grounded
+    assert p.state.on_shelf is None
+
+
+def test_walking_off_support_keeps_gravity_and_does_not_walk_in_air():
+    p = physics()
+    shelf = Shelf(123, (100, 400, 450, 600), 400, 100, 450)
+    with patch("sejoga.physics.get_all_shelves", return_value=[shelf]):
+        p.refresh_shelves(force=True)
+    p.set_gravity(True)
+    advance(p)
+    assert p.state.grounded
+    p.settings.physics.friction = 0
+    p.shape.friction = 0
+    p.body.velocity = (1200, 0)
+    advance(p, .3)
+    assert not p.state.grounded
+    assert p.state.gravity_active
+    assert p.state.on_shelf is None
+
+
+def test_only_exposed_parts_of_background_window_are_shelves():
+    from sejoga.physics import get_all_shelves
+    bounds = {101: (400, 100, 600, 600), 102: (100, 300, 900, 700)}
+    def enumerate_windows(callback, arg):
+        for hwnd in bounds:
+            callback(hwnd, arg)
+    with patch("sejoga.physics.win32gui.EnumWindows", side_effect=enumerate_windows), \
+         patch("sejoga.physics.is_valid_shelf", return_value=True), \
+         patch("sejoga.physics.frame_bounds", side_effect=bounds.get):
+        shelves = get_all_shelves(0, 0)
+    assert [(s.left, s.right) for s in shelves if s.hwnd == 102] == [(100, 400), (600, 900)]

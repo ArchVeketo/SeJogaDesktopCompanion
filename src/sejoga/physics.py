@@ -144,6 +144,8 @@ def is_valid_shelf(hwnd: int, own_pid: int) -> bool:
     """Verifica se janela é uma shelf válida (visível, não cloaked, não toolwindow, não próprio)."""
     if not win32gui.IsWindowVisible(hwnd) or win32gui.IsIconic(hwnd):
         return False
+    if win32gui.GetClassName(hwnd) in ("Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"):
+        return False
     if cloaked(hwnd) or not win32gui.GetWindowText(hwnd):
         return False
     
@@ -170,20 +172,29 @@ def get_all_shelves(own_hwnd: int, own_pid: int) -> List[Shelf]:
     shelves = []
     
     def enum_callback(hwnd: int, _: int) -> bool:
-        if is_valid_shelf(hwnd, own_pid):
-            rect = frame_bounds(hwnd)
-            shelf = Shelf(
-                hwnd=hwnd,
-                rect=rect,
-                top_y=rect[1],  # top (y para baixo = menor = mais alto)
-                left=rect[0],
-                right=rect[2]
-            )
-            shelves.append(shelf)
+        try:
+            if is_valid_shelf(hwnd, own_pid):
+                rect = frame_bounds(hwnd)
+                shelves.append(Shelf(hwnd, rect, rect[1], rect[0], rect[2]))
+        except win32gui.error:
+            # Another application's HWND can disappear during enumeration.
+            pass
         return True
     
     win32gui.EnumWindows(enum_callback, 0)
-    return shelves
+    # EnumWindows is front-to-back. Only exposed portions of a window's top
+    # edge can support the mascot; hidden windows must not create air shelves.
+    visible = []
+    for index, shelf in enumerate(shelves):
+        spans = [(shelf.left, shelf.right)]
+        for front in shelves[:index]:
+            if front.rect[1] <= shelf.top_y < front.rect[3]:
+                spans = [(a, b) for left, right in spans
+                         for a, b in ((left, min(right, front.left)), (max(left, front.right), right))
+                         if b - a > 2]
+        for left, right in spans:
+            visible.append(Shelf(shelf.hwnd, shelf.rect, shelf.top_y, left, right))
+    return visible
 
 
 # ============================================================
@@ -349,36 +360,22 @@ class ScreenSpacePhysics:
         self._last_shelf_refresh = now
         new_shelves = get_all_shelves(self.own_hwnd, self.own_pid)
         
-        # Remove shelves que não existem mais
-        current_hwnds = {s.hwnd for s in new_shelves}
-        to_remove = [hwnd for hwnd in self.shelf_shapes if hwnd not in current_hwnds]
-        for hwnd in to_remove:
-            shape = self.shelf_shapes.pop(hwnd)
-            self.space.remove(shape)
-        
-        # Rebuild changed shelves too: HWND stays the same when a window moves.
-        previous = {s.hwnd: s.rect for s in self.shelves}
-        for shelf in new_shelves:
-            if shelf.hwnd in self.shelf_shapes and previous.get(shelf.hwnd) != shelf.rect:
-                self.space.remove(self.shelf_shapes.pop(shelf.hwnd))
-
-        # Adiciona novas shelves
-        for shelf in new_shelves:
-            if shelf.hwnd not in self.shelf_shapes:
-                # Cria segment para a aresta superior da janela
-                shape = pymunk.Segment(
-                    self.space.static_body,
-                    (shelf.left, shelf.top_y),
-                    (shelf.right, shelf.top_y),
-                    WALL_THICKNESS
-                )
-                shape.collision_type = CAT_SHELF
-                shape.elasticity = 1.0
-                shape.friction = 1.0
-                shape.filter = pymunk.ShapeFilter(categories=CAT_SHELF, mask=CAT_MASCOT)
-                self.space.add(shape)
-                self.shelf_shapes[shelf.hwnd] = shape
-        
+        signature = lambda items: [(x.hwnd, x.left, x.right, x.top_y) for x in items]
+        if signature(new_shelves) == signature(self.shelves):
+            return
+        if self.shelf_shapes:
+            self.space.remove(*self.shelf_shapes.values())
+        self.shelf_shapes.clear()
+        for index, shelf in enumerate(new_shelves):
+            shape = pymunk.Segment(self.space.static_body,
+                                   (shelf.left, shelf.top_y), (shelf.right, shelf.top_y), WALL_THICKNESS)
+            shape.collision_type = CAT_SHELF
+            shape.elasticity = 1.0
+            shape.friction = 1.0
+            shape.filter = pymunk.ShapeFilter(categories=CAT_SHELF, mask=CAT_MASCOT)
+            self.space.add(shape)
+            key = shelf.hwnd if shelf.hwnd not in self.shelf_shapes else (shelf.hwnd, index)
+            self.shelf_shapes[key] = shape
         self.shelves = new_shelves
     
     def get_shelf_under_point(self, x: float, y: float) -> Optional[Shelf]:
@@ -507,31 +504,42 @@ class ScreenSpacePhysics:
             self.state.gravity_active = False
     
     def update_grounded_state(self) -> None:
-        bottom = self.body.position.y + self.mascot_radius
-        x = self.body.position.x
-        supports = [(None, self.bounds[3])]
-        supports += [(s.hwnd, s.top_y) for s in self.shelves if s.left <= x <= s.right]
+        was_grounded = self.state.grounded
         self.state.grounded = False
         self.state.on_shelf = None
         if not self._drag_active and abs(self.body.velocity.y) < 60:
-            for hwnd, y in supports:
-                if abs(bottom - (y - WALL_THICKNESS)) < 5:
+            def contact(arbiter):
+                if hasattr(arbiter, "process_collision") and not arbiter.process_collision:
+                    return
+                shapes = arbiter.shapes
+                other = shapes[1] if shapes[0] == self.shape else shapes[0]
+                normal = arbiter.contact_point_set.normal
+                toward_floor = normal.y if shapes[0] == self.shape else -normal.y
+                if toward_floor < 0.65 or not arbiter.contact_point_set.points:
+                    return
+                if other == self._bottom_shape:
                     self.state.grounded = True
-                    self.state.on_shelf = hwnd
-                    break
+                else:
+                    for key, shape in self.shelf_shapes.items():
+                        if other == shape:
+                            self.state.grounded = True
+                            self.state.on_shelf = key[0] if isinstance(key, tuple) else key
+                            break
+            self.body.each_arbiter(contact)
+        if was_grounded and not self.state.grounded and not self._drag_active:
+            self.set_gravity(True)
         self.state.gravity_active = bool(self.space.gravity.y) and not self.state.grounded
 
     def step(self, dt: float) -> PhysicsState:
         """Avança simulação por dt segundos."""
+        if self.settings.physics.collide_with_windows:
+            self.refresh_shelves()
         # Accumulator para step fixo
         self._accumulator += max(0.0, min(dt, 0.05))  # clamp dt
         while self._accumulator >= FIXED_DT:
             self.space.step(FIXED_DT)
             self._accumulator -= FIXED_DT
         
-        # Refresh shelves periodicamente
-        if self.settings.physics and self.settings.physics.collide_with_windows:
-            self.refresh_shelves()
         
         # Update grounded state
         self.update_grounded_state()
@@ -557,6 +565,8 @@ class ScreenSpacePhysics:
         self.body.velocity = (0, 0)
         self.state.position = (x, y)
         self.state.velocity = (0, 0)
+        self.state.grounded = False
+        self.state.on_shelf = None
     
     def apply_impulse(self, impulse: Tuple[float, float]) -> None:
         """Aplica impulso instantâneo no centro de massa."""
