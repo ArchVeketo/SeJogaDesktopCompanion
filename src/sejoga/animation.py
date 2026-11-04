@@ -10,6 +10,7 @@ from __future__ import annotations
 import random
 from enum import StrEnum
 from .body_motion import BodyMotion
+from .leg_motion import LegMotion
 
 from .rig import (
     IdlePersonality,
@@ -52,7 +53,7 @@ class AnimationState(StrEnum):
 class AnimationController:
     """Gera poses a cada frame e interpola mudanças de estado."""
 
-    def __init__(self, rig: Rig, transition_seconds: float = 0.24) -> None:
+    def __init__(self, rig: Rig, transition_seconds: float = 0.35) -> None:
         self.rig = rig
         self.transition_seconds = max(0.0, transition_seconds)
         self._active_transition_seconds = self.transition_seconds
@@ -83,6 +84,7 @@ class AnimationController:
         self._release_grip = 0.0
         self._personality_locked = False
         self.body_motion = BodyMotion()
+        self.leg_motion = LegMotion()
 
     def set_idle_personality(self, personality: IdlePersonality | str | None) -> None:
         """Escolhe uma personalidade ou devolve o idle à rotação automática."""
@@ -241,7 +243,7 @@ class AnimationController:
         else:
             self.idle_time = 0.0
 
-        if next_state == AnimationState.IDLE and idle_enabled and not self._personality_locked:
+        if next_state in (AnimationState.IDLE, AnimationState.HOVER) and idle_enabled and not self._personality_locked:
             self._personality_elapsed += dt
             if self._personality_elapsed >= self._personality_interval:
                 choices = [
@@ -268,10 +270,16 @@ class AnimationController:
             self.state_time += dt
 
         self.rig.reset()
-        if self.state == AnimationState.IDLE:
+        if self.state in (AnimationState.IDLE, AnimationState.HOVER):
             if idle_enabled:
                 self._idle_clock += dt
                 pose_idle(self.rig, self._idle_clock, self.idle_personality)
+            if self.state == AnimationState.HOVER:
+                from math import radians
+                head = self.rig.current["head"]
+                self.rig.set_rotation("head", x=head.x-radians(self._look_vertical*18),
+                                      y=head.y+radians(self._look_direction*25), z=head.z, degrees=False)
+                self.rig.set_rotation("door", y=2)
         elif self.state == AnimationState.WALK:
             pose_walk(self.rig, self.clock)
         elif self.state == AnimationState.RUN:
@@ -279,7 +287,7 @@ class AnimationController:
         elif self.state == AnimationState.DRAG:
             pose_drag(self.rig, self.clock, drag_direction, self.drag_intensity)
         elif self.state == AnimationState.FALL:
-            pose_thrown(self.rig, self.clock)
+            pose_thrown(self.rig, self.state_time, velocity)
         elif self.state == AnimationState.DANCE:
             pose_dance(self.rig, self.clock, music_intensity)
         elif self.state == AnimationState.SLEEP:
@@ -306,6 +314,8 @@ class AnimationController:
             for group, rotation in target.items()
         }
         self.rig.current = dict(self._pose)
+        self.leg_motion.update(dt, self.state.value, velocity, self._reaction_time,
+                               self.body_motion.snapshot.roll)
         return dict(self._pose)
 
     @staticmethod

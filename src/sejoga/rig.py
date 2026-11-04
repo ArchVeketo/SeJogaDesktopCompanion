@@ -172,45 +172,53 @@ def pose_idle(
         rig.set_rotation("body", x=compression * 2.2, y=sway * 2.2, z=bounce * 2.2)
         rig.set_rotation("head", x=-compression * 1.8, y=sin(t * .72) * 6.0, z=bounce * 3.0)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=bounce * 6.0, z=27.0 + bounce * 4.0)
-        rig.set_rotation("left-arm", x=-bounce * 6.0, z=-28.0 - bounce * 4.0)
-        rig.set_rotation("ant-arm", x=sin(t * 1.12 + .35) * 8.0, z=7.0 + bounce * 8.0)
-        rig.set_rotation("ant-arm2", x=-sin(t * 1.12 + .35) * 8.0, z=-7.0 - bounce * 8.0)
+        # More varied arm positions - not always down
+        arm_bounce = sin(t * 1.12 + .6)
+        rig.set_rotation("right-arm", x=bounce * 6.0 - 2, z=27.0 + bounce * 6.0)
+        rig.set_rotation("left-arm", x=-bounce * 6.0 + 2, z=-28.0 - arm_bounce * 5.0)
+        rig.set_rotation("ant-arm", x=sin(t * 1.12 + .35) * 8.0 + 4, z=7.0 + bounce * 8.0)
+        rig.set_rotation("ant-arm2", x=-sin(t * 1.12 + .35) * 8.0 - 2, z=-7.0 - arm_bounce * 7.0)
         rig.set_rotation("fingers", z=finger_breath * 1.4 + sin(t * .78) * 2.0)
         rig.set_rotation("fingers2", z=finger_breath * 1.4 - sin(t * .78 + .45) * 2.0)
     elif personality == IdlePersonality.SHY:
         rig.set_rotation("body", x=1.0 + breath * 0.6, y=-2.0 + sway * 1.0, z=-1.5)
         rig.set_rotation("head", x=6.0 + breath * .7, y=sin(t * 0.34) * 4.0, z=-5.0 + sway * 1.5)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=2.0, z=42.0)
-        rig.set_rotation("left-arm", x=-2.0, z=-42.0)
-        rig.set_rotation("ant-arm", x=7.0 + breath * 1.5, z=16.0 + sin(t * 0.36) * 3.0)
-        rig.set_rotation("ant-arm2", x=7.5 + breath * 1.2, z=-16.0 - sin(t * 0.36 + .25) * 3.0)
-        rig.set_rotation("fingers", z=finger_breath * .7)
-        rig.set_rotation("fingers2", z=finger_breath * .7 + 1.0)
+        # Varied arm positions - sometimes crossed, sometimes at sides
+        arm_variation = sin(t * 0.25) * 8.0
+        rig.set_rotation("right-arm", x=2.0 + sin(t * 0.3) * 2, z=42.0 + arm_variation)
+        rig.set_rotation("left-arm", x=-2.0 - sin(t * 0.3 + .4) * 2, z=-42.0 - arm_variation)
+        rig.set_rotation("ant-arm", x=7.0 + breath * 1.5, z=16.0 + sin(t * 0.36) * 4.0)
+        rig.set_rotation("ant-arm2", x=7.5 + breath * 1.2, z=-16.0 - sin(t * 0.36 + .25) * 4.0)
+        rig.set_rotation("fingers", z=finger_breath * .7 + sin(t * 0.45) * 2.0)
+        rig.set_rotation("fingers2", z=finger_breath * .7 + 1.0 + sin(t * 0.45 + .3) * 1.5)
     elif personality == IdlePersonality.CONFIDENT:
         nod = sin(t * 0.4)
         punctuation = _idle_pulse(t, 6.4, .3, .18, .7, offset=1.1)
         rig.set_rotation("body", x=-2.5 + breath * 0.6, y=sway * 1.0, z=sin(t * 0.3) * 1.2)
         rig.set_rotation("head", x=-4.0 + nod * 1.8 - punctuation * 3.0, y=sin(t * 0.29) * 5.0, z=nod * 1.5)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=sin(t * .3) * 1.5, z=42.0)
-        rig.set_rotation("left-arm", x=-sin(t * .3 + .4) * 1.5, z=-48.0)
-        rig.set_rotation("ant-arm", x=2.0 + sin(t * 0.4) * 2.5, z=3.0 + sway * 2.0)
-        rig.set_rotation("ant-arm2", x=2.0 - sin(t * 0.4 + .4) * 2.5, z=-3.0 - sway * 2.0)
-        rig.set_rotation("fingers", z=finger_breath)
-        rig.set_rotation("fingers2", z=finger_breath - 1.0)
+        # More open, confident arm positions with asymmetry
+        arm_confidence = sin(t * 0.35) * 3.0
+        rig.set_rotation("right-arm", x=sin(t * .3) * 2.5 - 2, z=42.0 + arm_confidence)
+        rig.set_rotation("left-arm", x=-sin(t * .3 + .4) * 2.5 + 1, z=-48.0 - arm_confidence * 0.8)
+        rig.set_rotation("ant-arm", x=2.0 + sin(t * 0.4) * 3.5, z=3.0 + sway * 3.0)
+        rig.set_rotation("ant-arm2", x=2.0 - sin(t * 0.4 + .4) * 3.5, z=-3.0 - sway * 2.5)
+        rig.set_rotation("fingers", z=finger_breath + sin(t * 0.5) * 1.5)
+        rig.set_rotation("fingers2", z=finger_breath - 1.0 - sin(t * 0.5 + .3) * 1.2)
     else:
+        # Calm with subtle variations in arm position
+        arm_sway = sin(t * 0.32) * 2.5
         rig.set_rotation("body", x=breath * 0.9, y=sway * 1.5, z=sway * 1.0)
         rig.set_rotation("head", x=sin(t * 0.52) * 1.3, y=sin(t * 0.36) * 3.0)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=sin(t * 0.36) * 2.5, z=52.0 + sin(t * .4) * 2.5 - breath * .6)
-        rig.set_rotation("left-arm", x=-sin(t * 0.36) * 2.5, z=-54.0 - sin(t * .4 + .3) * 2.5 + breath * .6)
-        rig.set_rotation("ant-arm", x=3.0 + sin(t * .42) * 2.0, z=sin(t * 0.42) * 5.0)
-        rig.set_rotation("ant-arm2", x=3.0 - sin(t * .42 + .35) * 2.0, z=-sin(t * 0.42 + .35) * 5.0)
+        rig.set_rotation("right-arm", x=sin(t * 0.36) * 3.0, z=52.0 + sin(t * .4) * 3.5 - breath * .6 + arm_sway)
+        rig.set_rotation("left-arm", x=-sin(t * 0.36) * 3.0, z=-54.0 - sin(t * .4 + .3) * 3.5 + breath * .6 - arm_sway)
+        rig.set_rotation("ant-arm", x=3.0 + sin(t * .42) * 2.5, z=sin(t * 0.42) * 6.0)
+        rig.set_rotation("ant-arm2", x=3.0 - sin(t * .42 + .35) * 2.5, z=-sin(t * 0.42 + .35) * 6.0)
         # Calm hands breathe with the shoulders; no rapid idle twitch.
-        rig.set_rotation("fingers", z=finger_breath)
-        rig.set_rotation("fingers2", z=finger_breath)
+        rig.set_rotation("fingers", z=finger_breath + sin(t * 0.38) * 1.0)
+        rig.set_rotation("fingers2", z=finger_breath + sin(t * 0.38 + .4) * 1.0)
 
     # Short authored phrases interrupt breathing, then return to the same rest.
     # Each phrase has anticipation, a readable hold and a slower recovery.
@@ -218,6 +226,11 @@ def pose_idle(
         current = rig.current[group]
         rig.set_rotation(group, x=current.x + radians(x), y=current.y + radians(y),
                          z=current.z + radians(z), degrees=False)
+
+    # Subtle leg shifting during idle for more life
+    leg_shift = sin(t * 0.28) * 1.2
+    rig.set_rotation("left-feet", x=max(0, leg_shift) * 3.0)
+    rig.set_rotation("right-feet", x=max(0, -leg_shift) * 3.0)
 
     if personality == IdlePersonality.CURIOUS:
         inspect = _idle_pulse(t, 12.0, .8, 1.1, 1.2, offset=2.0)
@@ -256,9 +269,9 @@ def pose_walk(rig: Rig, t: float, *, run: bool = False) -> None:
     stride_angle = 11.0 if run else 7.0
     arm_angle = 24.0 if run else 16.0
     stride = sin(t * 2.0 * 3.141592653589793 * frequency)
-    rig.set_rotation("legs", x=stride * stride_angle)
-    rig.set_rotation("left-feet", x=-stride * stride_angle * 1.25)
-    rig.set_rotation("right-feet", x=stride * stride_angle * 1.25)
+    rig.set_rotation("legs", x=0)
+    rig.set_rotation("left-feet", x=0)
+    rig.set_rotation("right-feet", x=0)
     rig.set_rotation("right-arm", x=-stride * arm_angle, z=42.0 if run else 50.0)
     rig.set_rotation("left-arm", x=stride * arm_angle, z=-42.0 if run else -50.0)
     ant_arm_x = -stride * arm_angle * 0.65
@@ -351,27 +364,30 @@ def pose_sleep(rig: Rig, t: float) -> None:
     rig.set_rotation("fingers2", z=-15.0 - breath * 2.0)
 
 
-def pose_thrown(rig: Rig, t: float = 0.0) -> None:
-    """Pose de queda com braços abertos e pequenas oscilações no ar."""
-    from math import sin
-
-    wobble = sin(t * 8.0)
-    rig.set_rotation("right-arm", x=-28.0 + wobble * 5.0, z=-42.0)
-    rig.set_rotation("left-arm", x=-28.0 - wobble * 5.0, z=42.0)
-    ant_arm_x = -18.0 - wobble * 8.0
-    rig.set_rotation("ant-arm", x=ant_arm_x)
-    rig.set_rotation("ant-arm2", x=-ant_arm_x)
-    rig.set_rotation("legs", x=-12.0 + wobble * 3.0)
-    rig.set_rotation("head", x=-8.0, y=wobble * 4.0)
-
-    # Shoulder compensation
-    shoulder_comp = ant_arm_x * 0.15
-    rig.set_rotation("shoulder", x=shoulder_comp)
-    rig.set_rotation("shoulder2", x=-shoulder_comp)
-
-    # Fingers: slightly open during fall
-    rig.set_rotation("fingers", z=-10.0 + wobble * 5.0)
-    rig.set_rotation("fingers2", z=10.0 - wobble * 5.0)
+def pose_thrown(rig: Rig, t: float = 0.0, velocity=(0.0, 450.0)) -> None:
+    """Readable airborne silhouette driven by ascent/descent, without flailing."""
+    from math import tanh, sin
+    descent = .5 + .5 * tanh(velocity[1] / 320.0)
+    drift = tanh(velocity[0] / 650.0)
+    settle = 1.0 - __import__('math').exp(-max(0, t) * 5)
+    # Improved fall pose: more expressive body language during descent
+    rig.set_rotation("body", x=-5 + 14 * descent, z=-drift * 9)
+    rig.set_rotation("head", x=-8 + 18 * descent, y=-drift * 10, z=drift * 5)
+    # Arms reach up more naturally during fall
+    rig.set_rotation("right-arm", x=-18 + 16 * descent, z=8 + drift * 10)
+    rig.set_rotation("left-arm", x=-14 + 14 * descent, z=-12 + drift * 10)
+    # Forearms angle outward more expressively
+    rig.set_rotation("ant-arm", x=-22 + 8 * descent, z=-22 - 8 * descent)
+    rig.set_rotation("ant-arm2", x=-18 + 6 * descent, z=28 + 6 * descent)
+    # Hands more reactive
+    rig.set_rotation("hand", x=10 * settle - 4 * descent, z=-12 + drift * 4)
+    rig.set_rotation("hand2", x=8 * settle - 3 * descent, z=12 - drift * 4)
+    # Fingers spread slightly during fall
+    rig.set_rotation("fingers", z=-8 + sin(t * 3.5) * 2)
+    rig.set_rotation("fingers2", z=8 - sin(t * 3.5 + 0.5) * 2)
+    # Legs move during fall for more natural motion
+    rig.set_rotation("left-feet", x=-8 - 12 * descent + 4 * drift)
+    rig.set_rotation("right-feet", x=5 - 8 * descent - 4 * drift)
 
 
 def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vertical: float = 0.0) -> None:
@@ -437,27 +453,43 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
 def pose_flourish(rig: Rig, kind: str, t: float) -> None:
     """Aceno, alongamento, espiada e recuperação de impacto."""
     from math import pi, sin
-    durations = {"wave": 2.0, "stretch": 2.8, "peek": 9.0, "hit": .65}
+    durations = {"wave": 2.2, "stretch": 2.8, "peek": 9.0, "hit": .65}
     phase = min(1.0, max(0.0, t / durations[kind]))
     envelope = sin(phase * pi)
     rig.set_rotation("right-arm", z=65)
     rig.set_rotation("left-arm", z=-65)
-    if kind == "wave":
-        rig.set_rotation("right-arm", x=-15 * envelope, z=65 - 130 * envelope)
-        rig.set_rotation("ant-arm", x=sin(t * 11) * 22 * envelope)
-        rig.set_rotation("head", z=8 * envelope)
-        rig.set_rotation("door", y=25 * envelope)
-        # Shoulder compensation for wave
-        ant_arm_x = sin(t * 11) * 22 * envelope
-        shoulder_comp = ant_arm_x * 0.15
-        rig.set_rotation("shoulder", x=shoulder_comp)
-        rig.set_rotation("shoulder2", x=-shoulder_comp)
-    elif kind == "stretch":
-        rig.set_rotation("right-arm", x=-25 * envelope, z=65 - 125 * envelope)
-        rig.set_rotation("left-arm", x=-25 * envelope, z=-65 + 125 * envelope)
-        rig.set_rotation("body", x=-8 * envelope)
-        rig.set_rotation("head", x=-12 * envelope)
-        rig.set_rotation("door", y=60 * envelope)
+    if kind in ("wave", "stretch"):
+        from .idle_clips import sample_track
+        def value(*keys):
+            return sample_track(tuple((at, (v, 0, 0)) for at, v in keys), t)[0]
+        if kind == "wave":
+            # Improved wave: anticipation, bigger gesture, more energetic
+            lift = value((0, 0), (.15, -.08), (.45, .98), (1.25, 1), (1.85, .15), (2.2, 0))
+            wave = value((0, 0), (.45, 0), (.68, 1), (.88, -1), (1.08, 1), (1.28, -1), (1.48, .5), (1.75, 0), (2.2, 0))
+            # More expressive arm movement
+            rig.set_rotation("right-arm", x=-18 * lift, z=52 - 95 * lift)
+            rig.set_rotation("left-arm", x=4 * lift, z=-48 + 8 * lift)
+            # More wrist articulation
+            rig.set_rotation("ant-arm", x=-15 * lift, z=-28 * lift + 12 * wave)
+            rig.set_rotation("hand", y=14 * lift, z=24 * wave - 6 * lift)
+            rig.set_rotation("fingers", z=-12 * lift + 5 * wave)
+            # Body participation in the gesture
+            rig.set_rotation("body", y=-4 * lift, z=-4 * lift - 2 * wave)
+            rig.set_rotation("head", y=7 * lift, z=6 * lift + 3 * wave)
+        else:
+            # Jacket adjustment: natural fidget gesture replacing overhead stretch
+            right = value((0, 0), (.28, -.15), (.82, 1), (1.25, .68), (1.95, 0), (2.8, 0))
+            left = value((0, 0), (.72, 0), (1.35, 1), (1.78, .62), (2.58, 0), (2.8, 0))
+            # Sequential shoulder roll looks like adjusting jacket/collar
+            rig.set_rotation("right-arm", x=-16 * right, z=48 - 32 * right)
+            rig.set_rotation("left-arm", x=-16 * left, z=-48 + 32 * left)
+            rig.set_rotation("ant-arm", x=-24 * right, z=-22 * right)
+            rig.set_rotation("ant-arm2", x=-24 * left, z=22 * left)
+            rig.set_rotation("hand", y=15 * right, z=-8 * right)
+            rig.set_rotation("hand2", y=-15 * left, z=8 * left)
+            # Body rotates slightly as shoulders roll
+            rig.set_rotation("body", y=6 * (right-left), z=3 * (left-right))
+            rig.set_rotation("head", y=-8 * (right-left), x=4 * (right+left))
     elif kind == "peek":
         rig.set_rotation("head", y=sin(t * 2) * 12 * envelope, z=5 * envelope)
         opening = min(1.0, t / 2.5, max(0.0, (9.0-t) / 2.5))
