@@ -8,7 +8,13 @@ import logging
 import threading
 from collections.abc import Callable
 from ctypes import wintypes
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
+
+if TYPE_CHECKING:
+    from .updater import Update
+
+    # Resultado da busca em thread: ("ok", Update|None) no sucesso ou ("erro", mensagem).
+    ResultadoBusca = tuple[str, "Update | None"] | tuple[str, str]
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor
@@ -282,8 +288,9 @@ class SettingsDialog(QDialog):
         self.update_status_label.setText("Buscando atualizações…")
 
         def tarefa() -> None:
+            resultado: ResultadoBusca
             try:
-                resultado: object = ("ok", check_update(release_para_checagem(canal)))
+                resultado = ("ok", check_update(release_para_checagem(canal)))
             except Exception as exc:  # degradação graciosa: rede/feed indisponível
                 logging.getLogger("sejoga").warning("Busca de atualização falhou: %s", exc)
                 resultado = ("erro", str(exc))
@@ -292,12 +299,12 @@ class SettingsDialog(QDialog):
 
         threading.Thread(target=tarefa, name="sejoga-busca-update", daemon=True).start()
 
-    def _ao_concluir_busca(self, resultado: object) -> None:
+    def _ao_concluir_busca(self, resultado: ResultadoBusca) -> None:
         self._buscando_atualizacao = False
         self.check_update_button.setEnabled(True)
-        tipo, valor = resultado  # type: ignore[misc]
+        tipo, valor = resultado
         canal = self.channel_input.currentData()
-        if tipo == "erro":
+        if tipo == "erro" or isinstance(valor, str):
             self.update_status_label.setText(f"Erro ao buscar atualizações: {valor}")
             return
         if valor is None:
