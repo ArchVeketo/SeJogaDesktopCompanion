@@ -25,8 +25,6 @@ $panda3dDir = Join-Path $env:APPDATA 'Python\Python314\site-packages\panda3d'
     --add-binary "$panda3dDir\libp3windisplay.dll;panda3d" `
     --add-binary "$panda3dDir\libp3tinydisplay.dll;panda3d" `
     --hidden-import=simplepbr `
-    --hidden-import=simplepbr._vertex_shader `
-    --hidden-import=simplepbr._fragment_shader `
     --hidden-import=gltf `
     --hidden-import=pymunk `
     --hidden-import=pystray `

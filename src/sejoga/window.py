@@ -38,14 +38,14 @@ loadPrcFileData("", "window-type none")
 loadPrcFileData("", "load-display pandagl")
 loadPrcFileData("", "aux-display p3tinydisplay")
 loadPrcFileData("", "framebuffer-alpha 1")
-loadPrcFileData("", "framebuffer-multisample 0")
-loadPrcFileData("", "multisamples 0")
+loadPrcFileData("", "framebuffer-multisample 1")
+loadPrcFileData("", "multisamples 4")
 loadPrcFileData("", "win-size 480 480")
 loadPrcFileData("", "win-origin 0 0")
 loadPrcFileData("", "undecorated 1")
 loadPrcFileData("", "cursor-hidden 0")
 loadPrcFileData("", "framebuffer-alpha 1")
-loadPrcFileData("", "framebuffer-multisample 0")
+loadPrcFileData("", "framebuffer-multisample 1")
 
 # Panda3D imports (depois do loadPrcFileData)
 from direct.showbase.ShowBase import ShowBase
@@ -222,10 +222,7 @@ class Panda3DRenderer:
     def _setup_scene(self) -> None:
         render = self.showbase.render
         render.setShaderAuto()
-        # Color-key transparency cannot represent partial pixel coverage.
-        # MSAA blends the magenta clear color into silhouette pixels, leaving
-        # a pink fringe even when the separate outline is completely stashed.
-        render.setAntialias(AntialiasAttrib.MNone)
+        render.setAntialias(AntialiasAttrib.MMultisample)
 
         # Câmera
         cam = self.showbase.cam
@@ -258,7 +255,7 @@ class Panda3DRenderer:
             import simplepbr
 
             simplepbr.init(use_normal_maps=False, use_emission_maps=False, max_lights=8,
-                           msaa_samples=0)
+                           msaa_samples=4)
         except ImportError:
             pass
         except Exception as e:
@@ -785,7 +782,7 @@ class OverlayApp(ShowBase):
         fbprops.setAlphaBits(8)
         fbprops.setDepthBits(24)
         fbprops.setStencilBits(8)
-        fbprops.setMultisamples(0)
+        fbprops.setMultisamples(4)
 
         self.openDefaultWindow(props=wp, fbprops=fbprops)
 
