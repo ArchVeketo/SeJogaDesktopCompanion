@@ -53,7 +53,9 @@ def configure_logging() -> logging.Logger:
     if hasattr(threading, "excepthook"):
         threading.excepthook = lambda args: logger.error(
             "Uncaught worker exception",
-            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+            # O hook de thread entrega o triplo consistente; o tipo de exc_value
+            # (BaseException | None) nao casa com a assinatura de exc_info.
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),  # type: ignore[arg-type]
         )
     return logger
 

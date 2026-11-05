@@ -27,7 +27,7 @@ class MouseInteraction:
         self._moved = False
         self.double_click_seconds = double_click_seconds
         self.double_click_distance = double_click_distance
-        self._last_click = None
+        self._last_click: tuple[float, tuple[int, int]] | None = None
 
     @property
     def has_press(self) -> bool:

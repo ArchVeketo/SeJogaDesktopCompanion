@@ -15,13 +15,13 @@ from sejoga.window import OverlayApp
 
 settings=config.Settings(); settings.physics.enabled=False; settings.music.enabled=False
 settings.window.outline_enabled=False
-app=OverlayApp(settings);app.hotkey_manager.close(); app.taskMgr.remove("mouse-poll")
+app=OverlayApp(settings);app.hotkey_manager.close(); app.taskMgr.remove("mouse-poll")  # type: ignore[union-attr]  # harness de QA: atributos ja definidos pos-construcao
 renderer=app.renderer
 def tick():
     pose=app.animation_controller.update(1/60)
     renderer.apply_rig_pose(pose)
     renderer.update_appendages(1/60, app.animation_controller.appendage_remaining > 0)
-app._animation_tick=tick
+app._animation_tick=tick  # type: ignore[method-assign]  # harness de QA: substitui o tick de animacao
 scale=renderer._view_height/renderer.height/renderer.model_np.getScale().x
 assert .001 < scale < .02, scale
 assert len(renderer.tentacle_pool.tentacles)==6
@@ -40,7 +40,7 @@ try:
     capture("idle")
     if "--max" in sys.argv:
         renderer.tentacle_director.rng.choices = lambda *args, **kwargs: [6]
-    app.animation_controller.interact("sneeze" if "--sneeze" in sys.argv else "peek")
+    app.animation_controller.interact("sneeze" if "--sneeze" in sys.argv else "peek")  # type: ignore[union-attr]  # harness de QA: animation_controller ja definido
     for frame in range(600 if "--sneeze" in sys.argv else 180):
         app.taskMgr.step(); time.sleep(.016)
         if frame in ((40, 100, 170, 225, 300, 480, 540) if "--sneeze" in sys.argv else (30,90,179)): capture(f"curious-{frame}")
@@ -53,10 +53,10 @@ try:
     renderer.set_outline_settings(settings.window)
     assert renderer.outline_np.isStashed()
     capture("outline-disabled")
-    app.debug_tools.set_visible(True)
+    app.debug_tools.set_visible(True)  # type: ignore[union-attr]  # harness de QA: debug_tools ja definido
     app.taskMgr.step()
     capture("joint-axes")
-    app.debug_tools.set_visible(False)
+    app.debug_tools.set_visible(False)  # type: ignore[union-attr]  # harness de QA: debug_tools ja definido
     renderer.model_np.setH(renderer.MODEL_FACING_HEADING + 35)
     renderer.outline_np.setH(renderer.MODEL_FACING_HEADING + 35)
     app.taskMgr.step()
@@ -69,5 +69,5 @@ try:
     assert all(t.state.value=='dormant' for t in renderer.tentacle_pool.tentacles)
     print("QA",profile,"scale",scale)
 finally:
-    app.debug_tools.close(); app.music_listener.stop(); app.tray_icon.hide()
-    app.desktop.close(); app.desktop=None; app.destroy()
+    app.debug_tools.close(); app.music_listener.stop(); app.tray_icon.hide()  # type: ignore[union-attr]  # harness de QA: atributos ja definidos
+    app.desktop.close(); app.desktop=None; app.destroy()  # type: ignore[union-attr]  # harness de QA: desktop ja definido

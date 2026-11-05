@@ -253,7 +253,7 @@ def _compute_bounds(doc: dict[str, Any], world: dict[int, Mat4]) -> ModelBounds:
                 (amin[0], amax[1], amax[2]),
                 (amax[0], amax[1], amax[2]),
             ):
-                p = _apply(matrix, corner)  # type: ignore[arg-type]
+                p = _apply(matrix, corner)
                 for i in range(3):
                     lo[i] = min(lo[i], p[i])
                     hi[i] = max(hi[i], p[i])

@@ -48,7 +48,7 @@ def _decode_data_uri(uri: str) -> bytes:
 
 
 def _is_data_uri(uri: str | None) -> bool:
-    return bool(uri) and uri.startswith("data:")
+    return uri is not None and uri.startswith("data:")
 
 
 def convert(gltf_path: Path, out_path: Path) -> dict:

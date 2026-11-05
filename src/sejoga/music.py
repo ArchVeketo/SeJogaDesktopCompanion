@@ -140,7 +140,9 @@ class MusicListener:
 
     def _publish(self, **changes: object) -> None:
         with self._lock:
-            self._snapshot = replace(self._snapshot, updated_at=time.time(), **changes)
+            # mypy nao verifica kwargs via **dict[str, object] contra os campos
+            # tipados de MusicSnapshot; os chamadores passam os tipos corretos.
+            self._snapshot = replace(self._snapshot, updated_at=time.time(), **changes)  # type: ignore[arg-type]
             snapshot = self._snapshot
         if self.on_update:
             with contextlib.suppress(Exception):
@@ -151,7 +153,7 @@ class MusicListener:
         try:
             from winrt.runtime import MTA, init_apartment, uninit_apartment
 
-            init_apartment(MTA)
+            init_apartment(MTA)  # type: ignore[arg-type]  # stub do winrt tipa MTA como int, mas a API aceita
             apartment_initialized = True
             asyncio.run(self._poll_media_sessions())
         except Exception as exc:
@@ -189,17 +191,18 @@ class MusicListener:
                     playback = session.get_playback_info()
                     status = playback.playback_status
                     properties = await session.try_get_media_properties_async()
-                    status_name = str(status).rsplit(".", 1)[-1].lower()
-                    self._publish(
-                        source_app_id=session.source_app_user_model_id,
-                        title=properties.title or None,
-                        artist=properties.artist or None,
-                        album=properties.album_title or None,
-                        is_playing=status == PlaybackStatus.PLAYING,
-                        playback_status=status_name,
-                        thumbnail_available=properties.thumbnail is not None,
-                        media_error=None,
-                    )
+                    if properties is not None:
+                        status_name = str(status).rsplit(".", 1)[-1].lower()
+                        self._publish(
+                            source_app_id=session.source_app_user_model_id,
+                            title=properties.title or None,
+                            artist=properties.artist or None,
+                            album=properties.album_title or None,
+                            is_playing=status == PlaybackStatus.PLAYING,
+                            playback_status=status_name,
+                            thumbnail_available=properties.thumbnail is not None,
+                            media_error=None,
+                        )
             except Exception as exc:
                 self._publish(media_error=f"Falha ao consultar a sessão: {exc}")
             await asyncio.sleep(self.poll_interval)
@@ -226,7 +229,7 @@ class MusicListener:
                     rms = float(np.sqrt(np.mean(np.square(samples), dtype=np.float64)))
                     mono = samples.mean(axis=1) if samples.ndim > 1 else samples
                     spectrum = np.abs(np.fft.rfft(mono*window))**2
-                    bass_share = float(spectrum[bass_band].sum()/max(1e-12, spectrum.sum()))
+                    bass_share = float(spectrum[bass_band].sum()/max(1e-12, spectrum.sum()))  # type: ignore[operator]  # overloads do numpy nao cobrem max() aqui
                     now = time.monotonic()
                     beat, bpm, phase = tracker.update(rms, now, self.settings.sensitivity)
                     self._publish(

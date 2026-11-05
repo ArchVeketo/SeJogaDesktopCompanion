@@ -86,6 +86,8 @@ class Panda3DRenderer:
         self._setup_picking()
 
     def _setup_picking(self) -> None:
+        # Invariante: chamado apos _load_model(), que define model_np/tentacle_pool.
+        assert self.model_np is not None and self.tentacle_pool is not None
         from panda3d.core import (
             BitMask32,
             CollisionHandlerQueue,
@@ -280,6 +282,8 @@ class Panda3DRenderer:
             self.outline_np.setPos(self.model_np.getPos())
 
     def _setup_outline(self) -> None:
+        # Invariante: chamado dentro de _load_model() apos definir model_np.
+        assert self.model_np is not None
         from panda3d.core import CullFaceAttrib, Shader
 
         vertex = """#version 130

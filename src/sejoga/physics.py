@@ -257,7 +257,8 @@ class ScreenSpacePhysics:
 
         # Shelves (janelas)
         self.shelves: list[Shelf] = []
-        self.shelf_shapes: dict[int, pymunk.Segment] = {}  # hwnd -> shape
+        # Chave: hwnd; se o hwnd colidir, cai para (hwnd, index) para nao sobrescrever.
+        self.shelf_shapes: dict[int | tuple[int, int], pymunk.Segment] = {}
         self.shelf_cache_time = 0.0
 
         # Drag/throw state
@@ -298,7 +299,7 @@ class ScreenSpacePhysics:
 
     def _create_screen_edges(self) -> None:
         self.bounds = (0, 0, self.screen_width, self.screen_height)
-        self._edges = []
+        self._edges: list[pymunk.Shape] = []
         self.set_bounds(self.bounds)
 
     def set_bounds(self, bounds: tuple[int, int, int, int]) -> None:
@@ -425,7 +426,8 @@ class ScreenSpacePhysics:
 
         # Estima velocidade dos últimos samples
         velocity = self._estimate_velocity_from_samples() if not cancel else (0.0, 0.0)
-        velocity = tuple(v * self.settings.physics.throw_multiplier for v in velocity)
+        multiplier = self.settings.physics.throw_multiplier
+        velocity = (velocity[0] * multiplier, velocity[1] * multiplier)
 
         # Clamp
         speed = math.hypot(velocity[0], velocity[1])

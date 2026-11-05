@@ -18,7 +18,7 @@ import math
 import os
 import sys
 import time
-from typing import Any
+from typing import Any, cast
 
 # Win32 API
 import win32api
@@ -109,7 +109,7 @@ class OverlayApp(ShowBase):
         self.physics: Any = None
         self.music_listener: MusicListener | None = None
         self.debug_tools: DebugTools | None = None
-        self.desktop = None
+        self.desktop: DesktopIntegration | None = None
         self._exit_started = None
         self._force_exit = False
 
@@ -117,8 +117,8 @@ class OverlayApp(ShowBase):
         self._is_bottom = settings.window.mode == "desktop"
         self._background_key = COLOR_KEY
         self._drag_active = False
-        self._drag_start_pos = (0, 0)
-        self._window_start_pos = (0, 0)
+        self._drag_start_pos: tuple[int, int] = (0, 0)
+        self._window_start_pos: tuple[int, int] = (0, 0)
         self._drag_direction = 0.0
         self._drag_intensity = 0.0
         self._animation_last_tick = time.perf_counter()
@@ -144,9 +144,9 @@ class OverlayApp(ShowBase):
         self.tray_icon: Any = None
         self.tray_menu: Any = None
         self._settings_dialog: SettingsDialog | None = None
-        self._topmost_action = None
-        self._debug_action = None
-        self._recording_action = None
+        self._topmost_action: Any = None
+        self._debug_action: Any = None
+        self._recording_action: Any = None
         self.hotkey_manager: HotkeyManager | None = None
 
         self.logger = configure_logging()
@@ -198,6 +198,8 @@ class OverlayApp(ShowBase):
         self.taskMgr.doMethodLater(0.2, self._calibrate_background_key, "background-key")
         self._init_physics()
         icon = brand_dir() / "companion.ico"
+        # _init_pyside() (chamado acima) ja definiu qt_app.
+        assert self.qt_app is not None
         self.qt_app.setWindowIcon(QIcon(str(icon)))
         self.desktop = DesktopIntegration(self.hwnd, icon)
 
@@ -360,7 +362,7 @@ class OverlayApp(ShowBase):
             origin[0] + self._physics_local[0],
             origin[1] + self._physics_local[1],
         )
-        self._last_rest_position = None
+        self._last_rest_position: tuple[int, int] | None = None
         self._was_grounded = False
         self.physics.on_collision = self._on_physics_collision
 
@@ -629,7 +631,7 @@ class OverlayApp(ShowBase):
         dance_preview = self.tray_menu.addMenu('Prévia de dança (sem som)')
         for style, label in (('head_bob','Head bob'), ('hip_hop','Hip hop'), ('rock','Rock'), ('breakdance','Breakdance')):
             dance_preview.addAction(label).triggered.connect(
-                lambda _checked=False, style=style: self.animation_controller.preview_dance(style))
+                lambda _checked=False, style=style: self.animation_controller.preview_dance(style))  # type: ignore[union-attr]  # callback so dispara apos init: animation_controller ja definido
 
         self._topmost_action = self.tray_menu.addAction("Sempre no topo")
         self._topmost_action.setCheckable(True)
@@ -677,7 +679,7 @@ class OverlayApp(ShowBase):
 
         for label, kind in (("Acenar", "wave"), ("Soltar os ombros", "stretch"), ("Mostrar tentáculos", "peek"), ("Espirro de tentáculos", "sneeze")):
             action = self.tray_menu.addAction(label)
-            action.triggered.connect(lambda _checked=False, kind=kind: self.animation_controller.interact(kind))
+            action.triggered.connect(lambda _checked=False, kind=kind: self.animation_controller.interact(kind))  # type: ignore[union-attr]  # callback so dispara apos init: animation_controller ja definido
         self.tray_menu.addSeparator()
         quit_action = self.tray_menu.addAction("Encerrar Mário")
         quit_action.triggered.connect(lambda _checked=False: self.quit_app())
@@ -704,9 +706,10 @@ class OverlayApp(ShowBase):
 
     def _set_idle_personality(self, personality: str) -> None:
         """Aplica e salva a personalidade sem interromper o gesto atual."""
-        if personality != "auto" and personality not in IdlePersonality:
+        if personality != "auto" and personality not in {p.value for p in IdlePersonality}:
             return
-        self.settings.behavior.idle_personality = personality
+        # Validado acima: personality e um dos literais aceitos pelo settings.
+        self.settings.behavior.idle_personality = cast(Any, personality)
         if self.animation_controller:
             self.animation_controller.set_idle_personality(personality)
         self._persist_settings()
@@ -733,9 +736,9 @@ class OverlayApp(ShowBase):
                     self.quit_app()
                 elif request == "settings" and self._exit_started is None:
                     self.open_settings_dialog()
-                elif request == "peek" and self._exit_started is None:
+                elif request == "peek" and self._exit_started is None and self.animation_controller:
                     self.animation_controller.interact("peek")
-                elif request.startswith('dance:') and self._exit_started is None:
+                elif request.startswith('dance:') and self._exit_started is None and self.animation_controller:
                     self.animation_controller.preview_dance(request.split(':',1)[1])
                 elif request == 'capture' and self.debug_tools:
                     self.debug_tools.capture_once()
@@ -849,8 +852,9 @@ class OverlayApp(ShowBase):
                     self.animation_controller.interact(event.kind)
             elif event.kind == "drag_start":
                 self._drag_active = True
-                self._drag_start_pos = self.mouse_interaction.press_position
-                self._window_start_pos = win32gui.GetWindowRect(self.hwnd)[:2]
+                self._drag_start_pos = self.mouse_interaction.press_position or position
+                rect = win32gui.GetWindowRect(self.hwnd)
+                self._window_start_pos = (rect[0], rect[1])
                 if self.physics:
                     self.physics.start_drag(*self._drag_start_pos)
                 if self.animation_controller:

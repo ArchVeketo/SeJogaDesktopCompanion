@@ -274,7 +274,7 @@ class TentacleDirector:
         self.burst = False
         self.appearance_count = 1
         self.speaker_throw_remaining=0.0
-        self.speaker_throw_limbs=[]
+        self.speaker_throw_limbs: list[Tentacle]=[]
 
         # Cooldowns
         self._curious_cooldown = 0.0
@@ -724,7 +724,10 @@ def create_tentacle_geometry(
         Texture,
     )
 
-    vertices, normals, colors, indices = [], [], [], []
+    vertices: list = []
+    normals: list = []
+    colors: list = []
+    indices: list[int] = []
 
     def add_vertex(point, normal, color):
         index = len(vertices)

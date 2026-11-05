@@ -17,7 +17,8 @@ def convert(p):
     return (p[0], p[2], -p[1])
 vertices, normals = [convert(p) for p in vertices], [convert(p) for p in normals]
 data = bytearray()
-views, accessors = [], []
+views: list = []
+accessors: list = []
 def add(items, width, fmt, component, kind):
     while len(data)%4:
         data.append(0)
