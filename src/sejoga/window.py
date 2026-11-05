@@ -58,6 +58,11 @@ from panda3d.core import (
 from .animation import AnimationController
 from .assets import brand_dir
 from .attention import HoverAttention
+from .canvas_envelope import (
+    EstadoEnvelope,
+    escolher_tamanho,
+    extensao_necessaria,
+)
 from .config import Settings, load_settings, save_settings
 from .debug import DebugTools, configure_logging
 from .desktop_shell import DesktopIntegration
@@ -156,7 +161,11 @@ class OverlayApp(ShowBase):
         # Estado do hot path pré-inicializado (evita hasattr/getattr por frame).
         size = self.settings.window.size
         self._physics_local = (size / 2, size - self.settings.physics.mascot_radius - 35)
-        self._canvas_cooldown = 0.0
+        # Dimensionamento por envelope de pior caso (ver canvas_envelope): a
+        # janela assume poucos tamanhos discretos estáveis em vez de seguir os
+        # limites vivos do rig, eliminando o resize por frame que causava o
+        # flicker. O cooldown simétrico vive no estado abaixo.
+        self._envelope_estado = EstadoEnvelope()
         self._fit_pose_cache = None
 
         self._init_pyside()
@@ -561,9 +570,11 @@ class OverlayApp(ShowBase):
         lens = self.cam.node().getLens()
         base = self.settings.window.size
         current = renderer.width
-        # Reaproveita o `needed` do último frame quando o bounding box (e a
-        # largura atual) não mudaram acima de um epsilon: a projeção dos 8
-        # cantos é determinística, então o resultado seria o mesmo.
+        # Projeta os 8 cantos do bounding box para medir a extensão (px) que a
+        # pose atual exige. A medição segue viva (garante anti-corte), mas NÃO
+        # é mais aplicada por frame: `escolher_tamanho` traduz a necessidade
+        # num dos poucos degraus de envelope estáveis. O cache reaproveita o
+        # resultado quando o bounding box (e a largura) não mudaram.
         snapshot = (
             round(bounds[0].x, 4), round(bounds[0].y, 4), round(bounds[0].z, 4),
             round(bounds[1].x, 4), round(bounds[1].y, 4), round(bounds[1].z, 4),
@@ -571,7 +582,7 @@ class OverlayApp(ShowBase):
         )
         cached = self._fit_pose_cache
         if cached is not None and cached[0] == snapshot:
-            needed = cached[1]
+            necessario = cached[1]
         else:
             projected = []
             for x in (bounds[0].x, bounds[1].x):
@@ -583,14 +594,14 @@ class OverlayApp(ShowBase):
                             projected.append((pixel.x*renderer.width/2, pixel.y*renderer.height/2))
             if not projected:
                 return
-            extent = max(max(abs(x),abs(y)) for x,y in projected)*2+32
-            needed = base + math.ceil(max(0, extent-base)/64)*64
-            needed = min(base*3, needed)
-            self._fit_pose_cache = (snapshot, needed)
-        self._canvas_cooldown = max(0, self._canvas_cooldown - dt)
-        if needed == current or (needed < current and (self._drag_active or self._canvas_cooldown > 0)):
+            necessario = extensao_necessaria(projected)
+            self._fit_pose_cache = (snapshot, necessario)
+        size = escolher_tamanho(
+            necessario, current, base, self._envelope_estado, dt,
+            dragging=self._drag_active,
+        )
+        if size == current:
             return
-        size = needed if needed > current else max(needed, current-64)
         shift = (size-current)//2
         left, top = win32gui.ClientToScreen(self.hwnd, (0,0))
         units = renderer._view_height/renderer.height
@@ -605,14 +616,21 @@ class OverlayApp(ShowBase):
         properties = WindowProperties()
         properties.setSize(size,size)
         properties.setOrigin(left-shift,top-shift)
-        # Apply the native resize before the next draw; Panda otherwise keeps
-        # a frame at the old framebuffer size while the lens has already grown.
+        # Com o envelope estável os resizes passam a ser raros (troca de degrau),
+        # então deixamos o Panda aplicar `requestProperties` no ciclo normal e
+        # mantemos o clear ativo permanentemente (ligado em _create_panda_window),
+        # em vez de forçar openWindows()/RedrawWindow(ERASE) por resize — era esse
+        # repaint síncrono que exibia um frame limpo (transparente) piscando numa
+        # janela layered com color key magenta.
+        #
+        # 🔬 VALIDAÇÃO VISUAL NA GPU (esta máquina cai para p3tinydisplay):
+        # confirmar que, sem o RedrawWindow/openWindows, a assincronia do Panda
+        # não deixa "um frame no tamanho antigo" visível na troca de degrau. Se
+        # reaparecer, basta reativar o bloco abaixo (mantido comentado para ser
+        # trivial religar):
+        #     self.graphicsEngine.openWindows()
+        #     win32gui.RedrawWindow(self.hwnd, None, None, 0x0001 | 0x0004 | 0x0080)
         self.win.requestProperties(properties)
-        self.graphicsEngine.openWindows()
-        self.win.setClearColorActive(True)
-        self.win.setClearDepthActive(True)
-        win32gui.RedrawWindow(self.hwnd, None, None, 0x0001 | 0x0004 | 0x0080)
-        self._canvas_cooldown = 1.0 if size > current else .15
 
     def _setup_tray(self) -> None:
         """Cria o ícone e o menu da bandeja do sistema."""
