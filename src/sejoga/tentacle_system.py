@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Optional
 
-from panda3d.core import Vec3, Quat, NodePath, TransformState
+from panda3d.core import GeomVertexRewriter, NodePath, Quat, Vec3
 
 from .rig import Rig, IdlePersonality
 from .tentacle_constraints import TentacleContacts
@@ -122,6 +122,12 @@ class Tentacle:
     length_scale: float = 1.0
     girth_scale: float = 1.0
     speaker_throw: bool = False
+
+    # Buffers de render reaproveitados entre frames (evita recriar o
+    # GeomVertexRewriter e recomputar a curva quando a pose não mudou).
+    _vertex_rewriter: Optional[GeomVertexRewriter] = None
+    _normal_rewriter: Optional[GeomVertexRewriter] = None
+    _last_render_signature: Optional[tuple] = None
 
     def visible_tip(self):
         sample = max(0.0, min(1.0, self.reveal)) * (len(self.segments) - 1)
@@ -859,6 +865,25 @@ def update_tentacle_render(tentacle: Tentacle) -> None:
 
     points = [Vec3(seg.pos) for seg in tentacle.segments]
     nearby = tentacle.contacts.region(points) if tentacle.contacts else []
+
+    # Assinatura barata da entrada: sem obstáculos próximos, a malha depende
+    # só da pose dos segmentos, do reveal, da espessura, do state_time e da
+    # frente de referência. Se nada disso mudou, o recomputo daria o mesmo
+    # resultado — pula o frame. Com obstáculos, nunca pula (a projeção pode
+    # mudar sem os segmentos se moverem).
+    if not nearby:
+        signature = (
+            round(tentacle.reveal, 5),
+            round(tentacle.girth_scale, 5),
+            round(tentacle.state_time, 4),
+            tuple(round(c, 5) for c in tentacle.reference_front),
+            tuple(round(c, 4) for point in points for c in point),
+        )
+        if signature == tentacle._last_render_signature:
+            return
+        tentacle._last_render_signature = signature
+    else:
+        tentacle._last_render_signature = None
     # Rotation-minimizing frames: carry the previous transverse axis along
     # the curve, then add distributed twist. No camera-facing/billboard axis.
     frames = []
@@ -912,8 +937,17 @@ def update_tentacle_render(tentacle: Tentacle) -> None:
         return center, tangent, right, front
 
     def deform(vdata) -> None:
-        vertex_writer = GeomVertexRewriter(vdata, "vertex")
-        normal_writer = GeomVertexRewriter(vdata, "normal")
+        # Reaproveita os rewriters por tentáculo: eles ficam presos ao mesmo
+        # GeomVertexData, que persiste entre frames. setRow(0) os reposiciona.
+        vertex_writer = tentacle._vertex_rewriter
+        normal_writer = tentacle._normal_rewriter
+        if vertex_writer is None or normal_writer is None:
+            vertex_writer = GeomVertexRewriter(vdata, "vertex")
+            normal_writer = GeomVertexRewriter(vdata, "normal")
+            tentacle._vertex_rewriter = vertex_writer
+            tentacle._normal_rewriter = normal_writer
+        vertex_writer.setRow(0)
+        normal_writer.setRow(0)
         for (u, x, y), local_normal in zip(tentacle.rest_vertices, tentacle.template_normals):
             if u not in cache:
                 frame = frame_at(u)
