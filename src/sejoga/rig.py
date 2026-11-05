@@ -558,7 +558,7 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
 
 
 def pose_sneeze(rig: Rig, t: float) -> None:
-    """Three knocks, explosive release, then damped recovery."""
+    """Three inhalations, downward contraction, then damped recovery."""
     from math import exp, sin
     # Slow inhalation, held anticipation, one sharp forward sneeze.
     inhale = min(1.0, max(0.0, t/3.3))
@@ -568,12 +568,12 @@ def pose_sneeze(rig: Rig, t: float) -> None:
     inhale += sum(amp*exp(-((t-at)/width)**2) for at, width, amp in ((.65,.24,.25),(1.65,.32,.35),(2.85,.4,.45)))
     hit = exp(-((t-3.68)/.105)**2)
     settle = sin(max(0, t-3.8)*8)*exp(-max(0,t-3.8)*4) if t > 3.8 else 0
-    rig.set_rotation('head', x=-15*inhale+42*hit+5*settle, z=-3*inhale)
-    rig.set_rotation('body', x=-7*inhale+22*hit+3*settle)
-    rig.set_rotation('right-arm', x=-20*inhale+12*hit, z=60-18*inhale-20*hit)
-    rig.set_rotation('left-arm', x=-18*inhale+10*hit, z=-62+16*inhale+18*hit)
-    rig.set_rotation('ant-arm', x=-12*inhale, z=-20-28*inhale)
-    rig.set_rotation('ant-arm2', x=-10*inhale, z=20+25*inhale)
+    rig.set_rotation('head', x=-10*inhale-42*hit-5*settle, z=-3*inhale)
+    rig.set_rotation('body', x=-5*inhale-22*hit-3*settle)
+    rig.set_rotation('right-arm', x=-12*inhale-48*hit, z=60-12*inhale)
+    rig.set_rotation('left-arm', x=-10*inhale-44*hit, z=-62+10*inhale)
+    rig.set_rotation('ant-arm', x=-12*inhale-18*hit, z=-20-20*inhale)
+    rig.set_rotation('ant-arm2', x=-10*inhale-16*hit, z=20+18*inhale)
     rig.set_rotation('hand', x=15*hit, z=-8*inhale)
     rig.set_rotation('hand2', x=12*hit, z=8*inhale)
     rig.set_rotation('fingers', z=18*inhale-10*hit)
