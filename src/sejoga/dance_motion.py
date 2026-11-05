@@ -51,12 +51,12 @@ class DanceMotion:
         amount = .4+self.energy*.6
         rig.set_rotation('door', y=0)
         if self.style == 'head_bob':
-            rig.set_rotation('head', x=-4-pulse*7, y=-12, z=-7+sin(p)*4)
+            rig.set_rotation('head', x=-4-pulse*7, y=12, z=4+sin(p)*3)
             rig.set_rotation('body', x=-2, y=8, z=5)
-            rig.set_rotation('right-arm', x=-24, z=62)
-            rig.set_rotation('left-arm', x=-20, z=-62)
-            rig.set_rotation('ant-arm', x=-28, z=75)
-            rig.set_rotation('ant-arm2', x=-23, z=-70)
+            rig.set_rotation('right-arm', x=24, z=62)
+            rig.set_rotation('left-arm', x=18, z=-62)
+            rig.set_rotation('ant-arm', x=28, z=75)
+            rig.set_rotation('ant-arm2', x=20, z=-70)
             rig.set_rotation('hand', x=-8, z=-8)
             rig.set_rotation('hand2', x=-8, z=8)
         elif self.style == 'rock':

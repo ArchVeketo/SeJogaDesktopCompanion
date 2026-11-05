@@ -121,6 +121,7 @@ class Tentacle:
 
     length_scale: float = 1.0
     girth_scale: float = 1.0
+    speaker_throw: bool = False
 
     def visible_tip(self):
         sample = max(0.0, min(1.0, self.reveal)) * (len(self.segments) - 1)
@@ -267,6 +268,8 @@ class TentacleDirector:
         self._door_current = 0.0
         self.burst = False
         self.appearance_count = 1
+        self.speaker_throw_remaining=0.0
+        self.speaker_throw_limbs=[]
 
         # Cooldowns
         self._curious_cooldown = 0.0
@@ -297,6 +300,15 @@ class TentacleDirector:
         """Força um momento curious (espiada)."""
         self._spawn_curious(count=self.rng.choices((1, 2, 3, 4, 6), weights=(16, 44, 25, 12, 3), k=1)[0])
 
+    def trigger_speaker_throw(self):
+        self.speaker_throw_remaining=1.5
+        self.speaker_throw_limbs=self._spawn_curious(3)
+        for index,limb in enumerate(self.speaker_throw_limbs):
+            limb.speaker_throw=True
+            limb.state_time=-.08*index
+            limb.params['max_len']=1.1
+            for segment in limb.segments:segment.length *= 1.2
+
     def trigger_sneeze(self):
         self.burst = True
         self._spawn_curious(6)
@@ -313,6 +325,13 @@ class TentacleDirector:
     def update(self, dt: float, idle_time: float, personality: IdlePersonality) -> None:
         """Atualiza todos os tentáculos e decide transições."""
         dt = min(dt, 0.05)  # clamp para estabilidade
+        if self.speaker_throw_remaining > 0:
+            self.speaker_throw_remaining=max(0,self.speaker_throw_remaining-dt)
+            if self.speaker_throw_remaining == 0:
+                for limb in self.speaker_throw_limbs:
+                    limb.speaker_throw=False
+                    self.pool.release(limb)
+                self.speaker_throw_limbs=[]
 
         # Atualiza pool
         self.pool.update_personality(personality)
@@ -408,15 +427,15 @@ class TentacleDirector:
 
         # Parâmetros atuais
         p = tentacle.params
-        reveal_time = max(0.0, min(1.0, tentacle.state_time / (.16 if self.burst else 1.8)))
+        reveal_time = max(0.0, min(1.0, tentacle.state_time / (.30 if getattr(tentacle,'speaker_throw',False) else .16 if self.burst else 1.8)))
         tentacle.reveal = reveal_time ** 3 * (10 - 15 * reveal_time + 6 * reveal_time ** 2)
         max_len = p["max_len"]
         reach_speed = p["reach_speed"]
         target_curl = p["curl"]
 
         # Spring params
-        spring = 380 if self.burst else tentacle.spring
-        damper = 30 if self.burst else tentacle.damper
+        spring = 190 if getattr(tentacle,'speaker_throw',False) else 380 if self.burst else tentacle.spring
+        damper = 24 if getattr(tentacle,'speaker_throw',False) else 30 if self.burst else tentacle.damper
 
         # Atualiza cada segmento
         for i, seg in enumerate(tentacle.segments):
@@ -639,7 +658,9 @@ class TentacleDirector:
         diff = self._door_requested - self._door_current
         opening = diff > 0
         speed = 620 if self.burst else 38 + 14 * (self.appearance_count - 1)
-        delta = diff * (1.0 - math.exp(-dt * (14 if self.burst else 3 + self.appearance_count * .5)))
+        if getattr(self,'music_ejection',False) and opening:
+            speed=max(speed,180)
+        delta = diff * (1.0 - math.exp(-dt * (14 if self.burst or getattr(self,'music_ejection',False) else 3 + self.appearance_count * .5)))
         limit = (speed if opening else 38) * dt
         self._door_current += max(-limit, min(limit, delta))
         if self.door_node:
@@ -656,7 +677,7 @@ class TentacleDirector:
             )
         return Vec3(0, 0, 0)
 
-    def _spawn_curious(self, count: int) -> None:
+    def _spawn_curious(self, count: int) -> list[Tentacle]:
         self.appearance_count = count
         active = self.pool.get_available(count)
         for index, t in enumerate(active):
@@ -675,6 +696,7 @@ class TentacleDirector:
             offset = Vec3(*offsets[index % len(offsets)]) * self.pool.unit_scale * t.length_scale
             t.target = t.anchor + offset
         self._door_requested = max(self._door_requested, 85.0)
+        return active
 
 
 # ============================================================

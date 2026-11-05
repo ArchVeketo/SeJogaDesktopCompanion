@@ -55,7 +55,15 @@ def main():
             time.sleep(.1)
         assert hwnd
         time.sleep(2)
-        tray=TrayRegistration(Path('assets/brand/companion.ico')).status(process.pid)
+        registration=TrayRegistration(Path('assets/brand/companion.ico'))
+        # The renderer creates its HWND before Qt and the recovery timer finish
+        # registering the tray. Wait for readiness on a cold frozen startup.
+        for _ in range(100):
+            tray=registration.status(process.pid)
+            if tray['registered']:
+                break
+            assert process.poll() is None, process.returncode
+            time.sleep(.1)
         assert tray['registered'], tray
         report['tray']=tray
         baseline=capture()

@@ -64,3 +64,23 @@ def test_door_closing_respects_speed_limit():
         director.update(1 / 60, 0, IdlePersonality.STREET)
         assert 0 <= before - director._door_current <= 38 / 60 + 1e-6
     assert director._door_current < .01
+
+
+def test_speaker_throw_releases_limbs_and_allows_pool_reuse():
+    pool, director = scene()
+    director.trigger_speaker_throw()
+    limb = director.speaker_throw_limbs[0]
+    limb.target = Vec3(.4, .3, .1)
+    director._door_current = director._door_requested = 100
+    for _ in range(60):
+        director.update(1 / 60, 0, IdlePersonality.CALM)
+    assert limb.reveal > .9
+    assert limb.speaker_throw
+    for _ in range(150):
+        director.update(1 / 60, 0, IdlePersonality.CALM)
+    assert not director.speaker_throw_limbs
+    assert not limb.speaker_throw
+    assert limb.state == TentacleState.DORMANT
+    director.trigger_curious()
+    assert limb.state == TentacleState.CURIOUS
+    assert not limb.speaker_throw

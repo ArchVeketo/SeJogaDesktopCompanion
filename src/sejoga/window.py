@@ -532,6 +532,13 @@ void main() {
             self.outline_np.reparentTo(self._suspension_pivot)
         self._suspension_pivot.setMat(Mat4.identMat())
         controller = getattr(self.showbase, 'animation_controller', None)
+        if not hasattr(self,'_dance_stage_yaw'):
+            from .body_motion import Spring
+            self._dance_stage_yaw=Spring(1.4,.85)
+        head_nod = (not dragging and controller and controller.state == AnimationState.DANCE
+                    and controller.dance_motion.style == 'head_bob')
+        settle = self.music_speaker.settle if hasattr(self,'music_speaker') else 0
+        self._dance_stage_yaw.update(getattr(controller,'delta_time',1/60),-55*settle if head_nod else 0)
         if not dragging and controller and controller.state == AnimationState.DANCE and controller.dance_motion.style == 'breakdance':
             dance = controller.dance_motion
             ground = self.model_np.getTightBounds(self.model_anchor)[0].z
@@ -548,13 +555,26 @@ void main() {
         # Grounded reaction now uses the shared spine and neck joints rather
         # than independently transforming disconnected top-level body parts.
         for spine, neck, shoulders in self.flexible_rig.chains:
-            lean = (controller.dance_motion.lean_amount*7 if controller and
-                    controller.state == AnimationState.DANCE and controller.dance_motion.style == 'head_bob' else 0)
-            spine.setHpr(motion.yaw, motion.pitch*.6,
-                         motion.roll*.55+self.flexible_rig.spine.value-lean)
+            spine.setHpr(motion.yaw, motion.pitch*.6+(10*settle if head_nod else 0),
+                         motion.roll*.55+self.flexible_rig.spine.value)
             spine.setZ(.44-motion.compression*.06)
             neck.setP(motion.head_pitch)
             neck.setR(neck.getR()+motion.head_roll)
+        if abs(self._dance_stage_yaw.value) > .01:
+            pivot=self._suspension_pivot.getRelativePoint(self.model_np,Point3(0,0,.44))
+            rotation=TransformState.makeHpr(Vec3(self._dance_stage_yaw.value,0,0)).getMat()
+            self._suspension_pivot.setMat(Mat4.translateMat(-pivot)*rotation*Mat4.translateMat(pivot))
+        if head_nod and self.music_speaker.landed:
+            body=self._rig_nodes['body']
+            mesh=body.find('**/mesh20')
+            low,high=mesh.getTightBounds(body)
+            plane,normal=self.music_speaker.support_in_stage()
+            corners=[self.model_anchor.getRelativePoint(body,Point3(x,low.y,z))
+                     for x in (low.x,high.x) for z in (low.z,high.z)]
+            distance=min((back-plane).dot(normal) for back in corners)
+            limit=self.model_np.getScale().x*.60
+            correction=max(-limit,min(limit,-distance))*settle
+            self._suspension_pivot.setPos(self._suspension_pivot.getPos()+normal*correction)
 
     def _resolve_arm_clearance(self):
         controller = getattr(self.showbase, 'animation_controller', None)
@@ -612,6 +632,12 @@ void main() {
             ObstacleBox(name, low, high, self.model_np.getMat(node), node.getMat(self.model_np))
             for name, node, low, high in self._collider_sources
         ]
+        speaker=self.music_speaker
+        if not speaker.root.isHidden():
+            low=Vec3(-speaker.width/2,-speaker.depth/2,-speaker.height/2)
+            high=Vec3(speaker.width/2,speaker.depth*.85,speaker.height/2)
+            self.tentacle_contacts.boxes.append(ObstacleBox('music-speaker',low,high,
+                self.model_np.getMat(speaker.root),speaker.root.getMat(self.model_np)))
         for tentacle, local_anchor in zip(self.tentacle_pool.tentacles, self._tentacle_anchor_local):
             anchor = self.model_np.getRelativePoint(head, local_anchor)
             delta = anchor - tentacle.anchor
@@ -631,21 +657,35 @@ void main() {
         gesture = 'rock' if dancing and dance.style == 'rock' else controller.state.value if controller.state else None
         self.finger_gestures.update(dt, gesture)
         speaker_active = dancing or (self.music_speaker.was_dancing and getattr(controller, 'music_active', False))
-        self.music_speaker.update(dt, speaker_active, dance.phase, dance.energy)
-        if dancing and dance.style == 'head_bob' and self.music_speaker.age > 1.2:
-            from .limb_ik import solve_arm
-            upper = self._rig_nodes['left-arm']
-            forearm = self._rig_nodes['ant-arm2']
-            target = upper.getParent().getRelativePoint(self.model_np, Point3(-.29,0,.48))
-            delta = target-upper.getPos()
-            shoulder_angle, elbow_angle = solve_arm(-delta.x,-delta.z,.125,.15625)
-            weight = dance.lean_amount*max(0,min(1,(self.music_speaker.age-1.2)/.6))
-            upper.setR(upper.getR()*(1-weight)-shoulder_angle*weight)
-            forearm.setR(forearm.getR()*(1-weight)-elbow_angle*weight)
-            self._outline_nodes['left-arm'].setHpr(upper.getHpr())
-            self._outline_nodes['ant-arm2'].setHpr(forearm.getHpr())
-        if dancing and self.music_speaker.age < 1.2:
-            self._door_requested = max(self._door_requested, 75)
+        self.music_speaker.update(dt, speaker_active, dance.phase, dance.energy,dance.bass)
+        if self.music_speaker.age < .1:
+            self._speaker_throw_started=False
+        if speaker_active and self.music_speaker.age >= .9 and not getattr(self,'_speaker_throw_started',False):
+            self._speaker_throw_started=True
+            self.tentacle_director.trigger_speaker_throw()
+        for index,limb in enumerate(self.tentacle_director.speaker_throw_limbs):
+            speaker=self.music_speaker
+            # Push separate points on the outside of the front rim, not the
+            # cabinet centre: the contact solver must keep the tips outside.
+            limb.target=Vec3(speaker.current_position)+Vec3(
+                (index-1)*.12,speaker.depth/2+.10,speaker.height*(.22-.12*index))
+        self.tentacle_director.music_ejection=self.music_speaker.ejecting
+        if self.music_speaker.ejecting:
+            self._door_requested=max(self._door_requested,100)
+        if dancing and self.music_speaker.age < 2.3:
+            age=self.music_speaker.age
+            preparation=sum(amplitude*math.exp(-((age-at)/width)**2)
+                            for at,width,amplitude in ((.35,.15,.3),(.8,.18,.6),(1.2,.20,1)))
+            shot=math.exp(-((age-1.48)/.09)**2)
+            envelope=math.sin(math.pi*min(1,age/2.3))
+            head=self._rig_nodes['head']
+            head.setH(head.getH()-50*envelope)
+            head.setP(head.getP()-9*preparation-24*shot)
+            self._outline_nodes['head'].setHpr(head.getHpr())
+            for side,name in ((1,'right-arm'),(-1,'left-arm')):
+                arm=self._rig_nodes[name]
+                arm.setP(arm.getP()-18*shot)
+                self._outline_nodes[name].setHpr(arm.getHpr())
 
         sneezing = controller.state is not None and controller.state.value == 'sneeze'
         if sneezing and controller._reaction_time >= 3.6 and not self.tentacle_director.burst:
@@ -1170,7 +1210,7 @@ class OverlayApp(ShowBase):
         if not renderer or not win32gui.IsWindow(self.hwnd):
             return
         bounds = renderer.model_np.getTightBounds(self.render)
-        if hasattr(renderer, 'music_speaker') and renderer.music_speaker.visibility > .01:
+        if hasattr(renderer, 'music_speaker') and not renderer.music_speaker.root.isHidden():
             speaker_bounds = renderer.music_speaker.root.getTightBounds(self.render)
             if bounds and speaker_bounds:
                 bounds = (Vec3(*(min(bounds[0][i],speaker_bounds[0][i]) for i in range(3))),

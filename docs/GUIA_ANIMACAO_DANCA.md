@@ -59,7 +59,7 @@ A janela adaptativa acomoda o conjunto, mantendo escala de leitura do mascote. C
 - Graffiti original com tag **SeJoga/SJ**, riscos e adesivos simples.
 - Textura 128×128 ou 256×256, sem exigir PBR complexo; detalhes precisam funcionar no tamanho real de uso.
 - Cones separados vibram no acento; o gabinete não salta nem perde o contato com o chão.
-- Proposta original de decal: [fonte SVG](../assets/textures/speaker_graffiti.svg) e [textura PNG 256×128](../assets/textures/speaker_graffiti.png). Ainda não conectada ao material do runtime.
+- Proposta original de decal: [fonte SVG](../assets/textures/speaker_graffiti.svg) e [textura PNG 256×128](../assets/textures/speaker_graffiti.png). Aplicada ao gabinete no runtime.
 
 Friday Night Funkin' orienta cores, caixa grande e acentos rítmicos. A postura de costas apoiadas e a ejeção por espirro são próprias do SeJoga, não uma reprodução literal da Girlfriend.
 
@@ -231,9 +231,9 @@ Snapshot do fonte em 05/11/2026. Consultar o relatório de build: o executável 
 | Análise | [`music.py`](../src/sejoga/music.py), `_BeatTracker`, `_loopback_worker` | RMS/graves/onset/BPM estimado; sem reconhecimento confiável de gênero |
 | Coreografia | [`dance_motion.py`](../src/sejoga/dance_motion.py), `DanceMotion` | Quatro estilos com suavização; ainda precisa de frases/contatos mais autorados |
 | Prioridades | [`animation.py`](../src/sejoga/animation.py), `update`, `interact` | Dança persiste e peek tem timer independente; preservar isso |
-| Caixa | [`music_speaker.py`](../src/sejoga/music_speaker.py), `MusicSpeaker` | Gabinete atual de 0,28×0,19×0,46 unidades locais: **menor que o mascote, não atende ao tamanho aprovado** |
-| Entrada | `MusicSpeaker.update` e [`window.py`](../src/sejoga/window.py), `update_appendages` | Arco e abertura existem; faltam atuação completa do espirro lateral e aterrissagem autorada |
-| Head nod | `DanceMotion.apply` e `Panda3DRenderer.update_appendages` | **Ainda apoia mão esquerda no alvo fixo `(-.29,0,.48)`. Substituir por costas apoiadas e ambos os braços cruzados** |
+| Caixa | [`music_speaker.py`](../src/sejoga/music_speaker.py), `MusicSpeaker` | Gabinete dimensionado pela pose neutra: largura ×1,20 e altura ×1,15; graffiti aplicado |
+| Entrada | `MusicSpeaker.update` e [`window.py`](../src/sejoga/window.py), `update_appendages` | Preparação lateral, arco, pouso, três tentáculos empurrando e gosma rosa temporária; cones e ondas reagem à batida/graves |
+| Head nod | `DanceMotion.apply` e `Panda3DRenderer.update_appendages` | Orientação invertida conforme pedido, costas contra a lateral da caixa, braços cruzados; contato resolvido pelo plano lateral |
 | IK | [`limb_ik.py`](../src/sejoga/limb_ik.py), `solve_arm(horizontal, downward, upper_length, forearm_length)` | Solver planar de dois segmentos; não resolve costas/pés ou apoio completo 3D |
 | Pivôs | [`flexible_rig.py`](../src/sejoga/flexible_rig.py), [`lower_body.py`](../src/sejoga/lower_body.py) | Coluna/pescoço/ombros e quadril/joelho no runtime; preservar junções ao resolver apoio |
 | Pernas | [`leg_motion.py`](../src/sejoga/leg_motion.py) | Fase compartilhada existe; footwork/plantio ainda precisam de contatos de cena |
@@ -282,3 +282,7 @@ Critérios de aprovação:
 
 - **1.0:** levantamento inicial de código e referências gerais.
 - **2.0:** incorporada a descrição completa do autor: caixa gigante e costas apoiadas tornam-se requisitos explícitos. Estado do runtime separado da especificação; referências primárias e comandos existentes conferidos. A versão original foi preservada localmente em `.local/reference-inputs/GUIA_ANIMACAO_DANCA_v1.md`.
+
+### Validação da entrada da caixa — 05/11/2026
+
+`python tools/preview_music_scene.py` captura preparação, arremesso, pouso e pose final em perfil isolado. Três tentáculos empurram alvos externos distintos na caixa e se recolhem; gosma rosa sólida low-poly escorre e desaparece até 6,5 s. A dança continua durante a sequência. Cones pulsam radialmente; ondas e tremor seguem energia/graves. Prévia permanece silenciosa; o pouso em música real respeita volume e áudio habilitado.
