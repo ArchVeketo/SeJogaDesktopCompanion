@@ -115,6 +115,22 @@ def test_unpublished_channel_is_not_an_error(monkeypatch):
     assert updater.check_update(ReleaseInfo('0.1.0', 'release')) is None
 
 
+def test_single_installer_runs_without_published_feed(monkeypatch):
+    # Instalador unico: o runtime ja vem embutido, entao um feed 404 nao e fatal.
+    # check_update apenas informa "sem atualizacao" (None). A logica equivalente do
+    # launcher nativo (SeJogaLauncher.cs: FeedIndisponivel -> StartCurrent quando ha
+    # runtime) e validada por inspecao, pois iscc/instalacao real nao rodam aqui.
+    for channel in updater.CHANNELS:
+        current = ReleaseInfo('0.2.0' if channel == 'release' else
+                              '0.2.0rc1' if channel == 'prerelease' else '0.2.0.dev1', channel)
+
+        def missing(*args):
+            raise HTTPError('feed', 404, 'missing', {}, None)
+
+        monkeypatch.setattr(updater, '_read', missing)
+        assert updater.check_update(current) is None
+
+
 def test_installed_channel_and_stable_launcher_are_found_outside_runtime(tmp_path, monkeypatch):
     current = tmp_path/'runtime/current'
     current.mkdir(parents=True)

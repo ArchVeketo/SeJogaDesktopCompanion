@@ -86,7 +86,12 @@ internal static class SeJogaLauncher
                 Application.Run(Window);
                 return Result;
             }
-            if (args.Contains("--update") || !File.Exists(CurrentExecutable()))
+            // O instalador unico ja embute o runtime em runtime/current. Quando ele existe,
+            // abrimos o mascote direto, sem exigir feed publicado (corrige o erro "nao achou o remote").
+            // So disparamos o agente privilegiado em atualizacao manual (--update) ou quando nao ha
+            // runtime algum (instalacao antiga/offline sem embutido) para tentar baixar a primeira versao.
+            bool temRuntime = File.Exists(CurrentExecutable());
+            if (args.Contains("--update") || !temRuntime)
             {
                 var start = new ProcessStartInfo(Application.ExecutablePath, "--apply-update")
                     { UseShellExecute = true, Verb = TestScope ? "open" : "runas", WorkingDirectory = Root };
@@ -170,6 +175,18 @@ internal static class SeJogaLauncher
             return test;
         }
         return new Uri("https://github.com/" + Repository + "/releases/download/updates-" + Channel + "/channel.json");
+    }
+    static bool FeedIndisponivel(Exception error)
+    {
+        // Feed ausente (404) ou rede indisponivel: tratamos como "sem atualizacao" se ja houver runtime.
+        var web = error as WebException;
+        if (web != null)
+        {
+            if (web.Status != WebExceptionStatus.ProtocolError) return true;
+            var resposta = web.Response as HttpWebResponse;
+            return resposta != null && (int)resposta.StatusCode == 404;
+        }
+        return error is IOException && !(error is InvalidDataException);
     }
     static bool Allowed(Uri uri)
     {
@@ -324,7 +341,15 @@ internal static class SeJogaLauncher
                 string previous = Path.Combine(Root, "runtime", "previous");
                 if (!prepare && !Directory.Exists(current) && Directory.Exists(previous))
                     Directory.Move(previous, current);
-                var manifest = Manifest();
+                // Degradacao graciosa: se o feed estiver 404/offline mas ja houver runtime valido,
+                // seguimos abrindo o mascote em vez de abortar (corrige o antigo "nao achou o remote").
+                Dictionary<string, object> manifest;
+                try { manifest = Manifest(); }
+                catch (Exception error)
+                {
+                    if (FeedIndisponivel(error) && File.Exists(CurrentExecutable())) return;
+                    throw;
+                }
                 if (!prepare && File.Exists(Path.Combine(current, "release-info.json")))
                 {
                     var installed = ReadJson(Path.Combine(current, "release-info.json"));
