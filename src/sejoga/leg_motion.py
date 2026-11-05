@@ -19,7 +19,7 @@ class LegMotion:
         self.phase = 0.0
 
     def update(self, dt, state, velocity=(0, 0), time=0, sway=0,
-               dance_phase=None, dance_strength=1.0):
+               dance_phase=None, dance_strength=1.0, dance_style='head_bob'):
         dt = max(0, min(.1, dt))
         target = LegPose()
         if state in ('walk', 'run'):
@@ -53,6 +53,13 @@ class LegMotion:
             step = sin(self.phase*.5)*dance_strength
             target = LegPose(step*7, -step*7, max(0,step)*12,
                              max(0,-step)*12, max(0,step)*.012, max(0,-step)*.012)
+            if dance_style == 'head_bob':
+                target = LegPose(0, -3, 2, 7)
+            elif dance_style == 'breakdance':
+                beat = self.phase/tau % 16
+                floor = max(0,min(1,(beat-4)/2,(15-beat)/3))
+                target = LegPose(step*8+floor*35, -step*8-floor*30,
+                                 8+floor*20, 8+floor*12)
         elif state in ('idle', 'hover'):
             shift = max(-1, min(1, sway/5))
             target = LegPose(2*shift, -2*shift, max(0, shift)*4, max(0, -shift)*4)

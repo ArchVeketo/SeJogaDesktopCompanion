@@ -109,6 +109,11 @@ class SettingsDialog(QDialog):
         self.dance_chance_input.setRange(0, 1)
         self.dance_chance_input.setSingleStep(.05)
         self.dance_chance_input.setValue(settings.music.dance_chance)
+        self.dance_style_input = QComboBox()
+        for key, label in (('auto','Automático pelo áudio'), ('head_bob','Head bob tranquilo'),
+                           ('hip_hop','Hip hop'), ('rock','Rock'), ('breakdance','Breakdance')):
+            self.dance_style_input.addItem(label, key)
+        self.dance_style_input.setCurrentIndex(self.dance_style_input.findData(settings.music.dance_style))
 
         self.hotkey_inputs = {
             name: QLineEdit(getattr(settings.hotkeys, name))
@@ -131,6 +136,7 @@ class SettingsDialog(QDialog):
         form.addRow(self.beat_input)
         form.addRow("Sensibilidade da batida", self.sensitivity_input)
         form.addRow("Frequência de dança (0–1)", self.dance_chance_input)
+        form.addRow("Estilo de dança", self.dance_style_input)
         for name, label in (
             ("toggle_overlay", "Mostrar/ocultar"),
             ("open_settings", "Abrir configurações"),
@@ -196,6 +202,7 @@ class SettingsDialog(QDialog):
         updated.music.react_to_beat = self.beat_input.isChecked()
         updated.music.sensitivity = self.sensitivity_input.value()
         updated.music.dance_chance = self.dance_chance_input.value()
+        updated.music.dance_style = self.dance_style_input.currentData()
 
         normalized_hotkeys: dict[tuple[int, int], str] = {}
         try:

@@ -262,8 +262,10 @@ class Panda3DRenderer:
         try:
             import simplepbr
 
-            simplepbr.init(use_normal_maps=False, use_emission_maps=False, max_lights=8,
-                           msaa_samples=4)
+            pipeline = simplepbr.init(use_normal_maps=False, use_emission_maps=False, max_lights=8,
+                                      msaa_samples=4)
+            from .chroma_resolve import install_chroma_resolve
+            install_chroma_resolve(pipeline)
         except ImportError:
             pass
         except Exception as e:
@@ -319,6 +321,8 @@ class Panda3DRenderer:
         self.set_visual_scale(self.showbase.settings.window.scale)
 
         self._apply_rig_to_model()
+        from .flexible_rig import FlexibleRig
+        self.flexible_rig = FlexibleRig(self)
 
         unit_scale = float(self._view_height / self.height / self.model_np.getScale().x)
         head_node = self._rig_nodes["head"]
@@ -338,6 +342,8 @@ class Panda3DRenderer:
         self.tentacle_drips = TentacleDrips(self.model_np)
         from .finger_gestures import FingerGestures
         self.finger_gestures = FingerGestures(self)
+        from .music_speaker import MusicSpeaker
+        self.music_speaker = MusicSpeaker(self)
         for tentacle in self.tentacle_pool.tentacles:
             create_tentacle_geometry(tentacle, self.model_np, self.outline_np)
         self.tentacle_director = TentacleDirector(
@@ -519,11 +525,20 @@ void main() {
     def apply_body_motion(self, motion, grab_point=None, *, grounded=True, dragging=False):
         """Rotate connected root parts around the hips/grip without editing the asset rig."""
         from panda3d.core import Mat4, TransformState
+        self.flexible_rig.update(getattr(self.showbase.animation_controller, 'delta_time', 1/60), motion)
         if not hasattr(self, '_suspension_pivot'):
             self._suspension_pivot = self.model_anchor.attachNewNode('suspension-pivot')
             self.model_np.reparentTo(self._suspension_pivot)
             self.outline_np.reparentTo(self._suspension_pivot)
         self._suspension_pivot.setMat(Mat4.identMat())
+        controller = getattr(self.showbase, 'animation_controller', None)
+        if not dragging and controller and controller.state == AnimationState.DANCE and controller.dance_motion.style == 'breakdance':
+            dance = controller.dance_motion
+            ground = self.model_np.getTightBounds(self.model_anchor)[0].z
+            self._suspension_pivot.setHpr(dance.floor_spin, 0, -65*dance.floor_amount)
+            moved = self.model_np.getTightBounds(self.model_anchor)[0].z
+            self._suspension_pivot.setZ(ground-moved)
+            return
         if dragging or motion.hanging > .05:
             point = Vec3(grab_point) if grab_point is not None else Vec3(0,0,.6)
             pivot = self._suspension_pivot.getRelativePoint(self.model_np, point)
@@ -568,6 +583,9 @@ void main() {
             self._outline_nodes[name].setHpr(node.getHpr())
 
     def _resolve_arm_clearance(self):
+        controller = getattr(self.showbase, 'animation_controller', None)
+        if controller and controller.state == AnimationState.DANCE and controller.dance_motion.style == 'head_bob':
+            return  # Authored crossed arms sit forward of the torso.
         # Hands inherit the forearm transform. Keep a continuous outward elbow
         # bend instead of solving bounding boxes in discrete five-degree jumps.
         for arm, forearm, direction in (("right-arm", "ant-arm", 1),
@@ -634,7 +652,15 @@ void main() {
         if not self.tentacle_director:
             return
         controller = self.showbase.animation_controller
-        self.finger_gestures.update(dt, controller.state.value if controller.state else None)
+        dancing = controller.state is not None and controller.state.value == 'dance'
+        dance = controller.dance_motion
+        gesture = 'rock' if dancing and dance.style == 'rock' else controller.state.value if controller.state else None
+        self.finger_gestures.update(dt, gesture)
+        speaker_active = dancing or (self.music_speaker.was_dancing and getattr(controller, 'music_active', False))
+        self.music_speaker.update(dt, speaker_active, dance.phase, dance.energy)
+        if dancing and self.music_speaker.age < 1.2:
+            self._door_requested = max(self._door_requested, 75)
+
         sneezing = controller.state is not None and controller.state.value == 'sneeze'
         if sneezing and controller._reaction_time >= 3.6 and not self.tentacle_director.burst:
             self.tentacle_director.trigger_sneeze()
@@ -830,7 +856,7 @@ class OverlayApp(ShowBase):
 
         self.openDefaultWindow(props=wp, fbprops=fbprops)
 
-        self.win.setClearColor((1.0, 0.0, 1.0, 1.0))  # Magenta color key (tone-maps to RGB 214, 0, 214)
+        self.win.setClearColor((1.0, 0.0, 1.0, 0.0))  # Zero alpha preserves MSAA coverage for chroma resolve.
         self.win.setClearColorActive(True)
 
         self.disableMouse()
@@ -1056,6 +1082,7 @@ class OverlayApp(ShowBase):
         music_intensity = music.audio_level if music else 0.0
         if music_playing and music_intensity == 0.0:
             music_intensity = 0.25
+        self.animation_controller.dance_motion.override = self.settings.music.dance_style
         pose = self.animation_controller.update(
             dt,
             velocity=state.velocity if state else (0.0, 0.0),
@@ -1086,7 +1113,7 @@ class OverlayApp(ShowBase):
             self.animation_controller.body_motion.snapshot, self._body_grab_point,
             grounded=state.grounded if state else True, dragging=self._drag_active,
         )
-        self.renderer.update_appendages(dt, self.animation_controller.state == AnimationState.PEEK)
+        self.renderer.update_appendages(dt, self.animation_controller.appendage_remaining > 0)
         self._fit_pose_window(dt)
         if self.renderer.tentacle_director:
             mouse_world = Point3(
@@ -1157,6 +1184,11 @@ class OverlayApp(ShowBase):
         if not renderer or not win32gui.IsWindow(self.hwnd):
             return
         bounds = renderer.model_np.getTightBounds(self.render)
+        if hasattr(renderer, 'music_speaker') and renderer.music_speaker.visibility > .01:
+            speaker_bounds = renderer.music_speaker.root.getTightBounds(self.render)
+            if bounds and speaker_bounds:
+                bounds = (Vec3(*(min(bounds[0][i],speaker_bounds[0][i]) for i in range(3))),
+                          Vec3(*(max(bounds[1][i],speaker_bounds[1][i]) for i in range(3))))
         if not bounds:
             return
         from panda3d.core import Point2, Point3, WindowProperties
@@ -1172,7 +1204,8 @@ class OverlayApp(ShowBase):
         if not projected:
             return
         base = self.settings.window.size
-        needed = max(base, math.ceil((max(max(abs(x),abs(y)) for x,y in projected)*2+64)/64)*64)
+        extent = max(max(abs(x),abs(y)) for x,y in projected)*2+32
+        needed = base + math.ceil(max(0, extent-base)/64)*64
         needed = min(base*3, needed)
         current = renderer.width
         self._canvas_cooldown = max(0, getattr(self, '_canvas_cooldown', 0)-dt)

@@ -14,7 +14,7 @@ renderer=app.renderer
 def tick():
     pose=app.animation_controller.update(1/60)
     renderer.apply_rig_pose(pose)
-    renderer.update_appendages(1/60, app.animation_controller.state.value=='peek')
+    renderer.update_appendages(1/60, app.animation_controller.appendage_remaining > 0)
 app._animation_tick=tick
 scale=renderer._view_height/renderer.height/renderer.model_np.getScale().x
 assert .001 < scale < .02, scale

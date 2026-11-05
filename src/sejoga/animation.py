@@ -87,6 +87,7 @@ class AnimationController:
         self._look_direction = 0.0
         self._look_vertical = 0.0
         self._ambient_in = 28.0
+        self.appendage_remaining = 0.0
         self._peek_in = self._personality_rng.uniform(60, 100)
         self._dance_remaining = 0.0
         self._dance_decision_in = 0.0
@@ -137,6 +138,9 @@ class AnimationController:
     def interact(self, kind: str, *, direction: float | None = None, strength: float = 1.0) -> None:
         """Interação acorda o mascote e dispara uma reação com cooldown."""
         self.idle_time = 0.0
+        if kind == 'peek':
+            self.appendage_remaining = 9.0
+            return
         if kind == "drag_start":
             self._reaction = None
             return
@@ -199,6 +203,9 @@ class AnimationController:
         """Atualiza o estado e devolve um snapshot de rotações em radianos."""
         dt = min(0.1, max(0.0, dt))
         self.clock += dt
+        self.delta_time = dt
+        self.music_active = music_playing
+        self.appendage_remaining = max(0, self.appendage_remaining-dt)
         self.body_motion.update(dt, pointer=pointer_position, dragging=dragging,
                                 hovered=hovered, look=(look_direction, look_vertical),
                                 grounded=grounded, velocity=velocity, grab_part=grab_part)
@@ -218,6 +225,8 @@ class AnimationController:
             self._dance_decision_in = 8.0
             if self._dance_rng.random() < min(1.0, dance_chance):
                 self._dance_remaining = 8.0
+        if music_playing and react_to_beat and dance_chance > 0 and self.state == AnimationState.DANCE:
+            self._dance_remaining = max(self._dance_remaining, 1.0)
         beat_edge = beat_detected and not self._previous_beat
         self._previous_beat = beat_detected
         if react_to_beat and beat_edge and self._dance_remaining > 0:
@@ -239,13 +248,13 @@ class AnimationController:
             music_playing=music_playing and self._dance_remaining > 0,
             music_intensity=music_intensity,
         )
-        if next_state == AnimationState.IDLE and grounded and idle_enabled and not hovered:
-            self._ambient_in -= dt
+        if next_state in (AnimationState.IDLE, AnimationState.DANCE) and grounded and idle_enabled and not hovered:
             self._peek_in -= dt
             if self._peek_in <= 0 and self._reaction is None:
-                self._reaction = AnimationState.PEEK
-                self._reaction_time = 0.0
+                self.appendage_remaining = 9.0
                 self._peek_in = self._personality_rng.uniform(60, 100)
+        if next_state == AnimationState.IDLE and grounded and idle_enabled and not hovered:
+            self._ambient_in -= dt
             if self._ambient_in <= 0 and self._reaction is None:
                 self._reaction = self._personality_rng.choice(
                     [AnimationState.WAVE, AnimationState.STRETCH]
@@ -253,7 +262,8 @@ class AnimationController:
                 self._reaction_time = 0.0
                 self._ambient_in = self._personality_rng.uniform(32.0, 48.0)
         if next_state != AnimationState.DRAG and (next_state != AnimationState.FALL or self._reaction == AnimationState.HIT):
-            if self._reaction is not None:
+            if self._reaction is not None and (next_state != AnimationState.DANCE or
+                    self._reaction in (AnimationState.HIT, AnimationState.SNEEZE)):
                 next_state = self._reaction
             elif hovered and next_state == AnimationState.IDLE:
                 next_state = AnimationState.HOVER
@@ -353,6 +363,8 @@ class AnimationController:
                 self.rig.set_rotation('left-arm', x=-motion.pitch*.9, z=-65+motion.limb_swing*.25)
                 self.rig.set_rotation('ant-arm', x=3+motion.limb_swing*.2, z=-4)
                 self.rig.set_rotation('ant-arm2', x=3+motion.limb_swing*.18, z=4)
+        if self.appendage_remaining > 0:
+            self.rig.set_rotation('door', y=85)
         target = self.rig.pose()
         if self._active_transition_seconds == 0.0:
             alpha = 1.0
@@ -368,8 +380,10 @@ class AnimationController:
         self.rig.current = dict(displayed_pose)
         self.leg_motion.update(dt, self.state.value, velocity, self._reaction_time,
                                self.body_motion.snapshot.limb_swing if dragging else self.body_motion.snapshot.roll,
-                               dance_phase=self.dance_motion.phase,
-                               dance_strength=self.dance_motion.strength)
+                               dance_phase=(self.dance_motion.style_beats*6.28318530718
+                                            if self.dance_motion.style == 'breakdance' else self.dance_motion.phase),
+                               dance_strength=self.dance_motion.strength,
+                               dance_style=self.dance_motion.style)
         return displayed_pose
 
     @staticmethod

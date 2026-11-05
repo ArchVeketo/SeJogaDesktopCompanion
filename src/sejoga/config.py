@@ -120,6 +120,7 @@ class MusicSettings(BaseModel):
     react_to_beat: bool = True
     sensitivity: float = Field(default=0.6, ge=0.0, le=1.0)
     dance_chance: float = Field(default=0.35, ge=0.0, le=1.0)
+    dance_style: Literal['auto', 'head_bob', 'hip_hop', 'rock', 'breakdance'] = 'auto'
 
 
 class BehaviorSettings(BaseModel):

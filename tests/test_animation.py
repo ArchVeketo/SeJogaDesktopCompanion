@@ -209,7 +209,7 @@ def test_hover_tracks_both_axes_and_new_reactions_generate_distinct_poses():
         for _ in range(5):
             pose = other.update(.1)
         frames.append(tuple(pose.values()))
-        assert other.state.value == kind
+        assert other.appendage_remaining > 0 if kind == 'peek' else other.state.value == kind
     assert len(set(frames)) == 4
 
 
@@ -221,15 +221,30 @@ def test_tentacle_peeks_are_rare_but_manual_peek_remains_available():
     previous = None
     for frame in range(1800):
         animation.update(.1)
-        if animation.state == AnimationState.PEEK and previous != animation.state:
+        if animation.appendage_remaining > 0 and not previous:
             starts.append(frame/10)
-        previous = animation.state
+        previous = animation.appendage_remaining > 0
     assert starts and starts[0] >= 59.9
     assert all(b-a >= 60 for a,b in zip(starts, starts[1:]))
     other = controller()
     other.interact("peek")
     other.update(.1)
-    assert other.state == AnimationState.PEEK
+    assert other.appendage_remaining > 0
+
+
+def test_dance_keeps_body_animation_while_peeking_and_ignores_ambient_wave():
+    animation = controller()
+    for _ in range(60):
+        animation.update(1/60, music_playing=True, music_intensity=.5)
+    animation.interact('peek')
+    animation.interact('wave')
+    samples = []
+    for _ in range(120):
+        pose = animation.update(1/60, music_playing=True, music_intensity=.5)
+        assert animation.state == AnimationState.DANCE
+        assert animation.appendage_remaining > 0
+        samples.append(pose['head'])
+    assert len(set(samples)) > 100
 
 
 def test_double_click_interrupts_single_click_then_recovers():
