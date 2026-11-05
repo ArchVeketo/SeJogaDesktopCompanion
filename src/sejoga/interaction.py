@@ -101,14 +101,14 @@ class MouseInteraction:
                             emit("double_click")
                             self._last_click = None
                         else:
-                            emit("click")
+                            emit("poke")
                             self._last_click = (now, position)
                     else:
                         self._last_click = None
                     self.dragging = False
                     self.press_position = None
                 elif hit and allow_click and not was_dragging:
-                    emit({"right": "pet", "middle": "poke"}[button])
+                    emit({"right": "pet", "middle": "click"}[button])
 
         self.buttons = buttons
         return events

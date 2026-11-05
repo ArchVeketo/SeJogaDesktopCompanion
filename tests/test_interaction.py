@@ -19,7 +19,7 @@ def test_click_tolerates_small_hand_movement():
     mouse = MouseInteraction()
     kinds(mouse, buttons=("left",), hit=True)
     assert kinds(mouse, (102, 101), ("left",), hit=True) == []
-    assert kinds(mouse, (102, 101), hit=True) == ["click"]
+    assert kinds(mouse, (102, 101), hit=True) == ["poke"]
 
 
 def test_drag_continues_and_ends_outside_without_click():
@@ -55,7 +55,7 @@ def test_disabled_drag_does_not_turn_long_gesture_into_click():
 
 def test_reaction_buttons_and_click_setting():
     mouse = MouseInteraction()
-    for button, reaction in (("right", "pet"), ("middle", "poke")):
+    for button, reaction in (("right", "pet"), ("middle", "click")):
         kinds(mouse, buttons=(button,), hit=True)
         assert kinds(mouse, hit=True) == [reaction]
         kinds(mouse, buttons=(button,), hit=True)
@@ -78,15 +78,15 @@ def test_secondary_button_during_drag_does_not_trigger_pet_on_release():
 def test_owned_double_click_uses_time_and_distance_thresholds():
     mouse = MouseInteraction(double_click_seconds=.4, double_click_distance=5)
     kinds(mouse, buttons=("left",), hit=True, now=0)
-    assert kinds(mouse, hit=True, now=.05) == ["click"]
+    assert kinds(mouse, hit=True, now=.05) == ["poke"]
     kinds(mouse, (102, 100), ("left",), hit=True, now=.15)
     assert kinds(mouse, (102, 100), hit=True, now=.20) == ["double_click"]
     kinds(mouse, buttons=("left",), hit=True, now=.25)
-    assert kinds(mouse, hit=True, now=.30) == ["click"]
+    assert kinds(mouse, hit=True, now=.30) == ["poke"]
     kinds(mouse, buttons=("left",), hit=True, now=1)
-    assert kinds(mouse, hit=True, now=1.05) == ["click"]
+    assert kinds(mouse, hit=True, now=1.05) == ["poke"]
     kinds(mouse, (120, 100), ("left",), hit=True, now=1.1)
-    assert kinds(mouse, (120, 100), hit=True, now=1.15) == ["click"]
+    assert kinds(mouse, (120, 100), hit=True, now=1.15) == ["poke"]
 
 
 def test_drag_or_external_press_cannot_complete_double_click():
@@ -96,7 +96,7 @@ def test_drag_or_external_press_cannot_complete_double_click():
     kinds(mouse, buttons=("left",), hit=False, now=.04)
     kinds(mouse, hit=True, now=.06)
     kinds(mouse, buttons=("left",), hit=True, now=.08)
-    assert kinds(mouse, hit=True, now=.10) == ["click"]
+    assert kinds(mouse, hit=True, now=.10) == ["poke"]
     kinds(mouse, buttons=("left",), hit=True, now=.12)
     kinds(mouse, (160, 100), ("left",), hit=True, now=.14)
     assert kinds(mouse, (160, 100), hit=True, now=.16) == ["drag_end"]
