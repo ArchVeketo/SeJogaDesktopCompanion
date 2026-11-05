@@ -15,7 +15,7 @@ from .hand_motion import HandMotion
 from .dance_motion import DanceMotion
 
 from .joint_springs import SpringPose
-from .anim_layers import CamadaAnim, MixerCamadas
+from .anim_layers import MASCARA_MUSICA, CamadaAnim, MixerCamadas
 
 from .rig import (
     IdlePersonality,
@@ -355,7 +355,12 @@ class AnimationController:
         elif self.state == AnimationState.FALL:
             pose_thrown(self.rig, self.state_time, velocity)
         elif self.state == AnimationState.DANCE:
-            self.dance_motion.apply(self.rig)
+            # A dança não autora mais a base: avança as molas e obtém a
+            # contribuição, que vira a camada aditiva 'musica' adiante. O rig
+            # recebe a pose crua suavizada para que pose_secondary leia os
+            # mesmos valores de antes (continuidade de mãos/ombros).
+            contribuicao_danca = self.dance_motion.contribuicao(self.rig)
+            self.rig.current = dict(contribuicao_danca)
         elif self.state == AnimationState.SLEEP:
             pose_sleep(self.rig, self.clock)
         elif self.state.value in ('hang_loose', 'thumbs_up', 'rock', 'finger_gun'):
@@ -402,11 +407,22 @@ class AnimationController:
         if self.appendage_remaining > 0:
             self.rig.set_rotation('door', y=85)
         target = self.rig.pose()
-        # A saída por junta passa pelo mixer de camadas. A pose autoral é a
-        # camada base; dança/pernas/mãos continuam como camadas aplicadas a
-        # jusante. Hoje só há a base, então a composição é identidade — o
-        # roteamento fica pronto para as demais camadas das FEATs seguintes.
-        composed = MixerCamadas.compor([CamadaAnim("base", dict(target))])
+        # A saída por junta passa pelo mixer de camadas aditivas. A pose
+        # autoral vira a camada 'base'; na dança, as juntas de música saem da
+        # base (zeradas) e entram como camada aditiva 'musica', de modo que
+        # base + musica reproduz a dança de hoje sem dupla aplicação. Pernas e
+        # pés permanecem na base (fora da máscara) e no IK de lower_body.
+        camadas = [CamadaAnim("base", dict(target))]
+        if self.state == AnimationState.DANCE:
+            base = camadas[0].contribuicao
+            contribuicao_musica = {
+                grupo: base[grupo] for grupo in MASCARA_MUSICA if grupo in base
+            }
+            for grupo in contribuicao_musica:
+                base[grupo] = Rotation3()
+            camadas.append(CamadaAnim("musica", contribuicao_musica,
+                                      mascara=MASCARA_MUSICA))
+        composed = MixerCamadas.compor(camadas)
 
         if self._active_transition_seconds == 0.0:
             # Sem crossfade: a pose exibida acompanha o alvo diretamente.

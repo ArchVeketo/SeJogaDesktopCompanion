@@ -17,6 +17,13 @@ from .rig import Rotation3
 # fora desta lista são aplicadas depois, na ordem em que chegam.
 ORDEM_PRIORIDADE = ("base", "locomocao", "interacao", "musica", "fisica")
 
+# Juntas controladas pela camada de música (dança). As pernas/pés ficam de
+# fora: continuam vindo da base e do IK de lower_body.
+MASCARA_MUSICA = frozenset({
+    "head", "body", "right-arm", "left-arm", "ant-arm", "ant-arm2",
+    "hand", "hand2", "fingers", "fingers2", "door",
+})
+
 
 @dataclass
 class CamadaAnim:

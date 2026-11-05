@@ -59,7 +59,12 @@ class DanceMotion:
         acento = (1 - batida) ** 2 * (1 + (1 - downbeat) * .6)
         self.acento += (acento * (.4 + self.energy * .6) - self.acento) * (1 - exp(-dt * 9))
 
-    def apply(self, rig):
+    def _montar_alvo(self, rig):
+        """Autora a pose crua da dança no rig e devolve o snapshot alvo.
+
+        Compartilhado por apply (que grava no rig) e contribuicao (que apenas
+        lê o resultado suavizado por molas), garantindo o mesmo resultado.
+        """
         p = self.phase
         # Acento vindo do envelope por batida/compasso (downbeat mais forte),
         # em vez de um pulso derivado só da fase local.
@@ -102,13 +107,28 @@ class DanceMotion:
             rig.set_rotation('left-arm', x=-20*floor, z=-48+32*floor)
             rig.set_rotation('ant-arm2', z=20+35*floor)
             rig.set_rotation('head', x=-8-12*floor, z=5*floor)
-        target = rig.pose()
+        return rig.pose()
+
+    def _suavizar(self, rig):
+        """Avança as molas por junta sobre o alvo cru e grava em self.pose."""
+        target = self._montar_alvo(rig)
         # Molas por junta: o corpo "pesa" no acento e recupera suavemente,
         # em vez de um blend exponencial uniforme para todas as juntas.
         if not self.pose:
             self._molas.definir(target)
         self.pose = self._molas.atualizar(max(0.0, self.dt), target)
-        rig.current = dict(self.pose)
+        return self.pose
+
+    def apply(self, rig):
+        rig.current = dict(self._suavizar(rig))
+
+    def contribuicao(self, rig):
+        """Pose de dança suavizada por molas, sem mutar o rig do controlador.
+
+        Usa o rig recebido apenas como scratch para montar o alvo (o chamador
+        deve passar um rig em reset); devolve o mesmo dict que apply gravaria.
+        """
+        return dict(self._suavizar(rig))
 
     @property
     def lean_amount(self):
