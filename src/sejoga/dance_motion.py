@@ -79,8 +79,8 @@ class DanceMotion:
             rig.set_rotation('ant-arm2', z=20+(1-pulse)*12)
         if self.style == 'breakdance':
             floor = self.floor_amount
-            rig.set_rotation('right-arm', x=-10*floor, z=45-105*floor)
-            rig.set_rotation('ant-arm', x=-8*floor, z=-12)
+            rig.set_rotation('right-arm', x=-5*floor, z=45*(1-floor))
+            rig.set_rotation('ant-arm', x=-3*floor, z=-12*(1-floor)+5*floor)
             rig.set_rotation('left-arm', x=-20*floor, z=-48+32*floor)
             rig.set_rotation('ant-arm2', z=20+35*floor)
             rig.set_rotation('head', x=-8-12*floor, z=5*floor)
@@ -92,6 +92,12 @@ class DanceMotion:
             self.pose[group] = Rotation3(*(a+(b-a)*blend for a,b in zip(
                 (previous.x, previous.y, previous.z), (rotation.x, rotation.y, rotation.z))))
         rig.current = dict(self.pose)
+
+    @property
+    def lean_amount(self):
+        beat = self.style_beats % 16
+        value = max(0,min(1,beat-7,15-beat))
+        return value*value*(3-2*value)
 
     @property
     def floor_amount(self):

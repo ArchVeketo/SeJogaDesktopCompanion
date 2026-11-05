@@ -29,14 +29,14 @@ def main():
         pose = controller.update(1 / 60)
         renderer.apply_rig_pose(pose)
         renderer.apply_body_motion(controller.body_motion.snapshot)
-        renderer.update_appendages(1 / 60, controller.state.value == "peek")
+        renderer.update_appendages(1 / 60, controller.appendage_remaining > 0)
     app._animation_tick = tick
 
     try:
         for _ in range(20):
             app.taskMgr.step()
         controller.interact("peek")
-        for frame in range(660):
+        for frame in range(900):
             if frame in (160, 260, 350):
                 controller.body_motion.impulse("poke", direction=1 if frame != 260 else -1)
             app.taskMgr.step()
@@ -58,8 +58,9 @@ def main():
                             worst = min(worst, distance)
                             assert distance >= -.002, (frame, box.name, distance, tuple(vertex))
                         samples += 1
-            if frame in (60, 150, 240, 360, 450, 540, 659):
+            if frame in (60, 150, 240, 360, 450, 540, 899):
                 app.win.getScreenshot().write(Filename.fromOsSpecific(str(profile / f"contact-{frame}.png")))
+        assert samples > 0, 'No exposed tentacle vertices were checked'
         assert minimum_volume > .999
         assert all(limb.state.value == "dormant" for limb in renderer.tentacle_pool.tentacles)
         # Idle deliberately leaves the door ajar by up to three degrees.

@@ -247,6 +247,19 @@ def test_dance_keeps_body_animation_while_peeking_and_ignores_ambient_wave():
     assert len(set(samples)) > 100
 
 
+def test_silent_dance_preview_expires_without_restarting_itself():
+    animation = controller()
+    animation.preview_dance('rock')
+    for _ in range(120):
+        animation.update(1/60)
+    assert animation.state == AnimationState.DANCE
+    assert animation.dance_motion.style == 'rock'
+    for _ in range(900):
+        animation.update(1/60)
+    assert animation._dance_preview_remaining == 0
+    assert animation.state != AnimationState.DANCE
+
+
 def test_double_click_interrupts_single_click_then_recovers():
     animation = controller()
     animation.interact("click")

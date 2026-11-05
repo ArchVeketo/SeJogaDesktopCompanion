@@ -394,7 +394,6 @@ class TentacleDirector:
             progress = min(1.0, max(0.0, tentacle.state_time / (.45 if self.burst else 1.5)))
             eased = progress ** 3 * (10 - 15 * progress + 6 * progress * progress)
             tentacle.reveal = tentacle.retract_reveal * (1 - eased)
-            self._solve_contacts(tentacle)
             if progress >= 1.0:
                 tentacle.state = TentacleState.DORMANT
                 tentacle.params = dict(STATE_PARAMS["dormant"])
@@ -503,8 +502,6 @@ class TentacleDirector:
 
             # Sucker phase para animação visual
             seg.sucker_phase += dt * 3.0
-        self._solve_contacts(tentacle)
-
     def _separate_tentacles(self):
         # Preserve embedded roots; solve the visible bodies as tapered spheres.
         active = [t for t in self.pool.tentacles
@@ -537,8 +534,9 @@ class TentacleDirector:
                                         segment.vel -= normal*closing*.5
                                         other.vel += normal*closing*.5
                     bins.setdefault(key, []).append((owner, segment, radius))
-        for limb in active:
-            self._solve_contacts(limb)
+        for limb in self.pool.tentacles:
+            if limb.state != TentacleState.DORMANT:
+                self._solve_contacts(limb)
 
     def _solve_contacts(self, tentacle):
         if not tentacle.contacts:
@@ -896,10 +894,17 @@ def update_tentacle_render(tentacle: Tentacle) -> None:
         normal_writer = GeomVertexRewriter(vdata, "normal")
         for (u, x, y), local_normal in zip(tentacle.rest_vertices, tentacle.template_normals):
             if u not in cache:
-                cache[u] = frame_at(u)
-            center, tangent, right, front = cache[u]
+                frame = frame_at(u)
+                center = frame[0]
+                radius = .09*tentacle.girth_scale
+                ring_boxes = [box for box in nearby
+                              if box.model_low.x-radius <= center.x <= box.model_high.x+radius
+                              and box.model_low.y-radius <= center.y <= box.model_high.y+radius
+                              and box.model_low.z-radius <= center.z <= box.model_high.z+radius]
+                cache[u] = (frame, ring_boxes)
+            (center, tangent, right, front), ring_boxes = cache[u]
             position = center + (right * x + front * y) * tentacle.girth_scale
-            for obstacle in nearby:
+            for obstacle in ring_boxes:
                 position = obstacle.project(position, .002)
             nx, ny, nz = local_normal
             normal = right * nx + front * ny + tangent * nz

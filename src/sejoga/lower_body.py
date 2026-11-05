@@ -15,6 +15,20 @@ class LowerBody:
         self.normals = [Vec3(reader.getData3()) for _ in self.vertices]
         self.to_model = mesh.getMat(renderer.model_np)
         self.from_model = renderer.model_np.getMat(mesh)
+        self.hip_joints=[]
+        self.knee_joints=[]
+        self.hip_inverse_rest=[]
+        self.knee_inverse_rest=[]
+        for side, x in (('left',-.125),('right',.125)):
+            hip=renderer.model_np.attachNewNode(side+'-hip-pivot')
+            hip.setPos(x,0,.4375)
+            knee=hip.attachNewNode(side+'-knee-pivot')
+            knee.setPos(0,0,-.1875)
+            self.hip_joints.append(hip);self.knee_joints.append(knee)
+            for joint, collection in ((hip,self.hip_inverse_rest),(knee,self.knee_inverse_rest)):
+                inverse=Mat4(joint.getMat(renderer.model_np));inverse.invertInPlace()
+                collection.append(inverse)
+        self.joints=self.hip_joints+self.knee_joints
 
     @staticmethod
     def rotate(pivot, angle):
@@ -24,7 +38,11 @@ class LowerBody:
         r = self.renderer
         hips = [Vec3(-.125, 0, .4375), Vec3(.125, 0, .4375)]
         angles = (pose.left, pose.right)
-        thighs = [self.rotate(p, a) for p, a in zip(hips, angles)]
+        for index in range(2):
+            self.hip_joints[index].setP(angles[index])
+            self.knee_joints[index].setP((pose.left_knee,pose.right_knee)[index])
+        thighs = [inverse*joint.getMat(r.model_np)
+                  for inverse,joint in zip(self.hip_inverse_rest,self.hip_joints)]
         writer = GeomVertexWriter(self.data, 'vertex')
         normals = GeomVertexWriter(self.data, 'normal')
         for vertex, normal in zip(self.vertices, self.normals):
@@ -45,9 +63,7 @@ class LowerBody:
         for i, name in enumerate(('left-feet', 'right-feet')):
             foot = r._rig_nodes[name]
             original = foot.getMat(r.model_np)
-            knee = Vec3(hips[i].x, 0, .25)
-            bend = (pose.left_knee, pose.right_knee)[i]
-            transform = original*self.rotate(knee, bend)*thighs[i]
+            transform = original*self.knee_inverse_rest[i]*self.knee_joints[i].getMat(r.model_np)
             if grounded:
                 before = foot.getTightBounds(r.model_np)[0].z
                 foot.setMat(r.model_np, transform)

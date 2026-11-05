@@ -102,6 +102,12 @@ class DebugTools:
         self._world_axes.setPos(0.0, 0.0, app.renderer._view_target_z)
         self._local_axes.hide()
         self._world_axes.hide()
+        joints = app.renderer.lower_body.joints + [node for chain in app.renderer.flexible_rig.chains[:1]
+                                                   for node in (chain[0],chain[1],*chain[2])]
+        self._joint_axes = [self._make_axes(joint) for joint in joints]
+        for axis in self._joint_axes:
+            axis.setScale(.12)
+            axis.hide()
 
     @staticmethod
     def _make_axes(root):
@@ -119,6 +125,8 @@ class DebugTools:
         return root.attachNewNode(lines.create())
 
     def set_visible(self, visible: bool) -> None:
+        for axis in self._joint_axes:
+            (axis.show if visible else axis.hide)()
         self.visible = bool(visible)
         if self.visible:
             self.hud.show()
@@ -185,6 +193,9 @@ class DebugTools:
             "fps": round(self._fps, 2),
             "animation_state": animation.state.value if animation and animation.state else None,
             "idle_personality": animation.idle_personality.value if animation else None,
+            "dance_style": animation.dance_motion.style if animation else None,
+            "dance_preview": animation._dance_preview_remaining > 0 if animation else False,
+            "appendage_remaining": animation.appendage_remaining if animation else 0,
             "body_motion": vars(animation.body_motion.snapshot) if animation else None,
             "pointer_velocity": list(animation.body_motion.pointer_velocity) if animation else None,
             "hidden_export_planes": renderer._hidden_export_planes,

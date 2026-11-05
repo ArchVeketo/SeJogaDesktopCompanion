@@ -545,42 +545,16 @@ void main() {
             rotation = TransformState.makeHpr(Vec3(motion.yaw, motion.pitch, motion.roll)).getMat()
             self._suspension_pivot.setMat(Mat4.translateMat(-pivot)*rotation*Mat4.translateMat(pivot))
             return
-        for name, node in self._rig_nodes.items():
-            node.setScale(self._rig_base_scale[name])
-
-        hip = Vec3(self._rig_base_pos["body"])
-        grip = Vec3(grab_point) if grab_point is not None else hip
-
-        def around(pivot, pitch, yaw, roll, translation=Vec3(0)):
-            rotation = TransformState.makeHpr(Vec3(yaw, pitch, roll)).getMat()
-            return Mat4.translateMat(-pivot) * rotation * Mat4.translateMat(pivot + translation)
-
-        hanging = motion.hanging
-        upper = around(hip, motion.pitch * (1 - .6 * hanging), motion.yaw,
-                       motion.roll * (1 - .7 * hanging), Vec3(0, 0, -motion.compression * .08))
-        whole = around(grip if dragging else hip, motion.pitch * .6 * hanging, 0,
-                       motion.roll * .7 * hanging)
-        if dragging:
-            # One shared transform keeps the cabinet, hips and boots connected.
-            whole = around(grip, motion.pitch, motion.yaw, motion.roll)
-        for group in ("head", "body", "right-arm", "left-arm", "legs", "left-feet", "right-feet"):
-            node = self._rig_nodes[group]
-            transform = node.getMat(self.model_np)
-            if dragging:
-                transform = transform * whole
-            elif group in ("head", "body", "right-arm", "left-arm"):
-                transform = transform * upper * whole
-            elif dragging or not grounded:
-                transform = transform * whole
-            node.setMat(self.model_np, transform)
-            if group == "head":
-                node.setR(node.getR() + motion.head_roll)
-                node.setP(node.getP() + motion.head_pitch)
-            self._outline_nodes[group].setMat(self.outline_np, node.getMat(self.model_np))
-        for name, side in (("ant-arm", 1), ("ant-arm2", -1)):
-            node = self._rig_nodes[name]
-            node.setR(node.getR() + side * motion.arm_lag)
-            self._outline_nodes[name].setHpr(node.getHpr())
+        # Grounded reaction now uses the shared spine and neck joints rather
+        # than independently transforming disconnected top-level body parts.
+        for spine, neck, shoulders in self.flexible_rig.chains:
+            lean = (controller.dance_motion.lean_amount*7 if controller and
+                    controller.state == AnimationState.DANCE and controller.dance_motion.style == 'head_bob' else 0)
+            spine.setHpr(motion.yaw, motion.pitch*.6,
+                         motion.roll*.55+self.flexible_rig.spine.value-lean)
+            spine.setZ(.44-motion.compression*.06)
+            neck.setP(motion.head_pitch)
+            neck.setR(neck.getR()+motion.head_roll)
 
     def _resolve_arm_clearance(self):
         controller = getattr(self.showbase, 'animation_controller', None)
@@ -658,6 +632,18 @@ void main() {
         self.finger_gestures.update(dt, gesture)
         speaker_active = dancing or (self.music_speaker.was_dancing and getattr(controller, 'music_active', False))
         self.music_speaker.update(dt, speaker_active, dance.phase, dance.energy)
+        if dancing and dance.style == 'head_bob' and self.music_speaker.age > 1.2:
+            from .limb_ik import solve_arm
+            upper = self._rig_nodes['left-arm']
+            forearm = self._rig_nodes['ant-arm2']
+            target = upper.getParent().getRelativePoint(self.model_np, Point3(-.29,0,.48))
+            delta = target-upper.getPos()
+            shoulder_angle, elbow_angle = solve_arm(-delta.x,-delta.z,.125,.15625)
+            weight = dance.lean_amount
+            upper.setR(upper.getR()*(1-weight)-shoulder_angle*weight)
+            forearm.setR(forearm.getR()*(1-weight)-elbow_angle*weight)
+            self._outline_nodes['left-arm'].setHpr(upper.getHpr())
+            self._outline_nodes['ant-arm2'].setHpr(forearm.getHpr())
         if dancing and self.music_speaker.age < 1.2:
             self._door_requested = max(self._door_requested, 75)
 
@@ -1249,6 +1235,10 @@ class OverlayApp(ShowBase):
         toggle_action.triggered.connect(lambda _checked=False: self.toggle_visibility())
 
         self.tray_menu.addSeparator()
+        dance_preview = self.tray_menu.addMenu('Prévia de dança (sem som)')
+        for style, label in (('head_bob','Head bob'), ('hip_hop','Hip hop'), ('rock','Rock'), ('breakdance','Breakdance')):
+            dance_preview.addAction(label).triggered.connect(
+                lambda _checked=False, style=style: self.animation_controller.preview_dance(style))
 
         self._topmost_action = self.tray_menu.addAction("Sempre no topo")
         self._topmost_action.setCheckable(True)
@@ -1354,6 +1344,10 @@ class OverlayApp(ShowBase):
                     self.open_settings_dialog()
                 elif request == "peek" and self._exit_started is None:
                     self.animation_controller.interact("peek")
+                elif request.startswith('dance:') and self._exit_started is None:
+                    self.animation_controller.preview_dance(request.split(':',1)[1])
+                elif request == 'capture' and self.debug_tools:
+                    self.debug_tools.capture_once()
         return Task.cont
 
     def _on_tray_activated(self, reason) -> None:

@@ -101,6 +101,17 @@ class AnimationController:
         self.leg_motion = LegMotion()
         self.hand_motion = HandMotion()
         self.dance_motion = DanceMotion()
+        self._dance_preview_remaining = 0.0
+        self._dance_preview_style = 'head_bob'
+
+    def preview_dance(self, style):
+        if style not in ('head_bob', 'hip_hop', 'rock', 'breakdance'):
+            return
+        self._dance_preview_remaining = 15.0
+        self._dance_preview_style = style
+        self.dance_motion.style = style
+        self.dance_motion.style_beats = 0
+        self.dance_motion.pose.clear()
 
     def set_idle_personality(self, personality: IdlePersonality | str | None) -> None:
         """Escolhe uma personalidade ou devolve o idle à rotação automática."""
@@ -202,6 +213,16 @@ class AnimationController:
     ) -> dict[str, Rotation3]:
         """Atualiza o estado e devolve um snapshot de rotações em radianos."""
         dt = min(0.1, max(0.0, dt))
+        if self._dance_preview_remaining > 0:
+            self._dance_preview_remaining = max(0, self._dance_preview_remaining-dt)
+            music_playing = react_to_beat = True
+            dance_chance = 1.0
+            music_intensity, music_bass, music_bpm = {
+                'head_bob': (.2,.03,80), 'hip_hop': (.5,.3,95),
+                'rock': (.6,.15,135), 'breakdance': (.9,.6,145),
+            }[self._dance_preview_style]
+            self.dance_motion.override = self._dance_preview_style
+            self._dance_remaining = 1.0
         self.clock += dt
         self.delta_time = dt
         self.music_active = music_playing

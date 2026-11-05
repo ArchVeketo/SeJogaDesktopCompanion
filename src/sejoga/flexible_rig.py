@@ -38,7 +38,8 @@ class FlexibleRig:
         self.neck.update(dt, clamp(-motion.limb_swing*.16, -5, 5))
         self.shoulder.update(dt, clamp(motion.arm_lag*.6, -4, 4))
         for spine, neck, shoulders in self.chains:
-            spine.setR(self.spine.value)
-            neck.setR(self.neck.value)
+            spine.setPos(0,0,.44)
+            spine.setHpr(0,0,self.spine.value)
+            neck.setHpr(0,0,self.neck.value)
             for side, shoulder in zip((1,-1), shoulders):
                 shoulder.setP(self.shoulder.value*side)

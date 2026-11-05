@@ -44,7 +44,7 @@ class ObstacleBox:
         distance_squared = delta.lengthSquared()
         clearance = radius + .002
         if distance_squared >= clearance * clearance:
-            return Vec3(point)
+            return point
         if distance_squared > 1e-12:
             corrected = nearest + delta * (clearance / math.sqrt(distance_squared))
         else:
@@ -67,7 +67,7 @@ class TentacleContacts:
         current = Vec3(point)
         for box in self.boxes if boxes is None else boxes:
             projected = box.project(current, radius)
-            if (projected - current).lengthSquared() > 1e-12:
+            if projected is not current:
                 self.contacts += 1
                 current = projected
         return current

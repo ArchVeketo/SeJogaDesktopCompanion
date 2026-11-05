@@ -7,6 +7,8 @@ import win32con
 class DesktopIntegration:
     SETTINGS = 0x1F10
     PEEK = 0x1F20
+    DANCE_COMMANDS = {0x1F30:'head_bob', 0x1F40:'hip_hop', 0x1F50:'rock', 0x1F60:'breakdance'}
+    CAPTURE = 0x1F70
 
     @staticmethod
     def set_app_id():
@@ -29,6 +31,9 @@ class DesktopIntegration:
         win32gui.AppendMenu(menu, win32con.MF_SEPARATOR, 0, "")
         win32gui.AppendMenu(menu, win32con.MF_STRING, self.SETTINGS, "Configurações...")
         win32gui.AppendMenu(menu, win32con.MF_STRING, self.PEEK, "Mostrar tentáculos")
+        for command, style in self.DANCE_COMMANDS.items():
+            win32gui.AppendMenu(menu, win32con.MF_STRING, command, 'Prévia silenciosa: '+style.replace('_',' '))
+        win32gui.AppendMenu(menu, win32con.MF_STRING, self.CAPTURE, 'Capturar diagnóstico')
         self._old_proc = win32gui.SetWindowLong(hwnd, win32con.GWL_WNDPROC, self._window_proc)
 
     def apply_style(self):
@@ -47,6 +52,12 @@ class DesktopIntegration:
             return 0
         if message == win32con.WM_SYSCOMMAND:
             command = wparam & 0xFFF0
+            if command in self.DANCE_COMMANDS:
+                self.requests.append('dance:'+self.DANCE_COMMANDS[command])
+                return 0
+            if command == self.CAPTURE:
+                self.requests.append('capture')
+                return 0
             action = {win32con.SC_CLOSE: "quit", self.SETTINGS: "settings", self.PEEK: "peek"}.get(command)
             if action:
                 self.requests.append(action)
