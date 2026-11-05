@@ -17,7 +17,7 @@ import math
 import os
 import sys
 import time
-from typing import Optional
+from typing import Any, Optional
 
 # Load Qt before Panda3D: their Windows bundles ship different MSVC runtime
 # DLLs, and the first loaded copy wins for the whole process.
@@ -90,8 +90,8 @@ class OverlayApp(ShowBase):
 
         self.settings = settings
         self.settings_obj = settings
-        self.renderer: Optional = None
-        self.physics: Optional = None
+        self.renderer: Any = None
+        self.physics: Any = None
         self.music_listener: Optional[MusicListener] = None
         self.debug_tools: Optional[DebugTools] = None
         self.desktop = None
@@ -125,9 +125,9 @@ class OverlayApp(ShowBase):
         )
         self.animation_controller: Optional[AnimationController] = None
 
-        self.qt_app: Optional = None
-        self.tray_icon: Optional = None
-        self.tray_menu: Optional = None
+        self.qt_app: Any = None
+        self.tray_icon: Any = None
+        self.tray_menu: Any = None
         self._settings_dialog: Optional[SettingsDialog] = None
         self._topmost_action = None
         self._debug_action = None

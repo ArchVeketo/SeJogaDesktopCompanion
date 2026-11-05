@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import math
 import random
-from typing import Optional
+from typing import Any, Optional
 
 # Panda3D GLTF loader registers support for .gltf and .glb files.
 import gltf
@@ -60,7 +60,7 @@ class Panda3DRenderer:
         self._rig_nodes: dict[str, NodePath] = {}
         self._outline_nodes: dict[str, NodePath] = {}
         self._rig_base_hpr: dict[str, tuple[float, float, float]] = {}
-        self._rig_base_pos = {}
+        self._rig_base_pos: dict[str, Any] = {}
         self._view_width = 1.0
         self._view_height = 1.0
         self._view_target_z = 1.0
@@ -69,9 +69,9 @@ class Panda3DRenderer:
         self._model_center = Vec3(0, 0, 0)
         self._model_min_z = 0.0
         self._model_radius_px = 0.0
-        self.tentacles = None
-        self.tentacle_pool = None
-        self.tentacle_director = None
+        self.tentacles: Any = None
+        self.tentacle_pool: TentaclePool | None = None
+        self.tentacle_director: TentacleDirector | None = None
         self._door_requested = 0.0
         # Criados sob demanda no primeiro frame de física; pré-inicializados
         # para evitar hasattr por frame em apply_body_motion.
