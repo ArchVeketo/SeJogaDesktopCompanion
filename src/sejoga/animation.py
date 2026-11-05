@@ -308,8 +308,8 @@ class AnimationController:
             pose_sleep(self.rig, self.clock)
         elif self.state.value in ('hang_loose', 'thumbs_up', 'rock', 'finger_gun'):
             pose_idle(self.rig, self.clock, self.idle_personality)
-            self.rig.set_rotation('right-arm', x=-15, z=15)
-            self.rig.set_rotation('ant-arm', x=-12, z=-45)
+            self.rig.set_rotation('right-arm', x=-20, z=0)
+            self.rig.set_rotation('ant-arm', x=-8, z=-60)
             self.rig.set_rotation('hand', x=180, y=0, z=0)
             self.rig.set_rotation('fingers', z=0)
         elif self.state == AnimationState.SNEEZE:
