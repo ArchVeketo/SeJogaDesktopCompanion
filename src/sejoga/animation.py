@@ -23,6 +23,7 @@ from .joint_springs import (
 )
 from .leg_motion import LegMotion
 from .rig import (
+    ALL_GROUPS,
     IdlePersonality,
     Rig,
     Rotation3,
@@ -36,6 +37,7 @@ from .rig import (
     pose_thrown,
     pose_walk,
 )
+from .spring_tuning import amortecimento_de, frequencia_de
 
 
 class AnimationState(StrEnum):
@@ -112,8 +114,22 @@ class AnimationController:
         self._dance_preview_style = 'head_bob'
         # Crossfade por junta com continuidade de velocidade: a pose exibida
         # persegue o alvo autoral com molas, em vez de um blend linear que
-        # zera a velocidade a cada troca de estado.
-        self._crossfade = SpringPose(frequencia=2.6, amortecimento=0.98)
+        # zera a velocidade a cada troca de estado. Cada junta recebe a sua
+        # tensão de spring_tuning (âncora firme, ponta solta). EXCEÇÃO: legs,
+        # left-feet e right-feet recebem a tensão FIRME do corpo, porque o
+        # movimento real das pernas/pés vem do IK de lower_body via leg_motion
+        # (fora do mixer): não se duplica amortecimento aqui.
+        firme = (frequencia_de("body"), amortecimento_de("body"))
+        tensoes_crossfade = {
+            grupo: (firme if grupo in ("legs", "left-feet", "right-feet")
+                    else (frequencia_de(grupo), amortecimento_de(grupo)))
+            for grupo in ALL_GROUPS
+        }
+        self._crossfade = SpringPose(tensoes=tensoes_crossfade)
+        # Frequência-base de cada junta (regime estável): usada para devolver a
+        # tensão da tabela depois que a aceleração da troca termina.
+        self._frequencia_base = {grupo: tensao[0]
+                                 for grupo, tensao in tensoes_crossfade.items()}
         self._crossfade.definir(dict(self._pose))
         self._just_transitioned = True
         # Camada 'interacao': atraso efetivo da cadeia dos braços (braço ->
@@ -453,10 +469,17 @@ class AnimationController:
                           for group in composed}
             self._just_transitioned = False
         else:
-            # Molas por junta: continuidade de velocidade ao longo do crossfade,
-            # em vez do blend linear que reiniciava a velocidade a cada troca.
-            frequencia = max(0.6, 1.0 / self._active_transition_seconds)
-            for mola in self._crossfade.molas.values():
+            # Molas por junta com continuidade de velocidade. Durante a janela
+            # de transição acelera-se o retargeting (sensação de troca rápida
+            # de estado), sem uniformizar todas as juntas: usa-se o MAIOR entre
+            # a tensão própria da junta e a frequência da troca, preservando a
+            # hierarquia âncora-firme / ponta-solta. No regime estável cada
+            # junta volta à sua tensão da tabela (não se reescreve frequency).
+            em_transicao = self.state_time < self._active_transition_seconds
+            freq_troca = max(0.6, 1.0 / self._active_transition_seconds)
+            for grupo, mola in self._crossfade.molas.items():
+                freq_junta = self._frequencia_base.get(grupo, freq_troca)
+                frequencia = max(freq_junta, freq_troca) if em_transicao else freq_junta
                 mola.x.frequency = mola.y.frequency = mola.z.frequency = frequencia
             self._pose = self._crossfade.atualizar(dt, composed)
         displayed_pose = self.hand_motion.apply(self._pose, dt, self.state.value)

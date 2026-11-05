@@ -7,6 +7,7 @@ transições em borda de frase) em vez de ``sin(t)`` cru; o resultado por junta
 from math import exp, sin, tau
 
 from .joint_springs import SpringPose
+from .spring_tuning import DANCA_AMORTECIMENTO, DANCA_FREQUENCIA
 
 
 class DanceMotion:
@@ -23,7 +24,8 @@ class DanceMotion:
         self.style_beats = 0.0
         # Acento do downbeat (0..1) e molas por junta para a saída.
         self.acento = 0.0
-        self._molas = SpringPose(frequencia=4.5, amortecimento=0.55)
+        self._molas = SpringPose(frequencia=DANCA_FREQUENCIA,
+                                 amortecimento=DANCA_AMORTECIMENTO)
 
     def update(self, dt, level, bass, bpm=None, beat=False):
         self.dt = dt

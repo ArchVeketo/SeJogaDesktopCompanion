@@ -34,7 +34,9 @@ if str(_SRC) not in sys.path:
 
 from sejoga import rig as rig_mod
 from sejoga import rig_debug as rd
+from sejoga import spring_tuning  # noqa: E402
 from sejoga.assets import resolve_model
+from sejoga.body_motion import Spring  # noqa: E402
 from sejoga.model import load_model
 
 
@@ -169,6 +171,55 @@ def _formatar_dump(nome: str, t: float, estado: rd.EstadoRig) -> str:
   return "\n".join(linhas)
 
 
+def _assentamento_mola(grupo: str, frames: int) -> str:
+  """Aplica um degrau de 1° à mola do grupo e imprime o assentamento por frame.
+
+  Usa a tensão da junta de ``spring_tuning`` sobre a ``Spring`` analítica (puro
+  Python, sem engine). Imprime, por frame a 60 Hz, o valor em graus e a
+  velocidade em graus/s até assentar (ou até ``frames`` quadros).
+  """
+  tensao = spring_tuning.tensao_de(grupo)
+  mola = Spring(tensao.frequencia, tensao.amortecimento)
+  dt = 1 / 60
+  alvo = 1.0
+
+  linhas: list[str] = []
+  linhas.append(
+    f"═══ ASSENTAMENTO DA MOLA · grupo '{grupo}' "
+    f"(freq {tensao.frequencia:.2f} Hz, amort {tensao.amortecimento:.2f}) ═══"
+  )
+  linhas.append(f"  degrau de alvo: {alvo:.1f}°  ·  passo: {dt * 1000:.1f} ms (60 Hz)")
+  linhas.append("")
+  linhas.append("  frame      tempo(s)     valor(°)   velocidade(°/s)")
+
+  assentou_em: int | None = None
+
+  for frame in range(1, frames + 1):
+    mola.update(dt, alvo)
+    linhas.append(
+      f"  {frame:>5}   {frame * dt:>9.3f}   {mola.value:>9.4f}   {mola.velocity:>12.4f}"
+    )
+
+    if assentou_em is None and abs(mola.value - alvo) < 1e-3 and abs(mola.velocity) < 1e-3:
+      assentou_em = frame
+      break
+
+  linhas.append("")
+
+  if assentou_em is not None:
+    linhas.append(
+      f"  assentou no frame {assentou_em} (t={assentou_em * dt:.3f}s): "
+      f"valor {mola.value:.4f}°, velocidade {mola.velocity:.4f}°/s."
+    )
+  else:
+    linhas.append(
+      f"  não assentou em {frames} frames: valor {mola.value:.4f}°, "
+      f"velocidade {mola.velocity:.4f}°/s."
+    )
+
+  return "\n".join(linhas)
+
+
 def _montar_parser() -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser(
     description="Imprime o estado instrumentado do rig para uma pose conhecida.",
@@ -180,6 +231,15 @@ def _montar_parser() -> argparse.ArgumentParser:
   parser.add_argument(
     "--t", type=float, default=None,
     help="instante (s) da pose; padrão depende da pose",
+  )
+  parser.add_argument(
+    "--impulso", metavar="GRUPO", default=None,
+    help="modo numérico: aplica um degrau à mola do grupo e imprime o "
+         "assentamento por frame (ex.: --impulso hand)",
+  )
+  parser.add_argument(
+    "--frames", type=int, default=240,
+    help="máximo de frames do modo --impulso (padrão: 240)",
   )
 
   return parser
@@ -195,6 +255,13 @@ def main(argv: list[str] | None = None) -> int:
       reconfig(encoding="utf-8", errors="replace")
 
   args = _montar_parser().parse_args(argv)
+
+  if args.impulso is not None:
+    frames = max(1, args.frames)
+    print(_assentamento_mola(args.impulso, frames))
+
+    return 0
+
   t = args.t if args.t is not None else _INSTANTE_PADRAO[args.pose]
 
   model = load_model(resolve_model())

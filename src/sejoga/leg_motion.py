@@ -1,6 +1,9 @@
 """Independent hip/knee motion, in degrees; no engine dependencies."""
 from dataclasses import dataclass
-from math import exp, sin, tanh, tau
+from math import sin, tanh, tau
+
+from .body_motion import Spring
+from .spring_tuning import amortecimento_de, frequencia_de
 
 
 @dataclass(frozen=True)
@@ -17,6 +20,20 @@ class LegMotion:
     def __init__(self):
         self.pose = LegPose()
         self.phase = 0.0
+        # Uma mola por campo de LegPose. Quadris e joelhos usam a tensão de
+        # 'legs' (âncora firme); os lifts dos pés usam a tensão de 'left-feet'
+        # /'right-feet' (mais solta), tudo lido de spring_tuning. A resposta
+        # analítica da Spring mantém o movimento independente do framerate.
+        freq_pernas = frequencia_de("legs")
+        amort_pernas = amortecimento_de("legs")
+        self._mola_left = Spring(freq_pernas, amort_pernas)
+        self._mola_right = Spring(freq_pernas, amort_pernas)
+        self._mola_left_knee = Spring(freq_pernas, amort_pernas)
+        self._mola_right_knee = Spring(freq_pernas, amort_pernas)
+        self._mola_left_lift = Spring(
+            frequencia_de("left-feet"), amortecimento_de("left-feet"))
+        self._mola_right_lift = Spring(
+            frequencia_de("right-feet"), amortecimento_de("right-feet"))
 
     def update(self, dt, state, velocity=(0, 0), time=0, sway=0,
                dance_phase=None, dance_strength=1.0, dance_style='head_bob'):
@@ -63,7 +80,12 @@ class LegMotion:
         elif state in ('idle', 'hover'):
             shift = max(-1, min(1, sway/5))
             target = LegPose(2*shift, -2*shift, max(0, shift)*4, max(0, -shift)*4)
-        blend = 1-exp(-dt*(4.8 if state == 'drag' else 7.5))
-        self.pose = LegPose(*(a+(b-a)*blend for a,b in zip(
-            self.pose.__dict__.values(), target.__dict__.values(), strict=True)))
+        self.pose = LegPose(
+            self._mola_left.update(dt, target.left),
+            self._mola_right.update(dt, target.right),
+            self._mola_left_knee.update(dt, target.left_knee),
+            self._mola_right_knee.update(dt, target.right_knee),
+            self._mola_left_lift.update(dt, target.left_lift),
+            self._mola_right_lift.update(dt, target.right_lift),
+        )
         return self.pose

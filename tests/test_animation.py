@@ -264,6 +264,34 @@ def test_silent_dance_preview_expires_without_restarting_itself():
     assert animation.state != AnimationState.DANCE
 
 
+def test_crossfade_por_junta_deixa_a_ponta_balancar_mais_que_a_ancora():
+    from math import isfinite
+
+    from sejoga.rig import Rotation3
+    animation = controller()
+    # Estabiliza em idle por muitos frames: o regime estável deixa cada junta
+    # com a sua tensão da tabela (sem uniformizar a frequência).
+    for _ in range(600):
+        animation.update(1 / 60)
+    assert animation.state == AnimationState.IDLE
+
+    # Degrau de alvo igual em body (âncora) e fingers (ponta) a partir do mesmo
+    # ponto de repouso, avançando só o crossfade por junta.
+    degrau = {grupo: Rotation3() for grupo in ALL_GROUPS}
+    animation._crossfade.definir(degrau)
+    alvo = {grupo: Rotation3(x=0.7) for grupo in ("body", "fingers")}
+    for _ in range(60):
+        resultado = animation._crossfade.atualizar(1 / 60, alvo)
+
+    body = animation._crossfade.molas["body"]
+    fingers = animation._crossfade.molas["fingers"]
+    # Depois da acomodação da âncora, a ponta solta ainda balança/atrasa mais.
+    assert abs(fingers.x.value - 0.7) > abs(body.x.value - 0.7)
+    for rotacao in resultado.values():
+        assert isfinite(rotacao.x) and isfinite(rotacao.y) and isfinite(rotacao.z)
+        assert abs(rotacao.x) < 10 and abs(rotacao.y) < 10 and abs(rotacao.z) < 10
+
+
 def test_double_click_interrupts_single_click_then_recovers():
     animation = controller()
     animation.interact("click")

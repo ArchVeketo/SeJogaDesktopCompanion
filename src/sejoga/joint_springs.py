@@ -12,6 +12,11 @@ from math import isfinite
 
 from .body_motion import Spring
 from .rig import Rotation3
+from .spring_tuning import (
+    CADEIA_AMORTECIMENTO,
+    CADEIA_ATENUACAO,
+    CADEIA_FREQUENCIA,
+)
 
 # Cadeias ombro->antebraço->mão->dedos e o espelho do lado esquerdo.
 CADEIA_DIREITA = ("right-arm", "ant-arm", "hand", "fingers")
@@ -100,9 +105,9 @@ class LagChain:
     def __init__(
         self,
         cadeia: tuple[str, ...] = CADEIA_DIREITA,
-        frequencia: float = 3.2,
-        amortecimento: float = 0.9,
-        atenuacao: float = 0.78,
+        frequencia: float = CADEIA_FREQUENCIA,
+        amortecimento: float = CADEIA_AMORTECIMENTO,
+        atenuacao: float = CADEIA_ATENUACAO,
     ) -> None:
         self.cadeia = cadeia
         self.elos: dict[str, JointSpring] = {}
