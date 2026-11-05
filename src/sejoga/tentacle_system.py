@@ -119,6 +119,9 @@ class Tentacle:
     reference_front: Vec3 = field(default_factory=lambda: Vec3(0, 1, 0))
     contacts: Optional[TentacleContacts] = None
 
+    length_scale: float = 1.0
+    girth_scale: float = 1.0
+
     def visible_tip(self):
         sample = max(0.0, min(1.0, self.reveal)) * (len(self.segments) - 1)
         index = min(len(self.segments) - 2, int(sample))
@@ -290,7 +293,7 @@ class TentacleDirector:
 
     def trigger_curious(self) -> None:
         """Força um momento curious (espiada)."""
-        self._spawn_curious(count=2)
+        self._spawn_curious(count=self.rng.choices((1, 2, 3, 4, 6), weights=(16, 44, 25, 12, 3), k=1)[0])
 
     def update(self, dt: float, idle_time: float, personality: IdlePersonality) -> None:
         """Atualiza todos os tentáculos e decide transições."""
@@ -320,7 +323,7 @@ class TentacleDirector:
         else:
             self._curious_cooldown -= dt
             if self._curious_cooldown <= 0 and idle_time > 10.0:
-                self._spawn_curious(count=1)
+                self.trigger_curious()
                 self._curious_cooldown = self.rng.uniform(60.0, 100.0)
 
         # Atualiza cada tentáculo ativo
@@ -491,8 +494,8 @@ class TentacleDirector:
                 for b in active[a_index + 1:]:
                     for i, left in enumerate(a.segments[2:], 2):
                         for j, right in enumerate(b.segments[2:], 2):
-                            ra = .072 * (1 - .88 * i / (len(a.segments)-1)) + .008
-                            rb = .072 * (1 - .88 * j / (len(b.segments)-1)) + .008
+                            ra = (.072 * (1 - .88 * i / (len(a.segments)-1)) + .008) * a.girth_scale
+                            rb = (.072 * (1 - .88 * j / (len(b.segments)-1)) + .008) * b.girth_scale
                             delta = left.pos - right.pos
                             distance = delta.length()
                             if distance >= ra + rb:
@@ -518,7 +521,7 @@ class TentacleDirector:
             for index in range(1, len(tentacle.segments)):
                 segment = tentacle.segments[index]
                 u = index / (len(tentacle.segments) - 1)
-                radius = .072 * (1 - .88 * u) + .008
+                radius = (.072 * (1 - .88 * u) + .008) * tentacle.girth_scale
                 previous = tentacle.segments[index - 1]
                 if index + 1 < len(tentacle.segments):
                     midpoint = (previous.pos + tentacle.segments[index + 1].pos) * .5
@@ -627,6 +630,10 @@ class TentacleDirector:
     def _spawn_curious(self, count: int) -> None:
         active = self.pool.get_available(count)
         for index, t in enumerate(active):
+            t.length_scale = self.rng.uniform(1.02, 1.22) if index % 2 == 0 else self.rng.uniform(.60, .78)
+            t.girth_scale = self.rng.uniform(.95, 1.10) if index % 2 == 0 else self.rng.uniform(.62, .78)
+            for segment in t.segments:
+                segment.length = SEGMENT_LENGTH * self.pool.unit_scale * t.length_scale
             t.state = TentacleState.CURIOUS
             # Stagger the pair so the second tentacle follows the first.
             t.state_time = -0.48 * index
@@ -635,7 +642,7 @@ class TentacleDirector:
             # Targets have independent depth so the limbs do not form a flat fan.
             offsets = ((-48, 55, 46), (58, 38, -32), (-64, 32, 8),
                        (32, 68, -48), (42, 44, 50), (-30, 76, -40))
-            offset = Vec3(*offsets[index % len(offsets)]) * self.pool.unit_scale
+            offset = Vec3(*offsets[index % len(offsets)]) * self.pool.unit_scale * t.length_scale
             t.target = t.anchor + offset
         self._door_requested = max(self._door_requested, 85.0)
 
@@ -859,7 +866,7 @@ def update_tentacle_render(tentacle: Tentacle) -> None:
             if u not in cache:
                 cache[u] = frame_at(u)
             center, tangent, right, front = cache[u]
-            position = center + right * x + front * y
+            position = center + (right * x + front * y) * tentacle.girth_scale
             for obstacle in nearby:
                 position = obstacle.project(position, .002)
             nx, ny, nz = local_normal

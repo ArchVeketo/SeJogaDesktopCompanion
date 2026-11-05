@@ -32,6 +32,8 @@ def capture(name):
 try:
     for _ in range(30): app.taskMgr.step(); time.sleep(.016)
     capture("idle")
+    if "--max" in sys.argv:
+        renderer.tentacle_director.rng.choices = lambda *args, **kwargs: [6]
     app.animation_controller.interact("peek")
     for frame in range(180):
         app.taskMgr.step(); time.sleep(.016)
