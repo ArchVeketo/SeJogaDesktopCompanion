@@ -50,15 +50,27 @@ class JointSpring:
 class SpringPose:
     """Conjunto de molas por grupo, produzindo um dict grupo->Rotation3."""
 
-    def __init__(self, frequencia: float = 2.2, amortecimento: float = 0.72) -> None:
+    def __init__(
+        self,
+        frequencia: float = 2.2,
+        amortecimento: float = 0.72,
+        tensoes: dict[str, tuple[float, float]] | None = None,
+    ) -> None:
         self.frequencia = frequencia
         self.amortecimento = amortecimento
+        # Tensão por junta (grupo -> (frequência, amortecimento)); juntas fora
+        # do dict usam os defaults, preservando o comportamento atual.
+        self.tensoes = tensoes or {}
         self.molas: dict[str, JointSpring] = {}
 
     def _mola(self, grupo: str) -> JointSpring:
         mola = self.molas.get(grupo)
         if mola is None:
-            mola = JointSpring(self.frequencia, self.amortecimento)
+            tensao = self.tensoes.get(grupo)
+            if tensao is None:
+                mola = JointSpring(self.frequencia, self.amortecimento)
+            else:
+                mola = JointSpring(tensao[0], tensao[1])
             self.molas[grupo] = mola
         return mola
 
