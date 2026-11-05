@@ -1193,8 +1193,14 @@ class OverlayApp(ShowBase):
         properties = WindowProperties()
         properties.setSize(size,size)
         properties.setOrigin(left-shift,top-shift)
+        # Apply the native resize before the next draw; Panda otherwise keeps
+        # a frame at the old framebuffer size while the lens has already grown.
         self.win.requestProperties(properties)
-        self._canvas_cooldown = 1.5
+        self.graphicsEngine.openWindows()
+        self.win.setClearColorActive(True)
+        self.win.setClearDepthActive(True)
+        win32gui.RedrawWindow(self.hwnd, None, None, 0x0001 | 0x0004 | 0x0080)
+        self._canvas_cooldown = 2.5
 
     def _setup_tray(self) -> None:
         """Cria o ícone e o menu da bandeja do sistema."""
