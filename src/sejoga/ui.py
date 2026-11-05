@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
+import logging
 import threading
 from collections.abc import Callable
 from ctypes import wintypes
@@ -18,6 +20,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -33,12 +36,16 @@ class SettingsDialog(QDialog):
     """Edita preferências e salva uma cópia validada em TOML."""
 
     settings_applied = Signal(object)
+    # Resultado da busca de atualizações feita em thread (ver _buscar_atualizacoes).
+    _busca_concluida = Signal(object)
 
     def __init__(self, settings: Settings):
         super().__init__()
         self._settings = settings.model_copy(deep=True)
         self.setWindowTitle("Configurações do SeJoga Companion")
         self.setMinimumWidth(420)
+        self._buscando_atualizacao = False
+        self._atualizacao_disponivel: object | None = None
 
         self.size_input = QSpinBox()
         self.size_input.setRange(240, 960)
@@ -121,6 +128,23 @@ class SettingsDialog(QDialog):
             self.dance_style_input.addItem(label, key)
         self.dance_style_input.setCurrentIndex(self.dance_style_input.findData(settings.music.dance_style))
 
+        # Canal de atualização (persistido em settings.update.channel).
+        self.channel_input = QComboBox()
+        for key, label in (("release", "Estável (release)"), ("prerelease", "Pré-release"),
+                           ("nightly", "Nightly")):
+            self.channel_input.addItem(label, key)
+        self.channel_input.setCurrentIndex(self.channel_input.findData(settings.update.channel))
+
+        # Botão "Buscar atualizações" + rótulo de status (busca roda em thread).
+        self.check_update_button = QPushButton("Buscar atualizações")
+        self.check_update_button.clicked.connect(self._buscar_atualizacoes)
+        self.update_status_label = QLabel("")
+        self.update_status_label.setWordWrap(True)
+        self._busca_concluida.connect(self._ao_concluir_busca)
+        update_row = QHBoxLayout()
+        update_row.addWidget(self.check_update_button)
+        update_row.addWidget(self.update_status_label, 1)
+
         self.hotkey_inputs = {
             name: QLineEdit(getattr(settings.hotkeys, name))
             for name in settings.hotkeys.model_dump()
@@ -144,6 +168,8 @@ class SettingsDialog(QDialog):
         form.addRow("Sensibilidade da batida", self.sensitivity_input)
         form.addRow("Frequência de dança (0–1)", self.dance_chance_input)  # noqa: RUF001  # intencional: travessao de intervalo (en dash) no rotulo exibido
         form.addRow("Estilo de dança", self.dance_style_input)
+        form.addRow("Canal de atualização", self.channel_input)
+        form.addRow("Atualizações", update_row)
         for name, label in (
             ("toggle_overlay", "Mostrar/ocultar"),
             ("open_settings", "Abrir configurações"),
@@ -211,6 +237,7 @@ class SettingsDialog(QDialog):
         updated.music.sensitivity = self.sensitivity_input.value()
         updated.music.dance_chance = self.dance_chance_input.value()
         updated.music.dance_style = self.dance_style_input.currentData()
+        updated.update.channel = self.channel_input.currentData()
 
         normalized_hotkeys: dict[tuple[int, int], str] = {}
         try:
@@ -235,6 +262,73 @@ class SettingsDialog(QDialog):
 
         self.settings_applied.emit(updated)
         self.accept()
+
+    def _buscar_atualizacoes(self) -> None:
+        """Busca o feed do canal selecionado sem bloquear a UI (thread + Signal)."""
+        if self._buscando_atualizacao:
+            return
+        from .updater import check_update, installed_launcher, release_para_checagem
+
+        if installed_launcher() is None:
+            self.update_status_label.setText(
+                "Instale o SeJoga pelo instalador oficial para buscar atualizações."
+            )
+            return
+
+        canal = self.channel_input.currentData()
+        self._buscando_atualizacao = True
+        self._atualizacao_disponivel = None
+        self.check_update_button.setEnabled(False)
+        self.update_status_label.setText("Buscando atualizações…")
+
+        def tarefa() -> None:
+            try:
+                resultado: object = ("ok", check_update(release_para_checagem(canal)))
+            except Exception as exc:  # degradação graciosa: rede/feed indisponível
+                logging.getLogger("sejoga").warning("Busca de atualização falhou: %s", exc)
+                resultado = ("erro", str(exc))
+            with contextlib.suppress(RuntimeError):
+                self._busca_concluida.emit(resultado)
+
+        threading.Thread(target=tarefa, name="sejoga-busca-update", daemon=True).start()
+
+    def _ao_concluir_busca(self, resultado: object) -> None:
+        self._buscando_atualizacao = False
+        self.check_update_button.setEnabled(True)
+        tipo, valor = resultado  # type: ignore[misc]
+        canal = self.channel_input.currentData()
+        if tipo == "erro":
+            self.update_status_label.setText(f"Erro ao buscar atualizações: {valor}")
+            return
+        if valor is None:
+            self.update_status_label.setText(f"Nenhuma atualização disponível no canal {canal}.")
+            return
+        self._atualizacao_disponivel = valor
+        self.update_status_label.setText(f"Versão {valor.version} disponível no canal {canal}.")
+        resposta = QMessageBox.question(
+            self, "Atualização disponível",
+            f"Versão {valor.version} está disponível no canal {canal}.\n\n"
+            "Deseja atualizar agora? O Windows pedirá permissão de administrador e "
+            "o Mário será reaberto ao terminar. Suas configurações serão preservadas.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta == QMessageBox.StandardButton.Yes:
+            self._iniciar_atualizacao(canal)
+
+    def _iniciar_atualizacao(self, canal: str) -> None:
+        """Delega ao launcher nativo, apontando o channel-info.json ao canal."""
+        from .updater import installed_launcher, reescrever_canal_channel_info
+
+        launcher = installed_launcher()
+        if launcher is None:
+            return
+        reescrever_canal_channel_info(launcher.parent / "channel-info.json", canal)
+        import win32api
+        try:
+            win32api.ShellExecute(0, "open", str(launcher), "--update", str(launcher.parent), 1)
+        except Exception as exc:
+            self.update_status_label.setText(f"Atualização não iniciada: {exc}")
 
 
 _WM_HOTKEY = 0x0312

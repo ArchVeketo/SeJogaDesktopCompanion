@@ -54,15 +54,13 @@ Nada de clipe pré-gravado engessado: **toda pose é gerada na hora**, com molas
 
 ## Instalação
 
-O projeto tem três componentes de distribuição para Windows:
+Agora é **um único instalador** para Windows, com o runtime já embutido:
 
-- **Instalador global:** setup online para todos os usuários, nos canais release, pré-release e nightly. Busca a versão atual do canal na instalação.
-- **Launcher:** inicia o mascote pelo atalho e permanece estável entre atualizações.
-- **Updater:** verifica atualizações pelo menu da bandeja, valida o pacote e troca o runtime, preservando as configurações. Atualizar o aplicativo não exige gerar ou baixar outro instalador.
+- **Instalador único:** instala para todos os usuários (com elevação do Windows) e já traz o runtime dentro de si. Não precisa de internet para abrir o Mário na primeira vez e não há mais um setup por canal.
+- **Canal por configuração:** o canal de atualização (release, pré-release ou nightly) é escolhido nas **Configurações** do app, não na hora de instalar.
+- **Buscar atualizações:** nas Configurações e no menu da bandeja há **Buscar atualizações**, com status da busca e confirmação antes de atualizar. Atualizar troca só o runtime e preserva suas configurações — nunca exige baixar outro instalador.
 
-A implementação do instalador está na branch `codex/installer-updater`; os pacotes públicos dependem da publicação dos feeds e da validação final da instalação global. Veja o [guia de distribuição](docs/DISTRIBUICAO_WINDOWS.md).
-
-Baixe o instalador mais recente na página de **[Releases](https://github.com/ArchVeketo/SeJogaDesktopCompanion/releases)**, execute e pronto — o Mário aparece no seu desktop.
+Baixe o instalador mais recente na página de **[Releases](https://github.com/ArchVeketo/SeJogaDesktopCompanion/releases)**, execute e pronto — o Mário aparece no seu desktop. Veja o [guia de distribuição](docs/DISTRIBUICAO_WINDOWS.md).
 
 > Windows 10/11. Não precisa de Python nem de nada instalado.
 
@@ -126,12 +124,12 @@ sejoga                        # roda a partir do código
 python -m pytest              # testes
 python tools/smoke_mouse.py   # janela real com perfil temporário
 .\build.ps1                   # gera o pacote em dist\SeJogaCompanion\
-.\tools\build-installer.ps1 -Channel release  # setup global (Inno Setup)
+.\tools\build-installer.ps1   # instalador único com runtime embutido (Inno Setup)
 ```
 
 Documentação técnica em [`docs/`](docs/) — comece por [STATUS_E_PROXIMOS_PASSOS.md](docs/STATUS_E_PROXIMOS_PASSOS.md). O backlog de conteúdo (animações, props, efeitos) está em [BACKLOG_CONTEUDO.md](docs/BACKLOG_CONTEUDO.md).
 
-Instaladores online fixos e updater por ZIP/feed (sem novo setup a cada atualização), nos canais **release**, **pré-release** e **nightly**: veja [DISTRIBUICAO_WINDOWS.md](docs/DISTRIBUICAO_WINDOWS.md), incluindo geração, publicação e validações pendentes antes de distribuir ao público.
+Instalador único com runtime embutido e updater por ZIP/feed (sem novo setup a cada atualização); o canal **release**, **pré-release** ou **nightly** é escolhido na configuração do app: veja [DISTRIBUICAO_WINDOWS.md](docs/DISTRIBUICAO_WINDOWS.md), incluindo geração, publicação e validações pendentes antes de distribuir ao público.
 
 ---
 

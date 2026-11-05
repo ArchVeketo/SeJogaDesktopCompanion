@@ -663,11 +663,19 @@ class OverlayApp(ShowBase):
         from .update_ui import UpdateDialog
         # The stable launcher requests elevation separately; wait for Restart
         # Manager's confirmed shutdown instead of quitting before UAC is answered.
-        self._update_dialog = UpdateDialog(lambda: self.logger.info('Update agent launched'))
+        # O canal da config (não o release-info.json) decide qual feed consultar.
+        self._update_dialog = UpdateDialog(
+            lambda: self.logger.info('Update agent launched'), self.settings)
+        canal = self.settings.update.channel
         if self._update_dialog.current:
             current = self._update_dialog.current
-            self.tray_icon.setToolTip(f'SeJoga Companion · {current.channel} · {current.version}')
-        self.tray_menu.addAction('Verificar atualizações...').triggered.connect(
+            self.tray_icon.setToolTip(f'SeJoga Companion · {canal} · {current.version}')
+        else:
+            self.tray_icon.setToolTip(f'SeJoga Companion · canal {canal}')
+        # Item único na bandeja: busca e pergunta se o usuário quer atualizar.
+        self._update_action = self.tray_menu.addAction('Buscar atualizações...')
+        self._update_action.setToolTip(f'Canal de atualização: {canal}')
+        self._update_action.triggered.connect(
             lambda _checked=False: self._update_dialog.show())
 
         debug_shortcut = self.settings.hotkeys.toggle_debug.upper()
@@ -968,11 +976,23 @@ class OverlayApp(ShowBase):
         music_changed = previous.music != updated.music
         hotkeys_changed = previous.hotkeys != updated.hotkeys
 
+        channel_changed = previous.update.channel != updated.update.channel
+
         self.settings = updated
         self.settings_obj = updated
         self._is_bottom = updated.window.mode == "desktop"
         self._is_topmost = updated.window.always_on_top and not self._is_bottom
         self._update_z_order()
+        if channel_changed:
+            # Mantém o diálogo da bandeja e o tooltip coerentes com o novo canal.
+            self._update_dialog.atualizar_config(updated)
+            canal = updated.update.channel
+            self._update_action.setToolTip(f'Canal de atualização: {canal}')
+            if self._update_dialog.current:
+                self.tray_icon.setToolTip(
+                    f'SeJoga Companion · {canal} · {self._update_dialog.current.version}')
+            else:
+                self.tray_icon.setToolTip(f'SeJoga Companion · canal {canal}')
         self._set_action_checked(self._topmost_action, self._is_topmost)
         if hotkeys_changed:
             if self.hotkey_manager:
