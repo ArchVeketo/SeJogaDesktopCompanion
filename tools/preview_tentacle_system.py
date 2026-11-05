@@ -34,7 +34,7 @@ try:
     capture("idle")
     if "--max" in sys.argv:
         renderer.tentacle_director.rng.choices = lambda *args, **kwargs: [6]
-    app.animation_controller.interact("peek")
+    app.animation_controller.interact("sneeze" if "--sneeze" in sys.argv else "peek")
     for frame in range(180):
         app.taskMgr.step(); time.sleep(.016)
         if frame in (30,90,179): capture(f"curious-{frame}")

@@ -48,6 +48,7 @@ class AnimationState(StrEnum):
     STRETCH = "stretch"
     PEEK = "peek"
     HIT = "hit"
+    SNEEZE = "sneeze"
 
 
 class AnimationController:
@@ -111,6 +112,7 @@ class AnimationController:
         self.state_time = 0.0
 
     REACTION_SECONDS = {
+        AnimationState.SNEEZE: 3.8,
         AnimationState.CLICK: 0.5,
         AnimationState.DOUBLE_CLICK: 1.4,
         AnimationState.PET: 1.5,
@@ -297,6 +299,9 @@ class AnimationController:
             pose_dance(self.rig, self.clock, music_intensity)
         elif self.state == AnimationState.SLEEP:
             pose_sleep(self.rig, self.clock)
+        elif self.state == AnimationState.SNEEZE:
+            from .rig import pose_sneeze
+            pose_sneeze(self.rig, self._reaction_time)
         elif self.state in (AnimationState.WAVE, AnimationState.STRETCH, AnimationState.PEEK, AnimationState.HIT):
             pose_flourish(self.rig, self.state.value, self._reaction_time)
         elif self.state == AnimationState.HOVER or self.state in self.REACTION_SECONDS:

@@ -557,6 +557,20 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
         rig.set_rotation("door", y=40 * envelope)
 
 
+def pose_sneeze(rig: Rig, t: float) -> None:
+    """Three knocks, explosive release, then damped recovery."""
+    from math import exp
+    knocks = sum(exp(-((t-at)/.075)**2) for at in (.25, .58, .92))
+    recoil = exp(-max(0, t-1.15)*3) if t >= 1.15 else 0
+    rig.set_rotation('head', x=-20*knocks+38*recoil, z=14*knocks-12*recoil)
+    rig.set_rotation('body', x=9*knocks-22*recoil, z=-6*knocks)
+    rig.set_rotation('right-arm', x=-14*recoil, z=60-30*recoil)
+    rig.set_rotation('left-arm', x=-12*recoil, z=-62+27*recoil)
+    rig.set_rotation('ant-arm', z=-20-15*knocks)
+    rig.set_rotation('ant-arm2', z=20+13*knocks)
+    rig.set_rotation('door', y=130*recoil)
+
+
 def pose_secondary(rig: Rig, t: float, state: str, personality=IdlePersonality.CALM) -> None:
     """Small shoulder/wrist follow-through; finger curl follows mirrored rig axes."""
     from math import sin, degrees
@@ -569,6 +583,10 @@ def pose_secondary(rig: Rig, t: float, state: str, personality=IdlePersonality.C
         authored_fingers = rig.current[fingers]
         rig.set_rotation(shoulder, x=max(-3, min(3, degrees(arm.x)*.12)))
         arm_roll = degrees(arm.z)
+        if state in ('idle', 'hover'):
+            # Counterbalance the torso with delayed elbows, rather than a rigid sway.
+            rig.set_rotation(forearm, x=degrees(arm.x) + sin(t*.8-side*.45)*1.6,
+                             y=degrees(arm.y), z=arm_roll + sin(t*.8-side*.6)*2.4)
         wrist_follow = max(-10.0, min(10.0, -arm_roll*.22))
         sway_scale = {
             "idle": 2.2, "hover": 1.8, "walk": 5.0, "run": 6.5,

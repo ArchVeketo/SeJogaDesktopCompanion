@@ -152,7 +152,7 @@ def set_window_pos_zorder(hwnd: int, zorder: int) -> bool:
 class Panda3DRenderer:
     """Encapsula Panda3D render e modelo."""
 
-    FRAME_FILL = 0.70
+    FRAME_FILL = 0.66
     MODEL_FACING_HEADING = 180
 
     def __init__(self, showbase: ShowBase, hwnd: int, width: int, height: int):
@@ -600,6 +600,11 @@ void main() {
         if not self.tentacle_director:
             return
         controller = self.showbase.animation_controller
+        sneezing = controller.state is not None and controller.state.value == 'sneeze'
+        if sneezing and controller._reaction_time >= 1.15 and not self.tentacle_director.burst:
+            self.tentacle_director.trigger_sneeze()
+        if not sneezing and not any(t.state != TentacleState.DORMANT for t in self.tentacle_pool.tentacles):
+            self.tentacle_director.burst = False
         if visible:
             if not self._tentacles_were_visible:
                 self.tentacle_director.trigger_curious()
@@ -1165,7 +1170,7 @@ class OverlayApp(ShowBase):
             )
             self._personality_actions[value] = action
 
-        for label, kind in (("Acenar", "wave"), ("Soltar os ombros", "stretch"), ("Mostrar tentáculos", "peek")):
+        for label, kind in (("Acenar", "wave"), ("Soltar os ombros", "stretch"), ("Mostrar tentáculos", "peek"), ("Espirro de tentáculos", "sneeze")):
             action = self.tray_menu.addAction(label)
             action.triggered.connect(lambda _checked=False, kind=kind: self.animation_controller.interact(kind))
         self.tray_menu.addSeparator()

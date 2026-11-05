@@ -265,6 +265,8 @@ class TentacleDirector:
         # Door control
         self._door_requested = 0.0
         self._door_current = 0.0
+        self.burst = False
+        self.appearance_count = 1
 
         # Cooldowns
         self._curious_cooldown = 0.0
@@ -294,6 +296,19 @@ class TentacleDirector:
     def trigger_curious(self) -> None:
         """Força um momento curious (espiada)."""
         self._spawn_curious(count=self.rng.choices((1, 2, 3, 4, 6), weights=(16, 44, 25, 12, 3), k=1)[0])
+
+    def trigger_sneeze(self):
+        self.burst = True
+        self._spawn_curious(6)
+        for limb in self.pool.tentacles:
+            if limb.state == TentacleState.CURIOUS:
+                limb.state_time = 0
+                limb.target = limb.anchor + (limb.target - limb.anchor) * 3.4
+                for segment in limb.segments:
+                    segment.length *= 3.4
+                limb.spring = 260
+                limb.damper = 27
+        self._door_requested = 130
 
     def update(self, dt: float, idle_time: float, personality: IdlePersonality) -> None:
         """Atualiza todos os tentáculos e decide transições."""
@@ -376,7 +391,7 @@ class TentacleDirector:
         tentacle.state_time += dt
 
         if tentacle.state == TentacleState.RETRACTING:
-            progress = min(1.0, max(0.0, tentacle.state_time / 1.5))
+            progress = min(1.0, max(0.0, tentacle.state_time / (.45 if self.burst else 1.5)))
             eased = progress ** 3 * (10 - 15 * progress + 6 * progress * progress)
             tentacle.reveal = tentacle.retract_reveal * (1 - eased)
             self._solve_contacts(tentacle)
@@ -394,15 +409,15 @@ class TentacleDirector:
 
         # Parâmetros atuais
         p = tentacle.params
-        reveal_time = max(0.0, min(1.0, tentacle.state_time / 1.8))
+        reveal_time = max(0.0, min(1.0, tentacle.state_time / (.16 if self.burst else 1.8)))
         tentacle.reveal = reveal_time ** 3 * (10 - 15 * reveal_time + 6 * reveal_time ** 2)
         max_len = p["max_len"]
         reach_speed = p["reach_speed"]
         target_curl = p["curl"]
 
         # Spring params
-        spring = tentacle.spring
-        damper = tentacle.damper
+        spring = 380 if self.burst else tentacle.spring
+        damper = 30 if self.burst else tentacle.damper
 
         # Atualiza cada segmento
         for i, seg in enumerate(tentacle.segments):
@@ -454,7 +469,7 @@ class TentacleDirector:
             # Clamp length (não passa do max_len)
             from_anchor = seg.pos - tentacle.anchor
             dist = from_anchor.length()
-            max_dist = max_len * (i + 1) * SEGMENT_LENGTH * tentacle.unit_scale
+            max_dist = max_len * (i + 1) * tentacle.segments[i].length * (2.5 if self.burst else 1)
             if dist > max_dist:
                 seg.pos = tentacle.anchor + from_anchor.normalized() * max_dist
                 seg.vel = Vec3(0, 0, 0)
@@ -548,7 +563,7 @@ class TentacleDirector:
         p = tentacle.params
 
         if st == TentacleState.CURIOUS:
-            if tentacle.state_time > 4.8:
+            if tentacle.state_time > (.95 if self.burst else 4.8):
                 self.pool.release(tentacle)
 
         elif st == TentacleState.REACHING:
@@ -610,8 +625,10 @@ class TentacleDirector:
     def _update_door(self, dt: float) -> None:
         # Suaviza abertura/fechamento da porta
         diff = self._door_requested - self._door_current
-        delta = diff * (1.0 - math.exp(-dt * 3.0))
-        limit = 38.0 * dt
+        opening = diff > 0
+        speed = 620 if self.burst else 38 + 14 * (self.appearance_count - 1)
+        delta = diff * (1.0 - math.exp(-dt * (14 if self.burst else 3 + self.appearance_count * .5)))
+        limit = (speed if opening else 38) * dt
         self._door_current += max(-limit, min(limit, delta))
         if self.door_node:
             self.door_node.setH(self._door_current)
@@ -628,6 +645,7 @@ class TentacleDirector:
         return Vec3(0, 0, 0)
 
     def _spawn_curious(self, count: int) -> None:
+        self.appearance_count = count
         active = self.pool.get_available(count)
         for index, t in enumerate(active):
             t.length_scale = self.rng.uniform(1.02, 1.22) if index % 2 == 0 else self.rng.uniform(.60, .78)
