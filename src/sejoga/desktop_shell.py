@@ -49,6 +49,12 @@ class DesktopIntegration:
                              win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE)
 
     def _window_proc(self, hwnd, message, wparam, lparam):
+        if message == win32con.WM_QUERYENDSESSION:
+            return 1  # Ready; do not close until shutdown is actually confirmed.
+        if message == win32con.WM_ENDSESSION:
+            if wparam:
+                self.requests.append('quit')
+            return 0
         if message == win32con.WM_CLOSE:
             self.requests.append("quit")
             return 0

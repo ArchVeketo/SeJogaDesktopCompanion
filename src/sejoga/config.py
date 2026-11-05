@@ -36,6 +36,13 @@ APP_NAME = "SeJogaDesktopCompanion"
 APP_AUTHOR = "ArchVeketo"
 
 
+def profile_app_name() -> str:
+    """Stable profiles keep their path; preview channels stay isolated."""
+    from .updater import installed_release
+    release = installed_release()
+    return APP_NAME if release is None or release.channel == 'release' else f'{APP_NAME}-{release.channel}'
+
+
 def default_config_path() -> Path:
     """``%LOCALAPPDATA%/SeJogaDesktopCompanion/config.toml`` no Windows."""
     from platformdirs import user_config_dir
@@ -49,14 +56,14 @@ def default_config_path() -> Path:
     fallback = fallback_config_path()
     if fallback.is_file():
         return fallback
-    return Path(user_config_dir(APP_NAME, APP_AUTHOR)) / "config.toml"
+    return Path(user_config_dir(profile_app_name(), APP_AUTHOR)) / "config.toml"
 
 
 def fallback_config_path() -> Path:
     """Perfil persistente alternativo quando a pasta original recusa escrita."""
     from platformdirs import user_config_dir
 
-    return Path(user_config_dir(APP_NAME, appauthor=False, roaming=True)) / "config.toml"
+    return Path(user_config_dir(profile_app_name(), appauthor=False, roaming=True)) / "config.toml"
 
 
 def portable_config_path() -> Path | None:

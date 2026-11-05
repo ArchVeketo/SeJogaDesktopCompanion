@@ -41,7 +41,12 @@ def main():
 
     def poll(local, buttons=(), *, screen=False):
         position = local if screen else win32gui.ClientToScreen(app.hwnd, local)
+        # A mocked position does not move the OS cursor or change its shape.
+        # Keep the virtual cursor neutral instead of inheriting an I-beam/link
+        # from wherever the user is currently pointing on the real desktop.
+        cursor = win32gui.LoadCursor(0, 32512)  # IDC_ARROW
         with patch("sejoga.window.win32gui.GetCursorPos", return_value=position), \
+             patch("sejoga.window.win32gui.GetCursorInfo", return_value=(1, cursor, position)), \
              patch("sejoga.window.win32api.GetAsyncKeyState", return_value=0), \
              patch("sejoga.window.win32gui.GetForegroundWindow", return_value=app._hover_foreground), \
              patch.object(app, "_mouse_buttons", return_value=frozenset(buttons)):
@@ -95,7 +100,7 @@ def main():
         poll(point)
         assert app._mouse_hovered, "Model must be accessible to Windows hit testing"
         assert not win32gui.GetWindowLong(app.hwnd, -20) & WS_EX_TRANSPARENT
-        for button, state in (("left", AnimationState.CLICK), ("right", AnimationState.PET), ("middle", AnimationState.POKE)):
+        for button, state in (("left", AnimationState.POKE), ("right", AnimationState.PET), ("middle", AnimationState.CLICK)):
             poll(point, (button,))
             poll(point)
             app.animation_controller.update(0.05)

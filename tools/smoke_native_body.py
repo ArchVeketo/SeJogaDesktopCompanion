@@ -20,10 +20,13 @@ def main():
     import win32api
     import win32con
     import win32gui
-    from panda3d.core import Filename
 
     from sejoga.tray_registration import IconData
     from sejoga.window import OverlayApp
+
+    # isort: split
+    # OverlayApp loads Qt's runtime DLLs before Panda3D on Windows.
+    from panda3d.core import Filename
 
     settings = config.Settings()
     settings.physics.enabled = settings.music.enabled = False

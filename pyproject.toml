@@ -27,6 +27,7 @@ classifiers = [
 # Dependências do núcleo: sem engine, sem Win32 — mantêm o pacote importável
 # em qualquer máquina (CI, dev, docs).
 dependencies = [
+    "packaging>=24.0",
     "platformdirs>=4.2",
     "pydantic>=2.7",
     "pydantic-settings>=2.4",

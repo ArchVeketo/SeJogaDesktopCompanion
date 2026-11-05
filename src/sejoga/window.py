@@ -25,13 +25,14 @@ import win32api
 import win32con
 import win32gui
 
-# Panda3D - configurar ANTES de importar ShowBase
-from panda3d.core import loadPrcFileData
-
 # Load Qt before Panda3D: their Windows bundles ship different MSVC runtime
 # DLLs, and the first loaded copy wins for the whole process.
 from PySide6.QtGui import QActionGroup, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+
+# isort: split
+# Configure Panda before ShowBase, but only after Qt's runtime DLLs are loaded.
+from panda3d.core import loadPrcFileData
 
 loadPrcFileData("", "window-type none")
 loadPrcFileData("", "load-display pandagl")
@@ -658,6 +659,16 @@ class OverlayApp(ShowBase):
 
         settings_action = self.tray_menu.addAction("Configurações...")
         settings_action.triggered.connect(lambda _checked=False: self.open_settings_dialog())
+
+        from .update_ui import UpdateDialog
+        # The stable launcher requests elevation separately; wait for Restart
+        # Manager's confirmed shutdown instead of quitting before UAC is answered.
+        self._update_dialog = UpdateDialog(lambda: self.logger.info('Update agent launched'))
+        if self._update_dialog.current:
+            current = self._update_dialog.current
+            self.tray_icon.setToolTip(f'SeJoga Companion · {current.channel} · {current.version}')
+        self.tray_menu.addAction('Verificar atualizações...').triggered.connect(
+            lambda _checked=False: self._update_dialog.show())
 
         debug_shortcut = self.settings.hotkeys.toggle_debug.upper()
         self._debug_action = self.tray_menu.addAction(f"Diagnóstico ({debug_shortcut})")

@@ -10,7 +10,7 @@ Mascote 3D com animação procedural, física de verdade e reação à sua músi
 ![Windows](https://img.shields.io/badge/Windows-E6005C?style=for-the-badge&logo=windows&logoColor=white)
 ![Python](https://img.shields.io/badge/Python_3.11+-B4E600?style=for-the-badge&logo=python&logoColor=1a1333)
 ![Panda3D](https://img.shields.io/badge/Panda3D-6A1B9A?style=for-the-badge&logoColor=white)
-![MIT](https://img.shields.io/badge/MIT-1a1333?style=for-the-badge)
+![Apache 2.0](https://img.shields.io/badge/Apache_2.0-1a1333?style=for-the-badge)
 
 </div>
 
@@ -53,6 +53,14 @@ Nada de clipe pré-gravado engessado: **toda pose é gerada na hora**, com molas
 ---
 
 ## Instalação
+
+O projeto tem três componentes de distribuição para Windows:
+
+- **Instalador global:** setup online para todos os usuários, nos canais release, pré-release e nightly. Busca a versão atual do canal na instalação.
+- **Launcher:** inicia o mascote pelo atalho e permanece estável entre atualizações.
+- **Updater:** verifica atualizações pelo menu da bandeja, valida o pacote e troca o runtime, preservando as configurações. Atualizar o aplicativo não exige gerar ou baixar outro instalador.
+
+A implementação do instalador está na branch `codex/installer-updater`; os pacotes públicos dependem da publicação dos feeds e da validação final da instalação global. Veja o [guia de distribuição](docs/DISTRIBUICAO_WINDOWS.md).
 
 Baixe o instalador mais recente na página de **[Releases](https://github.com/ArchVeketo/SeJogaDesktopCompanion/releases)**, execute e pronto — o Mário aparece no seu desktop.
 
@@ -118,9 +126,12 @@ sejoga                        # roda a partir do código
 python -m pytest              # testes
 python tools/smoke_mouse.py   # janela real com perfil temporário
 .\build.ps1                   # gera o pacote em dist\SeJogaCompanion\
+.\tools\build-installer.ps1 -Channel release  # setup global (Inno Setup)
 ```
 
 Documentação técnica em [`docs/`](docs/) — comece por [STATUS_E_PROXIMOS_PASSOS.md](docs/STATUS_E_PROXIMOS_PASSOS.md). O backlog de conteúdo (animações, props, efeitos) está em [BACKLOG_CONTEUDO.md](docs/BACKLOG_CONTEUDO.md).
+
+Instaladores online fixos e updater por ZIP/feed (sem novo setup a cada atualização), nos canais **release**, **pré-release** e **nightly**: veja [DISTRIBUICAO_WINDOWS.md](docs/DISTRIBUICAO_WINDOWS.md), incluindo geração, publicação e validações pendentes antes de distribuir ao público.
 
 ---
 
