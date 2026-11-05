@@ -484,9 +484,6 @@ void main() {
     def apply_rig_pose(self, pose_dict: dict) -> None:
         if not self.model_np:
             return
-        for name, node in self._rig_nodes.items():
-            node.setMat(self._rig_base_mat[name])
-            self._outline_nodes[name].setMat(self._rig_base_mat[name])
         for group in ("head", "body", "right-arm", "left-arm", "legs", "left-feet", "right-feet"):
             if group in self._rig_nodes:
                 self._rig_nodes[group].setPos(self._rig_base_pos[group])
@@ -522,6 +519,17 @@ void main() {
     def apply_body_motion(self, motion, grab_point=None, *, grounded=True, dragging=False):
         """Rotate connected root parts around the hips/grip without editing the asset rig."""
         from panda3d.core import Mat4, TransformState
+        if not hasattr(self, '_suspension_pivot'):
+            self._suspension_pivot = self.model_anchor.attachNewNode('suspension-pivot')
+            self.model_np.reparentTo(self._suspension_pivot)
+            self.outline_np.reparentTo(self._suspension_pivot)
+        self._suspension_pivot.setMat(Mat4.identMat())
+        if dragging or motion.hanging > .05:
+            point = Vec3(grab_point) if grab_point is not None else Vec3(0,0,.6)
+            pivot = self._suspension_pivot.getRelativePoint(self.model_np, point)
+            rotation = TransformState.makeHpr(Vec3(motion.yaw, motion.pitch, motion.roll)).getMat()
+            self._suspension_pivot.setMat(Mat4.translateMat(-pivot)*rotation*Mat4.translateMat(pivot))
+            return
         for name, node in self._rig_nodes.items():
             node.setScale(self._rig_base_scale[name])
 
@@ -537,10 +545,15 @@ void main() {
                        motion.roll * (1 - .7 * hanging), Vec3(0, 0, -motion.compression * .08))
         whole = around(grip if dragging else hip, motion.pitch * .6 * hanging, 0,
                        motion.roll * .7 * hanging)
+        if dragging:
+            # One shared transform keeps the cabinet, hips and boots connected.
+            whole = around(grip, motion.pitch, motion.yaw, motion.roll)
         for group in ("head", "body", "right-arm", "left-arm", "legs", "left-feet", "right-feet"):
             node = self._rig_nodes[group]
             transform = node.getMat(self.model_np)
-            if group in ("head", "body", "right-arm", "left-arm"):
+            if dragging:
+                transform = transform * whole
+            elif group in ("head", "body", "right-arm", "left-arm"):
                 transform = transform * upper * whole
             elif dragging or not grounded:
                 transform = transform * whole
@@ -1067,13 +1080,14 @@ class OverlayApp(ShowBase):
             pointer_position=self._mouse_screen,
         )
         self.renderer.apply_rig_pose(pose)
+        self.renderer.lower_body.apply(self.animation_controller.leg_motion.pose,
+                                       bool(not self._drag_active and (state.grounded if state else True)))
         self.renderer.apply_body_motion(
             self.animation_controller.body_motion.snapshot, self._body_grab_point,
             grounded=state.grounded if state else True, dragging=self._drag_active,
         )
-        self.renderer.lower_body.apply(self.animation_controller.leg_motion.pose,
-                                       bool(not self._drag_active and (state.grounded if state else True)))
         self.renderer.update_appendages(dt, self.animation_controller.state == AnimationState.PEEK)
+        self._fit_pose_window(dt)
         if self.renderer.tentacle_director:
             mouse_world = Point3(
                 (self._mouse_local[0] - self.renderer.width / 2) * self.renderer._view_width / self.renderer.width,
@@ -1136,6 +1150,49 @@ class OverlayApp(ShowBase):
                 QSystemTrayIcon.MessageIcon.Information,
                 4000,
             )
+
+    def _fit_pose_window(self, dt):
+        """Expand the canvas around its center while preserving pixels per unit."""
+        renderer = self.renderer
+        if not renderer or not win32gui.IsWindow(self.hwnd):
+            return
+        bounds = renderer.model_np.getTightBounds(self.render)
+        if not bounds:
+            return
+        from panda3d.core import Point2, Point3, WindowProperties
+        projected = []
+        lens = self.cam.node().getLens()
+        for x in (bounds[0].x, bounds[1].x):
+            for y in (bounds[0].y, bounds[1].y):
+                for z in (bounds[0].z, bounds[1].z):
+                    pixel = Point2()
+                    lens.project(self.cam.getRelativePoint(self.render, Point3(x,y,z)), pixel)
+                    if math.isfinite(pixel.x) and math.isfinite(pixel.y):
+                        projected.append((pixel.x*renderer.width/2, pixel.y*renderer.height/2))
+        if not projected:
+            return
+        base = self.settings.window.size
+        needed = max(base, math.ceil((max(max(abs(x),abs(y)) for x,y in projected)*2+64)/64)*64)
+        needed = min(base*3, needed)
+        current = renderer.width
+        self._canvas_cooldown = max(0, getattr(self, '_canvas_cooldown', 0)-dt)
+        if needed == current or (needed < current and (self._drag_active or self._canvas_cooldown > 0)):
+            return
+        size = needed if needed > current else max(needed, current-64)
+        shift = (size-current)//2
+        left, top = win32gui.ClientToScreen(self.hwnd, (0,0))
+        units = renderer._view_height/renderer.height
+        lens.setFilmSize(units*size, units*size)
+        renderer.width = renderer.height = size
+        renderer._view_width = renderer._view_height = units*size
+        local = getattr(self, '_physics_local', (current/2, current-self.settings.physics.mascot_radius-35))
+        self._physics_local = (local[0]+shift, local[1]+shift)
+        renderer.set_model_screen_position(*self._physics_local)
+        properties = WindowProperties()
+        properties.setSize(size,size)
+        properties.setOrigin(left-shift,top-shift)
+        self.win.requestProperties(properties)
+        self._canvas_cooldown = 1.5
 
     def _setup_tray(self) -> None:
         """Cria o ícone e o menu da bandeja do sistema."""

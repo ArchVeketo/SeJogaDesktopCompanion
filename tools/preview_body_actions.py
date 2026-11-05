@@ -65,10 +65,11 @@ def main():
                 app.renderer.apply_rig_pose(pose)
                 part = params.get('grab_part', 'body')
                 grip = app.renderer._rig_nodes[part].getPos(app.renderer.model_np)
+                app.renderer.lower_body.apply(animation.leg_motion.pose,params.get("grounded",True) and not params.get('dragging',False))
                 app.renderer.apply_body_motion(animation.body_motion.snapshot, grip,
                     grounded=params.get("grounded",True), dragging=params.get('dragging',False))
-                app.renderer.lower_body.apply(animation.leg_motion.pose,params.get("grounded",True))
                 app.renderer.update_appendages(dt,False)
+                app._fit_pose_window(dt)
                 app.taskMgr.step()
                 if frame%6==0 or frame in key_frames:
                     file=profile/f"{kind}-{frame}.png"
