@@ -47,6 +47,9 @@ def main():
             for frame in range(frame_count):
                 dt=1/60
                 params=dict(args)
+                if kind == 'drag':
+                    from math import sin
+                    params['pointer_position'] = (600+120*sin(frame/25), 300+35*sin(frame/35))
                 if kind=="fall":params["velocity"]=(180,-450+frame*8)
                 pose=animation.update(dt,**params)
                 app.renderer.apply_rig_pose(pose)

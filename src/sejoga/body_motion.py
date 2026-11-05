@@ -46,6 +46,7 @@ class BodyPose:
     arm_lag: float = 0.0
     compression: float = 0.0
     hanging: float = 0.0
+    limb_swing: float = 0.0
 
 
 class BodyMotion:
@@ -57,6 +58,7 @@ class BodyMotion:
         self.neck_pitch = Spring(2.0, .76)
         self.compression = Spring(1.8, .76)
         self.suspension = Spring(2.1, .9)
+        self.limbs = Spring(1.25, .38)
         self.snapshot = BodyPose()
         self.pointer_velocity = (0.0, 0.0)
         self._pointer = None
@@ -93,7 +95,7 @@ class BodyMotion:
         vx, vy = self.pointer_velocity
         if dragging:
             roll_target = clamp(vx * .012, -23, 23)
-            pitch_target = clamp(-vy * .007, -12, 12)
+            pitch_target = clamp(-9-vy * .009, -21, 4)
             yaw_target = clamp(-vx * .003, -5, 5)
         elif hovered:
             roll_target = clamp(vx * .003 - look[0] * 3.8, -8, 8)
@@ -112,15 +114,17 @@ class BodyMotion:
         self.neck_pitch.update(dt, self.pitch.value)
         self.compression.update(dt, 0)
         self.suspension.update(dt, 1.0 if dragging or not grounded else 0.0)
+        self.limbs.update(dt, clamp(-vx*.016, -25, 25) if dragging else 0)
         # Bound the visual response without modifying desktop physics or cursor.
         self.snapshot = BodyPose(
             roll=clamp(self.roll.value, -28, 28),
-            pitch=clamp(self.pitch.value, -16, 16),
+            pitch=clamp(self.pitch.value, -24, 16),
             yaw=clamp(self.yaw.value, -7, 7),
             head_roll=clamp((self.neck_roll.value - self.roll.value) * .65, -8, 8),
-            head_pitch=clamp((self.neck_pitch.value - self.pitch.value) * .6, -6, 6),
+            head_pitch=clamp((self.neck_pitch.value - self.pitch.value) * .6 - 5*self.suspension.value, -12, 6),
             arm_lag=clamp(-self.roll.velocity * .035, -6, 6),
             compression=clamp(self.compression.value, -.12, .20),
             hanging=clamp(self.suspension.value, 0, 1),
+            limb_swing=clamp(self.limbs.value, -30, 30),
         )
         return self.snapshot

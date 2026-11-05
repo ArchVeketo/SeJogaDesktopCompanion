@@ -325,6 +325,15 @@ class AnimationController:
         if not dragging and self._release_time < .9:
             pose_throw_release(self.rig, self._release_time, self._release_grip)
 
+        if dragging:
+            motion = self.body_motion.snapshot
+            # Hanging limbs counter-rotate the torso and trail pointer motion.
+            self.rig.set_rotation('right-arm', x=-motion.pitch*.55,
+                                  z=62-motion.roll*.55+motion.limb_swing*.45)
+            self.rig.set_rotation('left-arm', x=-motion.pitch*.55,
+                                  z=-62-motion.roll*.55+motion.limb_swing*.4)
+            self.rig.set_rotation('ant-arm', x=motion.limb_swing*.3, z=-8)
+            self.rig.set_rotation('ant-arm2', x=motion.limb_swing*.25, z=8)
         target = self.rig.pose()
         if self._active_transition_seconds == 0.0:
             alpha = 1.0
@@ -339,7 +348,7 @@ class AnimationController:
         displayed_pose = self.hand_motion.apply(self._pose, dt, self.state.value)
         self.rig.current = dict(displayed_pose)
         self.leg_motion.update(dt, self.state.value, velocity, self._reaction_time,
-                               self.body_motion.snapshot.roll)
+                               self.body_motion.snapshot.limb_swing if dragging else self.body_motion.snapshot.roll)
         return displayed_pose
 
     @staticmethod

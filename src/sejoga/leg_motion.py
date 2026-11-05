@@ -39,7 +39,8 @@ class LegMotion:
                              12+10*descent+4*max(0, -kick),
                              max(0, kick)*.018, max(0, -kick)*.016)
         elif state == 'drag':
-            target = LegPose(-6, 3, 12, 9)
+            target = LegPose(-3+sway*.65, 2+sway*.5,
+                             5+abs(sway)*.22, 4+abs(sway)*.18)
         elif state in ('land', 'hit'):
             compress = sin(min(1, time/.45)*3.14159265)
             target = LegPose(-8*compress, -8*compress, 16*compress, 16*compress)
