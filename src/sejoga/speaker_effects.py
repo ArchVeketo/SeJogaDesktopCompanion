@@ -1,6 +1,15 @@
 """Low-poly slime and visible woofer waves; no transparent texture planes."""
 from math import cos, sin, tau
-from panda3d.core import Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, LineSegs
+
+from panda3d.core import (
+    Geom,
+    GeomNode,
+    GeomTriangles,
+    GeomVertexData,
+    GeomVertexFormat,
+    GeomVertexWriter,
+    LineSegs,
+)
 
 
 def slime_mesh():

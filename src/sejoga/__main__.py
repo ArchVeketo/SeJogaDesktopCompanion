@@ -25,8 +25,8 @@ from .config import default_config_path, load_settings, save_settings
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
-    from .rig import ALL_GROUPS, Rig
     from .model import load_model
+    from .rig import ALL_GROUPS, Rig
 
     path = Path(args.model) if args.model else resolve_model()
     model = load_model(path)

@@ -1,7 +1,7 @@
 import math
-from sejoga.appendages import AppendageMotion
+
+from sejoga.appendages import AppendageMotion, DoorJoint, tentacle_center
 from sejoga.exit_animation import ExitAnimation
-from sejoga.appendages import DoorJoint, tentacle_center
 
 
 def test_tentacles_retract_progressively_instead_of_popping():

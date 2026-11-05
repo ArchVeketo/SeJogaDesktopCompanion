@@ -1,5 +1,5 @@
 """Deform the joined shorts and articulate existing boots without editing GLTF."""
-from panda3d.core import GeomVertexReader, GeomVertexWriter, Mat4, Vec3, Point3
+from panda3d.core import GeomVertexReader, GeomVertexWriter, Mat4, Point3, Vec3
 
 
 class LowerBody:

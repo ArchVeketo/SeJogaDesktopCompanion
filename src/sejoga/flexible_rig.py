@@ -1,5 +1,4 @@
 """Additional runtime joints around the existing skinless asset hierarchy."""
-from panda3d.core import Vec3
 from .body_motion import Spring, clamp
 
 

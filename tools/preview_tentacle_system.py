@@ -1,12 +1,18 @@
 """Visual QA isolado para o novo renderizador procedural de tentáculos."""
-import sys, time, tempfile
+import sys
+import tempfile
+import time
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sejoga import config
+
 profile=Path(tempfile.mkdtemp(prefix="sejoga-new-tentacles-"))
 config.default_config_path=lambda:profile/"config.toml"
-from sejoga.window import OverlayApp
 from panda3d.core import Filename
+
+from sejoga.window import OverlayApp
+
 settings=config.Settings(); settings.physics.enabled=False; settings.music.enabled=False
 settings.window.outline_enabled=False
 app=OverlayApp(settings);app.hotkey_manager.close(); app.taskMgr.remove("mouse-poll")

@@ -1,7 +1,8 @@
 """Ícone, entrada na barra de tarefas e menu do sistema da janela nativa."""
 import ctypes
-import win32gui
+
 import win32con
+import win32gui
 
 
 class DesktopIntegration:

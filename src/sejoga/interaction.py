@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from math import hypot
-import time
 
 
 @dataclass(frozen=True)

@@ -1,11 +1,13 @@
 """Renderiza o modelo isolado para conferir espessura, facetas e ventosas."""
 from pathlib import Path
+
 from panda3d.core import loadPrcFileData
+
 loadPrcFileData('', 'window-type offscreen\nwin-size 512 512\naudio-library-name null\nload-display pandagl')
-from direct.showbase.ShowBase import ShowBase
-from panda3d.core import NodePath, OrthographicLens, AmbientLight, DirectionalLight, Filename
 import gltf
 import simplepbr
+from direct.showbase.ShowBase import ShowBase
+from panda3d.core import AmbientLight, DirectionalLight, Filename, NodePath, OrthographicLens
 
 root = Path(__file__).resolve().parents[1]
 base = ShowBase(windowType='offscreen')

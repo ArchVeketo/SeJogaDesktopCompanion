@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import ctypes
 import threading
+from collections.abc import Callable
 from ctypes import wintypes
-from typing import Callable
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor
@@ -18,9 +18,9 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
-    QLineEdit,
     QSpinBox,
     QVBoxLayout,
 )

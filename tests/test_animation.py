@@ -58,6 +58,7 @@ def test_fall_pose_uses_velocity_not_application_uptime():
 
 def test_wave_turns_palm_out_and_keeps_elbow_bent():
     from math import degrees
+
     from sejoga.rig import pose_flourish
     animation = controller()
     pose_flourish(animation.rig, "wave", .95)
@@ -69,6 +70,7 @@ def test_wave_turns_palm_out_and_keeps_elbow_bent():
 
 def test_walk_dance_and_drag_poses_have_counterbalanced_arms():
     from math import degrees, pi
+
     from sejoga.rig import pose_dance, pose_drag, pose_walk
     animation = controller()
     pose_walk(animation.rig, 1 / 6)

@@ -9,33 +9,31 @@ from __future__ import annotations
 
 import random
 from enum import StrEnum
-from .body_motion import BodyMotion
-from .leg_motion import LegMotion
-from .hand_motion import HandMotion
-from .dance_motion import DanceMotion
 
+from .anim_layers import MASCARA_MUSICA, CamadaAnim, MixerCamadas
+from .body_motion import BodyMotion
+from .dance_motion import DanceMotion
+from .hand_motion import HandMotion
 from .joint_springs import (
     CADEIA_DIREITA,
     CADEIA_ESQUERDA,
     LagChain,
     SpringPose,
 )
-from .anim_layers import MASCARA_MUSICA, CamadaAnim, MixerCamadas
-
+from .leg_motion import LegMotion
 from .rig import (
     IdlePersonality,
     Rig,
     Rotation3,
-    pose_dance,
     pose_drag,
+    pose_flourish,
     pose_idle,
     pose_interaction,
+    pose_secondary,
     pose_sleep,
+    pose_throw_release,
     pose_thrown,
     pose_walk,
-    pose_flourish,
-    pose_secondary,
-    pose_throw_release,
 )
 
 

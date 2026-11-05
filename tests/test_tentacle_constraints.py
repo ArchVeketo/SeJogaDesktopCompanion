@@ -1,6 +1,6 @@
 """Collision projection in animated, oriented model space."""
-from panda3d.core import Mat4, Point3, Vec3
 import pytest
+from panda3d.core import Mat4, Point3, Vec3
 
 from sejoga.tentacle_constraints import ObstacleBox, TentacleContacts
 

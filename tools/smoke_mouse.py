@@ -20,10 +20,11 @@ from sejoga import config
 def main():
     profile = Path(tempfile.mkdtemp(prefix="sejoga-mouse-smoke-"))
     config.default_config_path = lambda: profile / "config.toml"
-    from sejoga.window import OverlayApp, WS_EX_TRANSPARENT
-    from sejoga.animation import AnimationState
     import win32gui
     from PIL import ImageGrab
+
+    from sejoga.animation import AnimationState
+    from sejoga.window import WS_EX_TRANSPARENT, OverlayApp
 
     settings = config.Settings()
     settings.physics.enabled = "--physics" in sys.argv

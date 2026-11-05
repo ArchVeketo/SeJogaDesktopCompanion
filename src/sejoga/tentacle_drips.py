@@ -1,8 +1,16 @@
 """Small falling slime droplets, attached to the model coordinate space."""
 import random
 
-from panda3d.core import (Geom, GeomNode, GeomTriangles, GeomVertexData,
-                         GeomVertexFormat, GeomVertexWriter, Vec3, TransparencyAttrib)
+from panda3d.core import (
+    Geom,
+    GeomNode,
+    GeomTriangles,
+    GeomVertexData,
+    GeomVertexFormat,
+    GeomVertexWriter,
+    TransparencyAttrib,
+    Vec3,
+)
 
 
 class TentacleDrips:

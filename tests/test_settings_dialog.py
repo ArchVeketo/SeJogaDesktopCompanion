@@ -1,4 +1,5 @@
 import sys
+
 import pytest
 
 if sys.platform != "win32":
@@ -8,6 +9,7 @@ pytest.importorskip("PySide6")
 
 def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatch):
     from PySide6.QtWidgets import QApplication, QDialog
+
     from sejoga import config
     from sejoga.ui import SettingsDialog
     app = QApplication.instance() or QApplication([])

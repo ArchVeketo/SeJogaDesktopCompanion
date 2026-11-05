@@ -1,11 +1,11 @@
 """Small original landing sound, independent of media playback."""
 import logging
 import math
-from pathlib import Path
 import struct
 import tempfile
 import threading
 import wave
+from pathlib import Path
 
 
 def play_speaker_landing(volume):

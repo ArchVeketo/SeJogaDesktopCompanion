@@ -10,13 +10,11 @@ import math
 import random
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Optional
 
 from panda3d.core import GeomVertexRewriter, NodePath, Quat, Vec3
 
-from .rig import Rig, IdlePersonality
+from .rig import IdlePersonality, Rig
 from .tentacle_constraints import TentacleContacts
-
 
 # ============================================================
 # Configuração visual / física
@@ -72,8 +70,8 @@ class TentacleSegment:
     sucker_phase: float = 0.0      # fase visual das ventosas
 
     # Para rendering: nó Panda3D correspondente (criado sob demanda)
-    node: Optional[NodePath] = None
-    outline_node: Optional[NodePath] = None
+    node: NodePath | None = None
+    outline_node: NodePath | None = None
 
 
 class TentacleState(StrEnum):
@@ -91,7 +89,7 @@ class Tentacle:
     """Um tentáculo completo: chain de segmentos + target + estado."""
     segments: list[TentacleSegment]
     anchor: Vec3                   # ponto de ancoragem (spawn point)
-    target: Optional[Vec3] = None  # target no espaço mundial
+    target: Vec3 | None = None  # target no espaço mundial
     state: TentacleState = TentacleState.DORMANT
     state_time: float = 0.0
     params: dict = field(default_factory=dict)
@@ -104,8 +102,8 @@ class Tentacle:
 
     # Visual: cor das ventosas (padrão: mesma cor do corpo)
     sucker_color: tuple[float, float, float, float] = (0.2, 0.6, 1.0, 0.9)
-    mesh_node: Optional[NodePath] = None
-    outline_mesh_node: Optional[NodePath] = None
+    mesh_node: NodePath | None = None
+    outline_mesh_node: NodePath | None = None
     mesh_vdata: object = None
     outline_vdata: object = None
     template_vertices: list = field(default_factory=list)
@@ -117,7 +115,7 @@ class Tentacle:
     frames: list = field(default_factory=list)
     axis_nodes: list = field(default_factory=list)
     reference_front: Vec3 = field(default_factory=lambda: Vec3(0, 1, 0))
-    contacts: Optional[TentacleContacts] = None
+    contacts: TentacleContacts | None = None
 
     length_scale: float = 1.0
     girth_scale: float = 1.0
@@ -125,9 +123,9 @@ class Tentacle:
 
     # Buffers de render reaproveitados entre frames (evita recriar o
     # GeomVertexRewriter e recomputar a curva quando a pose não mudou).
-    _vertex_rewriter: Optional[GeomVertexRewriter] = None
-    _normal_rewriter: Optional[GeomVertexRewriter] = None
-    _last_render_signature: Optional[tuple] = None
+    _vertex_rewriter: GeomVertexRewriter | None = None
+    _normal_rewriter: GeomVertexRewriter | None = None
+    _last_render_signature: tuple | None = None
 
     def visible_tip(self):
         sample = max(0.0, min(1.0, self.reveal)) * (len(self.segments) - 1)
@@ -153,7 +151,7 @@ class TentaclePool:
         model_np: NodePath,
         outline_np: NodePath,
         spawn_points: list[Vec3],
-        rng: Optional[random.Random] = None,
+        rng: random.Random | None = None,
         unit_scale: float = 1.0,
     ):
         self.rig = rig
@@ -251,7 +249,7 @@ class TentacleDirector:
         model_np: NodePath,
         outline_np: NodePath,
         door_node: NodePath,
-        rng: Optional[random.Random] = None,
+        rng: random.Random | None = None,
     ):
         self.pool = pool
         self.rig = rig
@@ -261,12 +259,12 @@ class TentacleDirector:
         self.rng = rng or random.Random()
 
         # Estado
-        self.mouse_pos: Optional[Vec3] = None
+        self.mouse_pos: Vec3 | None = None
         self.mouse_vel: Vec3 = Vec3(0, 0, 0)
         self.frenzy_mode = False
         self.frenzy_time = 0.0
         self.swallowing = False
-        self.swallow_target: Optional[Vec3] = None
+        self.swallow_target: Vec3 | None = None
         self.swallow_time = 0.0
 
         # Door control
@@ -717,8 +715,14 @@ def create_tentacle_geometry(
 ) -> None:
     """Cria a malha grossa aprovada com poucos anéis e ventosas articuláveis."""
     from panda3d.core import (
-        Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat,
-        GeomVertexWriter, LineSegs, Texture,
+        Geom,
+        GeomNode,
+        GeomTriangles,
+        GeomVertexData,
+        GeomVertexFormat,
+        GeomVertexWriter,
+        LineSegs,
+        Texture,
     )
 
     vertices, normals, colors, indices = [], [], [], []

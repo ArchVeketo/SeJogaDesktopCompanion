@@ -18,9 +18,10 @@ from __future__ import annotations
 import json
 import math
 import struct
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 GLB_MAGIC = 0x46546C67
 _GLB_JSON = 0x4E4F534A

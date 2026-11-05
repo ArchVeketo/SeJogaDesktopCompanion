@@ -5,8 +5,8 @@ rejects the initial registration, reuse that HWND/callback so its existing
 QMenu and activation signals still work. No second tray icon is created.
 """
 import ctypes
-from ctypes import wintypes
 import os
+from ctypes import wintypes
 
 import win32con
 import win32gui

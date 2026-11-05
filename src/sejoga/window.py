@@ -17,12 +17,7 @@ import math
 import os
 import sys
 import time
-from typing import Any, Optional
-
-# Load Qt before Panda3D: their Windows bundles ship different MSVC runtime
-# DLLs, and the first loaded copy wins for the whole process.
-from PySide6.QtGui import QActionGroup, QIcon
-from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from typing import Any
 
 # Win32 API
 import win32api
@@ -31,6 +26,11 @@ import win32gui
 
 # Panda3D - configurar ANTES de importar ShowBase
 from panda3d.core import loadPrcFileData
+
+# Load Qt before Panda3D: their Windows bundles ship different MSVC runtime
+# DLLs, and the first loaded copy wins for the whole process.
+from PySide6.QtGui import QActionGroup, QIcon
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 loadPrcFileData("", "window-type none")
 loadPrcFileData("", "load-display pandagl")
@@ -47,7 +47,10 @@ loadPrcFileData("", "cursor-hidden 0")
 from direct.showbase.ShowBase import ShowBase
 from direct.task import Task
 from panda3d.core import (
-    FrameBufferProperties, Point3, Vec3, WindowProperties,
+    FrameBufferProperties,
+    Point3,
+    Vec3,
+    WindowProperties,
 )
 
 # Project imports
@@ -66,10 +69,21 @@ from .rig import IdlePersonality
 from .tray_registration import TrayRegistration
 from .ui import HotkeyManager, SettingsDialog
 from .win32_overlay import (
-    COLOR_KEY, GWL_EXSTYLE, HWND_BOTTOM, HWND_NOTOPMOST, HWND_TOPMOST,
-    LWA_ALPHA, LWA_COLORKEY, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, SWP_SHOWWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+    COLOR_KEY,
+    GWL_EXSTYLE,
+    HWND_BOTTOM,
+    HWND_NOTOPMOST,
+    HWND_TOPMOST,
+    LWA_ALPHA,
+    LWA_COLORKEY,
+    SWP_NOACTIVATE,
+    SWP_NOMOVE,
+    SWP_NOSIZE,
+    SWP_NOZORDER,
+    WS_EX_LAYERED,
+    WS_EX_NOACTIVATE,
+    WS_EX_TOPMOST,
+    WS_EX_TRANSPARENT,
 )
 
 user32 = ctypes.windll.user32
@@ -92,8 +106,8 @@ class OverlayApp(ShowBase):
         self.settings_obj = settings
         self.renderer: Any = None
         self.physics: Any = None
-        self.music_listener: Optional[MusicListener] = None
-        self.debug_tools: Optional[DebugTools] = None
+        self.music_listener: MusicListener | None = None
+        self.debug_tools: DebugTools | None = None
         self.desktop = None
         self._exit_started = None
         self._force_exit = False
@@ -123,16 +137,16 @@ class OverlayApp(ShowBase):
             double_click_seconds=user32.GetDoubleClickTime() / 1000,
             double_click_distance=max(4, win32api.GetSystemMetrics(win32con.SM_CXDOUBLECLK) / 2),
         )
-        self.animation_controller: Optional[AnimationController] = None
+        self.animation_controller: AnimationController | None = None
 
         self.qt_app: Any = None
         self.tray_icon: Any = None
         self.tray_menu: Any = None
-        self._settings_dialog: Optional[SettingsDialog] = None
+        self._settings_dialog: SettingsDialog | None = None
         self._topmost_action = None
         self._debug_action = None
         self._recording_action = None
-        self.hotkey_manager: Optional[HotkeyManager] = None
+        self.hotkey_manager: HotkeyManager | None = None
 
         self.logger = configure_logging()
         self._drag_active = False
@@ -1060,7 +1074,7 @@ class OverlayApp(ShowBase):
             self.userExit()
 
 
-def create_app(settings: Optional[Settings] = None):
+def create_app(settings: Settings | None = None):
     if settings is None:
         settings = load_settings()
     return OverlayApp(settings)

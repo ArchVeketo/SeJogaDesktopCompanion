@@ -1,17 +1,22 @@
 """Deterministic rendered review of body actions, hover idles and silhouettes."""
-import sys, tempfile, json
+import json
+import sys
+import tempfile
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"src"))
 from sejoga import config
+
 
 def main():
     profile=Path(tempfile.mkdtemp(prefix="sejoga-body-actions-"))
     config.default_config_path=lambda:profile/"config.toml"
-    from sejoga.window import OverlayApp
-    from sejoga.animation import AnimationController
+    import win32gui
     from panda3d.core import Filename
     from PIL import Image, ImageDraw, ImageGrab
-    import win32gui
+
+    from sejoga.animation import AnimationController
+    from sejoga.window import OverlayApp
     settings=config.Settings()
     settings.physics.enabled=settings.music.enabled=False
     settings.window.outline_enabled=False

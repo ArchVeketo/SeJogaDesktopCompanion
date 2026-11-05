@@ -5,10 +5,10 @@ move the real cursor briefly, unlike smoke_mouse.py's injected polling.
 """
 import ctypes
 import json
-from pathlib import Path
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sejoga import config
@@ -17,12 +17,13 @@ from sejoga import config
 def main():
     profile = Path(tempfile.mkdtemp(prefix="sejoga-native-body-"))
     config.default_config_path = lambda: profile / "config.toml"
-    from sejoga.window import OverlayApp
-    from sejoga.tray_registration import IconData
     import win32api
     import win32con
     import win32gui
     from panda3d.core import Filename
+
+    from sejoga.tray_registration import IconData
+    from sejoga.window import OverlayApp
 
     settings = config.Settings()
     settings.physics.enabled = settings.music.enabled = False

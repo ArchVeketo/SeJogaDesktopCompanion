@@ -1,6 +1,6 @@
 """Finite oriented collision volumes for the procedural tentacle chain."""
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 
 from panda3d.core import Mat4, Point3, Vec3
 

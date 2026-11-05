@@ -1,8 +1,8 @@
 """Exporta o tentáculo low poly editável como glTF autocontido."""
-import sys
-import json
 import base64
+import json
 import struct
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

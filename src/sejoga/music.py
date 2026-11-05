@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
 import statistics
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Callable
 
 from .config import MusicSettings
 
@@ -169,6 +168,8 @@ class MusicListener:
     async def _poll_media_sessions(self) -> None:
         from winrt.windows.media.control import (
             GlobalSystemMediaTransportControlsSessionManager as SessionManager,
+        )
+        from winrt.windows.media.control import (
             GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
         )
 

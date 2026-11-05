@@ -1,5 +1,6 @@
 """Converte a arte oficial existente em ícones Windows de várias resoluções."""
 from pathlib import Path
+
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -4,10 +4,10 @@ Uses an isolated config and a deterministic animation clock without moving
 the user's mouse. Run from the repository root: python tools/preview_idle_styles.py
 """
 import json
-from pathlib import Path
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sejoga import config
@@ -16,9 +16,10 @@ from sejoga import config
 def main():
     profile = Path(tempfile.mkdtemp(prefix="sejoga-idle-styles-"))
     config.default_config_path = lambda: profile / "config.toml"
-    from sejoga.window import OverlayApp
     from panda3d.core import Filename
     from PIL import Image, ImageDraw
+
+    from sejoga.window import OverlayApp
 
     settings = config.Settings()
     settings.physics.enabled = False

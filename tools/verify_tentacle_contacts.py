@@ -1,8 +1,8 @@
 """Check rendered vertices, joint frames and closure through a complete peek."""
 import json
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sejoga import config
@@ -11,8 +11,9 @@ from sejoga import config
 def main():
     profile = Path(tempfile.mkdtemp(prefix="sejoga-contact-review-"))
     config.default_config_path = lambda: profile / "config.toml"
-    from sejoga.window import OverlayApp
     from panda3d.core import Filename, GeomVertexReader
+
+    from sejoga.window import OverlayApp
 
     settings = config.Settings()
     settings.physics.enabled = settings.music.enabled = False

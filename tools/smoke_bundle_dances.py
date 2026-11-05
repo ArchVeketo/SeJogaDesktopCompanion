@@ -2,11 +2,11 @@
 import argparse
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'src'))
 from sejoga.config import Settings, save_settings
@@ -16,12 +16,13 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--exe', type=Path, default=Path(os.environ['LOCALAPPDATA'])/'Programs/SeJogaCompanion/current/SeJogaCompanion.exe')
     args=parser.parse_args()
-    from sejoga.desktop_shell import DesktopIntegration
-    from sejoga.tray_registration import TrayRegistration
+    import win32con
     import win32gui
     import win32process
-    import win32con
     from PIL import ImageGrab
+
+    from sejoga.desktop_shell import DesktopIntegration
+    from sejoga.tray_registration import TrayRegistration
     profile=Path(tempfile.mkdtemp(prefix='sejoga-bundle-dances-'))
     settings=Settings()
     settings.window.start_position=(650,200)

@@ -17,25 +17,23 @@ Implementa:
 
 from __future__ import annotations
 
+import ctypes
 import math
 import time
-from dataclasses import dataclass, field
-from typing import Optional, List, Tuple, Callable
 from collections import deque
+from collections.abc import Callable
+from ctypes import wintypes
+from dataclasses import dataclass
 
 import pymunk
 
 # Win32 para detecção de janelas
 import win32gui
-import win32con
-import win32api
 import win32process
-import ctypes
-from ctypes import wintypes
+
+from .config import Settings, load_settings
 
 # Project imports
-from .rig import Rig
-from .config import Settings, load_settings
 
 # ============================================================
 # Constantes e Configuração
@@ -72,15 +70,15 @@ except Exception:
 class Shelf:
     """Representa uma 'prateleira' (borda superior de uma janela)."""
     hwnd: int
-    rect: Tuple[int, int, int, int]  # (left, top, right, bottom) - coordenadas de tela
+    rect: tuple[int, int, int, int]  # (left, top, right, bottom) - coordenadas de tela
     top_y: int  # Y da borda superior (y para baixo = menor valor = mais alto)
     left: int
     right: int
-    
+
     @property
     def width(self) -> int:
         return self.right - self.left
-    
+
     @property
     def center_x(self) -> float:
         return (self.left + self.right) / 2.0
@@ -89,10 +87,10 @@ class Shelf:
 @dataclass
 class PhysicsState:
     """Estado atual da física para debug/sync."""
-    position: Tuple[float, float]  # (x, y) centro do corpo
-    velocity: Tuple[float, float]  # (vx, vy) px/s
+    position: tuple[float, float]  # (x, y) centro do corpo
+    velocity: tuple[float, float]  # (vx, vy) px/s
     grounded: bool
-    on_shelf: Optional[int] = None  # hwnd da shelf atual
+    on_shelf: int | None = None  # hwnd da shelf atual
     gravity_active: bool = False
     sleep_timer: float = 0.0
 
@@ -113,7 +111,7 @@ dwmapi.DwmGetWindowAttribute.argtypes = [
     wintypes.DWORD
 ]
 
-def frame_bounds(hwnd: int) -> Tuple[int, int, int, int]:
+def frame_bounds(hwnd: int) -> tuple[int, int, int, int]:
     """Retorna bounds reais da janela (extended frame bounds) via DWM."""
     rect = wintypes.RECT()
     result = dwmapi.DwmGetWindowAttribute(
@@ -147,29 +145,29 @@ def is_valid_shelf(hwnd: int, own_pid: int) -> bool:
         return False
     if cloaked(hwnd) or not win32gui.GetWindowText(hwnd):
         return False
-    
+
     # Filtra toolwindows e janelas sem título
     ex_style = win32gui.GetWindowLong(hwnd, -20)  # GWL_EXSTYLE
     if ex_style & 0x00000080:  # WS_EX_TOOLWINDOW
         return False
-    
+
     # Filtra própria janela
     _, pid = win32process.GetWindowThreadProcessId(hwnd)
     if pid == own_pid:
         return False
-    
+
     # Área mínima
     rect = frame_bounds(hwnd)
     if (rect[2] - rect[0]) < 50 or (rect[3] - rect[1]) < 30:
         return False
-    
+
     return True
 
 
-def get_all_shelves(own_hwnd: int, own_pid: int) -> List[Shelf]:
+def get_all_shelves(own_hwnd: int, own_pid: int) -> list[Shelf]:
     """Enumera todas as janelas válidas e retorna lista de Shelves."""
     shelves = []
-    
+
     def enum_callback(hwnd: int, _: int) -> bool:
         try:
             if is_valid_shelf(hwnd, own_pid):
@@ -179,7 +177,7 @@ def get_all_shelves(own_hwnd: int, own_pid: int) -> List[Shelf]:
             # Another application's HWND can disappear during enumeration.
             pass
         return True
-    
+
     win32gui.EnumWindows(enum_callback, 0)
     # EnumWindows is front-to-back. Only exposed portions of a window's top
     # edge can support the mascot; hidden windows must not create air shelves.
@@ -210,7 +208,7 @@ class ScreenSpacePhysics:
     - Atualizar cache de prateleiras (janelas) periodicamente
     - Fornecer estado de física para animação/render
     """
-    
+
     def __init__(
         self,
         mascot_radius: float = 40.0,
@@ -218,7 +216,7 @@ class ScreenSpacePhysics:
         screen_height: int = 1080,
         own_hwnd: int = 0,
         own_pid: int = 0,
-        settings: Optional[Settings] = None
+        settings: Settings | None = None
     ):
         self.mascot_radius = mascot_radius
         self.screen_width = screen_width
@@ -226,12 +224,12 @@ class ScreenSpacePhysics:
         self.own_hwnd = own_hwnd
         self.own_pid = own_pid
         self.settings = settings or load_settings()
-        
+
         # Physics space
         self.space = pymunk.Space()
         self.space.gravity = (0, 0)  # Inicialmente sem gravidade (flutuando)
         self.space.damping = DRAG  # 0.995 per step
-        
+
         # Pymunk 7 replaced add_collision_handler() with on_collision().
         if hasattr(self.space, "on_collision"):
             self.space.on_collision(
@@ -247,7 +245,7 @@ class ScreenSpacePhysics:
             self.space.add_collision_handler(
                 CAT_MASCOT, CAT_SCREEN_EDGE
             ).pre_solve = self._edge_pre_solve
-        
+
         # State
         self.state = PhysicsState(
             position=(screen_width / 2, screen_height - mascot_radius - 10),
@@ -262,32 +260,32 @@ class ScreenSpacePhysics:
         self._create_screen_edges()
 
         # Shelves (janelas)
-        self.shelves: List[Shelf] = []
+        self.shelves: list[Shelf] = []
         self.shelf_shapes: dict[int, pymunk.Segment] = {}  # hwnd -> shape
         self.shelf_cache_time = 0.0
-        
+
         # Drag/throw state
         self._drag_active = False
-        self._drag_samples: deque[Tuple[float, float, float]] = deque(maxlen=10)  # (t, x, y)
+        self._drag_samples: deque[tuple[float, float, float]] = deque(maxlen=10)  # (t, x, y)
         self._drag_body_type = pymunk.Body.DYNAMIC
-        
+
         # Physics step accumulator
         self._accumulator = 0.0
-        
+
         # Callbacks
-        self.on_state_change: Optional[Callable[[PhysicsState], None]] = None
-        self.on_collision: Optional[Callable[[str, Tuple[float, float]], None]] = None
-        
+        self.on_state_change: Callable[[PhysicsState], None] | None = None
+        self.on_collision: Callable[[str, tuple[float, float]], None] | None = None
+
         # Cache
         self._shelf_cache_ttl = SHELF_CACHE_TTL
         self._last_shelf_refresh = 0.0
-    
+
     def _create_mascot_body(self) -> None:
         """Cria corpo físico do mascote (circle)."""
         radius = self.mascot_radius
         mass = self.settings.physics.mass
         moment = pymunk.moment_for_circle(mass, 0, radius)
-        
+
         self.body = pymunk.Body(mass, moment, body_type=pymunk.Body.DYNAMIC)
         self.body.position = self.state.position
         self.shape = pymunk.Circle(self.body, radius)
@@ -295,13 +293,13 @@ class ScreenSpacePhysics:
         self.shape.elasticity = self.settings.physics.bounce
         self.shape.friction = self.settings.physics.friction
         self.shape.filter = pymunk.ShapeFilter(categories=CAT_MASCOT, mask=CAT_SHELF | CAT_SCREEN_EDGE)
-        
+
         self.space.add(self.body, self.shape)
-        
+
         # Sync initial state
         self.state.position = self.body.position
         self.state.velocity = self.body.velocity
-    
+
     def _create_screen_edges(self) -> None:
         self.bounds = (0, 0, self.screen_width, self.screen_height)
         self._edges = []
@@ -355,10 +353,10 @@ class ScreenSpacePhysics:
         now = time.monotonic()
         if not force and (now - self._last_shelf_refresh) < self._shelf_cache_ttl:
             return
-        
+
         self._last_shelf_refresh = now
         new_shelves = get_all_shelves(self.own_hwnd, self.own_pid)
-        
+
         signature = lambda items: [(x.hwnd, x.left, x.right, x.top_y) for x in items]
         if signature(new_shelves) == signature(self.shelves):
             return
@@ -376,50 +374,50 @@ class ScreenSpacePhysics:
             key = shelf.hwnd if shelf.hwnd not in self.shelf_shapes else (shelf.hwnd, index)
             self.shelf_shapes[key] = shape
         self.shelves = new_shelves
-    
-    def get_shelf_under_point(self, x: float, y: float) -> Optional[Shelf]:
+
+    def get_shelf_under_point(self, x: float, y: float) -> Shelf | None:
         """Retorna shelf diretamente abaixo do ponto (x, y), se houver."""
         for shelf in self.shelves:
             if shelf.left <= x <= shelf.right and shelf.top_y >= y:
                 return shelf
         return None
-    
+
     # ============================================================
     # Drag & Throw
     # ============================================================
-    
+
     def start_drag(self, mouse_x: float, mouse_y: float) -> None:
         """Inicia arraste - corpo vira KINEMATIC."""
         if self._drag_active:
             return
-        
+
         self._drag_active = True
         self._drag_offset = (self.body.position.x - mouse_x, self.body.position.y - mouse_y)
         self.state.grounded = False
         self.set_gravity(False)
         self._drag_samples.clear()
         self._record_drag_sample()
-        
+
         # Corpo vira KINEMATIC durante drag (controlado pelo mouse)
         self.body.body_type = pymunk.Body.KINEMATIC
         self.body.velocity = (0, 0)
         self._drag_body_type = pymunk.Body.KINEMATIC
-    
+
     def update_drag(self, mouse_x: float, mouse_y: float) -> None:
         """Atualiza posição durante drag."""
         if not self._drag_active:
             return
-        
+
         self.body.position = (mouse_x + self._drag_offset[0], mouse_y + self._drag_offset[1])
         self.state.position = tuple(self.body.position)
         self._record_drag_sample()
         # Velocity será calculada no release baseado nos samples
-    
-    def end_drag(self, cancel: bool = False) -> Tuple[float, float]:
+
+    def end_drag(self, cancel: bool = False) -> tuple[float, float]:
         """Finaliza arraste - calcula velocidade e volta a DYNAMIC."""
         if not self._drag_active:
             return (0, 0)
-        
+
         self._drag_active = False
         self.body.body_type = pymunk.Body.DYNAMIC
         # Switching back from KINEMATIC resets mass/moment in Pymunk 7.
@@ -427,20 +425,20 @@ class ScreenSpacePhysics:
         self.body.mass = mass
         self.body.moment = pymunk.moment_for_circle(mass, 0, self.mascot_radius)
         self.body.angular_velocity = 0.0
-        
+
         # Estima velocidade dos últimos samples
         velocity = self._estimate_velocity_from_samples() if not cancel else (0.0, 0.0)
         velocity = tuple(v * self.settings.physics.throw_multiplier for v in velocity)
-        
+
         # Clamp
         speed = math.hypot(velocity[0], velocity[1])
         if speed > MAX_VELOCITY:
             scale = MAX_VELOCITY / speed
             velocity = (velocity[0] * scale, velocity[1] * scale)
-        
+
         self.body.velocity = velocity
         self._drag_body_type = pymunk.Body.DYNAMIC
-        
+
         # Constrain a release to the selected monitor, keeping negative origins.
         left, top, right, bottom = self.bounds
         r = self.mascot_radius + WALL_THICKNESS
@@ -449,28 +447,28 @@ class ScreenSpacePhysics:
         self.state.position = tuple(self.body.position)
         self.state.velocity = velocity
         self.set_gravity(not cancel)
-        
+
         return velocity
-    
+
     def _record_drag_sample(self) -> None:
         """Registra posição/tempo atual para estimativa de velocidade."""
         now = time.monotonic()
         pos = self.body.position
         self._drag_samples.append((now, pos.x, pos.y))
-    
-    def _estimate_velocity_from_samples(self) -> Tuple[float, float]:
+
+    def _estimate_velocity_from_samples(self) -> tuple[float, float]:
         """Estima velocidade baseada nos últimos samples (janela ~60ms)."""
         if len(self._drag_samples) < 2:
             return (0.0, 0.0)
-        
+
         now = time.monotonic()
         # Usa samples dos últimos ~60ms
         recent = [(t, x, y) for t, x, y in self._drag_samples if now - t < 0.06]
         # No stale fallback: holding still before release must stop the throw.
-        
+
         if len(recent) < 2:
             return (0.0, 0.0)
-        
+
         # Velocidade média ponderada (mais peso pros recentes)
         vx = vy = 0.0
         total_weight = 0.0
@@ -484,16 +482,16 @@ class ScreenSpacePhysics:
             vx += ((x1 - x0) / dt) * weight
             vy += ((y1 - y0) / dt) * weight
             total_weight += weight
-        
+
         if total_weight == 0:
             return (0.0, 0.0)
-        
+
         return (vx / total_weight, vy / total_weight)
-    
+
     # ============================================================
     # Gravity / Grounded State
     # ============================================================
-    
+
     def set_gravity(self, enabled: bool) -> None:
         """Ativa/desativa gravidade."""
         if enabled and self.space.gravity == (0, 0):
@@ -502,7 +500,7 @@ class ScreenSpacePhysics:
         elif not enabled and self.space.gravity != (0, 0):
             self.space.gravity = (0, 0)
             self.state.gravity_active = False
-    
+
     def update_grounded_state(self) -> None:
         was_grounded = self.state.grounded
         self.state.grounded = False
@@ -539,26 +537,26 @@ class ScreenSpacePhysics:
         while self._accumulator >= FIXED_DT:
             self.space.step(FIXED_DT)
             self._accumulator -= FIXED_DT
-        
-        
+
+
         # Update grounded state
         self.update_grounded_state()
-        
+
         # Settle without Body.sleep(), which requires sleeping to be enabled.
         if self.state.grounded:
             vx = self.body.velocity.x * math.exp(-self.settings.physics.friction * 8 * dt)
             self.body.velocity = (0 if abs(vx) < 5 else vx, self.body.velocity.y)
-        
+
         # Sync state
         self.state.position = (self.body.position.x, self.body.position.y)
         self.state.velocity = (self.body.velocity.x, self.body.velocity.y)
-        
+
         # Callback
         if self.on_state_change:
             self.on_state_change(self.state)
-        
+
         return self.state
-    
+
     def set_position(self, x: float, y: float) -> None:
         """Define posição do mascote (teleport)."""
         self.body.position = (x, y)
@@ -567,14 +565,14 @@ class ScreenSpacePhysics:
         self.state.velocity = (0, 0)
         self.state.grounded = False
         self.state.on_shelf = None
-    
-    def apply_impulse(self, impulse: Tuple[float, float]) -> None:
+
+    def apply_impulse(self, impulse: tuple[float, float]) -> None:
         """Aplica impulso instantâneo no centro de massa."""
         self.body.apply_impulse_at_world_point(impulse, self.body.position)
-    
+
     def get_state(self) -> PhysicsState:
         return self.state
-    
+
     def cleanup(self) -> None:
         """Limpeza."""
         self.space.remove(self.body, self.shape)
@@ -594,7 +592,7 @@ def create_physics(
     screen_height: int = 1080,
     own_hwnd: int = 0,
     own_pid: int = 0,
-    settings: Optional[Settings] = None
+    settings: Settings | None = None
 ) -> ScreenSpacePhysics:
     """Factory para criar ScreenSpacePhysics."""
     return ScreenSpacePhysics(
@@ -614,7 +612,7 @@ def create_physics(
 def debug_draw_space(space: pymunk.Space, surface) -> None:
     """Desenha debug do espaço pymunk (requer pygame)."""
     try:
-        import pygame
+        import pygame  # noqa: F401  # intencional: testa disponibilidade do pygame antes do debug_draw
         from pymunk.pygame_util import DrawOptions
         options = DrawOptions(surface)
         space.debug_draw(options)

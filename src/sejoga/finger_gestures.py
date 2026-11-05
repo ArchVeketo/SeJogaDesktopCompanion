@@ -1,7 +1,6 @@
 """Runtime pivots for the existing block fingers; original asset stays intact."""
 from math import exp
 
-
 GESTURES = {
     'hang_loose': (0, 75, 75, 75, 0),
     'thumbs_up': (0, 80, 80, 80, 80),

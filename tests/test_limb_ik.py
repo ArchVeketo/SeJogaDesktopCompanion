@@ -1,5 +1,7 @@
 from math import cos, isfinite, radians, sin
+
 import pytest
+
 from sejoga.limb_ik import solve_arm
 
 

@@ -1,9 +1,9 @@
 """Capture the full speaker entrance and settled musical pose."""
 import argparse
 import json
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 from sejoga import config
@@ -15,9 +15,10 @@ def main():
     args=parser.parse_args()
     profile=Path(tempfile.mkdtemp(prefix='sejoga-music-scene-'))
     config.default_config_path=lambda:profile/'config.toml'
-    from sejoga.window import OverlayApp
-    from panda3d.core import Filename, Point3, Vec3
+    from panda3d.core import Filename, Point3
     from PIL import ImageGrab
+
+    from sejoga.window import OverlayApp
     settings=config.Settings()
     settings.physics.enabled=settings.music.enabled=False
     settings.window.outline_enabled=False

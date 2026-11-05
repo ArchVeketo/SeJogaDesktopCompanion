@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import math
 import random
-from typing import Any, Optional
+from typing import Any
 
 # Panda3D GLTF loader registers support for .gltf and .glb files.
 import gltf
@@ -54,9 +54,9 @@ class Panda3DRenderer:
         self.hwnd = hwnd
         self.width = width
         self.height = height
-        self.model_np: Optional[NodePath] = None
-        self.model_anchor: Optional[NodePath] = None
-        self.rig: Optional[Rig] = None
+        self.model_np: NodePath | None = None
+        self.model_anchor: NodePath | None = None
+        self.rig: Rig | None = None
         self._rig_nodes: dict[str, NodePath] = {}
         self._outline_nodes: dict[str, NodePath] = {}
         self._rig_base_hpr: dict[str, tuple[float, float, float]] = {}

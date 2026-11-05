@@ -1,8 +1,8 @@
 """Inspeção visual de hover, tentáculos, recolhimento e encerramento no Windows."""
-import sys
-import time
-import tempfile
 import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -12,9 +12,10 @@ from sejoga import config
 def main():
     profile = Path(tempfile.mkdtemp(prefix="sejoga-effects-"))
     config.default_config_path = lambda: profile / "config.toml"
-    from sejoga.window import OverlayApp
-    import win32gui
     import win32con
+    import win32gui
+
+    from sejoga.window import OverlayApp
     settings = config.Settings()
     settings.music.enabled = False
     settings.physics.enabled = False
@@ -100,8 +101,9 @@ def main():
                     capture(f"{kind}-{step}")
             capture(kind)
         # Full opening, then a half-retracted frame and a closed frame.
-        from sejoga.rig import Rotation3
         import math
+
+        from sejoga.rig import Rotation3
         for _ in range(150):
             app.renderer.apply_rig_pose({"door": Rotation3(y=math.radians(85))})
             app.renderer.update_appendages(.033)

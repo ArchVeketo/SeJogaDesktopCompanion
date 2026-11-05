@@ -2,11 +2,21 @@
 import math
 import random
 
-from panda3d.core import (Geom, GeomNode, GeomTriangles, GeomVertexData,
-                         GeomVertexFormat, GeomVertexWriter, Vec3, Texture)
+from panda3d.core import (
+    Geom,
+    GeomNode,
+    GeomTriangles,
+    GeomVertexData,
+    GeomVertexFormat,
+    GeomVertexWriter,
+    Material,
+    PointLight,
+    Texture,
+    Vec3,
+)
+
 from .appendages import AppendageMotion, DoorJoint, tentacle_center
 from .tentacle_model import build_tentacle
-from panda3d.core import Material, PointLight
 
 
 class TentacleRenderer:

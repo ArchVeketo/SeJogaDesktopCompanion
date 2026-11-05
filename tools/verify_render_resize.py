@@ -1,9 +1,9 @@
 """Check chroma edges and stale desktop pixels through resize cycles."""
 import json
-from pathlib import Path
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'src'))
 from sejoga import config
@@ -12,13 +12,14 @@ from sejoga import config
 def main():
     profile = Path(tempfile.mkdtemp(prefix='sejoga-resize-qa-'))
     config.default_config_path = lambda: profile/'config.toml'
-    from sejoga.window import OverlayApp
-    from PySide6.QtWidgets import QWidget
-    from PySide6.QtCore import Qt
-    from PIL import ImageGrab
-    from panda3d.core import Filename, Point3
     import numpy as np
     import win32gui
+    from panda3d.core import Filename, Point3
+    from PIL import ImageGrab
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QWidget
+
+    from sejoga.window import OverlayApp
     settings = config.Settings()
     settings.physics.enabled = settings.music.enabled = False
     settings.window.outline_enabled = False

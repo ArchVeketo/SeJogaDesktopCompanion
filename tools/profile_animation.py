@@ -1,10 +1,10 @@
 """Measure real frame cadence and animation CPU cost with an isolated profile."""
 import json
-from pathlib import Path
 import statistics
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sejoga import config

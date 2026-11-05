@@ -1,7 +1,18 @@
 """A low-poly speaker ejected from the cabinet at the start of a dance."""
 from math import cos, exp, sin, tau
-from panda3d.core import (CardMaker, Geom, GeomNode, GeomTriangles, GeomVertexData,
-                         GeomVertexFormat, GeomVertexWriter, Point3, Vec3, Texture)
+
+from panda3d.core import (
+    CardMaker,
+    Geom,
+    GeomNode,
+    GeomTriangles,
+    GeomVertexData,
+    GeomVertexFormat,
+    GeomVertexWriter,
+    Point3,
+    Texture,
+    Vec3,
+)
 
 
 def box(parent, name, size, color):
@@ -72,7 +83,7 @@ class MusicSpeaker:
         self.root.hide()
 
     def _measure_character(self):
-        from .rig import pose_idle, IdlePersonality
+        from .rig import IdlePersonality, pose_idle
         rig=self.renderer.rig
         previous=rig.pose()
         rig.reset();pose_idle(rig,0,IdlePersonality.CALM)
@@ -87,8 +98,9 @@ class MusicSpeaker:
         rig.current=previous
 
     def _add_graffiti(self):
-        from .assets import assets_dir
         from panda3d.core import PNMImage, StringStream
+
+        from .assets import assets_dir
         # Read through Python's native filesystem. Frozen Panda's virtual
         # filesystem can reject the onedir path even when the PNG exists.
         image=PNMImage()
