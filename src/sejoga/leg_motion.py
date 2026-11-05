@@ -56,7 +56,7 @@ class LegMotion:
         elif state in ('idle', 'hover'):
             shift = max(-1, min(1, sway/5))
             target = LegPose(2*shift, -2*shift, max(0, shift)*4, max(0, -shift)*4)
-        blend = 1-exp(-dt*7.5)
+        blend = 1-exp(-dt*(4.8 if state == 'drag' else 7.5))
         self.pose = LegPose(*(a+(b-a)*blend for a,b in zip(
             self.pose.__dict__.values(), target.__dict__.values())))
         return self.pose

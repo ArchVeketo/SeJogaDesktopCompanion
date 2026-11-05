@@ -17,7 +17,7 @@ class HandMotion:
         self.clock += dt
         result = dict(pose)
         energy = {'idle': .45, 'hover': .65, 'walk': 1, 'run': 1.2,
-                  'dance': 1.1, 'drag': .25, 'fall': .7,
+                  'dance': 1.1, 'drag': .7, 'fall': .7,
                   'wave': .12, 'sneeze': .2, 'sleep': .08}.get(state, .25)
         for arm, wrist, fingers, side in (
             ('ant-arm', 'hand', 'fingers', 1),

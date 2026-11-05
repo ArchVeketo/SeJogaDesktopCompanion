@@ -52,14 +52,14 @@ class BodyPose:
 
 class BodyMotion:
     def __init__(self):
-        self.roll = Spring(1.35, .72)
-        self.pitch = Spring(1.5, .74)
+        self.roll = Spring(1.15, .58)
+        self.pitch = Spring(1.25, .60)
         self.yaw = Spring(1.2, .78)
-        self.neck_roll = Spring(1.9, .76)
-        self.neck_pitch = Spring(2.0, .76)
-        self.compression = Spring(1.8, .76)
+        self.neck_roll = Spring(1.65, .58)
+        self.neck_pitch = Spring(1.75, .60)
+        self.compression = Spring(1.6, .52)
         self.suspension = Spring(2.1, .9)
-        self.limbs = Spring(1.25, .38)
+        self.limbs = Spring(1.1, .30)
         self.snapshot = BodyPose()
         self.pointer_velocity = (0.0, 0.0)
         self._pointer = None
@@ -119,7 +119,7 @@ class BodyMotion:
         self.neck_pitch.update(dt, self.pitch.value)
         self.compression.update(dt, 0)
         self.suspension.update(dt, 1.0 if dragging or not grounded else 0.0)
-        self.limbs.update(dt, clamp(-vx*.016, -25, 25) if dragging else 0)
+        self.limbs.update(dt, clamp(-vx*.021, -30, 30) if dragging else 0)
         # Bound the visual response without modifying desktop physics or cursor.
         self.snapshot = BodyPose(
             roll=clamp(self.roll.value, -178, 178),
