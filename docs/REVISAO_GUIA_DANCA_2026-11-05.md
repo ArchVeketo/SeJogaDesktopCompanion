@@ -2,13 +2,15 @@
 
 Referência revisada: `GUIA_ANIMACAO_DANCA.md` (versão 1.0). Este parecer complementa o texto original sem substituir a direção artística do autor.
 
+**Retificação posterior:** a descrição completa do autor substituiu a interpretação de apoio pela mão esquerda. A versão 2.0 de `GUIA_ANIMACAO_DANCA.md` é a direção atual: caixa maior que o mascote nos dois eixos, costas apoiadas, braços cruzados e staging lateral. As observações abaixo sobre a versão 1.0 são históricas.
+
 ## Direção artística
 
 O guia já define uma base utilizável: postura relaxada com apoio, braços cruzados, headbang concentrado no pescoço e uma frase de breakdance com preparação, chão e recuperação. O próximo ganho depende de poses e apoios legíveis, não de acrescentar mais oscilação senoidal.
 
 Para o refinamento, cada estilo deve ter uma frase com silhuetas distinguíveis:
 
-- Head nod musical: apoio do braço esquerdo na caixa, conforme a seção 7.1, como pose principal; pernas estáveis e cabeça marcando o beat lateralmente. Os dois braços cruzados são uma variação, não a postura principal (esclarecimento do autor).
+- Head nod musical: a interpretação inicial de apoio do braço esquerdo foi corrigida pelo autor. Usar costas apoiadas na caixa gigante, ambos os braços cruzados e pernas estáveis, conforme o guia 2.0.
 - Hip hop: flexão de joelhos → transferência de peso → contrapeso dos braços → pausa. Não deve parecer caminhada no lugar nem apenas giro do quadril.
 - Rock: base firme, tronco acompanhando a contração para baixo, mão 🤘 legível e recuperação mais lenta do pescoço.
 - Breakdance: toprock → preparação de apoio → descida → pose de chão legível → giro/footwork → freeze → subida. O contato da mão precisa ser conferido, não apenas o ângulo global do personagem.
