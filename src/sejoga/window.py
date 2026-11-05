@@ -1233,7 +1233,7 @@ class OverlayApp(ShowBase):
         self.win.setClearColorActive(True)
         self.win.setClearDepthActive(True)
         win32gui.RedrawWindow(self.hwnd, None, None, 0x0001 | 0x0004 | 0x0080)
-        self._canvas_cooldown = 2.5
+        self._canvas_cooldown = 1.0 if size > current else .15
 
     def _setup_tray(self) -> None:
         """Cria o ícone e o menu da bandeja do sistema."""

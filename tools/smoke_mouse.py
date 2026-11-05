@@ -57,7 +57,10 @@ def main():
             assert "left" in app._mouse_buttons(), "Native input must survive a zero async key state"
             app._native_mouse_button("left", False)
             assert not app._mouse_buttons()
-        assert win32gui.GetWindowRect(app.hwnd)[:2] == settings.window.start_position
+        canvas_shift = (app.renderer.width-settings.window.size)//2
+        expected_origin = settings.window.start_position if app.physics else tuple(v-canvas_shift for v in settings.window.start_position)
+        assert win32gui.GetWindowRect(app.hwnd)[:2] == expected_origin
+        app._hover_attention = type(app._hover_attention)()
         assert win32gui.GetWindowLong(app.hwnd, -20) & 0x00000008, "Panda reset always-on-top"
         assert app.renderer._outline_nodes
         for _ in range(2):
@@ -77,7 +80,7 @@ def main():
         settings.window.outline_enabled = True
         settings.window.outline_color = "#FF65CC"
         app.renderer.set_outline_settings(settings.window)
-        points = [(x, y) for y in range(50, 440, 10) for x in range(60, 420, 10)
+        points = [(x, y) for y in range(50, app.renderer.height-20, 10) for x in range(60, app.renderer.width-20, 10)
                   if app.renderer.hit_test(x, y)]
         assert points, "Picking did not find any model geometry"
         point = min(points, key=lambda p: (p[0] - 240) ** 2 + (p[1] - 300) ** 2)
@@ -149,7 +152,7 @@ def main():
         debug_corner = win32gui.ClientToScreen(app.hwnd, (5, 5))
         debug_pixel = ImageGrab.grab(bbox=(debug_corner[0], debug_corner[1], debug_corner[0] + 1, debug_corner[1] + 1)).getpixel((0, 0))
         assert debug_pixel == (214, 0, 214), (debug_pixel, hex(app._background_key))
-        face_point = win32gui.ClientToScreen(app.hwnd, (240, 260))
+        face_point = win32gui.ClientToScreen(app.hwnd, (240+canvas_shift, 260+canvas_shift))
         face_pixel = ImageGrab.grab(bbox=(face_point[0], face_point[1], face_point[0] + 1, face_point[1] + 1)).getpixel((0, 0))
         assert face_pixel[0] < 200, (face_pixel, "outline is filling the transparent face")
         for _ in range(10):

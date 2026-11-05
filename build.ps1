@@ -1,3 +1,5 @@
+param([string]$Python = 'python')
+$ErrorActionPreference = 'Stop'
 # Do not let Codex's private runtime DLLs enter the application bundle.
 # PyInstaller replaces the onedir output. Preserve the user's portable profile.
 $profileSource = Join-Path $PSScriptRoot 'dist\SeJogaCompanion\user-data'
@@ -9,10 +11,10 @@ if (Test-Path -LiteralPath $profileSource) {
 # CodexPrimaryRuntime also ships Poppler's ICU. Its icuuc.dll exports versioned
 # symbols and cannot replace Windows ICU, which Qt uses (e.g. ucnv_open).
 $env:PATH = (($env:PATH -split ';' | Where-Object { $_ -notmatch 'codex-runtimes|OpenAI\.CodexPrimaryRuntime' }) -join ';')
-$env:PATH += ";C:\Users\victh\AppData\Roaming\Python\Python314\Scripts"
-$panda3dDir = Join-Path $env:APPDATA 'Python\Python314\site-packages\panda3d'
+$panda3dDir = & $Python -c 'import pathlib, panda3d; print(pathlib.Path(panda3d.__file__).parent)'
+if ($LASTEXITCODE -ne 0) { throw 'O Python escolhido não possui Panda3D.' }
 
-& "C:\Users\victh\AppData\Roaming\Python\Python314\Scripts\pyinstaller.exe" `
+& $Python -m PyInstaller `
     --clean `
     --name SeJogaCompanion `
     --icon "assets\brand\companion.ico" `

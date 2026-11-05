@@ -29,6 +29,7 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
     dialog.sensitivity_input.setValue(.8)
     dialog.dance_chance_input.setValue(.65)
     dialog.beat_input.setChecked(False)
+    dialog.dance_style_input.setCurrentIndex(dialog.dance_style_input.findData('rock'))
     dialog.personality_input.setCurrentIndex(dialog.personality_input.findData("fighter"))
     dialog._save()
     assert dialog.result() == QDialog.DialogCode.Accepted
@@ -40,5 +41,6 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
     assert reopened.sensitivity_input.value() == .8
     assert reopened.dance_chance_input.value() == .65
     assert not reopened.beat_input.isChecked()
+    assert reopened.dance_style_input.currentData() == 'rock'
     reopened.close()
     dialog.close()
