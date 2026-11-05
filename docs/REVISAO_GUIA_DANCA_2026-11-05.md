@@ -8,7 +8,7 @@ O guia já define uma base utilizável: postura relaxada com apoio, braços cruz
 
 Para o refinamento, cada estilo deve ter uma frase com silhuetas distinguíveis:
 
-- Head bob: braços cruzados → inclinação lateral → apoio de uma mão na caixa → retorno, com pernas estáveis.
+- Head nod musical: apoio do braço esquerdo na caixa, conforme a seção 7.1, como pose principal; pernas estáveis e cabeça marcando o beat lateralmente. Os dois braços cruzados são uma variação, não a postura principal (esclarecimento do autor).
 - Hip hop: flexão de joelhos → transferência de peso → contrapeso dos braços → pausa. Não deve parecer caminhada no lugar nem apenas giro do quadril.
 - Rock: base firme, tronco acompanhando a contração para baixo, mão 🤘 legível e recuperação mais lenta do pescoço.
 - Breakdance: toprock → preparação de apoio → descida → pose de chão legível → giro/footwork → freeze → subida. O contato da mão precisa ser conferido, não apenas o ângulo global do personagem.

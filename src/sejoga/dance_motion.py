@@ -95,6 +95,9 @@ class DanceMotion:
 
     @property
     def lean_amount(self):
+        if self.style == 'head_bob':
+            value = max(0,min(1,self.style_beats/2))
+            return value*value*(3-2*value)
         beat = self.style_beats % 16
         value = max(0,min(1,beat-7,15-beat))
         return value*value*(3-2*value)

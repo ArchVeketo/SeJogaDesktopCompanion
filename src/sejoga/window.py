@@ -639,7 +639,7 @@ void main() {
             target = upper.getParent().getRelativePoint(self.model_np, Point3(-.29,0,.48))
             delta = target-upper.getPos()
             shoulder_angle, elbow_angle = solve_arm(-delta.x,-delta.z,.125,.15625)
-            weight = dance.lean_amount
+            weight = dance.lean_amount*max(0,min(1,(self.music_speaker.age-1.2)/.6))
             upper.setR(upper.getR()*(1-weight)-shoulder_angle*weight)
             forearm.setR(forearm.getR()*(1-weight)-elbow_angle*weight)
             self._outline_nodes['left-arm'].setHpr(upper.getHpr())
