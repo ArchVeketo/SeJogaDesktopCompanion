@@ -14,7 +14,12 @@ from .leg_motion import LegMotion
 from .hand_motion import HandMotion
 from .dance_motion import DanceMotion
 
-from .joint_springs import SpringPose
+from .joint_springs import (
+    CADEIA_DIREITA,
+    CADEIA_ESQUERDA,
+    LagChain,
+    SpringPose,
+)
 from .anim_layers import MASCARA_MUSICA, CamadaAnim, MixerCamadas
 
 from .rig import (
@@ -112,6 +117,14 @@ class AnimationController:
         self._crossfade = SpringPose(frequencia=2.6, amortecimento=0.98)
         self._crossfade.definir(dict(self._pose))
         self._just_transitioned = True
+        # Camada 'interacao': atraso efetivo da cadeia dos braços (braço ->
+        # antebraço -> mão -> dedos). Cada cadeia persegue o alvo autoral com
+        # molas, e a diferença (saída - alvo) vira um follow-through aditivo
+        # somado sobre o follow-through das mãos (hand_motion).
+        self.cadeia_direita = LagChain(CADEIA_DIREITA)
+        self.cadeia_esquerda = LagChain(CADEIA_ESQUERDA)
+        self.cadeia_direita.definir(dict(self._pose))
+        self.cadeia_esquerda.definir(dict(self._pose))
 
     def preview_dance(self, style):
         if style not in ('head_bob', 'hip_hop', 'rock', 'breakdance'):
@@ -431,7 +444,10 @@ class AnimationController:
             self._just_transitioned = False
         elif self._just_transitioned:
             # Primeiro frame após a troca: segura a pose anterior (continuidade
-            # de posição e velocidade) antes de a mola começar a perseguir.
+            # de posição e velocidade) antes de a mola começar a perseguir. As
+            # cadeias de atraso NÃO são reposicionadas: a pose segurada mantém
+            # os alvos dos braços estáveis na borda, então o follow-through
+            # evolui por um único passo de mola, sem salto perceptível.
             self._crossfade.definir({group: self._transition_from.get(group, Rotation3())
                                      for group in composed})
             self._pose = {group: self._transition_from.get(group, Rotation3())
@@ -445,6 +461,7 @@ class AnimationController:
                 mola.x.frequency = mola.y.frequency = mola.z.frequency = frequencia
             self._pose = self._crossfade.atualizar(dt, composed)
         displayed_pose = self.hand_motion.apply(self._pose, dt, self.state.value)
+        displayed_pose = self._aplicar_interacao(displayed_pose, dt)
         self.rig.current = dict(displayed_pose)
         self.leg_motion.update(dt, self.state.value, velocity, self._reaction_time,
                                self.body_motion.snapshot.limb_swing if dragging else self.body_motion.snapshot.roll,
@@ -453,6 +470,34 @@ class AnimationController:
                                dance_strength=self.dance_motion.strength,
                                dance_style=self.dance_motion.style)
         return displayed_pose
+
+    def _aplicar_interacao(self, pose: dict[str, Rotation3], dt: float) -> dict[str, Rotation3]:
+        """Camada 'interacao': soma o atraso das cadeias dos braços à pose.
+
+        Cada cadeia persegue, por mola, os alvos autorais da pose composta
+        (``self._pose``, em radianos). O follow-through aditivo por junta é a
+        diferença entre a saída atrasada da cadeia e o alvo, deixando a ponta
+        (antebraço/mão/dedos) arrastar atrás da base do braço. Isso soma sobre
+        o follow-through já aplicado por hand_motion.
+        """
+        resultado = dict(pose)
+        for cadeia in (self.cadeia_direita, self.cadeia_esquerda):
+            alvos = {grupo: self._pose[grupo] for grupo in cadeia.cadeia
+                     if grupo in self._pose}
+            if not alvos:
+                continue
+            saida = cadeia.atualizar(dt, alvos)
+            for grupo, atrasada in saida.items():
+                if grupo not in resultado:
+                    continue
+                alvo = alvos[grupo]
+                base = resultado[grupo]
+                resultado[grupo] = Rotation3(
+                    base.x + (atrasada.x - alvo.x),
+                    base.y + (atrasada.y - alvo.y),
+                    base.z + (atrasada.z - alvo.z),
+                )
+        return resultado
 
     @staticmethod
     def _blend(start: Rotation3, end: Rotation3, amount: float) -> Rotation3:

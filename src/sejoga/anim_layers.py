@@ -24,6 +24,14 @@ MASCARA_MUSICA = frozenset({
     "hand", "hand2", "fingers", "fingers2", "door",
 })
 
+# Juntas da camada de interação (follow-through da cadeia dos braços). Cobre as
+# duas cadeias ombro->antebraço->mão->dedos; não toca cabeça/corpo/pernas, para
+# não sobrescrever música e locomoção.
+MASCARA_INTERACAO = frozenset({
+    "right-arm", "left-arm", "ant-arm", "ant-arm2",
+    "hand", "hand2", "fingers", "fingers2", "shoulder", "shoulder2",
+})
+
 
 @dataclass
 class CamadaAnim:
