@@ -22,8 +22,8 @@ from .tentacle_constraints import TentacleContacts
 # Configuração visual / física
 # ============================================================
 
-DEFAULT_SEGMENTS = 12          # segmentos por tentáculo
-SEGMENT_LENGTH = 16.0          # px por segmento
+DEFAULT_SEGMENTS = 24          # segmentos por tentáculo
+SEGMENT_LENGTH = 8.0          # px por segmento
 BASE_WIDTH = 8.0               # largura na base
 TIP_WIDTH = 2.0                # largura na ponta
 SUCKER_COUNT = 4               # ventosas por segmento (visual)
@@ -303,9 +303,9 @@ class TentacleDirector:
         for limb in self.pool.tentacles:
             if limb.state == TentacleState.CURIOUS:
                 limb.state_time = 0
-                limb.target = limb.anchor + (limb.target - limb.anchor) * 3.4
+                limb.target = limb.anchor + (limb.target - limb.anchor) * 2.0
                 for segment in limb.segments:
-                    segment.length *= 3.4
+                    segment.length *= 2.0
                 limb.spring = 260
                 limb.damper = 27
         self._door_requested = 130
@@ -442,7 +442,12 @@ class TentacleDirector:
                 target_pos = (tentacle.anchor * (v ** 3) + a * (3 * v * v * u) +
                               b * (3 * v * u * u) + tentacle.target * (u ** 3))
                 arch = math.sin(math.pi * t_param)
-                phase = tentacle.state_time * 1.5 - t_param * 2.0 + tentacle.seed * .001
+                phase = tentacle.state_time * (5.0 if self.burst else 1.5) - t_param * (7.5 if self.burst else 2.0) + tentacle.seed * .001
+                if self.burst:
+                    # A travelling bend with delayed tips, rather than rigid spokes.
+                    wave = math.sin(math.pi * t_param) * math.sin(phase)
+                    target_pos += Vec3(.065 * wave, .045 * math.cos(phase) * arch,
+                                       .075 * math.sin(phase - .7) * arch)
                 target_pos += Vec3(
                     math.sin(phase) * 4.0 * tentacle.unit_scale * arch,
                     8.0 * tentacle.unit_scale * arch,
