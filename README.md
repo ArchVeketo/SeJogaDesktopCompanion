@@ -1,231 +1,141 @@
 <div align="center">
 
-# 🎮 SeJoga Desktop Companion
+<img src="assets/brand/banner.png" alt="Se Joga no Armário" width="100%">
 
-**Mascote 3D interativo para Windows** — Mário vive no seu desktop!
+# Se Joga Desktop Companion
 
-![Windows](https://img.shields.io/badge/Windows-0078D6?style=flat&logo=windows&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=flat&logo=python&logoColor=white)
-![Panda3D](https://img.shields.io/badge/Panda3D-Game%20Engine-orange?style=flat)
-![License](https://img.shields.io/badge/license-MIT-green?style=flat)
+**O Mário sai do armário e vai morar no seu desktop.**
+Mascote 3D com animação procedural, física de verdade e reação à sua música — sempre por cima das janelas, nunca no seu caminho.
 
-[Recursos](#-recursos) • [Instalação](#-instalação) • [Como Usar](#-como-usar) • [Desenvolvimento](#-desenvolvimento) • [Documentação](#-documentação)
+![Windows](https://img.shields.io/badge/Windows-E6005C?style=for-the-badge&logo=windows&logoColor=white)
+![Python](https://img.shields.io/badge/Python_3.11+-B4E600?style=for-the-badge&logo=python&logoColor=1a1333)
+![Panda3D](https://img.shields.io/badge/Panda3D-6A1B9A?style=for-the-badge&logoColor=white)
+![MIT](https://img.shields.io/badge/MIT-1a1333?style=for-the-badge)
 
 </div>
 
 ---
 
-## ✨ Recursos
+<table>
+<tr>
+<td width="55%" valign="top">
 
-### 🎭 **Animações Procedurais**
-- **9 personalidades diferentes** (Tranquila, Curiosa, Brincalhona, Tímida, Confiante, Street, Fighter, Rhythm, Stylish)
-- Animações reativas ao cursor, cliques e música
-- Movimento fluido com física de inércia corporal
-- Pernas e tentáculos articulados
+## O que ele faz
 
-### 🖱️ **Interação Intuitiva**
-- **Arrastar e soltar** com física realista
-- **Hover** para chamar atenção
-- **Cliques** para interações (esquerdo: reação, direito: carinho, meio: cutucada)
-- Overlay transparente que não bloqueia cliques
+O Mário vive solto na sua área de trabalho. Ele respira, cochila, repara no seu cursor e dança quando toca música. Você pega, arrasta, arremessa — e a física cuida do resto: ele cai, quica e se acomoda onde parar.
 
-### 🎨 **Customização Visual**
-- Contorno configurável (cor, espessura 0.5-8px, on/off)
-- Escala ajustável (0.5x-2.5x)
-- Múltiplas posições Z (sempre no topo, normal, atrás das janelas)
+Nada de clipe pré-gravado engessado: **toda pose é gerada na hora**, com molas amortecidas que dão peso e fluidez ao movimento.
 
-### 🎵 **Reação à Música**
-- Dança sincronizada com batidas
-- Suporte a Windows Media Session
-- Suporte a loopback de áudio do sistema
+</td>
+<td width="45%" valign="top">
 
-### 🪼 **Tentáculos 3D**
-- Física procedural com 8 segmentos cada
-- Emergem da porta do personagem
-- Gotejam gosma rosa ocasionalmente
+<div align="center">
+<img src="assets/brand/turntable.gif" alt="Mário 360°" width="80%">
+</div>
+
+</td>
+</tr>
+</table>
 
 ---
 
-## 📦 Instalação
+## Destaques
 
-### Build no Ambiente Atual
+| | |
+|---|---|
+| **Animação viva** | Poses procedurais com inércia corporal, antecipação e follow-through. Nove personalidades de idle que se alternam sozinhas. |
+| **Pega e joga** | Arraste com física real, arremesso, queda, quique e pouso. Colide com bordas do monitor e janelas. |
+| **Dança na batida** | Reage à música do Windows (Media Session) ou ao áudio do sistema (loopback). |
+| **Tentáculos** | Emergem da porta da cabeça, gotejam gosma rosa e seguem a física. |
+| **Fica no seu canto** | Overlay transparente com clique-através: ele não bloqueia o que está embaixo. |
+| **Do seu jeito** | Contorno, escala e ordem de janela configuráveis. Atalhos globais. Posição salva entre sessões. |
+
+---
+
+## Instalação
+
+Baixe o instalador mais recente na página de **[Releases](https://github.com/ArchVeketo/SeJogaDesktopCompanion/releases)**, execute e pronto — o Mário aparece no seu desktop.
+
+> Windows 10/11. Não precisa de Python nem de nada instalado.
+
+---
+
+## Controles
+
+<table>
+<tr><td><b>Hover</b></td><td>Ele olha para você e entreabre a porta</td></tr>
+<tr><td><b>Clique esquerdo</b></td><td>Cutucada</td></tr>
+<tr><td><b>Clique direito</b></td><td>Carinho</td></tr>
+<tr><td><b>Botão do meio</b></td><td>Reação de surpresa</td></tr>
+<tr><td><b>Arrastar</b></td><td>Segura e move (6px+); solta para posicionar. <code>Esc</code> cancela sem arremessar</td></tr>
+<tr><td><b>Ctrl + Alt + S</b></td><td>Abre as configurações</td></tr>
+</table>
+
+Com a física ligada, soltar em movimento **arremessa** o Mário; soltar parado só reposiciona.
+
+---
+
+## Galeria
+
+<div align="center">
+
+<img src="assets/brand/head-render-1.png" alt="Cabeça do Mário" width="30%">
+&nbsp;
+<img src="assets/brand/head-render-2.png" alt="Cabeça do Mário, outro ângulo" width="30%">
+
+<br><br>
+
+<!-- GIFS DE ANIMAÇÃO: preencher quando os previews ficarem prontos -->
+<!-- Sugestão: dança (4 estilos), arraste com física, idle com personalidade -->
+<i>GIFs de dança, arraste e idle chegam em breve — gerados a partir do próprio motor de animação.</i>
+
+</div>
+
+---
+
+## Para desenvolvedores
+
+Companion em Python: **Panda3D** renderiza, **PySide6** cuida da bandeja e das configurações, **Pymunk** simula a física no desktop. O motor de animação é procedural por camadas — molas por junta, cadeia de atraso nos membros e clipes autorais como dados.
+
+```
+src/sejoga/
+  animation.py      Controlador de estados e composição de camadas
+  anim_layers.py    Camadas aditivas (base, locomoção, música...)
+  joint_springs.py  Molas por junta e cadeia de atraso
+  anim_clips.py     Clipes de animação como dados
+  rig.py            Catálogo do rig e poses procedurais
+  physics.py        Física de tela (Pymunk)
+  renderer.py       Renderizador Panda3D
+  win32_overlay.py  Janela em camadas / clique-através (Win32)
+```
 
 ```powershell
-# Clone o repositório
 git clone https://github.com/ArchVeketo/SeJogaDesktopCompanion.git
 cd SeJogaDesktopCompanion
-
-# Instale as dependências
 pip install -e .
+sejoga                        # roda a partir do código
 
-# Execute o companion
-sejoga
-
-# Ou faça o build do executável
-.\build.ps1
+python -m pytest              # testes
+python tools/smoke_mouse.py   # janela real com perfil temporário
+.\build.ps1                   # gera o pacote em dist\SeJogaCompanion\
 ```
 
-O executável gerado fica em `dist\SeJogaCompanion\SeJogaCompanion.exe`.
-
-> **Nota**: O script de build usa Python 3.14. A portabilidade para outras versões e validação em máquinas limpas ainda está em andamento.
+Documentação técnica em [`docs/`](docs/) — comece por [STATUS_E_PROXIMOS_PASSOS.md](docs/STATUS_E_PROXIMOS_PASSOS.md). O backlog de conteúdo (animações, props, efeitos) está em [BACKLOG_CONTEUDO.md](docs/BACKLOG_CONTEUDO.md).
 
 ---
 
-## 🎮 Como Usar
+## Licença
 
-### Interações Básicas
+O **código** é distribuído sob a licença **[Apache 2.0](LICENSE)**.
 
-#### 🖱️ Mouse
-- **Hover**: Passe o cursor sobre Mário — ele olha para você e entreabre a porta
-- **Clique Esquerdo**: Reação rápida de surpresa
-- **Clique Direito**: Carinho — ele adora!
-- **Botão do Meio**: Cutucada — cuidado, ele não gosta muito
-- **Arrastar**: Segure o botão esquerdo e mova pelo menos 6 pixels
-  - Solte para posicionar (posição é salva automaticamente)
-  - `Esc` interrompe o arraste e mantém na posição atual
-
-#### ⚙️ Configurações
-Acesse com `Ctrl + Alt + S` ou pelo menu da bandeja:
-
-- **Personalidade do Idle**: Escolha entre 9 estilos diferentes ou deixe automático
-- **Física**: Ative para permitir arremeços, quedas e colisões
-- **Reação à Música**: Windows Media Session ou loopback de áudio
-- **Contorno**: Cor, espessura, on/off
-- **Atalhos**: Customize todos os atalhos globais
-
-#### 🎪 Gestos Especiais
-No menu da bandeja:
-- **Acenar**: Mário acena para você energeticamente
-- **Soltar os ombros**: Gesto de ajustar a jaqueta
-- **Mostrar tentáculos**: Os tentáculos emergem da porta
-
-### Física e Arremeço
-
-Com a física ativada:
-- **Soltar em movimento**: Arremessa Mário com física realista
-- **Queda**: Ele cai, quica e repousa no chão ou no topo de janelas
-- **Colisão circular**: Detecta bordas do monitor e janelas
-- **Soltar parado**: Elimina o impulso, apenas posiciona
-
-> **Dica**: Use `Esc` durante o arraste para cancelar sem arremessar!
-
----
-
-## 🛠️ Desenvolvimento
-
-### Estrutura do Projeto
-
-```
-SeJogaDesktopCompanion/
-├── src/sejoga/           # Código principal
-│   ├── animation.py      # Controlador de animações
-│   ├── rig.py           # Sistema de rig procedural
-│   ├── physics.py       # Física de tela
-│   ├── tentacle_system.py # Sistema de tentáculos
-│   └── window.py        # Overlay e renderização
-├── assets/              # Modelos 3D, texturas, ícones
-├── docs/                # Documentação técnica
-└── tests/               # Testes automatizados
-```
-
-### Tecnologias
-
-- **[Panda3D](https://www.panda3d.org/)**: Engine de renderização 3D
-- **[PySide6](https://doc.qt.io/qtforpython/)**: Interface Qt (bandeja, configurações)
-- **[Pydantic](https://docs.pydantic.dev/)**: Validação de configurações
-- **[Pytest](https://docs.pytest.org/)**: Framework de testes
-
-### Executar Testes
-
-```powershell
-pytest tests/ -v
-```
-
-### Build para Produção
-
-```powershell
-.\build.ps1
-```
-
-Gera executável standalone em `dist\SeJogaCompanion\`.
-
----
-
-## 📚 Documentação
-
-### Documentos Principais
-- [**Status e Próximos Passos**](docs/STATUS_E_PROXIMOS_PASSOS.md) — Roadmap e features implementadas
-- [**Arquitetura**](docs/ARQUITETURA.md) — Visão técnica do sistema
-- [**Guia de Animações**](docs/GUIA_ANIMACOES_COMPANION.md) — Como criar animações
-- [**Referência de Animações**](docs/REFERENCIA_ANIMACOES.md) — API completa do sistema de animação
-- [**Pesquisa Técnica**](docs/PESQUISA.md) — Decisões técnicas e alternativas exploradas
-- [**Melhorias de Animação 2026-11-04**](docs/MELHORIAS_ANIMACAO_2026-11-04.md) — Últimas melhorias
-
-### Para Desenvolvedores
-Consulte também os skills no diretório `.agents/skills/` para workflows específicos:
-- `sejoga-blockbench-animation`: Workflow para animações no Blockbench
-- `sejoga-release-build`: Processo de build de release
-- `sejoga-win32-overlay-debug`: Debug de overlay Win32
-
----
-
-## 🎯 Roadmap
-
-### ✅ Implementado
-- [x] Overlay transparente com click-through
-- [x] Sistema de rig procedural com 9 personalidades
-- [x] Física de tela com colisões
-- [x] Sistema de tentáculos 3D articulados
-- [x] Reação à música (Media Session + loopback)
-- [x] Customização completa via UI
-- [x] Atalhos globais configuráveis
-- [x] Build PyInstaller onedir
-
-### 🚧 Em Andamento
-- [ ] Validação em instalação limpa do Windows
-- [ ] Suporte multi-monitor aprimorado
-- [ ] Sistema de plugins
-
-### 🔮 Planejado
-- [ ] Mais personalidades e gestos
-- [ ] Sistema de conquistas/achievements
-- [ ] Minigames interativos
-- [ ] Integração com Discord Rich Presence
-
----
-
-## 🤝 Contribuindo
-
-Contribuições são bem-vindas! Por favor:
-1. Fork o projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
-
----
-
-## 📝 Licença
-
-Este projeto é distribuído sob a licença MIT. Veja `LICENSE` para mais informações.
-
----
-
-## 🎨 Créditos
-
-Baseado no universo **SeJoga** — arte e conceito originais.
-
-Desenvolvido com ❤️ usando:
-- Panda3D para renderização 3D
-- PySide6 para interface
-- Muito café ☕
+O personagem **Mário**, a marca **Se Joga no Armário**, o logotipo e toda a **arte** deste repositório (incluindo o diretório `assets/`) são © 2026 Se Joga no Armário — **todos os direitos reservados**. Não estão cobertos pela licença do código e não podem ser usados ou redistribuídos sem autorização por escrito.
 
 ---
 
 <div align="center">
 
-**[⬆ Voltar ao topo](#-sejoga-desktop-companion)**
+<img src="assets/brand/companion.png" alt="Se Joga" width="80">
 
-Feito com 🎮 por [ArchVeketo](https://github.com/ArchVeketo)
+**Se Joga no Armário** — arte e conceito originais.
 
 </div>

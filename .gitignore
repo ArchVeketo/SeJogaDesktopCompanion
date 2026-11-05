@@ -49,3 +49,7 @@ assets/model/*.glb
 # Capturas / debug
 captures/
 *.log
+
+# Artefatos de agente / workflows (não versionar)
+.worktrees/
+.agents/tasks/
