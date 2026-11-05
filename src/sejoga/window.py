@@ -1187,6 +1187,8 @@ class OverlayApp(ShowBase):
         renderer._view_width = renderer._view_height = units*size
         local = getattr(self, '_physics_local', (current/2, current-self.settings.physics.mascot_radius-35))
         self._physics_local = (local[0]+shift, local[1]+shift)
+        if self._drag_active:
+            self._window_start_pos = (self._window_start_pos[0]-shift, self._window_start_pos[1]-shift)
         renderer.set_model_screen_position(*self._physics_local)
         properties = WindowProperties()
         properties.setSize(size,size)

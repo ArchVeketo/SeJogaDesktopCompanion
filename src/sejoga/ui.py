@@ -99,6 +99,16 @@ class SettingsDialog(QDialog):
         self.music_input.addItem("Sessão de mídia do Windows", "media_session")
         self.music_input.addItem("Áudio do sistema (loopback)", "loopback")
         self.music_input.setCurrentIndex(self.music_input.findData(settings.music.source))
+        self.beat_input = QCheckBox("Reagir à batida")
+        self.beat_input.setChecked(settings.music.react_to_beat)
+        self.sensitivity_input = QDoubleSpinBox()
+        self.sensitivity_input.setRange(0, 1)
+        self.sensitivity_input.setSingleStep(.05)
+        self.sensitivity_input.setValue(settings.music.sensitivity)
+        self.dance_chance_input = QDoubleSpinBox()
+        self.dance_chance_input.setRange(0, 1)
+        self.dance_chance_input.setSingleStep(.05)
+        self.dance_chance_input.setValue(settings.music.dance_chance)
 
         self.hotkey_inputs = {
             name: QLineEdit(getattr(settings.hotkeys, name))
@@ -118,6 +128,9 @@ class SettingsDialog(QDialog):
         form.addRow(self.react_drag_input)
         form.addRow("Posição da janela", self.z_order_input)
         form.addRow("Reação à música", self.music_input)
+        form.addRow(self.beat_input)
+        form.addRow("Sensibilidade da batida", self.sensitivity_input)
+        form.addRow("Frequência de dança (0–1)", self.dance_chance_input)
         for name, label in (
             ("toggle_overlay", "Mostrar/ocultar"),
             ("open_settings", "Abrir configurações"),
@@ -180,6 +193,9 @@ class SettingsDialog(QDialog):
         updated.window.mode = "desktop" if z_order == "desktop" else "overlay"
         updated.window.always_on_top = z_order == "topmost"
         updated.music.source = self.music_input.currentData()
+        updated.music.react_to_beat = self.beat_input.isChecked()
+        updated.music.sensitivity = self.sensitivity_input.value()
+        updated.music.dance_chance = self.dance_chance_input.value()
 
         normalized_hotkeys: dict[tuple[int, int], str] = {}
         try:

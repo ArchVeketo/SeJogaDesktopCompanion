@@ -81,6 +81,27 @@ def main():
             frames(1)
         assert app._drag_active, "Native drag was not captured"
         first = app.animation_controller.body_motion.snapshot.roll
+        from panda3d.core import Point2
+        projected = Point2()
+        grabbed = app.cam.getRelativePoint(app.renderer.model_np, app._body_grab_point)
+        app.cam.node().getLens().project(grabbed, projected)
+        screen_grab = win32gui.ClientToScreen(app.hwnd, (
+            round((projected.x+1)*app.renderer.width/2),
+            round((1-projected.y)*app.renderer.height/2)))
+        cursor = win32gui.GetCursorPos()
+        grab_error = ((screen_grab[0]-cursor[0])**2+(screen_grab[1]-cursor[1])**2)**.5
+        print('grab_cursor_error_px', grab_error, 'canvas', app.renderer.width)
+        assert grab_error < 12, (screen_grab, cursor)
+        assert app.win.getXSize() == app.renderer.width
+        assert app.renderer.width >= settings.window.size
+        from panda3d.core import Point3
+        low, high = app.renderer.model_np.getTightBounds(app.render)
+        for x in (low.x, high.x):
+            for y in (low.y, high.y):
+                for z in (low.z, high.z):
+                    corner = Point2()
+                    app.cam.node().getLens().project(app.cam.getRelativePoint(app.render, Point3(x,y,z)), corner)
+                    assert abs(corner.x) <= 1.01 and abs(corner.y) <= 1.01, corner
         capture("right")
         for step in range(1, 49):
             win32api.SetCursorPos((point[0] + 144 - step * 6, point[1]))

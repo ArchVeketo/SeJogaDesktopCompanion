@@ -26,6 +26,9 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
     updates = []
     dialog.settings_applied.connect(updates.append)
     dialog.outline_width_input.setValue(4.5)
+    dialog.sensitivity_input.setValue(.8)
+    dialog.dance_chance_input.setValue(.65)
+    dialog.beat_input.setChecked(False)
     dialog.personality_input.setCurrentIndex(dialog.personality_input.findData("fighter"))
     dialog._save()
     assert dialog.result() == QDialog.DialogCode.Accepted
@@ -34,5 +37,8 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
     assert config.load_settings(fallback).behavior.idle_personality == "fighter"
     reopened = SettingsDialog(config.load_settings(fallback))
     assert reopened.personality_input.currentData() == "fighter"
+    assert reopened.sensitivity_input.value() == .8
+    assert reopened.dance_chance_input.value() == .65
+    assert not reopened.beat_input.isChecked()
     reopened.close()
     dialog.close()
