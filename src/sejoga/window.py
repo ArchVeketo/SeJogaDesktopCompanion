@@ -326,6 +326,8 @@ class Panda3DRenderer:
             self.rig, self.model_np, self.outline_np, spawn_points,
             rng=random.Random(), unit_scale=unit_scale,
         )
+        from .tentacle_drips import TentacleDrips
+        self.tentacle_drips = TentacleDrips(self.model_np)
         for tentacle in self.tentacle_pool.tentacles:
             create_tentacle_geometry(tentacle, self.model_np, self.outline_np)
         self.tentacle_director = TentacleDirector(
@@ -614,6 +616,7 @@ void main() {
         # The animation controller owns ambient timing. Keep updating the door
         # after the last limb is dormant, so it can finish closing smoothly.
         self.tentacle_director.update(dt, 0.0, controller.idle_personality)
+        self.tentacle_drips.update(dt, self.tentacle_pool.tentacles)
         self._tentacles_were_visible = visible
         for tentacle in self.tentacle_pool.tentacles:
             active = tentacle.state != TentacleState.DORMANT and tentacle.reveal > .015
