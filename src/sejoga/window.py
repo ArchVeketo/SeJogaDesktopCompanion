@@ -446,6 +446,9 @@ void main() {
             if not node.isEmpty():
                 self._rig_nodes[group_name] = node
                 self._rig_base_pos[group_name] = node.getPos()
+                if not hasattr(self, '_rig_base_scale'):
+                    self._rig_base_scale = {}
+                self._rig_base_scale[group_name] = node.getScale()
                 outline_node = self.outline_np.find(f"**/{group_name}")
                 if not outline_node.isEmpty():
                     self._outline_nodes[group_name] = outline_node
@@ -513,6 +516,8 @@ void main() {
     def apply_body_motion(self, motion, grab_point=None, *, grounded=True, dragging=False):
         """Rotate connected root parts around the hips/grip without editing the asset rig."""
         from panda3d.core import Mat4, TransformState
+        for name, node in self._rig_nodes.items():
+            node.setScale(self._rig_base_scale[name])
 
         hip = Vec3(self._rig_base_pos["body"])
         grip = Vec3(grab_point) if grab_point is not None else hip
