@@ -537,10 +537,6 @@ void main() {
                        motion.roll * (1 - .7 * hanging), Vec3(0, 0, -motion.compression * .08))
         whole = around(grip if dragging else hip, motion.pitch * .6 * hanging, 0,
                        motion.roll * .7 * hanging)
-        if dragging:
-            stretch = (Mat4.translateMat(-grip) * Mat4.scaleMat(1-motion.stretch*.3, 1, 1+motion.stretch)
-                       * Mat4.translateMat(grip))
-            whole = stretch * whole
         for group in ("head", "body", "right-arm", "left-arm", "legs", "left-feet", "right-feet"):
             node = self._rig_nodes[group]
             transform = node.getMat(self.model_np)
