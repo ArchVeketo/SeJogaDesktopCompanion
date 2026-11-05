@@ -112,7 +112,7 @@ class AnimationController:
         self.state_time = 0.0
 
     REACTION_SECONDS = {
-        AnimationState.SNEEZE: 3.8,
+        AnimationState.SNEEZE: 9.0,
         AnimationState.CLICK: 0.5,
         AnimationState.DOUBLE_CLICK: 1.4,
         AnimationState.PET: 1.5,

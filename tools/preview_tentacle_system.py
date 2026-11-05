@@ -35,9 +35,9 @@ try:
     if "--max" in sys.argv:
         renderer.tentacle_director.rng.choices = lambda *args, **kwargs: [6]
     app.animation_controller.interact("sneeze" if "--sneeze" in sys.argv else "peek")
-    for frame in range(180):
+    for frame in range(600 if "--sneeze" in sys.argv else 180):
         app.taskMgr.step(); time.sleep(.016)
-        if frame in (30,90,179): capture(f"curious-{frame}")
+        if frame in ((40, 100, 170, 225, 300, 480, 540) if "--sneeze" in sys.argv else (30,90,179)): capture(f"curious-{frame}")
     # Every generated segment stays inside a conservative local model envelope.
     for tentacle in renderer.tentacle_pool.tentacles:
         if tentacle.state.value!="dormant":

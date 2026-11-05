@@ -25,6 +25,26 @@ class TentacleDrips:
         self.template = GeomNode('pink-slime-drop')
         self.template.addGeom(geom)
 
+    def spray(self, tentacles):
+        """A short outward burst of pink droplets at the sneeze."""
+        limbs = [t for t in tentacles if t.state.value != 'dormant']
+        for _ in range(min(10, 16-len(self.drops))):
+            if not limbs:
+                break
+            limb = self.rng.choice(limbs)
+            node = self.parent.attachNewNode(self.template.makeCopy())
+            node.setPos(limb.anchor + limb.reference_front*.18)
+            size = self.rng.uniform(.006, .013)
+            node.setScale(size)
+            node.setColor(1, .08, .48, 1)
+            node.setLightOff(1)
+            node.setShaderOff(1)
+            node.setTransparency(TransparencyAttrib.MAlpha)
+            node.setCollideMask(0)
+            velocity = limb.reference_front*self.rng.uniform(.35, .8)
+            velocity += Vec3(self.rng.uniform(-.3,.3), 0, self.rng.uniform(-.05,.3))
+            self.drops.append([node, velocity, 0, size])
+
     def update(self, dt, tentacles):
         dt = max(0, min(.05, dt))
         self.remaining -= dt

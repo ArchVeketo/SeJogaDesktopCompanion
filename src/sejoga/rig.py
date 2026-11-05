@@ -561,12 +561,13 @@ def pose_sneeze(rig: Rig, t: float) -> None:
     """Three knocks, explosive release, then damped recovery."""
     from math import exp, sin
     # Slow inhalation, held anticipation, one sharp forward sneeze.
-    inhale = min(1.0, max(0.0, t/.85))
+    inhale = min(1.0, max(0.0, t/3.3))
     inhale = inhale*inhale*(3-2*inhale)
-    if t >= 1.15:
-        inhale *= exp(-(t-1.15)*12)
-    hit = exp(-((t-1.23)/.105)**2)
-    settle = sin(max(0, t-1.35)*8)*exp(-max(0,t-1.35)*4) if t > 1.35 else 0
+    if t >= 3.6:
+        inhale *= exp(-(t-3.6)*12)
+    inhale += sum(amp*exp(-((t-at)/width)**2) for at, width, amp in ((.65,.24,.25),(1.65,.32,.35),(2.85,.4,.45)))
+    hit = exp(-((t-3.68)/.105)**2)
+    settle = sin(max(0, t-3.8)*8)*exp(-max(0,t-3.8)*4) if t > 3.8 else 0
     rig.set_rotation('head', x=-15*inhale+42*hit+5*settle, z=-3*inhale)
     rig.set_rotation('body', x=-7*inhale+22*hit+3*settle)
     rig.set_rotation('right-arm', x=-20*inhale+12*hit, z=60-18*inhale-20*hit)
@@ -578,6 +579,15 @@ def pose_sneeze(rig: Rig, t: float) -> None:
     rig.set_rotation('fingers', z=18*inhale-10*hit)
     rig.set_rotation('fingers2', z=-18*inhale+10*hit)
     rig.set_rotation('door', y=120*hit)
+
+    # Rub the closed cabinet's front, then lower the hand gently.
+    rub = max(0.0, min(1.0, (t-7.7)/.3, (8.8-t)/.5))
+    stroke = sin(t*12)*rub
+    if rub:
+        rig.set_rotation('right-arm', x=-35*rub, z=60-65*rub)
+        rig.set_rotation('ant-arm', x=-28*rub, z=-20-48*rub)
+        rig.set_rotation('hand', x=20*rub, y=8*stroke, z=10*stroke)
+        rig.set_rotation('head', x=3*rub, z=-2*rub)
 
 
 def pose_secondary(rig: Rig, t: float, state: str, personality=IdlePersonality.CALM) -> None:

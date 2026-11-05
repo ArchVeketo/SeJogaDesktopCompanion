@@ -601,8 +601,9 @@ void main() {
             return
         controller = self.showbase.animation_controller
         sneezing = controller.state is not None and controller.state.value == 'sneeze'
-        if sneezing and controller._reaction_time >= 1.15 and not self.tentacle_director.burst:
+        if sneezing and controller._reaction_time >= 3.6 and not self.tentacle_director.burst:
             self.tentacle_director.trigger_sneeze()
+            self.tentacle_drips.spray(self.tentacle_pool.tentacles)
         if not sneezing and not any(t.state != TentacleState.DORMANT for t in self.tentacle_pool.tentacles):
             self.tentacle_director.burst = False
         if visible:
