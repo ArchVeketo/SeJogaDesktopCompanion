@@ -286,7 +286,7 @@ class ScreenSpacePhysics:
     def _create_mascot_body(self) -> None:
         """Cria corpo físico do mascote (circle)."""
         radius = self.mascot_radius
-        mass = 1.0
+        mass = self.settings.physics.mass
         moment = pymunk.moment_for_circle(mass, 0, radius)
         
         self.body = pymunk.Body(mass, moment, body_type=pymunk.Body.DYNAMIC)
@@ -319,7 +319,7 @@ class ScreenSpacePhysics:
                      ((left, top), (left, bottom)), ((right, top), (right, bottom))):
             shape = pymunk.Segment(self.space.static_body, a, b, WALL_THICKNESS)
             shape.collision_type = CAT_SCREEN_EDGE
-            shape.elasticity = 1.0
+            shape.elasticity = 0.25
             shape.friction = 1.0
             shape.filter = pymunk.ShapeFilter(categories=CAT_SCREEN_EDGE, mask=CAT_MASCOT)
             self._edges.append(shape)
@@ -370,7 +370,7 @@ class ScreenSpacePhysics:
             shape = pymunk.Segment(self.space.static_body,
                                    (shelf.left, shelf.top_y), (shelf.right, shelf.top_y), WALL_THICKNESS)
             shape.collision_type = CAT_SHELF
-            shape.elasticity = 1.0
+            shape.elasticity = 0.25
             shape.friction = 1.0
             shape.filter = pymunk.ShapeFilter(categories=CAT_SHELF, mask=CAT_MASCOT)
             self.space.add(shape)
@@ -424,8 +424,9 @@ class ScreenSpacePhysics:
         self._drag_active = False
         self.body.body_type = pymunk.Body.DYNAMIC
         # Switching back from KINEMATIC resets mass/moment in Pymunk 7.
-        self.body.mass = 1.0
-        self.body.moment = pymunk.moment_for_circle(1.0, 0, self.mascot_radius)
+        mass = self.settings.physics.mass
+        self.body.mass = mass
+        self.body.moment = pymunk.moment_for_circle(mass, 0, self.mascot_radius)
         self.body.angular_velocity = 0.0
         
         # Estima velocidade dos últimos samples

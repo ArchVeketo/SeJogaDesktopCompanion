@@ -50,13 +50,13 @@ class BodyPose:
 
 class BodyMotion:
     def __init__(self):
-        self.roll = Spring(1.65, .52)
-        self.pitch = Spring(1.9, .58)
-        self.yaw = Spring(1.5, .66)
-        self.neck_roll = Spring(2.3, .64)
-        self.neck_pitch = Spring(2.5, .66)
-        self.compression = Spring(2.4, .62)
-        self.suspension = Spring(2.8, .88)
+        self.roll = Spring(1.35, .72)
+        self.pitch = Spring(1.5, .74)
+        self.yaw = Spring(1.2, .78)
+        self.neck_roll = Spring(1.9, .76)
+        self.neck_pitch = Spring(2.0, .76)
+        self.compression = Spring(1.8, .76)
+        self.suspension = Spring(2.1, .9)
         self.snapshot = BodyPose()
         self.pointer_velocity = (0.0, 0.0)
         self._pointer = None
@@ -96,9 +96,9 @@ class BodyMotion:
             pitch_target = clamp(-vy * .007, -12, 12)
             yaw_target = clamp(-vx * .003, -5, 5)
         elif hovered:
-            roll_target = clamp(vx * .003 - look[0] * 2.0, -5, 5)
-            pitch_target = clamp(-vy * .002 - look[1] * 1.5, -3, 3)
-            yaw_target = -look[0] * 2.0
+            roll_target = clamp(vx * .003 - look[0] * 3.8, -8, 8)
+            pitch_target = clamp(-vy * .002 - look[1] * 3.2, -6, 6)
+            yaw_target = -look[0] * 3.0
         elif not grounded:
             roll_target = clamp(velocity[0] * .004, -9, 9)
             pitch_target = clamp(-velocity[1] * .002, -4, 4)

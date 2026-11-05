@@ -6,6 +6,106 @@ def controller():
     return AnimationController(Rig(rest={group: Rotation3() for group in ALL_GROUPS}))
 
 
+def test_controller_starts_in_composed_idle_pose_not_t_pose():
+    from math import degrees
+    animation = controller()
+    pose = animation.update(1 / 60)
+    assert degrees(pose["right-arm"].z) > 30
+    assert degrees(pose["left-arm"].z) < -30
+
+
+def test_hover_reaches_toward_the_cursor_without_flapping_both_arms():
+    neutral = controller()
+    for _ in range(40):
+        base_pose = neutral.update(1 / 60)
+    animation = controller()
+    for _ in range(40):
+        pose = animation.update(1 / 60, hovered=True, look_direction=.8)
+    assert animation.state == AnimationState.HOVER
+    assert pose["left-arm"].z > pose["right-arm"].z * -1
+    assert pose["left-arm"].z - base_pose["left-arm"].z > .2
+
+
+def test_hover_keeps_personality_phrase_and_arm_motion():
+    animation = controller()
+    animation.set_idle_personality("fighter")
+    samples = []
+    for frame in range(180):
+        pose = animation.update(1/60, hovered=True, look_direction=.5)
+        if frame > 60:
+            samples.append(pose["right-arm"])
+    assert animation.state == AnimationState.HOVER
+    assert animation._idle_clock > 2.9
+    assert len(set(samples)) > 50
+    assert abs(samples[-1].z) < 1.2  # Guard remains raised under cursor tracking.
+
+
+def test_fall_pose_uses_velocity_not_application_uptime():
+    from sejoga.rig import pose_thrown
+    animation = controller()
+    pose_thrown(animation.rig, .7, (0, -600))
+    ascending = animation.rig.pose()
+    pose_thrown(animation.rig, .7, (0, 600))
+    descending = animation.rig.pose()
+    assert ascending["head"].x < descending["head"].x
+    assert abs(ascending["right-arm"].z - ascending["left-arm"].z) > 0.5
+    pose_thrown(animation.rig, 1.8, (180, 700))
+    first = animation.rig.pose()
+    pose_thrown(animation.rig, 2.5, (180, 700))
+    second = animation.rig.pose()
+    assert first["right-arm"].z != second["right-arm"].z
+
+
+def test_wave_turns_palm_out_and_keeps_elbow_bent():
+    from math import degrees
+    from sejoga.rig import pose_flourish
+    animation = controller()
+    pose_flourish(animation.rig, "wave", .95)
+    pose = animation.rig.pose()
+    assert 140 <= degrees(pose["hand"].x) <= 195
+    assert abs(degrees(pose["right-arm"].z)) < 35
+    assert degrees(pose["ant-arm"].z) < -15
+
+
+def test_walk_dance_and_drag_poses_have_counterbalanced_arms():
+    from math import degrees, pi
+    from sejoga.rig import pose_dance, pose_drag, pose_walk
+    animation = controller()
+    pose_walk(animation.rig, 1 / 6)
+    walk_left = degrees(animation.rig.current["left-arm"].z)
+    pose_walk(animation.rig, .5)
+    walk_other = degrees(animation.rig.current["left-arm"].z)
+    assert abs(walk_left - walk_other) > 10
+    pose_dance(animation.rig, pi / 18)
+    dance = animation.rig.pose()
+    assert degrees(dance["right-arm"].z) < 45
+    pose_drag(animation.rig, 0, direction=1, drag_intensity=.8)
+    right_drag = animation.rig.pose()
+    pose_drag(animation.rig, 0, direction=-1, drag_intensity=.8)
+    left_drag = animation.rig.pose()
+    assert right_drag["left-arm"].z > left_drag["left-arm"].z
+    assert right_drag["right-arm"].z > left_drag["right-arm"].z
+
+
+def test_leg_steps_alternate_and_airborne_pose_settles():
+    from sejoga.leg_motion import LegMotion
+    legs = LegMotion()
+    poses = [legs.update(1/60, "walk", (200, 0)) for _ in range(120)]
+    assert any(p.left > 5 and p.right < -5 for p in poses)
+    assert any(p.right > 5 and p.left < -5 for p in poses)
+    for _ in range(60):
+        ascending = legs.update(1/60, "fall", (0, -300))
+    for _ in range(60):
+        descending = legs.update(1/60, "fall", (0, 300))
+    assert ascending.left_knee > 15
+    assert descending.left_knee > ascending.left_knee
+    fall_steps = [legs.update(1/60, "fall", (120, 300)).left for _ in range(120)]
+    assert max(fall_steps) - min(fall_steps) > 4
+    for _ in range(120):
+        rest = legs.update(1/60, "idle")
+    assert abs(rest.left) < .001 and rest.left_knee < .001
+
+
 def test_click_wakes_sleep_and_does_not_immediately_fall_asleep():
     animation = controller()
     for _ in range(12):

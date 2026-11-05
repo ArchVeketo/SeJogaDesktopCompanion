@@ -66,8 +66,14 @@ class AnimationController:
         self._personality_rng = random.Random()
         self._personality_elapsed = 0.0
         self._personality_interval = self._personality_rng.uniform(10.0, 14.0)
-        self._pose = {group: Rotation3() for group in rig.groups}
+        # Start in a composed idle pose. Starting every joint at zero exposes
+        # the asset's T-pose during the first state crossfade.
+        rig.reset()
+        pose_idle(rig, 0.0, self.idle_personality)
+        pose_secondary(rig, 0.0, AnimationState.IDLE.value, self.idle_personality)
+        self._pose = rig.pose()
         self._transition_from = dict(self._pose)
+        rig.reset()
         self._reaction: AnimationState | None = None
         self._reaction_time = 0.0
         self._cooldowns: dict[str, float] = {}
@@ -275,11 +281,8 @@ class AnimationController:
                 self._idle_clock += dt
                 pose_idle(self.rig, self._idle_clock, self.idle_personality)
             if self.state == AnimationState.HOVER:
-                from math import radians
-                head = self.rig.current["head"]
-                self.rig.set_rotation("head", x=head.x-radians(self._look_vertical*18),
-                                      y=head.y+radians(self._look_direction*25), z=head.z, degrees=False)
-                self.rig.set_rotation("door", y=2)
+                pose_interaction(self.rig, "hover", self.state_time,
+                                 self._look_direction, self._look_vertical)
         elif self.state == AnimationState.WALK:
             pose_walk(self.rig, self.clock)
         elif self.state == AnimationState.RUN:

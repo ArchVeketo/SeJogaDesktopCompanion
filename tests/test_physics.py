@@ -41,6 +41,13 @@ def test_throw_uses_current_samples_multiplier_and_grab_offset():
     assert all(math.isfinite(v) for v in p.state.position)
 
 
+def test_heavier_body_reduces_impulse_response():
+    p = physics()
+    assert p.body.mass == pytest.approx(2.4)
+    p.apply_impulse((240, 0))
+    assert p.body.velocity.x == pytest.approx(100)
+
+
 def test_pause_before_release_and_cancel_do_not_throw():
     for cancel in (True, False):
         p = physics()

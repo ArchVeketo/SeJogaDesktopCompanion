@@ -70,6 +70,16 @@ class SettingsDialog(QDialog):
         self.idle_input = QCheckBox("Variar as animações quando estiver parado")
         self.idle_input.setChecked(settings.behavior.idle_animation)
 
+        self.personality_input = QComboBox()
+        for key, label in (("auto", "Automática"), ("calm", "Tranquila"), ("curious", "Curiosa"),
+                           ("playful", "Brincalhona"), ("shy", "Tímida"), ("confident", "Confiante"),
+                           ("street", "Street groove · Bomb Rush"), ("fighter", "Guarda · Lethal League"),
+                           ("rhythm", "Ritmada · Hi-Fi Rush"), ("stylish", "Estilosa · Persona 5")):
+            self.personality_input.addItem(label, key)
+        self.personality_input.setCurrentIndex(self.personality_input.findData(settings.behavior.idle_personality))
+        self.personality_input.setEnabled(self.idle_input.isChecked())
+        self.idle_input.toggled.connect(self.personality_input.setEnabled)
+
         self.react_click_input = QCheckBox("Reagir ao cursor e aos cliques")
         self.react_click_input.setChecked(settings.behavior.react_to_click)
         self.react_drag_input = QCheckBox("Permitir arrastar o mascote")
@@ -103,6 +113,7 @@ class SettingsDialog(QDialog):
         form.addRow("Espessura do contorno", self.outline_width_input)
         form.addRow(self.physics_input)
         form.addRow(self.idle_input)
+        form.addRow("Personalidade", self.personality_input)
         form.addRow(self.react_click_input)
         form.addRow(self.react_drag_input)
         form.addRow("Posição da janela", self.z_order_input)
@@ -162,6 +173,7 @@ class SettingsDialog(QDialog):
         updated.window.outline_width = self.outline_width_input.value()
         updated.physics.enabled = self.physics_input.isChecked()
         updated.behavior.idle_animation = self.idle_input.isChecked()
+        updated.behavior.idle_personality = self.personality_input.currentData()
         updated.behavior.react_to_click = self.react_click_input.isChecked()
         updated.behavior.react_to_drag = self.react_drag_input.isChecked()
         z_order = self.z_order_input.currentData()

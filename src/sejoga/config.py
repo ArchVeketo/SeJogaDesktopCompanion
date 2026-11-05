@@ -99,9 +99,11 @@ class PhysicsSettings(BaseModel):
     gravity: float = Field(default=2400.0, ge=0.0)
     """px/s² — usada só quando o personagem "cai"."""
 
-    bounce: float = Field(default=0.55, ge=0.0, le=1.0)
-    friction: float = Field(default=0.88, ge=0.0, le=1.0)
-    throw_multiplier: float = Field(default=1.0, gt=0.0, le=5.0)
+    mass: float = Field(default=2.4, gt=0.0, le=20.0)
+    """Massa relativa; reduz a resposta a impulsos aplicados pelo ambiente."""
+    bounce: float = Field(default=0.22, ge=0.0, le=1.0)
+    friction: float = Field(default=0.94, ge=0.0, le=1.0)
+    throw_multiplier: float = Field(default=0.82, gt=0.0, le=5.0)
     collide_with_windows: bool = True
     """Quica também nas bordas de outras janelas, não só da tela."""
 
