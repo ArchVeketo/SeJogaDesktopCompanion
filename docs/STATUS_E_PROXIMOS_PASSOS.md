@@ -135,3 +135,5 @@ O script e o entry point `run_companion.py` foram incluídos no commit `96fea79`
 ## Dependências opcionais
 
 Os extras do `pyproject.toml` incluem `panda3d`, `windows`, `tray`, `music`, `music-loopback` e `music-analysis`. O nome do extra Win32 é `windows` (não `win32`).
+
+Revisão de continuidade: transições procedurais usam easing quíntico de 0,55 s (arraste/queda/impacto até 0,22 s); automático sustenta personalidade por 24–36 s e espaça gestos por 32–48 s. Aceno respeita seus 2,2 s completos. Idle e hover compartilham relógio das mãos, evitando mudança de fase ao entrar no hover. Prévias de aceno/hover/idle renderizadas e 85 testes passaram. Alterações desta revisão somente no código fonte; distribuição oficial ainda não recompilada.

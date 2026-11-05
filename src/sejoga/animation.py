@@ -53,7 +53,7 @@ class AnimationState(StrEnum):
 class AnimationController:
     """Gera poses a cada frame e interpola mudanças de estado."""
 
-    def __init__(self, rig: Rig, transition_seconds: float = 0.35) -> None:
+    def __init__(self, rig: Rig, transition_seconds: float = 0.55) -> None:
         self.rig = rig
         self.transition_seconds = max(0.0, transition_seconds)
         self._active_transition_seconds = self.transition_seconds
@@ -65,7 +65,7 @@ class AnimationController:
         self.idle_personality = IdlePersonality.CALM
         self._personality_rng = random.Random()
         self._personality_elapsed = 0.0
-        self._personality_interval = self._personality_rng.uniform(10.0, 14.0)
+        self._personality_interval = self._personality_rng.uniform(24.0, 36.0)
         # Start in a composed idle pose. Starting every joint at zero exposes
         # the asset's T-pose during the first state crossfade.
         rig.reset()
@@ -79,7 +79,7 @@ class AnimationController:
         self._cooldowns: dict[str, float] = {}
         self._look_direction = 0.0
         self._look_vertical = 0.0
-        self._ambient_in = 15.0
+        self._ambient_in = 28.0
         self._peek_in = self._personality_rng.uniform(60, 100)
         self._dance_remaining = 0.0
         self._dance_decision_in = 0.0
@@ -97,7 +97,7 @@ class AnimationController:
         if personality is None or personality == "auto":
             self._personality_locked = False
             self._personality_elapsed = 0.0
-            self._personality_interval = self._personality_rng.uniform(10.0, 16.0)
+            self._personality_interval = self._personality_rng.uniform(24.0, 36.0)
             return
         selected = IdlePersonality(personality)
         if selected == self.idle_personality and self._personality_locked:
@@ -117,7 +117,7 @@ class AnimationController:
         AnimationState.POKE: 0.4,
         AnimationState.WAKE: 1.2,
         AnimationState.LAND: 0.45,
-        AnimationState.WAVE: 2.0,
+        AnimationState.WAVE: 2.2,
         AnimationState.STRETCH: 2.8,
         AnimationState.PEEK: 9.0,
         AnimationState.HIT: 0.65,
@@ -236,7 +236,7 @@ class AnimationController:
                     [AnimationState.WAVE, AnimationState.STRETCH]
                 )
                 self._reaction_time = 0.0
-                self._ambient_in = self._personality_rng.uniform(18.0, 30.0)
+                self._ambient_in = self._personality_rng.uniform(32.0, 48.0)
         if next_state != AnimationState.DRAG and (next_state != AnimationState.FALL or self._reaction == AnimationState.HIT):
             if self._reaction is not None:
                 next_state = self._reaction
@@ -260,9 +260,9 @@ class AnimationController:
                 self.idle_personality = self._personality_rng.choice(choices)
                 self._idle_clock = 0.0
                 self._personality_elapsed = 0.0
-                self._personality_interval = self._personality_rng.uniform(10.0, 16.0)
+                self._personality_interval = self._personality_rng.uniform(24.0, 36.0)
                 self._transition_from = dict(self._pose)
-                self._active_transition_seconds = max(self.transition_seconds, 0.8)
+                self._active_transition_seconds = max(self.transition_seconds, 1.4)
                 self.state_time = 0.0
         elif next_state != AnimationState.IDLE:
             self._personality_elapsed = 0.0
@@ -271,7 +271,9 @@ class AnimationController:
             self._transition_from = dict(self._pose)
             self.state = next_state
             self.state_time = 0.0
-            self._active_transition_seconds = self.transition_seconds
+            self._active_transition_seconds = (min(self.transition_seconds, .22)
+                if next_state in (AnimationState.DRAG, AnimationState.FALL, AnimationState.HIT)
+                else self.transition_seconds)
         else:
             self.state_time += dt
 
@@ -300,7 +302,7 @@ class AnimationController:
         elif self.state == AnimationState.HOVER or self.state in self.REACTION_SECONDS:
             pose_interaction(self.rig, self.state.value, self._reaction_time, self._look_direction, self._look_vertical)
 
-        pose_secondary(self.rig, self._idle_clock if self.state == AnimationState.IDLE else self.clock,
+        pose_secondary(self.rig, self._idle_clock if self.state in (AnimationState.IDLE, AnimationState.HOVER) else self.clock,
                        self.state.value, self.idle_personality)
         if not dragging and self._release_time < .9:
             pose_throw_release(self.rig, self._release_time, self._release_grip)
@@ -310,7 +312,7 @@ class AnimationController:
             alpha = 1.0
         else:
             linear = min(1.0, self.state_time / self._active_transition_seconds)
-            alpha = linear * linear * (3.0 - 2.0 * linear)
+            alpha = linear ** 3 * (linear * (linear * 6.0 - 15.0) + 10.0)
 
         self._pose = {
             group: self._blend(self._transition_from.get(group, Rotation3()), rotation, alpha)
