@@ -11,6 +11,7 @@ import random
 from enum import StrEnum
 from .body_motion import BodyMotion
 from .leg_motion import LegMotion
+from .hand_motion import HandMotion
 
 from .rig import (
     IdlePersonality,
@@ -92,6 +93,7 @@ class AnimationController:
         self._personality_locked = False
         self.body_motion = BodyMotion()
         self.leg_motion = LegMotion()
+        self.hand_motion = HandMotion()
 
     def set_idle_personality(self, personality: IdlePersonality | str | None) -> None:
         """Escolhe uma personalidade ou devolve o idle à rotação automática."""
@@ -323,10 +325,11 @@ class AnimationController:
             group: self._blend(self._transition_from.get(group, Rotation3()), rotation, alpha)
             for group, rotation in target.items()
         }
-        self.rig.current = dict(self._pose)
+        displayed_pose = self.hand_motion.apply(self._pose, dt, self.state.value)
+        self.rig.current = dict(displayed_pose)
         self.leg_motion.update(dt, self.state.value, velocity, self._reaction_time,
                                self.body_motion.snapshot.roll)
-        return dict(self._pose)
+        return displayed_pose
 
     @staticmethod
     def _blend(start: Rotation3, end: Rotation3, amount: float) -> Rotation3:

@@ -150,7 +150,12 @@ def test_hover_tracks_cursor_and_exits_smoothly():
     previous_pose = pose
     pose = animation.update(0.01)
     assert animation.state == AnimationState.IDLE
-    assert pose == previous_pose
+    # Authored state holds its first transition frame; hand follow-through
+    # remains alive, with no visible discontinuity at the state boundary.
+    for group, rotation in pose.items():
+        before = previous_pose[group]
+        assert max(abs(rotation.x-before.x), abs(rotation.y-before.y),
+                   abs(rotation.z-before.z)) < .01
 
 
 def test_landing_reaction_finishes_and_returns_to_idle():
