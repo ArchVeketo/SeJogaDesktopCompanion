@@ -509,27 +509,36 @@ class TentacleDirector:
         # Preserve embedded roots; solve the visible bodies as tapered spheres.
         active = [t for t in self.pool.tentacles
                   if t.state != TentacleState.DORMANT and t.reveal > .15]
-        for _ in range(3):
-            for a_index, a in enumerate(active):
-                for b in active[a_index + 1:]:
-                    for i, left in enumerate(a.segments[2:], 2):
-                        for j, right in enumerate(b.segments[2:], 2):
-                            ra = (.072 * (1 - .88 * i / (len(a.segments)-1)) + .008) * a.girth_scale
-                            rb = (.072 * (1 - .88 * j / (len(b.segments)-1)) + .008) * b.girth_scale
-                            delta = left.pos - right.pos
-                            distance = delta.length()
-                            if distance >= ra + rb:
-                                continue
-                            normal = delta / distance if distance > 1e-7 else Vec3(1, 0, 0)
-                            correction = normal * min(.012, (ra + rb - distance) * .5)
-                            left.pos += correction
-                            right.pos -= correction
-                            closing = (left.vel - right.vel).dot(normal)
-                            if closing < 0:
-                                left.vel -= normal * closing * .5
-                                right.vel += normal * closing * .5
-            for tentacle in active:
-                self._solve_contacts(tentacle)
+        # Spatial bins discard distant pairs before narrow-phase checks.
+        cell = .18
+        for _ in range(2):
+            bins = {}
+            for owner, limb in enumerate(active):
+                for i, segment in enumerate(limb.segments[2:], 2):
+                    radius = (.072 * (1 - .88*i/(len(limb.segments)-1)) + .008) * limb.girth_scale
+                    key = tuple(math.floor(segment.pos[k]/cell) for k in range(3))
+                    for x in range(key[0]-1, key[0]+2):
+                        for y in range(key[1]-1, key[1]+2):
+                            for z in range(key[2]-1, key[2]+2):
+                                for other_owner, other, other_radius in bins.get((x,y,z), ()):
+                                    if owner == other_owner:
+                                        continue
+                                    delta = segment.pos - other.pos
+                                    squared = delta.lengthSquared()
+                                    if squared >= (radius+other_radius)**2:
+                                        continue
+                                    distance = math.sqrt(squared)
+                                    normal = delta/distance if distance > 1e-7 else Vec3(1,0,0)
+                                    correction = normal * min(.012, (radius+other_radius-distance)*.5)
+                                    segment.pos += correction
+                                    other.pos -= correction
+                                    closing = (segment.vel-other.vel).dot(normal)
+                                    if closing < 0:
+                                        segment.vel -= normal*closing*.5
+                                        other.vel += normal*closing*.5
+                    bins.setdefault(key, []).append((owner, segment, radius))
+        for limb in active:
+            self._solve_contacts(limb)
 
     def _solve_contacts(self, tentacle):
         if not tentacle.contacts:

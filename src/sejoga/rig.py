@@ -559,16 +559,25 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
 
 def pose_sneeze(rig: Rig, t: float) -> None:
     """Three knocks, explosive release, then damped recovery."""
-    from math import exp
-    knocks = sum(exp(-((t-at)/.075)**2) for at in (.25, .58, .92))
-    recoil = exp(-max(0, t-1.15)*3) if t >= 1.15 else 0
-    rig.set_rotation('head', x=-20*knocks+38*recoil, z=14*knocks-12*recoil)
-    rig.set_rotation('body', x=9*knocks-22*recoil, z=-6*knocks)
-    rig.set_rotation('right-arm', x=-14*recoil, z=60-30*recoil)
-    rig.set_rotation('left-arm', x=-12*recoil, z=-62+27*recoil)
-    rig.set_rotation('ant-arm', z=-20-15*knocks)
-    rig.set_rotation('ant-arm2', z=20+13*knocks)
-    rig.set_rotation('door', y=130*recoil)
+    from math import exp, sin
+    # Slow inhalation, held anticipation, one sharp forward sneeze.
+    inhale = min(1.0, max(0.0, t/.85))
+    inhale = inhale*inhale*(3-2*inhale)
+    if t >= 1.15:
+        inhale *= exp(-(t-1.15)*12)
+    hit = exp(-((t-1.23)/.105)**2)
+    settle = sin(max(0, t-1.35)*8)*exp(-max(0,t-1.35)*4) if t > 1.35 else 0
+    rig.set_rotation('head', x=-15*inhale+42*hit+5*settle, z=-3*inhale)
+    rig.set_rotation('body', x=-7*inhale+22*hit+3*settle)
+    rig.set_rotation('right-arm', x=-20*inhale+12*hit, z=60-18*inhale-20*hit)
+    rig.set_rotation('left-arm', x=-18*inhale+10*hit, z=-62+16*inhale+18*hit)
+    rig.set_rotation('ant-arm', x=-12*inhale, z=-20-28*inhale)
+    rig.set_rotation('ant-arm2', x=-10*inhale, z=20+25*inhale)
+    rig.set_rotation('hand', x=15*hit, z=-8*inhale)
+    rig.set_rotation('hand2', x=12*hit, z=8*inhale)
+    rig.set_rotation('fingers', z=18*inhale-10*hit)
+    rig.set_rotation('fingers2', z=-18*inhale+10*hit)
+    rig.set_rotation('door', y=120*hit)
 
 
 def pose_secondary(rig: Rig, t: float, state: str, personality=IdlePersonality.CALM) -> None:
