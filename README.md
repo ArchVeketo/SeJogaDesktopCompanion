@@ -48,7 +48,7 @@ Nada de clipe pré-gravado engessado: **toda pose é gerada na hora**, com molas
 | **Dança na batida** | Reage à música do Windows (Media Session) ou ao áudio do sistema (loopback). |
 | **Tentáculos** | Emergem da porta da cabeça, gotejam gosma rosa e seguem a física. |
 | **Fica no seu canto** | Overlay transparente com clique-através: ele não bloqueia o que está embaixo. |
-| **Do seu jeito** | Contorno, escala e ordem de janela configuráveis. Atalhos globais. Posição salva entre sessões. |
+| **Do seu jeito** | Contorno configurável (cor, espessura, liga/desliga e respiração que dá vida à silhueta low poly), escala e ordem de janela. Atalhos globais. Posição salva entre sessões. |
 
 ---
 

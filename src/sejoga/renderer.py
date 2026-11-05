@@ -78,6 +78,12 @@ class Panda3DRenderer:
         self._suspension_pivot = None
         from .body_motion import Spring
         self._dance_stage_yaw = Spring(1.4, .85)
+        # Respiração do contorno: espessura base em repouso e driver suavizado.
+        from .outline_dynamics import RespiracaoContorno
+        self._outline_base_thickness = 0.0
+        self._outline_breath = 0.0
+        self._outline_enabled = True
+        self._outline_respiracao = RespiracaoContorno()
 
         self._setup_scene()
         self._load_model()
@@ -292,11 +298,25 @@ in vec3 p3d_Normal;
 in vec2 p3d_MultiTexCoord0;
 out vec2 outline_uv;
 uniform mat4 p3d_ModelViewProjectionMatrix;
+uniform mat4 p3d_ModelViewMatrix;
+uniform mat3 p3d_NormalMatrix;
+// Espessura efetiva do frame (respiração). Cai para outline_thickness quando
+// o render não atualiza o runtime, preservando o comportamento estático.
 uniform float outline_thickness;
+uniform float outline_thickness_runtime;
 void main() {
     outline_uv = p3d_MultiTexCoord0;
+    float thickness = outline_thickness_runtime > 0.0
+        ? outline_thickness_runtime : outline_thickness;
+    // Linha "desenhada": faces de perfil (normal perpendicular ao olhar) ganham
+    // um pouco mais de espessura que as frontais, dando vida à silhueta low poly
+    // em vez de uma borda uniforme dura. Variação limitada para não deformar.
+    vec3 view_normal = normalize(p3d_NormalMatrix * p3d_Normal);
+    vec3 view_pos = (p3d_ModelViewMatrix * p3d_Vertex).xyz;
+    float facing = abs(dot(view_normal, normalize(-view_pos)));
+    float orientacao = mix(1.15, 0.9, clamp(facing, 0.0, 1.0));
     gl_Position = p3d_ModelViewProjectionMatrix *
-        (p3d_Vertex + vec4(normalize(p3d_Normal) * outline_thickness, 0.0));
+        (p3d_Vertex + vec4(normalize(p3d_Normal) * thickness * orientacao, 0.0));
 }
 """
         fragment = """#version 130
@@ -316,11 +336,14 @@ void main() {
         self.outline_np.setAttrib(CullFaceAttrib.make(CullFaceAttrib.MCullCounterClockwise), 1000)
         self.outline_np.setLightOff(1000)
         self.outline_np.setCollideMask(0)
+        # Runtime 0 => shader usa a espessura estática até a respiração começar.
+        self.outline_np.setShaderInput("outline_thickness_runtime", 0.0)
 
     def set_outline_settings(self, settings) -> None:
         if not self.outline_np:
             return
-        self.outline_np.setShaderInput("outline_enabled", bool(settings.outline_enabled))
+        self._outline_enabled = bool(settings.outline_enabled)
+        self.outline_np.setShaderInput("outline_enabled", self._outline_enabled)
         if not settings.outline_enabled:
             # Disable both the duplicate model and all child shells. The shader
             # guard also suppresses stale per-mesh copies after live settings changes.
@@ -336,6 +359,23 @@ void main() {
         visible_height = self.height * self.FRAME_FILL * settings.scale
         thickness = settings.outline_width * self._model_dimensions.z / visible_height
         self.outline_np.setShaderInput("outline_thickness", thickness)
+        # Guarda a base e (re)inicia a respiração no estado de repouso.
+        self._outline_base_thickness = thickness
+        self._outline_breath = float(getattr(settings, "outline_breath", 0.0))
+        self._outline_respiracao.reset(thickness)
+        self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
+
+    def _update_outline_breath(self, dt, motion) -> None:
+        """Modula a espessura do contorno pela respiração do tórax, por frame."""
+        if not self.outline_np or not self._outline_enabled or self.outline_np.isHidden():
+            return
+        if self._outline_base_thickness <= 0.0 or self._outline_breath <= 0.0:
+            return
+        compression = float(getattr(motion, "compression", 0.0))
+        thickness = self._outline_respiracao.update(
+            dt, self._outline_base_thickness, compression, self._outline_breath
+        )
+        self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
 
     def _update_view_dimensions(self) -> None:
         lens = self.showbase.cam.node().getLens()
@@ -432,7 +472,9 @@ void main() {
     def apply_body_motion(self, motion, grab_point=None, *, grounded=True, dragging=False):
         """Rotate connected root parts around the hips/grip without editing the asset rig."""
         from panda3d.core import Mat4, TransformState
-        self.flexible_rig.update(getattr(self.showbase.animation_controller, 'delta_time', 1/60), motion)
+        dt = getattr(self.showbase.animation_controller, 'delta_time', 1/60)
+        self._update_outline_breath(dt, motion)
+        self.flexible_rig.update(dt, motion)
         if self._suspension_pivot is None:
             self._suspension_pivot = self.model_anchor.attachNewNode('suspension-pivot')
             self.model_np.reparentTo(self._suspension_pivot)

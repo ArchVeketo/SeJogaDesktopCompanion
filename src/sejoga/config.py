@@ -91,6 +91,8 @@ class WindowSettings(BaseModel):
     outline_enabled: bool = True
     outline_color: str = Field(default="#FF65CC", pattern=r"^#[0-9A-Fa-f]{6}$")
     outline_width: float = Field(default=2.5, ge=0.5, le=8.0)
+    outline_breath: float = Field(default=0.4, ge=0.0, le=1.0)
+    """Intensidade da respiração do contorno (0 = linha estática)."""
     fps: int = Field(default=60, ge=15, le=240)
     start_position: tuple[int, int] | None = None
     """Canto superior esquerdo em coordenadas de tela; ``None`` = canto inferior direito."""
