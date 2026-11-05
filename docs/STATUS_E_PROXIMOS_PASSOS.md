@@ -5,6 +5,16 @@
 
 Este é o roadmap canônico do projeto. As listas de próximos passos nos documentos de pesquisa e arquitetura foram escritas antes de várias etapas serem implementadas; consulte esta página para o estado atual.
 
+## Avaliação do autor — 05/11/2026
+
+O estado atual é um protótipo básico, ainda sem aprovação de qualidade visual, funcionalidade completa ou otimização. Testes técnicos passando não significam aprovação artística das animações.
+
+Prioridades para a próxima etapa:
+
+- Refazer os passos e as transições de dança com poses legíveis, peso e intenção; a coreografia atual não atende à expectativa.
+- Refazer a aparência e a textura da caixa de som; a versão atual foi rejeitada visualmente pelo autor.
+- Revisar a integração das animações e medir o desempenho em uso real antes de considerar o conjunto finalizado.
+
 ## Status atual
 
 **Direção de dança atualizada em 05/11:** seguir [GUIA_ANIMACAO_DANCA.md, versão 2.0](GUIA_ANIMACAO_DANCA.md). A caixa deve superar o mascote em altura e largura; o head nod principal tem costas apoiadas, braços cruzados e pés firmes. A caixa pequena com apoio da mão esquerda descrita em registros anteriores é um protótipo que não atende à intenção final. O guia separa estado do código, coreografia desejada, referências pesquisadas e próximos passos. Decal original SVG/PNG aplicado ao gabinete no runtime.
