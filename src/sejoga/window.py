@@ -449,6 +449,9 @@ void main() {
                 if not hasattr(self, '_rig_base_scale'):
                     self._rig_base_scale = {}
                 self._rig_base_scale[group_name] = node.getScale()
+                if not hasattr(self, '_rig_base_mat'):
+                    self._rig_base_mat = {}
+                self._rig_base_mat[group_name] = node.getMat()
                 outline_node = self.outline_np.find(f"**/{group_name}")
                 if not outline_node.isEmpty():
                     self._outline_nodes[group_name] = outline_node
@@ -481,6 +484,9 @@ void main() {
     def apply_rig_pose(self, pose_dict: dict) -> None:
         if not self.model_np:
             return
+        for name, node in self._rig_nodes.items():
+            node.setMat(self._rig_base_mat[name])
+            self._outline_nodes[name].setMat(self._rig_base_mat[name])
         for group in ("head", "body", "right-arm", "left-arm", "legs", "left-feet", "right-feet"):
             if group in self._rig_nodes:
                 self._rig_nodes[group].setPos(self._rig_base_pos[group])
