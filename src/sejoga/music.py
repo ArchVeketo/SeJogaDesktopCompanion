@@ -7,6 +7,7 @@ processado em memória e descartado; nenhum buffer é salvo em disco.
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import statistics
 import threading
@@ -16,6 +17,8 @@ from dataclasses import dataclass, replace
 from typing import Callable
 
 from .config import MusicSettings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,7 +158,7 @@ class MusicListener:
             asyncio.run(self._poll_media_sessions())
         except Exception as exc:
             self._publish(media_error=f"Media session indisponível: {exc}")
-            print(f"[music] media session unavailable: {exc}")
+            logger.warning("Sessão de mídia indisponível: %s", exc)
         finally:
             if apartment_initialized:
                 try:
@@ -239,7 +242,7 @@ class MusicListener:
         except ImportError:
             message = "Loopback requer a dependência opcional soundcard."
             self._publish(audio_error=message)
-            print(f"[music] {message}")
+            logger.warning(message)
         except Exception as exc:
             self._publish(audio_error=f"Loopback indisponível: {exc}")
-            print(f"[music] loopback unavailable: {exc}")
+            logger.warning("Loopback indisponível: %s", exc)

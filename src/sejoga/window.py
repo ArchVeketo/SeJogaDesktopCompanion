@@ -16,6 +16,7 @@ import os
 import math
 import time
 import random
+import logging
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -127,12 +128,14 @@ COLOR_KEY = 0x00D600D6
 user32 = ctypes.windll.user32
 dwmapi = ctypes.windll.dwmapi
 
+logger = logging.getLogger(__name__)
+
 
 def set_window_ex_style(hwnd: int, add_flags: int = 0, remove_flags: int = 0) -> None:
     """Modifica extended window style."""
-    ex_style = win32gui.GetWindowLong(hwnd, -20)  # GWL_EXSTYLE
+    ex_style = win32gui.GetWindowLong(hwnd, GWL_EXSTYLE)
     ex_style = (ex_style | add_flags) & ~remove_flags
-    win32gui.SetWindowLong(hwnd, -20, ex_style)
+    win32gui.SetWindowLong(hwnd, GWL_EXSTYLE, ex_style)
 
 
 def set_layered_window_attributes(hwnd: int, color_key: int = COLOR_KEY, alpha: int = 255, flags: int = LWA_COLORKEY) -> bool:
@@ -142,7 +145,8 @@ def set_layered_window_attributes(hwnd: int, color_key: int = COLOR_KEY, alpha: 
 
 def set_window_pos_zorder(hwnd: int, zorder: int) -> bool:
     """Define Z-order: HWND_TOPMOST (-1), HWND_NOTOPMOST (-2), HWND_BOTTOM (1)."""
-    return ctypes.windll.user32.SetWindowPos(hwnd, zorder, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0010)
+    return ctypes.windll.user32.SetWindowPos(hwnd, zorder, 0, 0, 0, 0,
+                                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
 
 
 # ============================================================
@@ -179,6 +183,11 @@ class Panda3DRenderer:
         self.tentacle_pool = None
         self.tentacle_director = None
         self._door_requested = 0.0
+        # Criados sob demanda no primeiro frame de física; pré-inicializados
+        # para evitar hasattr por frame em apply_body_motion.
+        self._suspension_pivot = None
+        from .body_motion import Spring
+        self._dance_stage_yaw = Spring(1.4, .85)
 
         self._setup_scene()
         self._load_model()
@@ -269,7 +278,7 @@ class Panda3DRenderer:
         except ImportError:
             pass
         except Exception as e:
-            print(f"[ERROR] SimplePBR initialization failed: {e}")
+            logger.error("Falha ao inicializar SimplePBR: %s", e)
 
     def _load_model(self) -> None:
         model_path = resolve_model()
@@ -277,7 +286,7 @@ class Panda3DRenderer:
         rig = Rig.from_model(model)
 
         if rig.missing:
-            print(f"WARNING: Grupos de rig ausentes: {rig.missing}")
+            logger.warning("Grupos de rig ausentes: %s", rig.missing)
 
         self.rig = rig
 
@@ -526,15 +535,12 @@ void main() {
         """Rotate connected root parts around the hips/grip without editing the asset rig."""
         from panda3d.core import Mat4, TransformState
         self.flexible_rig.update(getattr(self.showbase.animation_controller, 'delta_time', 1/60), motion)
-        if not hasattr(self, '_suspension_pivot'):
+        if self._suspension_pivot is None:
             self._suspension_pivot = self.model_anchor.attachNewNode('suspension-pivot')
             self.model_np.reparentTo(self._suspension_pivot)
             self.outline_np.reparentTo(self._suspension_pivot)
         self._suspension_pivot.setMat(Mat4.identMat())
         controller = getattr(self.showbase, 'animation_controller', None)
-        if not hasattr(self,'_dance_stage_yaw'):
-            from .body_motion import Spring
-            self._dance_stage_yaw=Spring(1.4,.85)
         head_nod = (not dragging and controller and controller.state == AnimationState.DANCE
                     and controller.dance_motion.style == 'head_bob')
         settle = self.music_speaker.settle if hasattr(self,'music_speaker') else 0
@@ -813,6 +819,10 @@ class OverlayApp(ShowBase):
         self._drag_active = False
         self._drag_start_pos = (0, 0)
         self._window_start_pos = (0, 0)
+        # Estado do hot path pré-inicializado (evita hasattr/getattr por frame).
+        size = self.settings.window.size
+        self._physics_local = (size / 2, size - self.settings.physics.mascot_radius - 35)
+        self._canvas_cooldown = 0.0
 
         self._init_pyside()
         self._create_panda_window()
@@ -856,7 +866,7 @@ class OverlayApp(ShowBase):
         self.qt_app.setWindowIcon(QIcon(str(icon)))
         self.desktop = DesktopIntegration(self.hwnd, icon)
 
-        print("OverlayApp initialized.")
+        self.logger.info("OverlayApp inicializado.")
 
     def _init_pyside(self) -> None:
         self.qt_app = QApplication.instance() or QApplication(sys.argv)
@@ -909,11 +919,11 @@ class OverlayApp(ShowBase):
     def _setup_win32(self) -> None:
         self.hwnd = self._get_hwnd()
 
-        ex_style = win32gui.GetWindowLong(self.hwnd, -20)
-        ex_style |= 0x00080000 | 0x08000000  # WS_EX_LAYERED | WS_EX_NOACTIVATE
+        ex_style = win32gui.GetWindowLong(self.hwnd, GWL_EXSTYLE)
+        ex_style |= WS_EX_LAYERED | WS_EX_NOACTIVATE
         if self._is_topmost:
-            ex_style |= 0x00000008
-        win32gui.SetWindowLong(self.hwnd, -20, ex_style)
+            ex_style |= WS_EX_TOPMOST
+        win32gui.SetWindowLong(self.hwnd, GWL_EXSTYLE, ex_style)
 
         self._refresh_background_mode()
         self._update_z_order()
@@ -925,9 +935,9 @@ class OverlayApp(ShowBase):
 
     def _refresh_background_mode(self) -> None:
         """Windows uses the final framebuffer color, after PBR tone mapping."""
-        ex_style = win32gui.GetWindowLong(self.hwnd, -20)
+        ex_style = win32gui.GetWindowLong(self.hwnd, GWL_EXSTYLE)
         if ex_style & WS_EX_TRANSPARENT:
-            win32gui.SetWindowLong(self.hwnd, -20, ex_style & ~WS_EX_TRANSPARENT)
+            win32gui.SetWindowLong(self.hwnd, GWL_EXSTYLE, ex_style & ~WS_EX_TRANSPARENT)
         if self.debug_tools and self.debug_tools.visible:
             win32gui.SetLayeredWindowAttributes(self.hwnd, self._background_key, 255, LWA_ALPHA)
         else:
@@ -980,7 +990,7 @@ class OverlayApp(ShowBase):
         )
         self.win.requestProperties(properties)
         # SWP_NOZORDER | SWP_NOACTIVATE; z-order is applied separately below.
-        win32gui.SetWindowPos(self.hwnd, 0, x, y, size, size, 0x0004 | 0x0010)
+        win32gui.SetWindowPos(self.hwnd, 0, x, y, size, size, SWP_NOZORDER | SWP_NOACTIVATE)
         self._refresh_background_mode()
         self._update_z_order()
 
@@ -1234,7 +1244,7 @@ class OverlayApp(ShowBase):
         needed = base + math.ceil(max(0, extent-base)/64)*64
         needed = min(base*3, needed)
         current = renderer.width
-        self._canvas_cooldown = max(0, getattr(self, '_canvas_cooldown', 0)-dt)
+        self._canvas_cooldown = max(0, self._canvas_cooldown - dt)
         if needed == current or (needed < current and (self._drag_active or self._canvas_cooldown > 0)):
             return
         size = needed if needed > current else max(needed, current-64)
@@ -1244,7 +1254,7 @@ class OverlayApp(ShowBase):
         lens.setFilmSize(units*size, units*size)
         renderer.width = renderer.height = size
         renderer._view_width = renderer._view_height = units*size
-        local = getattr(self, '_physics_local', (current/2, current-self.settings.physics.mascot_radius-35))
+        local = self._physics_local
         self._physics_local = (local[0]+shift, local[1]+shift)
         if self._drag_active:
             self._window_start_pos = (self._window_start_pos[0]-shift, self._window_start_pos[1]-shift)
@@ -1634,7 +1644,7 @@ class OverlayApp(ShowBase):
         try:
             save_settings(self.settings)
         except OSError as exc:
-            print(f"[settings] failed to save configuration: {exc}")
+            self.logger.error("Falha ao salvar configuração: %s", exc)
 
     def quit_app(self) -> None:
         self.userExit()
@@ -1701,7 +1711,7 @@ class OverlayApp(ShowBase):
         ShowBase.userExit(self)
 
     def run(self) -> None:
-        print("Starting SeJogaDesktopCompanion...")
+        self.logger.info("Iniciando SeJogaDesktopCompanion...")
         try:
             ShowBase.run(self)
         except KeyboardInterrupt:

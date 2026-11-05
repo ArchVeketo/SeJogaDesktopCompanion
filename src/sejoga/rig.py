@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from math import radians
+from math import degrees, exp, pi, radians, sin, tanh
 
 from .model import Model
 
@@ -141,8 +141,6 @@ def pose_idle(
     personality: IdlePersonality = IdlePersonality.CALM,
 ) -> None:
     """Idle com personalidade própria, sem deixar de respeitar a dobradiça."""
-    from math import sin
-
     from .idle_clips import CLIPS, sample_idle
     if personality.value in CLIPS:
         for group, (x, y, z) in sample_idle(personality.value, t).items():
@@ -275,8 +273,6 @@ def pose_idle(
 
 def pose_walk(rig: Rig, t: float, *, run: bool = False) -> None:
     """Passada alternada com braços, antebraços, pés e balanço do tronco."""
-    from math import sin
-
     frequency = 2.5 if run else 1.5
     arm_angle = 24.0 if run else 16.0
     stride = sin(t * 2.0 * 3.141592653589793 * frequency)
@@ -301,8 +297,6 @@ def pose_walk(rig: Rig, t: float, *, run: bool = False) -> None:
 
 def pose_wave(rig: Rig, t: float) -> None:
     """Aceno: braço direito sobe e o antebraço oscila."""
-    from math import sin
-
     rig.set_rotation("right-arm", z=-65.0, x=-15.0)
     rig.set_rotation("ant-arm", x=sin(t * 8.0) * 25.0)
     rig.set_rotation("head", z=6.0)
@@ -310,8 +304,6 @@ def pose_wave(rig: Rig, t: float) -> None:
 
 def pose_dance(rig: Rig, t: float, intensity: float = 0.6) -> None:
     """Dança reativa a batida; ``intensity`` 0..1 amortece a amplitude."""
-    from math import sin
-
     amp = 6.0 + 18.0 * max(0.0, min(1.0, intensity))
     beat = sin(t * 9.0)
     rig.set_rotation("body", y=beat * amp * 0.5, z=sin(t * 4.5) * amp * 0.4)
@@ -340,8 +332,6 @@ def pose_dance(rig: Rig, t: float, intensity: float = 0.6) -> None:
 
 def pose_drag(rig: Rig, t: float, direction: float = 0.0, drag_intensity: float = 0.0) -> None:
     """Inclina-se na direção do arraste e estende os braços para se equilibrar."""
-    from math import sin
-
     grip = max(0, min(1, drag_intensity))
     rig.set_rotation("fingers", z=8 + 24*grip)
     rig.set_rotation("fingers2", z=-8 - 24*grip)
@@ -367,8 +357,6 @@ def pose_drag(rig: Rig, t: float, direction: float = 0.0, drag_intensity: float 
 
 def pose_sleep(rig: Rig, t: float) -> None:
     """Pose repousada com respiração lenta."""
-    from math import sin
-
     breath = sin(t * 0.75)
     rig.set_rotation("body", x=1.5 + breath * 0.6, z=-2.0)
     rig.set_rotation("head", x=12.0 + breath * 0.8, y=4.0)
@@ -388,10 +376,9 @@ def pose_sleep(rig: Rig, t: float) -> None:
 
 def pose_thrown(rig: Rig, t: float = 0.0, velocity=(0.0, 450.0)) -> None:
     """Readable airborne silhouette driven by ascent/descent, without flailing."""
-    from math import tanh, sin
     descent = .5 + .5 * tanh(velocity[1] / 320.0)
     drift = tanh(velocity[0] / 650.0)
-    settle = 1.0 - __import__('math').exp(-max(0, t) * 5)
+    settle = 1.0 - exp(-max(0, t) * 5)
     air_sway = sin(t * 2.7) * (0.55 + 0.45 * descent)
     # One shoulder catches the air while the other trails; symmetrical arms
     # made the fall read as a rigid T-pose. The body turns into the drift and
@@ -414,12 +401,9 @@ def pose_thrown(rig: Rig, t: float = 0.0, velocity=(0.0, 450.0)) -> None:
 
 def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vertical: float = 0.0) -> None:
     """Reações procedurais: porta gira na dobradiça, sem escala da malha."""
-    from math import pi, sin
-
     direction = max(-1.0, min(1.0, direction))
     # Keep arms close during reactions. Hover starts from the current idle
     # pose so the cursor can invite one small, directional reach.
-    from math import degrees
     right_base = degrees(rig.current["right-arm"].z) if kind == "hover" else 62.0
     left_base = degrees(rig.current["left-arm"].z) if kind == "hover" else -64.0
     right_elbow = degrees(rig.current["ant-arm"].z) if kind == "hover" else -22.0
@@ -498,7 +482,6 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
 
 def pose_flourish(rig: Rig, kind: str, t: float) -> None:
     """Aceno, alongamento, espiada e recuperação de impacto."""
-    from math import pi, sin
     durations = {"wave": 2.2, "stretch": 2.8, "peek": 9.0, "hit": .65}
     phase = min(1.0, max(0.0, t / durations[kind]))
     envelope = sin(phase * pi)
@@ -559,7 +542,6 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
 
 def pose_sneeze(rig: Rig, t: float) -> None:
     """Three inhalations, downward contraction, then damped recovery."""
-    from math import exp, sin
     # Slow inhalation, held anticipation, one sharp forward sneeze.
     inhale = min(1.0, max(0.0, t/3.3))
     inhale = inhale*inhale*(3-2*inhale)
@@ -592,7 +574,6 @@ def pose_sneeze(rig: Rig, t: float) -> None:
 
 def pose_secondary(rig: Rig, t: float, state: str, personality=IdlePersonality.CALM) -> None:
     """Small shoulder/wrist follow-through; finger curl follows mirrored rig axes."""
-    from math import sin, degrees
     for forearm, shoulder, hand, fingers, side in (
         ("ant-arm", "shoulder", "hand", "fingers", 1),
         ("ant-arm2", "shoulder2", "hand2", "fingers2", -1),

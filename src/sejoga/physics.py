@@ -24,7 +24,6 @@ from typing import Optional, List, Tuple, Callable
 from collections import deque
 
 import pymunk
-# import pymunk.pygame_util  # para debug draw se necessário (removido - requer pygame)
 
 # Win32 para detecção de janelas
 import win32gui
@@ -621,34 +620,3 @@ def debug_draw_space(space: pymunk.Space, surface) -> None:
         space.debug_draw(options)
     except ImportError:
         pass
-
-
-if __name__ == "__main__":
-    # Teste rápido
-    import os
-    os.environ['SDL_VIDEODRIVER'] = 'dummy'
-    import pygame
-    pygame.init()
-    screen = pygame.display.set_mode((800, 600))
-    
-    physics = create_physics(screen_width=800, screen_height=600)
-    physics.state.position = (400, 300)
-    physics.body.position = (400, 300)
-    physics.set_gravity(True)
-    
-    clock = pygame.time.Clock()
-    running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-        
-        dt = 1/60
-        state = physics.step(dt)
-        
-        screen.fill((20, 20, 30))
-        debug_draw_space(physics.space, screen)
-        pygame.display.flip()
-        clock.tick(60)
-    
-    pygame.quit()

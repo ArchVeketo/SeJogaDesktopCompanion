@@ -41,7 +41,6 @@ panda3d = [
     "panda3d-gltf>=1.3",
     "panda3d-simplepbr>=0.12",
 ]
-raylib = ["raylib>=6.0"]
 
 # Integração com o Windows (janela em camadas, click-through, monitoramento).
 windows = ["pywin32>=306", "comtypes>=1.4"]
@@ -55,7 +54,7 @@ music = [
     "winrt-Windows.Media.Control>=4.0",
 ]
 music-loopback = ["soundcard>=0.4.3"]
-music-analysis = ["numpy>=2.0", "scipy>=1.14"]
+music-analysis = ["numpy>=2.0"]
 
 # Desenvolvimento.
 dev = [
