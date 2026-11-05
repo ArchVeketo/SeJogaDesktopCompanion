@@ -312,7 +312,7 @@ class TentacleDirector:
             limb.speaker_throw=True
             limb.state_time=-.08*index
             limb.params['max_len']=1.1
-            for segment in limb.segments:segment.length *= 1.2
+            for segment in limb.segments:segment.length *= 1.2  # noqa: E701  # intencional: loop de 1 statement compacto
 
     def trigger_sneeze(self):
         self.burst = True

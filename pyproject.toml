@@ -84,6 +84,31 @@ src = ["src", "tests", "tools"]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["E501"]
 
+# E402 (import fora do topo) e INTENCIONAL nestes modulos: a ordem de import
+# e obrigatoria para o runtime funcionar.
+# - window.py: Qt precisa carregar antes do Panda3D (DLLs MSVC conflitantes) e
+#   os loadPrcFileData() precisam rodar antes de importar ShowBase/panda3d.
+# - preview_tentacle*.py: loadPrcFileData()/config antes de importar o engine.
+# - build_tentacle_model.py: sys.path.insert antes de importar sejoga.
+#
+# E701/E702 (multiplos statements por linha) sao o ESTILO DENSO INTENCIONAL dos
+# construtores procedurais de geometria/efeitos/audio e das rotinas de preview.
+# Separar cada statement nao melhora a legibilidade desse codigo compacto.
+[tool.ruff.lint.per-file-ignores]
+"src/sejoga/window.py" = ["E402"]
+"tools/preview_tentacle.py" = ["E402"]
+"tools/preview_tentacle_system.py" = ["E402", "E701", "E702"]
+"tools/build_tentacle_model.py" = ["E402"]
+"src/sejoga/music_speaker.py" = ["E701", "E702"]
+"src/sejoga/speaker_effects.py" = ["E701", "E702"]
+"src/sejoga/sound_effects.py" = ["E701", "E702"]
+"src/sejoga/lower_body.py" = ["E702"]
+"tools/preview_body_actions.py" = ["E701", "E702"]
+"tools/profile_music_styles.py" = ["E701", "E702"]
+"tools/preview_music_scene.py" = ["E701", "E702"]
+"tools/verify_render_resize.py" = ["E701", "E702"]
+"tools/smoke_bundle_dances.py" = ["E702"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

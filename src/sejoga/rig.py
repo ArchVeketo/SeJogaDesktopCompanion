@@ -630,7 +630,7 @@ def pose_throw_release(rig: Rig, t: float, grip: float = .5) -> None:
     curl = keys[-1][1]
     for (a, x), (b, y) in pairwise(keys):
         if t <= b:
-            u = max(0, (t-a)/(b-a));u=u*u*(3-2*u)
+            u = max(0, (t-a)/(b-a));u=u*u*(3-2*u)  # noqa: E702  # intencional: smoothstep compacto inline
             curl = x+(y-x)*u
             break
     rig.set_rotation("fingers", z=curl)

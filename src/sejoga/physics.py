@@ -197,7 +197,7 @@ def get_all_shelves(own_hwnd: int, own_pid: int) -> list[Shelf]:
 class ScreenSpacePhysics:
     """
     Gerencia física 2D em espaço de tela para o mascote.
-    
+
     Responsabilidades:
     - Manter espaço pymunk sincronizado com janelas do desktop
     - Simular física do mascote (gravidade, colisão, arraste/arremesso)
