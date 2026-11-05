@@ -32,12 +32,12 @@ _SRC = RAIZ / "src"
 if str(_SRC) not in sys.path:
   sys.path.insert(0, str(_SRC))
 
-from sejoga import rig as rig_mod
-from sejoga import rig_debug as rd
+from sejoga import rig as rig_mod  # noqa: E402
+from sejoga import rig_debug as rd  # noqa: E402
 from sejoga import spring_tuning  # noqa: E402
-from sejoga.assets import resolve_model
+from sejoga.assets import resolve_model  # noqa: E402
 from sejoga.body_motion import Spring  # noqa: E402
-from sejoga.model import load_model
+from sejoga.model import load_model  # noqa: E402
 
 
 def _pose_idle(rig: rig_mod.Rig, t: float) -> None:

@@ -389,10 +389,10 @@ def flag_cabeca(acumulado: dict[str, Mat3], pose: dict[str, Rotation3]) -> Estad
   olhar = _normalizar(_aplicar3(m, ref["olhar"]))
   topo = _aplicar3(m, ref["topo"])
 
-  rotulo_olhar, graus_olhar = classificar_direcao(olhar)
+  _, graus_olhar = classificar_direcao(olhar)
   topo_flag, graus_topo = classificar_direcao(topo)
 
-  pitch, heading, roll = _graus(pose.get("head", Rotation3()))
+  pitch, _, roll = _graus(pose.get("head", Rotation3()))
 
   # O olhar lê melhor pelo desvio do rosto do que pelo eixo nuclear: mesmo um
   # giro de 30° (ainda mais perto de +Z do que de +X) já é "olhar de lado".
