@@ -27,6 +27,7 @@ $panda3dDir = Join-Path $env:APPDATA 'Python\Python314\site-packages\panda3d'
     --hidden-import=simplepbr `
     --hidden-import=gltf `
     --hidden-import=pymunk `
+    --collect-all soundcard `
     --hidden-import=pystray `
     --hidden-import=PIL `
     --hidden-import=winrt.windows.media.control `

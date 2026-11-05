@@ -30,6 +30,7 @@ class MusicSnapshot:
     playback_status: str = "unknown"
     thumbnail_available: bool = False
     audio_level: float = 0.0
+    bass_level: float = 0.0
     beat_detected: bool = False
     bpm: float | None = None
     beat_phase: float = 0.0
@@ -206,6 +207,9 @@ class MusicListener:
             tracker = _BeatTracker()
             sample_rate = 16_000
             block_size = 1024
+            frequencies = np.fft.rfftfreq(block_size, 1/sample_rate)
+            bass_band = (frequencies >= 40) & (frequencies <= 220)
+            window = np.hanning(block_size)
             with microphone.recorder(samplerate=sample_rate, blocksize=block_size) as recorder:
                 self._publish(audio_error=None)
                 while not self._stop.is_set():
@@ -213,10 +217,14 @@ class MusicListener:
                     if samples.size == 0:
                         continue
                     rms = float(np.sqrt(np.mean(np.square(samples), dtype=np.float64)))
+                    mono = samples.mean(axis=1) if samples.ndim > 1 else samples
+                    spectrum = np.abs(np.fft.rfft(mono*window))**2
+                    bass_share = float(spectrum[bass_band].sum()/max(1e-12, spectrum.sum()))
                     now = time.monotonic()
                     beat, bpm, phase = tracker.update(rms, now, self.settings.sensitivity)
                     self._publish(
                         audio_level=max(0.0, min(1.0, rms * 5.0)),
+                        bass_level=max(0.0, min(1.0, rms*5*bass_share**.5)),
                         beat_detected=beat,
                         bpm=bpm,
                         beat_phase=phase,

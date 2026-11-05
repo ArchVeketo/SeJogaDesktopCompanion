@@ -1034,6 +1034,8 @@ class OverlayApp(ShowBase):
             drag_intensity=self._drag_intensity,
             music_playing=music_playing,
             music_intensity=music_intensity,
+            music_bass=music.bass_level if music else 0,
+            music_bpm=music.bpm if music else None,
             dance_chance=self.settings.music.dance_chance,
             react_to_beat=self.settings.music.react_to_beat,
             beat_detected=bool(music and music.beat_detected),

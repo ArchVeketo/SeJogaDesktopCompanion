@@ -12,6 +12,7 @@ from enum import StrEnum
 from .body_motion import BodyMotion
 from .leg_motion import LegMotion
 from .hand_motion import HandMotion
+from .dance_motion import DanceMotion
 
 from .rig import (
     IdlePersonality,
@@ -98,6 +99,7 @@ class AnimationController:
         self.body_motion = BodyMotion()
         self.leg_motion = LegMotion()
         self.hand_motion = HandMotion()
+        self.dance_motion = DanceMotion()
 
     def set_idle_personality(self, personality: IdlePersonality | str | None) -> None:
         """Escolhe uma personalidade ou devolve o idle à rotação automática."""
@@ -161,7 +163,7 @@ class AnimationController:
             return AnimationState.DRAG
         if gravity_active or (not grounded and speed > 120.0):
             return AnimationState.FALL
-        if music_playing and music_intensity > 0.12:
+        if music_playing and music_intensity > 0.01:
             return AnimationState.DANCE
         if grounded and speed > 700.0:
             return AnimationState.RUN
@@ -181,6 +183,8 @@ class AnimationController:
         drag_intensity: float = 0.0,
         music_playing: bool = False,
         music_intensity: float = 0.0,
+        music_bass: float = 0.0,
+        music_bpm: float | None = None,
         dance_chance: float = 1.0,
         react_to_beat: bool = True,
         beat_detected: bool = False,
@@ -216,7 +220,8 @@ class AnimationController:
         beat_edge = beat_detected and not self._previous_beat
         self._previous_beat = beat_detected
         if react_to_beat and beat_edge and self._dance_remaining > 0:
-            music_intensity = max(music_intensity, 0.75)
+            pass  # Onsets correct cadence; do not classify quiet audio as loud.
+        self.dance_motion.update(dt, music_intensity, music_bass, music_bpm, beat_edge)
         self._look_direction += (max(-1.0, min(1.0, look_direction)) - self._look_direction) * min(1.0, dt * 10.0)
         self._look_vertical += (max(-1.0, min(1.0, look_vertical)) - self._look_vertical) * min(1.0, dt * 10.0)
         if self._reaction is not None:
@@ -303,7 +308,7 @@ class AnimationController:
         elif self.state == AnimationState.FALL:
             pose_thrown(self.rig, self.state_time, velocity)
         elif self.state == AnimationState.DANCE:
-            pose_dance(self.rig, self.clock, music_intensity)
+            self.dance_motion.apply(self.rig)
         elif self.state == AnimationState.SLEEP:
             pose_sleep(self.rig, self.clock)
         elif self.state.value in ('hang_loose', 'thumbs_up', 'rock', 'finger_gun'):

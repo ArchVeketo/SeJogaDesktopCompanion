@@ -44,7 +44,12 @@ class LegMotion:
         elif state in ('land', 'hit'):
             compress = sin(min(1, time/.45)*3.14159265)
             target = LegPose(-8*compress, -8*compress, 16*compress, 16*compress)
-        elif state in ('idle', 'hover', 'dance'):
+        elif state == 'dance':
+            self.phase += dt*tau*1.3
+            step = sin(self.phase)
+            target = LegPose(step*7, -step*7, max(0,step)*12,
+                             max(0,-step)*12, max(0,step)*.012, max(0,-step)*.012)
+        elif state in ('idle', 'hover'):
             shift = max(-1, min(1, sway/5))
             target = LegPose(2*shift, -2*shift, max(0, shift)*4, max(0, -shift)*4)
         blend = 1-exp(-dt*7.5)

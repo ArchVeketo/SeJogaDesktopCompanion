@@ -28,6 +28,11 @@ def main():
         "calm", "curious", "playful", "shy", "confident", "street", "fighter", "rhythm", "stylish"
     ))
     cases.extend((name, {}) for name in ("hang_loose", "thumbs_up", "rock", "finger_gun"))
+    cases.extend((name, dict(music_playing=True, music_intensity=level,
+                             music_bass=bass, music_bpm=bpm, dance_chance=1.0))
+                 for name, level, bass, bpm in (('music-soft', .2, .02, 75),
+                                               ('music-hiphop', .55, .35, 95),
+                                               ('music-heavy', .95, .7, 145)))
     requested = set(sys.argv[1:])
     if requested:
         cases = [case for case in cases if case[0] in requested]
@@ -37,6 +42,9 @@ def main():
             animation=AnimationController(app.renderer.rig)
             app.animation_controller = animation
             animation._ambient_in=animation._peek_in=10000
+            if kind.startswith('music-'):
+                for _ in range(240):
+                    animation.update(1/60, **args)
             if kind in ("wave","stretch", "hang_loose", "thumbs_up", "rock", "finger_gun"):animation.interact(kind)
             if kind=="dance":animation._dance_rng.random=lambda:0.0
             if kind.startswith("idle-"):
