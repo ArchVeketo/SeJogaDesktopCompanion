@@ -10,6 +10,8 @@ class DanceMotion:
         self.dwell = 0.0
         self.pose = {}
         self.dt = 0.0
+        self.tempo = 90.0
+        self.strength = 0.0
 
     def update(self, dt, level, bass, bpm=None, beat=False):
         self.dt = dt
@@ -17,7 +19,10 @@ class DanceMotion:
         self.energy += (max(0,min(1,level))-self.energy)*blend
         self.bass += (max(0,min(1,bass))-self.bass)*blend
         tempo = max(55,min(180,bpm or 90))
-        self.phase += dt*tempo/60*tau
+        self.tempo += (tempo-self.tempo)*(1-exp(-dt*2))
+        previous_bar = int(self.phase/(4*tau))
+        self.phase += dt*self.tempo/60*tau
+        bar_boundary = int(self.phase/(4*tau)) != previous_bar
         if beat:
             # Soft phase correction avoids a discontinuity in the joints.
             error = (self.phase+tau/2)%tau-tau/2
@@ -26,12 +31,16 @@ class DanceMotion:
         desired = ('breakdance' if self.energy > .65 and self.bass > .3
                    else 'hip_hop' if self.bass > .12 and self.energy > .25
                    else 'head_bob')
-        if desired != self.style and self.dwell > 3:
+        if desired != self.style and self.dwell > 3 and bar_boundary:
             self.style, self.dwell = desired, 0.0
+        target_strength = .22 if self.style == 'head_bob' else .65 if self.style == 'hip_hop' else 1.0
+        self.strength += (target_strength-self.strength)*(1-exp(-dt*4))
 
     def apply(self, rig):
         p = self.phase
-        pulse = (1-cos(p))*.5
+        # Quick downward accent, slower recovery, then a readable rest.
+        local = (p/tau) % 1
+        pulse = (sin(local/.42*3.14159265)**2 if local < .42 else 0)
         amount = .4+self.energy*.6
         rig.set_rotation('door', y=0)
         if self.style == 'head_bob':
@@ -39,6 +48,8 @@ class DanceMotion:
             rig.set_rotation('body', x=-pulse*2, z=sin(p*.5)*1.5)
             rig.set_rotation('right-arm', z=60-sin(p)*3)
             rig.set_rotation('left-arm', z=-62+sin(p)*3)
+            rig.set_rotation('hand', x=-3*pulse, z=sin(p-.35)*2)
+            rig.set_rotation('hand2', x=-3*pulse, z=-sin(p-.35)*2)
         else:
             power = 1.6 if self.style == 'breakdance' else 1
             rig.set_rotation('body', x=-pulse*7*amount, z=sin(p*.5)*10*power*amount,

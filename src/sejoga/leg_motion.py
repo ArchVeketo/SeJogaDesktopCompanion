@@ -18,7 +18,8 @@ class LegMotion:
         self.pose = LegPose()
         self.phase = 0.0
 
-    def update(self, dt, state, velocity=(0, 0), time=0, sway=0):
+    def update(self, dt, state, velocity=(0, 0), time=0, sway=0,
+               dance_phase=None, dance_strength=1.0):
         dt = max(0, min(.1, dt))
         target = LegPose()
         if state in ('walk', 'run'):
@@ -45,8 +46,11 @@ class LegMotion:
             compress = sin(min(1, time/.45)*3.14159265)
             target = LegPose(-8*compress, -8*compress, 16*compress, 16*compress)
         elif state == 'dance':
-            self.phase += dt*tau*1.3
-            step = sin(self.phase)
+            if dance_phase is None:
+                self.phase += dt*tau*1.3
+            else:
+                self.phase = dance_phase
+            step = sin(self.phase*.5)*dance_strength
             target = LegPose(step*7, -step*7, max(0,step)*12,
                              max(0,-step)*12, max(0,step)*.012, max(0,-step)*.012)
         elif state in ('idle', 'hover'):

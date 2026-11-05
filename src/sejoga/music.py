@@ -50,7 +50,12 @@ class _BeatTracker:
         self._period = 0.0
 
     def update(self, rms: float, now: float, sensitivity: float) -> tuple[bool, float | None, float]:
+        if self._last_beat and now-self._last_beat > 4:
+            self._bpm = None
+            self._period = 0.0
+            self._beat_times.clear()
         baseline = statistics.median(self._levels) if self._levels else 0.0
+        previous = self._levels[-1] if self._levels else 0.0
         self._levels.append(rms)
 
         multiplier = 2.4 - 1.7 * max(0.0, min(1.0, sensitivity))
@@ -59,6 +64,7 @@ class _BeatTracker:
             len(self._levels) >= 5
             and rms >= threshold
             and rms >= 0.018
+            and rms > previous * 1.08
             and now - self._last_beat >= 0.26
         )
         if detected:

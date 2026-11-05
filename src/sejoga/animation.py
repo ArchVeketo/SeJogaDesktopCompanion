@@ -353,7 +353,9 @@ class AnimationController:
         displayed_pose = self.hand_motion.apply(self._pose, dt, self.state.value)
         self.rig.current = dict(displayed_pose)
         self.leg_motion.update(dt, self.state.value, velocity, self._reaction_time,
-                               self.body_motion.snapshot.limb_swing if dragging else self.body_motion.snapshot.roll)
+                               self.body_motion.snapshot.limb_swing if dragging else self.body_motion.snapshot.roll,
+                               dance_phase=self.dance_motion.phase,
+                               dance_strength=self.dance_motion.strength)
         return displayed_pose
 
     @staticmethod
