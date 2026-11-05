@@ -38,21 +38,32 @@ uma normal de repouso que, girada 180° em X, resulta em "palma para fora".
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from math import cos, degrees, radians, sin, sqrt
+from dataclasses import dataclass
+from math import degrees, radians, sin
 
-from .model import Model, Quat
+from .model import Model
 from .rig import ALL_GROUPS, Rotation3
+
+# FACHADA: a álgebra 3x3 (matrizes HPR, produto, aplicação, normalização e as
+# rotações por eixo) vive em ``rig_medidas`` desde a Fase 2. Este módulo passou
+# a REEXPORTAR esses símbolos em vez de duplicá-los, sem mudar assinaturas nem o
+# comportamento observável. As flags e dataclasses do console seguem aqui.
+from .rig_medidas import (
+  Mat3,
+  _aplicar3,
+  _identidade3,
+  _mul3,
+  _normalizar,
+  matriz_hpr,  # noqa: F401  # reexportado: API pública da fachada (seção 11.5)
+  matriz_hpr_de_rotacao,
+  matriz_rotacao_quat,
+)
 
 # --------------------------------------------------------------------------- #
 # Tipos de álgebra
 # --------------------------------------------------------------------------- #
+#: Alias histórico; ``Mat3`` é reexportado de ``rig_medidas`` (mesma definição).
 Vec3 = tuple[float, float, float]
-Mat3 = tuple[
-    float, float, float,
-    float, float, float,
-    float, float, float,
-]  # linha-maior: m[0..2]=linha 0, m[3..5]=linha 1, m[6..8]=linha 2
 
 # --------------------------------------------------------------------------- #
 # Constantes nomeadas de limiar e eixos
@@ -105,111 +116,10 @@ _FLAG_PALMA = {
     "ESQUERDA": "PALMA_PARA_DENTRO",
 }
 
-# --------------------------------------------------------------------------- #
-# Álgebra pura (matrizes 3x3 em linha-maior)
-# --------------------------------------------------------------------------- #
-def _identidade3() -> Mat3:
-  return (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
-
-
-def _mul3(a: Mat3, b: Mat3) -> Mat3:
-  """Produto de duas 3x3 em linha-maior (``a`` aplicada depois de ``b``)."""
-  out = [0.0] * 9
-
-  for linha in range(3):
-    for col in range(3):
-      out[linha * 3 + col] = sum(a[linha * 3 + k] * b[k * 3 + col] for k in range(3))
-
-  return tuple(out)  # type: ignore[return-value]
-
-
-def _aplicar3(m: Mat3, v: Vec3) -> Vec3:
-  """Aplica a 3x3 ``m`` ao vetor coluna ``v``."""
-  x, y, z = v
-
-  return (
-    m[0] * x + m[1] * y + m[2] * z,
-    m[3] * x + m[4] * y + m[5] * z,
-    m[6] * x + m[7] * y + m[8] * z,
-  )
-
-
-def _normalizar(v: Vec3) -> Vec3:
-  """Devolve ``v`` normalizado; vetor nulo volta como nulo (fail-safe)."""
-  comprimento = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
-
-  if comprimento == 0.0:
-    return (0.0, 0.0, 0.0)
-
-  return (v[0] / comprimento, v[1] / comprimento, v[2] / comprimento)
-
-
-def _rot_x(ang: float) -> Mat3:
-  """Rotação em torno de +X (radianos). Pitch do renderer (P)."""
-  c, s = cos(ang), sin(ang)
-
-  return (
-    1.0, 0.0, 0.0,
-    0.0, c, -s,
-    0.0, s, c,
-  )
-
-
-def _rot_y(ang: float) -> Mat3:
-  """Rotação em torno de +Y (radianos). Heading do renderer (H)."""
-  c, s = cos(ang), sin(ang)
-
-  return (
-    c, 0.0, s,
-    0.0, 1.0, 0.0,
-    -s, 0.0, c,
-  )
-
-
-def _rot_z(ang: float) -> Mat3:
-  """Rotação em torno de +Z (radianos). Roll do renderer (R)."""
-  c, s = cos(ang), sin(ang)
-
-  return (
-    c, -s, 0.0,
-    s, c, 0.0,
-    0.0, 0.0, 1.0,
-  )
-
-
-def matriz_hpr(h: float, p: float, r: float) -> Mat3:
-  """Reimplementa a composição HPR do Panda3D em álgebra pura (radianos).
-
-  O Panda aplica, de forma intrínseca, roll (R) primeiro, depois pitch (P),
-  depois heading (H). Como a última rotação aplicada ao vetor é a que fica mais
-  à direita no produto de matrizes, isso vira ``H * P * R`` (R multiplica o
-  vetor primeiro).
-
-  Mapa vindo de ``renderer.apply_rig_pose``: ``H=y``, ``P=x``, ``R=z``.
-  """
-  return _mul3(_rot_y(h), _mul3(_rot_x(p), _rot_z(r)))
-
-
-def matriz_hpr_de_rotacao(rot: Rotation3) -> Mat3:
-  """HPR a partir de um ``Rotation3`` animado (radianos): H=y, P=x, R=z."""
-  return matriz_hpr(rot.y, rot.x, rot.z)
-
-
-def matriz_rotacao_quat(quat: Quat) -> Mat3:
-  """Converte o quaternião de repouso de um ``Node`` glTF em 3x3 (linha-maior).
-
-  Mesma fórmula do ``model._trs``, só a parte rotacional.
-  """
-  x, y, z, w = quat
-  xx, yy, zz = x * x, y * y, z * z
-  xy, xz, yz = x * y, x * z, y * z
-  wx, wy, wz = w * x, w * y, w * z
-
-  return (
-    1 - 2 * (yy + zz), 2 * (xy - wz), 2 * (xz + wy),
-    2 * (xy + wz), 1 - 2 * (xx + zz), 2 * (yz - wx),
-    2 * (xz - wy), 2 * (yz + wx), 1 - 2 * (xx + yy),
-  )
+# A álgebra pura (``_identidade3``, ``_mul3``, ``_aplicar3``, ``_normalizar``,
+# ``matriz_hpr``, ``matriz_hpr_de_rotacao``, ``matriz_rotacao_quat``) é
+# importada de ``rig_medidas`` e reexportada acima: a definição é idêntica, só
+# deixou de ser duplicada aqui.
 
 
 # --------------------------------------------------------------------------- #
