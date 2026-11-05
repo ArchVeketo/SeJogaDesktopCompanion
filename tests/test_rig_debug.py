@@ -157,6 +157,74 @@ def test_porta_classifica_por_faixa(rig, model, angulo, esperado) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# MEMBROS — braço erguido vs. baixado; elevação
+# --------------------------------------------------------------------------- #
+def test_braco_em_repouso_fica_baixado(rig, model) -> None:
+  estado = rd.estado_rig(rig.pose(), model)
+
+  assert estado.membros["right-arm"].direcao_flag == "BAIXADO"
+  assert estado.membros["right-arm"].elevacao_graus < 0.0
+
+
+def test_braco_erguido_pela_rotacao_em_z(rig, model) -> None:
+  # Roll de +180° em Z gira o eixo longo de BAIXO (-Y) para CIMA (+Y).
+  rig.set_rotation("right-arm", z=180.0)
+  estado = rd.estado_rig(rig.pose(), model)
+
+  assert estado.membros["right-arm"].direcao_flag == "ERGUIDO"
+  assert estado.membros["right-arm"].elevacao_graus > 0.0
+
+
+def test_membro_lateral_pela_rotacao_em_z(rig, model) -> None:
+  rig.set_rotation("right-arm", z=90.0)
+  estado = rd.estado_rig(rig.pose(), model)
+
+  assert estado.membros["right-arm"].direcao_flag == "LATERAL"
+
+
+# --------------------------------------------------------------------------- #
+# ARTICULAÇÕES — cotovelo estendido vs. dobrado
+# --------------------------------------------------------------------------- #
+def test_cotovelo_em_repouso_estendido(rig, model) -> None:
+  estado = rd.estado_rig(rig.pose(), model)
+
+  assert estado.articulacoes["cotovelo_direito"].flag == "ESTENDIDO"
+
+
+def test_cotovelo_dobra_quando_antebraco_gira(rig, model) -> None:
+  # O antebraço gira em relação ao braço -> ângulo entre os eixos longos cresce.
+  rig.set_rotation("ant-arm", z=90.0)
+  estado = rd.estado_rig(rig.pose(), model)
+
+  art = estado.articulacoes["cotovelo_direito"]
+  assert art.flag == "DOBRADO"
+  assert art.graus >= rd.ARTICULACAO_DOBRADA_MIN_GRAUS
+
+
+# --------------------------------------------------------------------------- #
+# ORIENTAÇÃO GLOBAL — em pé vs. de cabeça para baixo
+# --------------------------------------------------------------------------- #
+def test_global_em_repouso_fica_em_pe(rig, model) -> None:
+  estado = rd.estado_rig(rig.pose(), model)
+
+  assert estado.orientacao_global.flag == "EM_PE"
+
+
+def test_global_corpo_rolado_155_fica_de_cabeca_pra_baixo(rig, model) -> None:
+  rig.set_rotation("body", z=155.0)
+  estado = rd.estado_rig(rig.pose(), model)
+
+  assert estado.orientacao_global.flag == "DE_CABECA_PRA_BAIXO"
+
+
+def test_global_corpo_tombado_90_fica_deitado(rig, model) -> None:
+  rig.set_rotation("body", z=90.0)
+  estado = rd.estado_rig(rig.pose(), model)
+
+  assert estado.orientacao_global.flag == "DEITADO"
+
+
+# --------------------------------------------------------------------------- #
 # FRONTEIRA — Python puro, sem engine
 # --------------------------------------------------------------------------- #
 def test_rig_debug_nao_importa_engine() -> None:

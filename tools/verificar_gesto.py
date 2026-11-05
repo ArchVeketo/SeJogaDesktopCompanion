@@ -44,6 +44,12 @@ if TYPE_CHECKING:
 
 RAIZ = Path(__file__).resolve().parent.parent
 
+# Garante que 'src' esteja no path para importar o pacote sejoga (rig_debug).
+_SRC = RAIZ / "src"
+
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 
 def _carregar_modulo(nome: str, caminho: Path) -> ModuleType:
     """Importa um .py solto como módulo (mesmo padrão do analisador/testes)."""
@@ -306,6 +312,125 @@ def _verificar_fase(
     return passou, medido
 
 
+# --------------------------------------------------------------------------- #
+# Ponte com o rig instrumentado (rig_debug): verifica a FLAG de uma PARTE num
+# instante do gesto. Reusa as séries já amostradas (grupo/eixo em graus) — não
+# reamostra nem redirige o rig; só reconstrói a pose do instante pedido.
+# --------------------------------------------------------------------------- #
+
+#: Cache do Model (carregar o glTF uma vez por processo).
+_MODELO_CACHE = None
+
+
+def _modelo():
+    """Carrega o Model do glTF de produção uma única vez (cacheado)."""
+    global _MODELO_CACHE
+
+    if _MODELO_CACHE is None:
+        from sejoga.assets import resolve_model
+        from sejoga.model import load_model
+
+        _MODELO_CACHE = load_model(resolve_model())
+
+    return _MODELO_CACHE
+
+
+def _indice_instante(am: aa.AmostragemClipe, instante: float | None) -> int:
+    """Índice do tempo amostrado mais próximo de ``instante`` (ou o último)."""
+    if instante is None:
+        return len(am.tempos) - 1
+
+    melhor = 0
+    melhor_dist = abs(am.tempos[0] - instante)
+
+    for i, t in enumerate(am.tempos):
+        dist = abs(t - instante)
+
+        if dist < melhor_dist:
+            melhor_dist = dist
+            melhor = i
+
+    return melhor
+
+
+def _pose_no_indice(am: aa.AmostragemClipe, indice: int):
+    """Reconstrói a pose (grupo -> Rotation3 em radianos) de um índice amostrado.
+
+    Lê os ângulos (em graus) já guardados em ``am.series`` e converte para o
+    ``Rotation3`` que ``rig_debug.estado_rig`` espera.
+    """
+    from sejoga.rig import Rotation3
+
+    pose: dict[str, Rotation3] = {}
+
+    for grupo, (sx, sy, sz) in am.series.items():
+        pose[grupo] = Rotation3(
+            math.radians(sx.angulo[indice]),
+            math.radians(sy.angulo[indice]),
+            math.radians(sz.angulo[indice]),
+        )
+
+    return pose
+
+
+def _flag_da_parte(estado, parte: str) -> str:
+    """Extrai a flag legível da ``parte`` de um ``EstadoRig``.
+
+    Suporta: partes do núcleo (mao_direita/mao_esquerda -> palma; cabeca -> olhar;
+    corpo -> inclinação; porta -> flag; orientacao_global -> flag), membros por
+    nome de grupo (right-arm, ant-arm, ...) e articulações (cotovelo_direito...).
+    """
+    if parte in ("mao_direita", "mao_esquerda"):
+        return getattr(estado, parte).palma_flag
+
+    if parte == "cabeca":
+        return estado.cabeca.olhar_flag
+
+    if parte == "corpo":
+        return estado.corpo.inclinacao_flag
+
+    if parte == "porta":
+        return estado.porta.flag
+
+    if parte == "orientacao_global":
+        return estado.orientacao_global.flag
+
+    if parte in estado.membros:
+        return estado.membros[parte].direcao_flag
+
+    if parte in estado.articulacoes:
+        return estado.articulacoes[parte].flag
+
+    raise KeyError(f"parte de rig_debug desconhecida: {parte!r}")
+
+
+def _verificar_flag(
+    am: aa.AmostragemClipe, exp: sg.ExpectativaGesto
+) -> tuple[bool, str]:
+    """FLAG: no instante medido, a ``parte`` deve estar na ``flag_esperada``.
+
+    Lê a pose do instante (das séries já amostradas), roda ``rig_debug.estado_rig``
+    e compara a flag legível da parte com a esperada.
+    """
+    from sejoga import rig_debug
+
+    if exp.parte is None or exp.flag_esperada is None:
+        return False, "expectativa FLAG mal definida (falta parte/flag_esperada)"
+
+    indice = _indice_instante(am, exp.instante)
+    pose = _pose_no_indice(am, indice)
+    estado = rig_debug.estado_rig(pose, _modelo())
+    obtida = _flag_da_parte(estado, exp.parte)
+
+    passou = obtida == exp.flag_esperada
+    medido = (
+        f"em t={am.tempos[indice]:.2f}s a parte '{exp.parte}' está "
+        f"{obtida} (esperado {exp.flag_esperada})"
+    )
+
+    return passou, medido
+
+
 _DISPATCH = {
     sg.TipoExpectativa.ERGUE: _verificar_ergue_abaixa,
     sg.TipoExpectativa.ABAIXA: _verificar_ergue_abaixa,
@@ -313,6 +438,7 @@ _DISPATCH = {
     sg.TipoExpectativa.ESTAVEL: _verificar_estavel,
     sg.TipoExpectativa.EIXO_CORRETO: _verificar_eixo_correto,
     sg.TipoExpectativa.FASE: _verificar_fase,
+    sg.TipoExpectativa.FLAG: _verificar_flag,
 }
 
 

@@ -45,6 +45,12 @@ class TipoExpectativa(StrEnum):
     #: referida em ``antes_de`` (ex.: o braço ergue antes de a mão acenar).
     FASE = "FASE"
 
+    #: No instante final do gesto, uma PARTE do corpo (lida por
+    #: ``sejoga.rig_debug.estado_rig``) deve estar numa FLAG esperada — ex.:
+    #: "ao fim do aceno a palma direita aponta para FORA". Complementa os eixos
+    #: crus: em vez de medir oscilação, afirma a ORIENTAÇÃO final legível.
+    FLAG = "FLAG"
+
 
 #: Sentido de uma expectativa ERGUE/ABAIXA no eixo:
 #: "negativo" = o ângulo diminui até o alvo; "positivo" = aumenta.
@@ -63,6 +69,7 @@ class ExpectativaGesto:
     - ESTAVEL: ``eixo`` (ou ``None`` = a junta inteira), ``epsilon``.
     - EIXO_CORRETO: ``eixo`` (o eixo que deve dominar a amplitude).
     - FASE: ``antes_de`` (grupo cujo movimento deve começar DEPOIS deste).
+    - FLAG: ``parte`` + ``flag_esperada`` (e ``instante``, padrão = fim do gesto).
 
     ``descricao`` é texto legível em PT para o laudo.
     """
@@ -81,6 +88,13 @@ class ExpectativaGesto:
     sentido: str = SENTIDO_NEGATIVO
     #: Grupo cujo movimento deve começar depois deste (FASE).
     antes_de: str | None = None
+    #: Parte do corpo lida por ``rig_debug.estado_rig`` (FLAG). Ex.: "mao_direita",
+    #: "cabeca", "orientacao_global", "right-arm" (membro), "cotovelo_direito".
+    parte: str | None = None
+    #: Flag esperada da ``parte`` no instante medido (FLAG). Ex.: "PALMA_PARA_FORA".
+    flag_esperada: str | None = None
+    #: Instante (s) em que a FLAG é medida; ``None`` = fim do gesto (duração).
+    instante: float | None = None
 
 
 @dataclass(frozen=True)
@@ -151,6 +165,13 @@ SPEC_WAVE = SpecGesto(
             tipo=TipoExpectativa.ESTAVEL,
             epsilon=1.0,
             descricao="o pé direito não se mexe (sem chute numa saudação)",
+        ),
+        ExpectativaGesto(
+            grupo="hand",
+            tipo=TipoExpectativa.FLAG,
+            parte="mao_direita",
+            flag_esperada="PALMA_PARA_FORA",
+            descricao="ao fim do aceno a palma direita fica virada para FORA",
         ),
     ),
 )

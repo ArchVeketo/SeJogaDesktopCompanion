@@ -76,6 +76,14 @@ CORPO_ERETO_MAX_GRAUS = 8.0
 #: Cabeça: tolerância (graus) para considerar olhar/inclinação "ao centro".
 CABECA_CENTRO_MAX_GRAUS = 8.0
 
+#: Cotovelo/joelho: a partir deste ângulo (graus) entre o segmento de cima e o
+#: de baixo, consideramos a articulação "dobrada" (senão "estendida").
+ARTICULACAO_DOBRADA_MIN_GRAUS = 20.0
+
+#: Membro (braço/perna): tolerância (graus) para considerar o eixo longo ainda
+#: "legível" como daquele eixo do mundo ao classificar a direção do membro.
+MEMBRO_CENTRO_MAX_GRAUS = 30.0
+
 #: Os seis eixos do mundo glTF, rotulados com a flag de direção correspondente.
 #: (vetor_unitario, rotulo). Y é cima.
 EIXOS_DO_MUNDO: tuple[tuple[Vec3, str], ...] = (
@@ -251,6 +259,31 @@ VETORES_REFERENCIA: dict[str, dict[str, Vec3]] = {
     "normal": (0.0, 0.0, 1.0),   # A VALIDAR (sentido de abertura depende da dobradiça)
     "eixo_giro": (0.0, 1.0, 0.0),
   },
+  # BRAÇOS, ANTEBRAÇOS, OMBROS, PERNAS, PÉS: todos compartilham a mesma ideia de
+  # "eixo longo do segmento". Em repouso os membros pendem para BAIXO (-Y), com
+  # os dedos/mãos/pés na ponta inferior. Rotações do rig giram esse eixo longo e
+  # dizem se o membro está erguido (+Y), baixado (-Y), lateral (±X) ou à
+  # frente/atrás (±Z). O ombro usa o mesmo eixo do braço que ele carrega.
+  "eixo_longo_membro": {
+    "longo": (0.0, -1.0, 0.0),   # repouso: segmento apontando para BAIXO
+  },
+}
+
+#: Grupos de membro cujo "eixo longo" é classificado com ``VETORES_REFERENCIA
+#: ['eixo_longo_membro']`` e cujo repouso pende para -Y. Documentado por parte.
+GRUPOS_MEMBRO: tuple[str, ...] = (
+  "right-arm", "left-arm",      # braços (parte superior)
+  "ant-arm", "ant-arm2",        # antebraços
+  "shoulder", "shoulder2",      # ombros (acompanham o braço)
+  "legs",                       # pernas/quadril (único nó de perna no rig)
+  "left-feet", "right-feet",    # pés
+)
+
+#: Pares (segmento_de_cima, segmento_de_baixo) para medir flexão de articulação:
+#: o ângulo entre os eixos longos acumulados diz COTOVELO/JOELHO dobrado ou não.
+PARES_ARTICULACAO: dict[str, tuple[str, str]] = {
+  "cotovelo_direito": ("right-arm", "ant-arm"),
+  "cotovelo_esquerdo": ("left-arm", "ant-arm2"),
 }
 
 # --------------------------------------------------------------------------- #
@@ -535,26 +568,165 @@ def flag_porta(pose: dict[str, Rotation3]) -> EstadoPorta:
 
 
 # --------------------------------------------------------------------------- #
+# Flags de membro (braços, antebraços, ombros, pernas, pés) e articulações
+# --------------------------------------------------------------------------- #
+#: Rótulo do eixo do mundo -> flag de direção de um membro. O eixo longo em
+#: repouso aponta para BAIXO; conforme ele gira, o membro fica ERGUIDO (+Y),
+#: BAIXADO (-Y), LATERAL (±X) ou À FRENTE/ATRÁS (±Z).
+_FLAG_MEMBRO = {
+  "CIMA": "ERGUIDO",
+  "BAIXO": "BAIXADO",
+  "DIREITA": "LATERAL",
+  "ESQUERDA": "LATERAL",
+  "FRENTE": "A_FRENTE",
+  "TRAS": "ATRAS",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class EstadoMembro:
+  """Direção do eixo longo de um braço/antebraço/ombro/perna/pé."""
+
+  grupo: str
+  direcao_flag: str   # ERGUIDO | BAIXADO | LATERAL | A_FRENTE | ATRAS
+  direcao_graus: float   # ângulo (graus) contra o eixo do mundo dominante
+  eixo_flag: str      # rótulo cru do eixo do mundo (CIMA/BAIXO/DIREITA/...)
+  elevacao_graus: float   # ângulo (graus) do eixo longo acima da horizontal
+
+
+@dataclass(frozen=True, slots=True)
+class EstadoArticulacao:
+  """Flexão de uma articulação (cotovelo/joelho) pelo ângulo entre segmentos."""
+
+  nome: str
+  flag: str   # DOBRADO | ESTENDIDO
+  graus: float   # ângulo (graus) entre o eixo longo de cima e o de baixo
+
+
+def direcao_membro(grupo: str, acumulado: dict[str, Mat3]) -> EstadoMembro:
+  """Classifica a direção do eixo longo acumulado de um membro."""
+  longo_repouso = VETORES_REFERENCIA["eixo_longo_membro"]["longo"]
+  m = acumulado.get(grupo, _identidade3())
+
+  longo = _normalizar(_aplicar3(m, longo_repouso))
+  rotulo, graus = classificar_direcao(longo)
+
+  # Elevação: quanto o eixo longo está acima (+) ou abaixo (-) da horizontal.
+  # Componente Y do vetor normalizado dá o seno do ângulo de elevação.
+  from math import asin
+
+  elevacao = degrees(asin(max(-1.0, min(1.0, longo[1]))))
+
+  return EstadoMembro(
+    grupo=grupo,
+    direcao_flag=_FLAG_MEMBRO[rotulo],
+    direcao_graus=graus,
+    eixo_flag=rotulo,
+    elevacao_graus=elevacao,
+  )
+
+
+def flag_articulacao(
+  nome: str,
+  acumulado: dict[str, Mat3],
+) -> EstadoArticulacao:
+  """Mede a flexão de uma articulação pelo ângulo entre os eixos longos.
+
+  Usa ``PARES_ARTICULACAO[nome]`` = (segmento_de_cima, segmento_de_baixo). Em
+  repouso os dois eixos longos coincidem (ângulo ~0 = ESTENDIDO); ao dobrar, o
+  ângulo cresce.
+  """
+  cima_grupo, baixo_grupo = PARES_ARTICULACAO[nome]
+  longo_repouso = VETORES_REFERENCIA["eixo_longo_membro"]["longo"]
+
+  m_cima = acumulado.get(cima_grupo, _identidade3())
+  m_baixo = acumulado.get(baixo_grupo, _identidade3())
+
+  eixo_cima = _aplicar3(m_cima, longo_repouso)
+  eixo_baixo = _aplicar3(m_baixo, longo_repouso)
+  graus = _angulo_entre(eixo_cima, eixo_baixo)
+
+  flag = "DOBRADO" if graus >= ARTICULACAO_DOBRADA_MIN_GRAUS else "ESTENDIDO"
+
+  return EstadoArticulacao(nome=nome, flag=flag, graus=graus)
+
+
+# --------------------------------------------------------------------------- #
+# Orientação GLOBAL do personagem
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True, slots=True)
+class EstadoGlobal:
+  """Orientação geral do personagem derivada do vetor 'cima' do corpo."""
+
+  flag: str   # EM_PE | DE_CABECA_PRA_BAIXO | DEITADO | INCLINADO
+  desvio_graus: float   # ângulo (graus) entre o 'cima' do corpo e o +Y do mundo
+
+
+def flag_global(acumulado: dict[str, Mat3]) -> EstadoGlobal:
+  """Classifica a orientação geral pelo vetor 'cima' acumulado do corpo.
+
+  Compara o eixo 'cima' do tronco contra +Y do mundo e decide pelo EIXO do
+  mundo mais próximo (mesma lógica de ``classificar_direcao`` usada em
+  ``EstadoCorpo.orientacao_flag``), para manter a leitura consistente:
+  - 'cima' ainda aponta ~CIMA e dentro da tolerância de ereto -> EM_PE;
+  - 'cima' aponta para BAIXO (invertido, ex.: corpo rolado ~155°) -> DE_CABECA_PRA_BAIXO;
+  - 'cima' caiu para a horizontal (DIREITA/ESQUERDA/FRENTE/TRAS) -> DEITADO;
+  - caso o desvio seja pequeno mas acima da tolerância de ereto -> INCLINADO.
+  """
+  cima_repouso = VETORES_REFERENCIA["body"]["cima"]
+  m = acumulado.get("body", _identidade3())
+
+  cima = _aplicar3(m, cima_repouso)
+  desvio = _angulo_entre(cima, (0.0, 1.0, 0.0))
+  rotulo, _ = classificar_direcao(cima)
+
+  if rotulo == "CIMA":
+    flag = "EM_PE" if desvio <= CORPO_ERETO_MAX_GRAUS else "INCLINADO"
+  elif rotulo == "BAIXO":
+    flag = "DE_CABECA_PRA_BAIXO"
+  else:
+    flag = "DEITADO"
+
+  return EstadoGlobal(flag=flag, desvio_graus=desvio)
+
+
+# --------------------------------------------------------------------------- #
 # Agregador
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True, slots=True)
 class EstadoRig:
-  """Leitura completa do núcleo: mãos, cabeça, corpo e porta."""
+  """Leitura completa do rig: mãos, cabeça, corpo, porta, membros e GLOBAL."""
 
   mao_direita: EstadoMao
   mao_esquerda: EstadoMao
   cabeca: EstadoCabeca
   corpo: EstadoCorpo
   porta: EstadoPorta
+  #: Direção do eixo longo por grupo de membro (ver ``GRUPOS_MEMBRO``).
+  membros: dict[str, EstadoMembro]
+  #: Flexão por articulação (ver ``PARES_ARTICULACAO``).
+  articulacoes: dict[str, EstadoArticulacao]
+  #: Orientação geral do personagem.
+  orientacao_global: EstadoGlobal
 
 
 def estado_rig(pose: dict[str, Rotation3], model: Model) -> EstadoRig:
-  """Agrega as flags do núcleo para uma pose completa.
+  """Agrega as flags de TODO o rig para uma pose completa.
 
   ``pose`` é o mesmo ``dict`` que o renderizador consome (``grupo -> Rotation3``
   em radianos). ``model`` é o ``Model`` lido do glTF (``model.load_model``).
   """
   acumulado = estado_acumulado(pose, model)
+
+  membros = {
+    grupo: direcao_membro(grupo, acumulado)
+    for grupo in GRUPOS_MEMBRO
+    if grupo in acumulado
+  }
+  articulacoes = {
+    nome: flag_articulacao(nome, acumulado)
+    for nome in PARES_ARTICULACAO
+  }
 
   return EstadoRig(
     mao_direita=flag_mao("hand", acumulado, pose),
@@ -562,4 +734,31 @@ def estado_rig(pose: dict[str, Rotation3], model: Model) -> EstadoRig:
     cabeca=flag_cabeca(acumulado, pose),
     corpo=flag_corpo(acumulado, pose),
     porta=flag_porta(pose),
+    membros=membros,
+    articulacoes=articulacoes,
+    orientacao_global=flag_global(acumulado),
   )
+
+
+# --------------------------------------------------------------------------- #
+# ESBOÇO (não implementado): overlay on-screen consumindo estado_rig
+# --------------------------------------------------------------------------- #
+# Um overlay de depuração que mostra as flags EM CIMA do mascote viveria na
+# camada de engine (window.py/renderer.py) e NÃO aqui — este módulo é puro de
+# propósito. O desenho fica do lado de lá; o texto vem daqui. Esboço do laço:
+#
+#   # dentro do renderer, a cada frame, com a MESMA pose já aplicada aos nós:
+#   from sejoga import rig_debug
+#   estado = rig_debug.estado_rig(rig.pose(), self._model)
+#   linhas = [
+#     f"palma D: {estado.mao_direita.palma_flag}",
+#     f"olhar:   {estado.cabeca.olhar_flag}",
+#     f"braço D: {estado.membros['right-arm'].direcao_flag}",
+#     f"cotovelo D: {estado.articulacoes['cotovelo_direito'].flag}",
+#     f"global:  {estado.orientacao_global.flag}",
+#   ]
+#   # self._texto_overlay seria um OnscreenText do Panda (ou um QLabel do Qt):
+#   self._texto_overlay.setText("\n".join(linhas))
+#
+# Só a construção das 'linhas' depende deste módulo; o widget/nó de texto e o
+# posicionamento ficam na camada de engine, preservando a fronteira.
