@@ -43,7 +43,7 @@ class HandMotion:
                 old = self.offsets.get(joint, (0, 0, 0))
                 rate = 10 if joint == arm else 7 if joint == wrist else 5
                 blend = 1-exp(-dt*rate)
-                offset = tuple(a+(b-a)*blend for a,b in zip(old,target))
+                offset = tuple(a+(b-a)*blend for a,b in zip(old,target, strict=True))
                 self.offsets[joint] = offset
                 base = pose[joint]
                 result[joint] = Rotation3(base.x+offset[0], base.y+offset[1], base.z+offset[2])

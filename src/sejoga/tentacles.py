@@ -1,6 +1,7 @@
 """Tentáculos volumétricos deformados por curvas 3D, com contato na porta."""
 import math
 import random
+from itertools import pairwise
 
 from panda3d.core import (
     Geom,
@@ -183,7 +184,7 @@ class TentacleRenderer:
     def _rest_center(z):
         profile = [(0, 0), (.0675, -.00805), (.135, -.0069), (.207, .00575),
                    (.279, .02875), (.351, .0644), (.432, .115)]
-        for (a, x), (b, y) in zip(profile, profile[1:]):
+        for (a, x), (b, y) in pairwise(profile):
             if z <= b:
                 return x + (y-x)*max(0.0, (z-a)/(b-a))
         return profile[-1][1]

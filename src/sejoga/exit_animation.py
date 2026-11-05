@@ -16,7 +16,7 @@ class ExitAnimation:
 
     def __init__(self, origin, size, desktop_bounds):
         self.origin = origin
-        left, top, right, bottom = desktop_bounds
+        left, top, right, _bottom = desktop_bounds
         self.direction = 1 if origin[0] + size / 2 >= (left + right) / 2 else -1
         self.target = (right + size if self.direction > 0 else left - size * 2, top - size * 2)
 

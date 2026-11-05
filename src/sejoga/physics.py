@@ -17,6 +17,7 @@ Implementa:
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import math
 import time
@@ -57,10 +58,8 @@ SHELF_CACHE_TTL = 0.3  # segundos - cache de prateleiras
 SHELF_REFRESH_DISTANCE = 200  # px - só refresh se mascote a < 200px de janela
 
 # DPI
-try:
+with contextlib.suppress(Exception):
     ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # PER_MONITOR_AWARE_V2
-except Exception:
-    pass
 
 # ============================================================
 # Estruturas de Dados
@@ -158,10 +157,7 @@ def is_valid_shelf(hwnd: int, own_pid: int) -> bool:
 
     # Área mínima
     rect = frame_bounds(hwnd)
-    if (rect[2] - rect[0]) < 50 or (rect[3] - rect[1]) < 30:
-        return False
-
-    return True
+    return not ((rect[2] - rect[0]) < 50 or (rect[3] - rect[1]) < 30)
 
 
 def get_all_shelves(own_hwnd: int, own_pid: int) -> list[Shelf]:
@@ -357,7 +353,8 @@ class ScreenSpacePhysics:
         self._last_shelf_refresh = now
         new_shelves = get_all_shelves(self.own_hwnd, self.own_pid)
 
-        signature = lambda items: [(x.hwnd, x.left, x.right, x.top_y) for x in items]
+        def signature(items):
+            return [(x.hwnd, x.left, x.right, x.top_y) for x in items]
         if signature(new_shelves) == signature(self.shelves):
             return
         if self.shelf_shapes:

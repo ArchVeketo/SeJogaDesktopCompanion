@@ -1,5 +1,6 @@
 """Ícone, entrada na barra de tarefas e menu do sistema da janela nativa."""
 import ctypes
+from typing import ClassVar
 
 import win32con
 import win32gui
@@ -8,7 +9,7 @@ import win32gui
 class DesktopIntegration:
     SETTINGS = 0x1F10
     PEEK = 0x1F20
-    DANCE_COMMANDS = {0x1F30:'head_bob', 0x1F40:'hip_hop', 0x1F50:'rock', 0x1F60:'breakdance'}
+    DANCE_COMMANDS: ClassVar[dict[int, str]] = {0x1F30:'head_bob', 0x1F40:'hip_hop', 0x1F50:'rock', 0x1F60:'breakdance'}
     CAPTURE = 0x1F70
 
     @staticmethod

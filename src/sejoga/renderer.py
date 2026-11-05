@@ -454,7 +454,7 @@ void main() {
             return
         # Grounded reaction now uses the shared spine and neck joints rather
         # than independently transforming disconnected top-level body parts.
-        for spine, neck, shoulders in self.flexible_rig.chains:
+        for spine, neck, _shoulders in self.flexible_rig.chains:
             spine.setHpr(motion.yaw, motion.pitch*.6+(10*settle if head_nod else 0),
                          motion.roll*.55+self.flexible_rig.spine.value)
             spine.setZ(.44-motion.compression*.06)
@@ -549,7 +549,7 @@ void main() {
             high=Vec3(speaker.width/2,speaker.depth*.85,speaker.height/2)
             self.tentacle_contacts.boxes.append(ObstacleBox('music-speaker',low,high,
                 self.model_np.getMat(speaker.root),speaker.root.getMat(self.model_np)))
-        for tentacle, local_anchor in zip(self.tentacle_pool.tentacles, self._tentacle_anchor_local):
+        for tentacle, local_anchor in zip(self.tentacle_pool.tentacles, self._tentacle_anchor_local, strict=True):
             anchor = self.model_np.getRelativePoint(head, local_anchor)
             delta = anchor - tentacle.anchor
             tentacle.anchor = Vec3(anchor)
@@ -593,7 +593,7 @@ void main() {
             head.setH(head.getH()-50*envelope)
             head.setP(head.getP()-9*preparation-24*shot)
             self._outline_nodes['head'].setHpr(head.getHpr())
-            for side,name in ((1,'right-arm'),(-1,'left-arm')):
+            for _side,name in ((1,'right-arm'),(-1,'left-arm')):
                 arm=self._rig_nodes[name]
                 arm.setP(arm.getP()-18*shot)
                 self._outline_nodes[name].setHpr(arm.getHpr())

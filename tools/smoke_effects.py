@@ -41,7 +41,7 @@ def main():
     def check_clearance():
         from panda3d.core import GeomVertexReader
         tentacles = app.renderer.tentacles
-        for data, np in zip(tentacles._data, tentacles.meshes):
+        for data, np in zip(tentacles._data, tentacles.meshes, strict=True):
             if np.isHidden():
                 continue
             reader = GeomVertexReader(data, "vertex")

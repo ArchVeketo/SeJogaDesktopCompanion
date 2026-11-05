@@ -37,7 +37,7 @@ class SpeakerEffects:
             node.setTwoSided(True);node.setCollideMask(0);node.hide()
             self.slime.append(node)
         self.waves=[]
-        for index in range(3):
+        for _index in range(3):
             lines=LineSegs('speaker-sound-wave')
             lines.setThickness(1.5)
             lines.setColor(1,.2,.6,1)

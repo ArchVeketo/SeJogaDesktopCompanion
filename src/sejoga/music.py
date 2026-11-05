@@ -7,6 +7,7 @@ processado em memória e descartado; nenhum buffer é salvo em disco.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import statistics
 import threading
@@ -77,7 +78,7 @@ class _BeatTracker:
                     self._beat_times.append(now)
                     intervals = [
                         current - previous
-                        for previous, current in zip(self._beat_times, list(self._beat_times)[1:])
+                        for previous, current in zip(self._beat_times, list(self._beat_times)[1:], strict=False)
                     ]
                     if intervals:
                         self._period = statistics.median(intervals)
@@ -142,10 +143,8 @@ class MusicListener:
             self._snapshot = replace(self._snapshot, updated_at=time.time(), **changes)
             snapshot = self._snapshot
         if self.on_update:
-            try:
+            with contextlib.suppress(Exception):
                 self.on_update(snapshot)
-            except Exception:
-                pass
 
     def _media_worker(self) -> None:
         apartment_initialized = False
@@ -160,10 +159,8 @@ class MusicListener:
             logger.warning("Sessão de mídia indisponível: %s", exc)
         finally:
             if apartment_initialized:
-                try:
+                with contextlib.suppress(Exception):
                     uninit_apartment()
-                except Exception:
-                    pass
 
     async def _poll_media_sessions(self) -> None:
         from winrt.windows.media.control import (

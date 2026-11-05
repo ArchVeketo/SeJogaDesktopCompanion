@@ -6,6 +6,7 @@ import ctypes
 import threading
 from collections.abc import Callable
 from ctypes import wintypes
+from typing import ClassVar
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor
@@ -135,7 +136,7 @@ class SettingsDialog(QDialog):
         form.addRow("Reação à música", self.music_input)
         form.addRow(self.beat_input)
         form.addRow("Sensibilidade da batida", self.sensitivity_input)
-        form.addRow("Frequência de dança (0–1)", self.dance_chance_input)
+        form.addRow("Frequência de dança (0–1)", self.dance_chance_input)  # noqa: RUF001  # intencional: travessao de intervalo (en dash) no rotulo exibido
         form.addRow("Estilo de dança", self.dance_style_input)
         for name, label in (
             ("toggle_overlay", "Mostrar/ocultar"),
@@ -255,7 +256,7 @@ class _HotkeyBridge(QObject):
 class HotkeyManager:
     """Registra atalhos globais Win32 e encaminha os eventos ao Qt."""
 
-    _MODIFIERS = {
+    _MODIFIERS: ClassVar[dict[str, int]] = {
         "alt": _MOD_ALT,
         "ctrl": _MOD_CONTROL,
         "control": _MOD_CONTROL,
@@ -263,7 +264,7 @@ class HotkeyManager:
         "win": _MOD_WIN,
         "meta": _MOD_WIN,
     }
-    _KEYS = {
+    _KEYS: ClassVar[dict[str, int]] = {
         "backspace": 0x08,
         "tab": 0x09,
         "enter": 0x0D,

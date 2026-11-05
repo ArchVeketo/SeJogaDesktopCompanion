@@ -10,6 +10,7 @@ import math
 import random
 from dataclasses import dataclass, field
 from enum import StrEnum
+from itertools import pairwise
 
 from panda3d.core import GeomVertexRewriter, NodePath, Quat, Vec3
 
@@ -379,7 +380,7 @@ class TentacleDirector:
 
     def _spawn_frenzy(self) -> None:
         active = self.pool.get_available(7)  # 6-8 tentáculos
-        for i, t in enumerate(active):
+        for t in active:
             t.state = TentacleState.FRENZY
             t.state_time = 0.0
             t.params = dict(STATE_PARAMS["frenzy"])
@@ -389,7 +390,7 @@ class TentacleDirector:
 
     def _spawn_swallow(self) -> None:
         active = self.pool.get_available(6)
-        for i, t in enumerate(active):
+        for t in active:
             t.state = TentacleState.REACHING
             t.state_time = 0.0
             t.params = dict(STATE_PARAMS["reaching"])
@@ -595,7 +596,6 @@ class TentacleDirector:
 
     def _check_state_transition(self, tentacle: Tentacle) -> None:
         st = tentacle.state
-        p = tentacle.params
 
         if st == TentacleState.CURIOUS:
             if tentacle.state_time > (.95 if self.burst else 4.8):
@@ -636,14 +636,13 @@ class TentacleDirector:
             # Frenzy mantém até director mandar parar
             pass
 
-        elif st == TentacleState.RETRACTING:
-            if tentacle.state_time > 1.2:
-                tentacle.state = TentacleState.DORMANT
-                tentacle.params = dict(STATE_PARAMS["dormant"])
-                tentacle.target = None
-                for segment in tentacle.segments:
-                    segment.pos = Vec3(tentacle.anchor)
-                    segment.vel = Vec3(0)
+        elif st == TentacleState.RETRACTING and tentacle.state_time > 1.2:
+            tentacle.state = TentacleState.DORMANT
+            tentacle.params = dict(STATE_PARAMS["dormant"])
+            tentacle.target = None
+            for segment in tentacle.segments:
+                segment.pos = Vec3(tentacle.anchor)
+                segment.vel = Vec3(0)
 
     def _update_frenzy(self, dt: float) -> None:
         # Targets caóticos que mudam frequentemente
@@ -797,7 +796,7 @@ def create_tentacle_geometry(
     fmt = GeomVertexFormat.getV3n3c4()
     vdata = GeomVertexData("procedural-tentacle", fmt, Geom.UHDynamic)
     vw, nw, cw = (GeomVertexWriter(vdata, name) for name in ("vertex", "normal", "color"))
-    for vertex, normal, color in zip(vertices, normals, colors):
+    for vertex, normal, color in zip(vertices, normals, colors, strict=True):
         vw.addData3(*vertex)
         nw.addData3(*normal)
         cw.addData4f(*color)
@@ -833,7 +832,7 @@ def create_tentacle_geometry(
                       (.207, .00575), (.279, .02875), (.351, .0644), (.432, .115))
     for x, y, z in vertices:
         bend = .115
-        for (za, xa), (zb, xb) in zip(profile_center, profile_center[1:]):
+        for (za, xa), (zb, xb) in pairwise(profile_center):
             if z <= zb:
                 bend = xa + (xb - xa) * max(0, (z - za) / (zb - za))
                 break
@@ -952,7 +951,7 @@ def update_tentacle_render(tentacle: Tentacle) -> None:
             tentacle._normal_rewriter = normal_writer
         vertex_writer.setRow(0)
         normal_writer.setRow(0)
-        for (u, x, y), local_normal in zip(tentacle.rest_vertices, tentacle.template_normals):
+        for (u, x, y), local_normal in zip(tentacle.rest_vertices, tentacle.template_normals, strict=True):
             if u not in cache:
                 frame = frame_at(u)
                 center = frame[0]

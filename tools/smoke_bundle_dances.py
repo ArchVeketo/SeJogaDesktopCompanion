@@ -48,7 +48,7 @@ def main():
     try:
         for _ in range(200):
             found=[]
-            win32gui.EnumWindows(lambda h,_: found.append(h) if win32process.GetWindowThreadProcessId(h)[1]==process.pid
+            win32gui.EnumWindows(lambda h,_,found=found: found.append(h) if win32process.GetWindowThreadProcessId(h)[1]==process.pid
                                  and win32gui.GetWindowText(h)=='SeJogaDesktopCompanion' else None,None)
             if found:
                 hwnd=found[0];break

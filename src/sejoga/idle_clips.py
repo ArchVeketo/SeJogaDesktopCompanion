@@ -5,6 +5,7 @@ starts and ends at zero; the relaxed base pose remains underneath the phrase.
 """
 
 from dataclasses import dataclass
+from itertools import pairwise
 from math import cos, sin, tau
 
 
@@ -18,11 +19,11 @@ def sample_track(keys, time):
     """Quintic easing keeps velocity and acceleration continuous at holds."""
     if time <= keys[0][0]:
         return keys[0][1]
-    for (start, a), (end, b) in zip(keys, keys[1:]):
+    for (start, a), (end, b) in pairwise(keys):
         if time <= end:
             u = (time - start) / (end - start)
             blend = u * u * u * (u * (u * 6 - 15) + 10)
-            return tuple(x + (y - x) * blend for x, y in zip(a, b))
+            return tuple(x + (y - x) * blend for x, y in zip(a, b, strict=True))
     return keys[-1][1]
 
 
@@ -125,5 +126,5 @@ def sample_idle(style: str, time: float) -> dict[str, tuple[float, float, float]
     for group, keys in clip.tracks.items():
         delta = sample_track(keys, local)
         base = pose.get(group, (0, 0, 0))
-        pose[group] = tuple(a + b for a, b in zip(base, delta))
+        pose[group] = tuple(a + b for a, b in zip(base, delta, strict=True))
     return pose

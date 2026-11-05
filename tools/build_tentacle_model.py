@@ -10,9 +10,11 @@ sys.path.insert(0, str(ROOT / "src"))
 from sejoga.tentacle_model import build_tentacle
 
 vertices, normals, colors, indices = build_tentacle()
-linear = lambda value: value / 12.92 if value <= .04045 else ((value + .055) / 1.055) ** 2.4
-colors = [tuple(linear(v) for v in color[:3]) + (color[3],) for color in colors]
-convert = lambda p: (p[0], p[2], -p[1])
+def linear(value):
+    return value / 12.92 if value <= .04045 else ((value + .055) / 1.055) ** 2.4
+colors = [(*tuple(linear(v) for v in color[:3]), color[3]) for color in colors]
+def convert(p):
+    return (p[0], p[2], -p[1])
 vertices, normals = [convert(p) for p in vertices], [convert(p) for p in normals]
 data = bytearray()
 views, accessors = [], []

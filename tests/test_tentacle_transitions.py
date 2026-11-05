@@ -67,7 +67,7 @@ def test_door_closing_respects_speed_limit():
 
 
 def test_speaker_throw_releases_limbs_and_allows_pool_reuse():
-    pool, director = scene()
+    _pool, director = scene()
     director.trigger_speaker_throw()
     limb = director.speaker_throw_limbs[0]
     limb.target = Vec3(.4, .3, .1)

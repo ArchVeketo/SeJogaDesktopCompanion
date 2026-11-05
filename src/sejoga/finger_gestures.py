@@ -43,11 +43,11 @@ class FingerGestures:
             current = hand.getHpr(renderer.model_np)
             desired = (0, 180, 90 if gesture != 'finger_gun' else 0)
             values = [a + ((b-a+180)%360-180)*self.presentation
-                      for a,b in zip(current, desired)]
+                      for a,b in zip(current, desired, strict=True)]
             hand.setHpr(renderer.model_np, *values)
             renderer._outline_nodes['hand'].setHpr(renderer.outline_np, *values)
-        self.amounts = [a+(b-a)*blend for a,b in zip(self.amounts,target)]
+        self.amounts = [a+(b-a)*blend for a,b in zip(self.amounts,target, strict=True)]
         for fingers in self.pivots:
-            for pivot, angle in zip(fingers, self.amounts):
+            for pivot, angle in zip(fingers, self.amounts, strict=True):
                 if pivot is not None:
                     pivot.setR(angle)

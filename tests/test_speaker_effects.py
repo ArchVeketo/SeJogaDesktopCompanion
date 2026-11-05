@@ -11,7 +11,7 @@ def test_slime_flows_then_clears_and_can_replay():
     lengths = [node.getSz() for node in effects.slime]
     assert all(not node.isHidden() for node in effects.slime)
     effects.update(4, 0, .8)
-    assert all(node.getSz() > initial for node, initial in zip(effects.slime, lengths))
+    assert all(node.getSz() > initial for node, initial in zip(effects.slime, lengths, strict=True))
     effects.update(7, 0, .8)
     assert all(node.isHidden() for node in effects.slime)
     effects.update(1.6, 0, .8)

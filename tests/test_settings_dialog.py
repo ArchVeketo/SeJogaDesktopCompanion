@@ -12,7 +12,7 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
 
     from sejoga import config
     from sejoga.ui import SettingsDialog
-    app = QApplication.instance() or QApplication([])
+    app = QApplication.instance() or QApplication([])  # noqa: F841  # intencional: mantem a QApplication viva durante o teste (evita GC)
     primary = tmp_path / "locked" / "config.toml"
     fallback = tmp_path / "fallback" / "config.toml"
     original = config._write_settings

@@ -1,5 +1,6 @@
 """Capture the full speaker entrance and settled musical pose."""
 import argparse
+import contextlib
 import json
 import sys
 import tempfile
@@ -66,10 +67,8 @@ def main():
         print('Scene checks passed.',flush=True)
     finally:
         app._force_exit=True
-        try:
+        with contextlib.suppress(SystemExit):
             app.userExit()
-        except SystemExit:
-            pass
 
 
 if __name__=='__main__':main()

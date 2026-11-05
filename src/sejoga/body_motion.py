@@ -92,7 +92,7 @@ class BodyMotion:
         self._engaged = engaged
         response = 1 - exp(-18 * dt)
         self.pointer_velocity = tuple(old + (new - old) * response
-                                      for old, new in zip(self.pointer_velocity, raw))
+                                      for old, new in zip(self.pointer_velocity, raw, strict=True))
         vx, vy = self.pointer_velocity
         if dragging:
             roll_target = clamp(vx * .012, -23, 23)

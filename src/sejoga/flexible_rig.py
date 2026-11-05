@@ -40,5 +40,5 @@ class FlexibleRig:
             spine.setPos(0,0,.44)
             spine.setHpr(0,0,self.spine.value)
             neck.setHpr(0,0,self.neck.value)
-            for side, shoulder in zip((1,-1), shoulders):
+            for side, shoulder in zip((1,-1), shoulders, strict=True):
                 shoulder.setP(self.shoulder.value*side)

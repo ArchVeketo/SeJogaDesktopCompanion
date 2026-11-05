@@ -1,3 +1,5 @@
+from itertools import pairwise
+
 from sejoga.animation import AnimationController, AnimationState
 from sejoga.rig import ALL_GROUPS, Rig, Rotation3
 
@@ -227,7 +229,7 @@ def test_tentacle_peeks_are_rare_but_manual_peek_remains_available():
             starts.append(frame/10)
         previous = animation.appendage_remaining > 0
     assert starts and starts[0] >= 59.9
-    assert all(b-a >= 60 for a,b in zip(starts, starts[1:]))
+    assert all(b-a >= 60 for a,b in pairwise(starts))
     other = controller()
     other.interact("peek")
     other.update(.1)

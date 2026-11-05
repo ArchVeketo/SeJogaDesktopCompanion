@@ -36,16 +36,15 @@ class LowerBody:
 
     def apply(self, pose, grounded):
         r = self.renderer
-        hips = [Vec3(-.125, 0, .4375), Vec3(.125, 0, .4375)]
         angles = (pose.left, pose.right)
         for index in range(2):
             self.hip_joints[index].setP(angles[index])
             self.knee_joints[index].setP((pose.left_knee,pose.right_knee)[index])
         thighs = [inverse*joint.getMat(r.model_np)
-                  for inverse,joint in zip(self.hip_inverse_rest,self.hip_joints)]
+                  for inverse,joint in zip(self.hip_inverse_rest,self.hip_joints, strict=True)]
         writer = GeomVertexWriter(self.data, 'vertex')
         normals = GeomVertexWriter(self.data, 'normal')
-        for vertex, normal in zip(self.vertices, self.normals):
+        for vertex, normal in zip(self.vertices, self.normals, strict=True):
             point = self.to_model.xformPoint(vertex)
             n = self.to_model.xformVec(normal)
             # Blend at the crotch and fade to the original waistband. Shared

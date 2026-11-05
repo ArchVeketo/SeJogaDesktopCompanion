@@ -42,7 +42,7 @@ def build_tentacle():
                                             (.275, .047, .017, .020), (.355, .030, .042, .015)):
         z, body_radius, bend, radius = z*.9, body_radius*1.15, bend*1.15, radius*1.1
         y = body_radius*math.cos(math.pi/8)
-        def circle(r, depth):
+        def circle(r, depth, bend=bend, y=y, z=z):
             return [(bend+r*math.cos(i*math.tau/6), y+depth, z+r*math.sin(i*math.tau/6)) for i in range(6)]
         back, lip, inner, hole = circle(radius, 0), circle(radius, .025), circle(radius*.58, .026), circle(radius*.45, .006)
         for side in range(6):

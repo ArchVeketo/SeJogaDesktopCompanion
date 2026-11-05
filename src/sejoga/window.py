@@ -11,6 +11,7 @@ Arquitetura:
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import logging
 import math
@@ -262,10 +263,8 @@ class OverlayApp(ShowBase):
         self._refresh_background_mode()
         self._update_z_order()
 
-        try:
+        with contextlib.suppress(Exception):
             ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
-        except Exception:
-            pass
 
     def _refresh_background_mode(self) -> None:
         """Windows uses the final framebuffer color, after PBR tone mapping."""
@@ -343,10 +342,6 @@ class OverlayApp(ShowBase):
         screen_w = win32api.GetSystemMetrics(0)
         screen_h = win32api.GetSystemMetrics(1)
 
-        # Obtém HWND e PID próprio
-        own_hwnd = self.hwnd
-        own_pid = os.getpid()
-
         self.physics = create_physics(
             mascot_radius=self.settings.physics.mascot_radius,
             screen_width=screen_w,
@@ -392,10 +387,9 @@ class OverlayApp(ShowBase):
                 raise
             return
         self.settings.window.start_position = (x, y)
-        if state.grounded and math.hypot(*state.velocity) < 5:
-            if self._last_rest_position != (x, y):
-                self._last_rest_position = (x, y)
-                self._persist_settings()
+        if state.grounded and math.hypot(*state.velocity) < 5 and self._last_rest_position != (x, y):
+            self._last_rest_position = (x, y)
+            self._persist_settings()
 
     def _set_physics_monitor(self, point) -> None:
         monitor = win32api.MonitorFromPoint(tuple(map(int, point)), 2)

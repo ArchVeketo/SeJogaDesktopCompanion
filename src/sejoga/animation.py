@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import random
 from enum import StrEnum
+from typing import ClassVar
 
 from .anim_layers import MASCARA_MUSICA, CamadaAnim, MixerCamadas
 from .body_motion import BodyMotion
@@ -153,7 +154,7 @@ class AnimationController:
         self._active_transition_seconds = max(self.transition_seconds, 1.0)
         self.state_time = 0.0
 
-    REACTION_SECONDS = {
+    REACTION_SECONDS: ClassVar[dict[AnimationState, float]] = {
         **{AnimationState(k): 3.2 for k in ("hang_loose", "thumbs_up", "rock", "finger_gun")},
         AnimationState.SNEEZE: 9.0,
         AnimationState.CLICK: 0.5,

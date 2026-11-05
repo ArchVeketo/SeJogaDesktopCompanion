@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from itertools import pairwise
 from math import degrees, exp, pi, radians, sin, tanh
 
 from .model import Model
@@ -627,7 +628,7 @@ def pose_throw_release(rig: Rig, t: float, grip: float = .5) -> None:
     """Release the captured grip, overshoot open, then settle over 0.9 seconds."""
     keys = [(0, 8+32*max(0, min(1, grip))), (.22, -22), (.6, 7), (.9, 3)]
     curl = keys[-1][1]
-    for (a, x), (b, y) in zip(keys, keys[1:]):
+    for (a, x), (b, y) in pairwise(keys):
         if t <= b:
             u = max(0, (t-a)/(b-a));u=u*u*(3-2*u)
             curl = x+(y-x)*u

@@ -130,7 +130,7 @@ def main():
         if app.physics:
             # Exercise a release through real Pymunk steps and real HWND moves.
             p = app.physics
-            left, top, right, bottom = p.bounds
+            left, top, right, _bottom = p.bounds
             p.set_position((left + right) / 2, top + 300)
             with patch("sejoga.physics.time.monotonic", return_value=10.0):
                 p.start_drag(*p.state.position)
