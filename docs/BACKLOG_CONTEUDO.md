@@ -157,3 +157,34 @@ Não contar com a IA modelando "bonito à mão". Em vez disso:
 
 ### Lógica de código que independe da arte (pode adiantar nesta máquina)
 - **Sistema de "segurar/spawnar prop"**: anexar uma geometria (GLTF) a uma junta do rig e acompanhar a pose. É reutilizável e pode ser construído e testado com um placeholder (ex.: um cubo) antes dos modelos reais existirem. Depois, cada prop é só geometria + config.
+
+---
+
+## 7. Instruções para o agente de arte/modelos (outro PC)
+
+Esta seção é um briefing para um agente mais capacitado em pixel art e modelagem 3D, que trabalhará na máquina com Blender instalado. O ambiente atual não tem Blender; tudo aqui é especificação para execução lá.
+
+### Contexto do asset existente
+- Modelo-fonte: `assets/model/projetoMARIO.bbmodel` (Blockbench) e `assets/model/mario.gltf` (runtime). Modelo **sem skin, sem ossos** — grupos são nós de transformação rígidos, animados proceduralmente. NÃO migrar para skin/bones (o motor de animação é procedural; ver seção sobre ossos abaixo).
+- Textura: `assets/model/Textura.png` (atlas). Estilo: low poly + street, alternando com pixelado em efeitos/UI.
+- Paleta de marca (do banner): fundo magenta/rosa-choque, verde-limão, roxo escuro, gosma rosa-pink, preto, tênis brancos.
+
+### Decisão sobre rig/ossos (registrada)
+NÃO riggar com ossos/skin nem usar Mixamo. O modelo de blocos rígidos não precisa de deformação de pele; Mixamo é animação baked (incompatível com o procedural reativo). Tensão de dobra, limites de junta e IK são resolvidos em CÓDIGO (sistema de springs por junta). O rig de nós de transformação atual é o correto para o estilo. Blender/MCP entra só para MODELAR GEOMETRIA NOVA (props/ambientes), como pipeline de asset — não para rig de animação do Mário.
+
+### Pipeline de geração de geometria (Blender + low-poly-ify)
+1. Modelar a forma base por operações (primitivas, booleanas, extrusões).
+2. Passo reutilizável de "low-poly-ify" (script Blender padronizado): decimate/remesh, flat shading (ângulos duros), paleta de poucas cores, UVs simples. É o que garante o estilo consistente.
+3. Exportar GLTF na escala/orientação do Mário (casar com `assets/model/mario.gltf`).
+4. Validar com glTF Validator; otimizar com gltf-transform/gltfpack se necessário.
+5. Props: cada prop = geometria + lógica de anexação a uma junta do rig (slot de "segurar prop", a construir em código).
+
+### Itens de arte a produzir (ver seções 2, 3, 4 para detalhes)
+- Props low poly/street: lata de spray, placa, guitarra, microfone, MP3 player da cintura (com UI de player pixelada).
+- Efeitos pixelados: notas musicais, ondas sonoras, poeiras (pouso/deslize/queda), Zzz, gosma rosa.
+- Ambientes (épico): laboratório, discoteca/sala de música, oficina, estúdio de gravação, sala de pintura.
+- Prop piloto recomendado para calibrar a receita de estilo antes de produzir o resto: placa ou MP3 player.
+
+### Pré-requisitos na máquina de arte
+- Blender 3.x/4.x + addon do blender-mcp + servidor MCP; configurar em `.kiro/settings/mcp.json`.
+- O Blender MCP controla uma instância aberta do Blender (não headless); fluxo interativo.
