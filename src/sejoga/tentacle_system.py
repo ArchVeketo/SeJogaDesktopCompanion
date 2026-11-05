@@ -327,6 +327,7 @@ class TentacleDirector:
         for tentacle in self.pool.tentacles:
             if tentacle.state != TentacleState.DORMANT:
                 self._update_tentacle(tentacle, dt)
+        self._separate_tentacles()
 
         # Door sync
         self._update_door(dt)
@@ -481,6 +482,32 @@ class TentacleDirector:
             seg.sucker_phase += dt * 3.0
         self._solve_contacts(tentacle)
 
+    def _separate_tentacles(self):
+        # Preserve embedded roots; solve the visible bodies as tapered spheres.
+        active = [t for t in self.pool.tentacles
+                  if t.state != TentacleState.DORMANT and t.reveal > .15]
+        for _ in range(3):
+            for a_index, a in enumerate(active):
+                for b in active[a_index + 1:]:
+                    for i, left in enumerate(a.segments[2:], 2):
+                        for j, right in enumerate(b.segments[2:], 2):
+                            ra = .072 * (1 - .88 * i / (len(a.segments)-1)) + .008
+                            rb = .072 * (1 - .88 * j / (len(b.segments)-1)) + .008
+                            delta = left.pos - right.pos
+                            distance = delta.length()
+                            if distance >= ra + rb:
+                                continue
+                            normal = delta / distance if distance > 1e-7 else Vec3(1, 0, 0)
+                            correction = normal * min(.012, (ra + rb - distance) * .5)
+                            left.pos += correction
+                            right.pos -= correction
+                            closing = (left.vel - right.vel).dot(normal)
+                            if closing < 0:
+                                left.vel -= normal * closing * .5
+                                right.vel += normal * closing * .5
+            for tentacle in active:
+                self._solve_contacts(tentacle)
+
     def _solve_contacts(self, tentacle):
         if not tentacle.contacts:
             return
@@ -602,15 +629,14 @@ class TentacleDirector:
         for index, t in enumerate(active):
             t.state = TentacleState.CURIOUS
             # Stagger the pair so the second tentacle follows the first.
-            t.state_time = -0.32 * index
+            t.state_time = -0.48 * index
             t.params = dict(STATE_PARAMS["curious"])
-            # Move toward the cabinet front and rise above its door, so the
-            # tentacles read from the normal frontal camera angle.
-            t.target = t.anchor + Vec3(
-                (65.0 if index % 2 == 0 else -65.0) * self.pool.unit_scale,
-                (50.0 if index % 2 == 0 else 25.0) * self.pool.unit_scale,
-                30.0 * self.pool.unit_scale,
-            )
+            # Concept silhouette: crown, side curl, then lower tendrils.
+            # Targets have independent depth so the limbs do not form a flat fan.
+            offsets = ((-48, 55, 46), (58, 38, -32), (-64, 32, 8),
+                       (32, 68, -48), (42, 44, 50), (-30, 76, -40))
+            offset = Vec3(*offsets[index % len(offsets)]) * self.pool.unit_scale
+            t.target = t.anchor + offset
         self._door_requested = max(self._door_requested, 85.0)
 
 
