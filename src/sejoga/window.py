@@ -328,6 +328,8 @@ class Panda3DRenderer:
         )
         from .tentacle_drips import TentacleDrips
         self.tentacle_drips = TentacleDrips(self.model_np)
+        from .finger_gestures import FingerGestures
+        self.finger_gestures = FingerGestures(self)
         for tentacle in self.tentacle_pool.tentacles:
             create_tentacle_geometry(tentacle, self.model_np, self.outline_np)
         self.tentacle_director = TentacleDirector(
@@ -600,6 +602,7 @@ void main() {
         if not self.tentacle_director:
             return
         controller = self.showbase.animation_controller
+        self.finger_gestures.update(dt, controller.state.value if controller.state else None)
         sneezing = controller.state is not None and controller.state.value == 'sneeze'
         if sneezing and controller._reaction_time >= 3.6 and not self.tentacle_director.burst:
             self.tentacle_director.trigger_sneeze()

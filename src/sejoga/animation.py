@@ -50,6 +50,10 @@ class AnimationState(StrEnum):
     PEEK = "peek"
     HIT = "hit"
     SNEEZE = "sneeze"
+    HANG_LOOSE = "hang_loose"
+    THUMBS_UP = "thumbs_up"
+    ROCK = "rock"
+    FINGER_GUN = "finger_gun"
 
 
 class AnimationController:
@@ -114,6 +118,7 @@ class AnimationController:
         self.state_time = 0.0
 
     REACTION_SECONDS = {
+        **{AnimationState(k): 3.2 for k in ("hang_loose", "thumbs_up", "rock", "finger_gun")},
         AnimationState.SNEEZE: 9.0,
         AnimationState.CLICK: 0.5,
         AnimationState.DOUBLE_CLICK: 1.4,
@@ -301,6 +306,12 @@ class AnimationController:
             pose_dance(self.rig, self.clock, music_intensity)
         elif self.state == AnimationState.SLEEP:
             pose_sleep(self.rig, self.clock)
+        elif self.state.value in ('hang_loose', 'thumbs_up', 'rock', 'finger_gun'):
+            pose_idle(self.rig, self.clock, self.idle_personality)
+            self.rig.set_rotation('right-arm', x=-15, z=15)
+            self.rig.set_rotation('ant-arm', x=-12, z=-45)
+            self.rig.set_rotation('hand', x=180, y=0, z=0)
+            self.rig.set_rotation('fingers', z=0)
         elif self.state == AnimationState.SNEEZE:
             from .rig import pose_sneeze
             pose_sneeze(self.rig, self._reaction_time)

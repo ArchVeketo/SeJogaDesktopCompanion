@@ -27,6 +27,7 @@ def main():
     cases.extend((f"idle-{style}", {}) for style in (
         "calm", "curious", "playful", "shy", "confident", "street", "fighter", "rhythm", "stylish"
     ))
+    cases.extend((name, {}) for name in ("hang_loose", "thumbs_up", "rock", "finger_gun"))
     requested = set(sys.argv[1:])
     if requested:
         cases = [case for case in cases if case[0] in requested]
@@ -34,8 +35,9 @@ def main():
     try:
         for kind, args in cases:
             animation=AnimationController(app.renderer.rig)
+            app.animation_controller = animation
             animation._ambient_in=animation._peek_in=10000
-            if kind in ("wave","stretch"):animation.interact(kind)
+            if kind in ("wave","stretch", "hang_loose", "thumbs_up", "rock", "finger_gun"):animation.interact(kind)
             if kind=="dance":animation._dance_rng.random=lambda:0.0
             if kind.startswith("idle-"):
                 animation.set_idle_personality(kind.removeprefix("idle-"))
