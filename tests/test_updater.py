@@ -140,10 +140,51 @@ def test_installed_channel_and_stable_launcher_are_found_outside_runtime(tmp_pat
     launcher = tmp_path/'SeJogaLauncher.exe'
     launcher.write_bytes(b'fixture')
     assert updater.installed_launcher() == launcher
-    from sejoga.config import profile_app_name
-    assert profile_app_name().endswith('-prerelease')
+    from sejoga.config import APP_NAME, profile_app_name
+    # Instalador unico: o perfil mora sempre no mesmo caminho, independente do canal.
+    assert profile_app_name() == APP_NAME
     (current/'release-info.json').write_text('invalid')
     assert updater.installed_release() is None
+
+
+def test_config_channel_drives_update_feed(monkeypatch):
+    # Dado o canal 'prerelease' na config, a checagem consulta o feed desse canal.
+    calls = []
+
+    def read(url, limit):
+        calls.append(url)
+        raise HTTPError('feed', 404, 'missing', {}, None)
+
+    monkeypatch.setattr(updater, '_read', read)
+    from sejoga.config import Settings
+    settings = Settings()
+    settings.update.channel = 'prerelease'
+    current = updater.release_para_checagem(settings.update.channel)
+    assert current.channel == 'prerelease'
+    assert updater.check_update(current) is None
+    assert calls == [f'https://github.com/{updater.REPOSITORY}/releases/download/updates-prerelease/channel.json']
+
+
+def test_release_para_checagem_prefers_installed_release(monkeypatch):
+    monkeypatch.setattr(updater, 'installed_release',
+                        lambda: ReleaseInfo('0.2.0rc1', 'prerelease', 7))
+    assert updater.release_para_checagem('prerelease') == ReleaseInfo('0.2.0rc1', 'prerelease', 7)
+    # Canal diferente do instalado cai para a versao-piso do canal pedido.
+    assert updater.release_para_checagem('release') == ReleaseInfo('0.1.0', 'release', 0)
+
+
+def test_reescrever_canal_channel_info_preserva_campos(tmp_path):
+    path = tmp_path / 'channel-info.json'
+    path.write_text(json.dumps({'channel': 'release', 'scope': 'machine'}), encoding='utf-8')
+    assert updater.reescrever_canal_channel_info(path, 'nightly') is True
+    dados = json.loads(path.read_text(encoding='utf-8-sig'))
+    assert dados == {'channel': 'nightly', 'scope': 'machine'}
+    assert list(tmp_path.glob('channel-info-*.tmp')) == []
+
+
+def test_reescrever_canal_channel_info_ausente_nao_falha(tmp_path):
+    ausente = tmp_path / 'nao-existe.json'
+    assert updater.reescrever_canal_channel_info(ausente, 'release') is False
 
 
 def test_external_redirect_is_blocked_before_following():

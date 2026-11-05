@@ -13,6 +13,7 @@ def test_defaults():
     assert s.window.always_on_top is True
     assert s.physics.enabled is True
     assert s.music.source == "media_session"
+    assert s.update.channel == "release"
     assert 0 < s.window.scale <= 4
 
 
@@ -26,6 +27,7 @@ def test_roundtrip(tmp_path):
     s.window.mode = "desktop"
     s.physics.bounce = 0.2
     s.music.enabled = False
+    s.update.channel = "prerelease"
 
     save_settings(s, path)
     assert path.is_file()
@@ -38,6 +40,7 @@ def test_roundtrip(tmp_path):
     assert loaded.window.mode == "desktop"
     assert loaded.physics.bounce == pytest.approx(0.2)
     assert loaded.music.enabled is False
+    assert loaded.update.channel == "prerelease"
 
 
 def test_corrupted_file_falls_back_to_defaults(tmp_path, capsys):

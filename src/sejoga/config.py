@@ -37,10 +37,8 @@ APP_AUTHOR = "ArchVeketo"
 
 
 def profile_app_name() -> str:
-    """Stable profiles keep their path; preview channels stay isolated."""
-    from .updater import installed_release
-    release = installed_release()
-    return APP_NAME if release is None or release.channel == 'release' else f'{APP_NAME}-{release.channel}'
+    """Instalador único: o perfil mora sempre no mesmo caminho (APP_NAME)."""
+    return APP_NAME
 
 
 def default_config_path() -> Path:
@@ -71,6 +69,13 @@ def portable_config_path() -> Path | None:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent / "user-data" / "config.toml"
     return None
+
+
+class UpdateSettings(BaseModel):
+    """Preferências de atualização (canal escolhido pelo usuário)."""
+
+    channel: Literal["release", "prerelease", "nightly"] = "release"
+    """Canal que o updater consulta; ``release`` é o padrão estável."""
 
 
 class WindowSettings(BaseModel):
@@ -180,6 +185,7 @@ class Settings(BaseSettings):
     behavior: BehaviorSettings = Field(default_factory=BehaviorSettings)
     audio: AudioSettings = Field(default_factory=AudioSettings)
     hotkeys: HotkeySettings = Field(default_factory=HotkeySettings)
+    update: UpdateSettings = Field(default_factory=UpdateSettings)
     first_run_done: bool = False
 
 

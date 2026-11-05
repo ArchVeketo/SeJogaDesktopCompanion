@@ -146,6 +146,58 @@ def check_update(current: ReleaseInfo) -> Update | None:
     return parse_manifest(data, current)
 
 
+# Versão base do pacote (pyproject); usada como piso quando não estamos "frozen".
+BASE_VERSION = '0.1.0'
+# Versões-piso válidas por canal para montar a checagem a partir da config.
+# ReleaseInfo valida canal x versão, então cada canal precisa de uma versão compatível.
+_VERSAO_PISO_POR_CANAL = {
+    'release': BASE_VERSION,
+    'prerelease': f'{BASE_VERSION}a1',
+    'nightly': f'{BASE_VERSION}.dev1',
+}
+
+
+def release_para_checagem(channel: str) -> ReleaseInfo:
+    """Monta o ReleaseInfo de checagem a partir do canal escolhido na config.
+
+    Quando "frozen", usa o release instalado (versão/build_id reais) se ele
+    pertencer ao canal pedido; caso contrário parte da versão-piso do canal,
+    de modo que qualquer build publicado no feed seja considerado mais novo.
+    """
+    if channel not in CHANNELS:
+        raise ValueError('Canal de atualização inválido.')
+    instalado = installed_release()
+    if instalado is not None and instalado.channel == channel:
+        return instalado
+    return ReleaseInfo(version=_VERSAO_PISO_POR_CANAL[channel], channel=channel, build_id=0)
+
+
+def reescrever_canal_channel_info(path: Path, channel: str) -> bool:
+    """Reescreve atomicamente o campo ``channel`` de um ``channel-info.json``.
+
+    Mantém os demais campos (``scope`` etc.). Guard clause: se o arquivo não
+    existir (execução em modo fonte/dev), não falha e retorna ``False``.
+    """
+    if channel not in CHANNELS:
+        raise ValueError('Canal de atualização inválido.')
+    if not path.is_file():
+        return False
+    dados = json.loads(path.read_text(encoding='utf-8-sig'))
+    if not isinstance(dados, dict):
+        raise ValueError('channel-info.json inválido.')
+    dados['channel'] = channel
+    conteudo = json.dumps(dados, ensure_ascii=False)
+    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                                     prefix='channel-info-', suffix='.tmp', delete=False) as stream:
+        temporario = Path(stream.name)
+        stream.write(conteudo)
+    try:
+        temporario.replace(path)
+    finally:
+        temporario.unlink(missing_ok=True)
+    return True
+
+
 def installed_launcher() -> Path | None:
     if not getattr(sys, 'frozen', False):
         return None
