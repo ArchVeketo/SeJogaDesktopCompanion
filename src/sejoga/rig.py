@@ -272,25 +272,19 @@ def pose_idle(
 
 
 def pose_walk(rig: Rig, t: float, *, run: bool = False) -> None:
-    """Passada alternada com braços, antebraços, pés e balanço do tronco."""
+    """Passada alternada, lida de um clipe de keyframes (ver anim_clips)."""
+    from .anim_clips import amostrar_clipe
     frequency = 2.5 if run else 1.5
-    arm_angle = 24.0 if run else 16.0
-    stride = sin(t * 2.0 * 3.141592653589793 * frequency)
+    # Um ciclo do clipe = uma passada completa; a frequência controla o ritmo.
+    pose = amostrar_clipe("run" if run else "walk", t * frequency)
     rig.set_rotation("legs", x=0)
     rig.set_rotation("left-feet", x=0)
     rig.set_rotation("right-feet", x=0)
-    base_angle = 50.0 if run else 58.0
-    vertical_swing = 18.0 if run else 12.0
-    rig.set_rotation("right-arm", x=-stride * arm_angle, z=base_angle - stride * vertical_swing)
-    rig.set_rotation("left-arm", x=stride * arm_angle, z=-base_angle - stride * vertical_swing)
-    ant_arm_x = -stride * arm_angle * 0.65
-    rig.set_rotation("ant-arm", x=ant_arm_x, z=-22.0 + stride * 10.0)
-    rig.set_rotation("ant-arm2", x=-ant_arm_x, z=22.0 + stride * 10.0)
-    rig.set_rotation("body", x=4.0 if run else 1.5, z=stride * (4.0 if run else 2.0))
-    rig.set_rotation("head", x=5.0 if run else 0.0, y=-stride * 3.5)
+    for group, (x, y, z) in pose.items():
+        rig.set_rotation(group, x=x, y=y, z=z)
 
-    # Shoulder compensation
-    shoulder_comp = ant_arm_x * 0.15
+    # Compensação de ombro a partir do antebraço amostrado do clipe.
+    shoulder_comp = degrees(rig.current["ant-arm"].x) * 0.15
     rig.set_rotation("shoulder", x=shoulder_comp)
     rig.set_rotation("shoulder2", x=-shoulder_comp)
 

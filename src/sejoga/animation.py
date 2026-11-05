@@ -14,6 +14,9 @@ from .leg_motion import LegMotion
 from .hand_motion import HandMotion
 from .dance_motion import DanceMotion
 
+from .joint_springs import SpringPose
+from .anim_layers import CamadaAnim, MixerCamadas
+
 from .rig import (
     IdlePersonality,
     Rig,
@@ -103,6 +106,12 @@ class AnimationController:
         self.dance_motion = DanceMotion()
         self._dance_preview_remaining = 0.0
         self._dance_preview_style = 'head_bob'
+        # Crossfade por junta com continuidade de velocidade: a pose exibida
+        # persegue o alvo autoral com molas, em vez de um blend linear que
+        # zera a velocidade a cada troca de estado.
+        self._crossfade = SpringPose(frequencia=2.6, amortecimento=0.98)
+        self._crossfade.definir(dict(self._pose))
+        self._just_transitioned = True
 
     def preview_dance(self, style):
         if style not in ('head_bob', 'hip_hop', 'rock', 'breakdance'):
@@ -128,6 +137,8 @@ class AnimationController:
         self._personality_locked = True
         self._personality_elapsed = 0.0
         self._transition_from = dict(self._pose)
+        self._crossfade.definir(dict(self._pose))
+        self._just_transitioned = True
         self._active_transition_seconds = max(self.transition_seconds, 1.0)
         self.state_time = 0.0
 
@@ -308,6 +319,8 @@ class AnimationController:
                 self._personality_elapsed = 0.0
                 self._personality_interval = self._personality_rng.uniform(24.0, 36.0)
                 self._transition_from = dict(self._pose)
+                self._crossfade.definir(dict(self._pose))
+                self._just_transitioned = True
                 self._active_transition_seconds = max(self.transition_seconds, 1.4)
                 self.state_time = 0.0
         elif next_state != AnimationState.IDLE:
@@ -315,6 +328,8 @@ class AnimationController:
 
         if next_state != self.state:
             self._transition_from = dict(self._pose)
+            self._crossfade.definir(dict(self._pose))
+            self._just_transitioned = True
             self.state = next_state
             self.state_time = 0.0
             self._active_transition_seconds = (min(self.transition_seconds, .22)
@@ -387,16 +402,32 @@ class AnimationController:
         if self.appendage_remaining > 0:
             self.rig.set_rotation('door', y=85)
         target = self.rig.pose()
-        if self._active_transition_seconds == 0.0:
-            alpha = 1.0
-        else:
-            linear = min(1.0, self.state_time / self._active_transition_seconds)
-            alpha = linear ** 3 * (linear * (linear * 6.0 - 15.0) + 10.0)
+        # A saída por junta passa pelo mixer de camadas. A pose autoral é a
+        # camada base; dança/pernas/mãos continuam como camadas aplicadas a
+        # jusante. Hoje só há a base, então a composição é identidade — o
+        # roteamento fica pronto para as demais camadas das FEATs seguintes.
+        composed = MixerCamadas.compor([CamadaAnim("base", dict(target))])
 
-        self._pose = {
-            group: self._blend(self._transition_from.get(group, Rotation3()), rotation, alpha)
-            for group, rotation in target.items()
-        }
+        if self._active_transition_seconds == 0.0:
+            # Sem crossfade: a pose exibida acompanha o alvo diretamente.
+            self._crossfade.definir(composed)
+            self._pose = {group: composed.get(group, Rotation3()) for group in composed}
+            self._just_transitioned = False
+        elif self._just_transitioned:
+            # Primeiro frame após a troca: segura a pose anterior (continuidade
+            # de posição e velocidade) antes de a mola começar a perseguir.
+            self._crossfade.definir({group: self._transition_from.get(group, Rotation3())
+                                     for group in composed})
+            self._pose = {group: self._transition_from.get(group, Rotation3())
+                          for group in composed}
+            self._just_transitioned = False
+        else:
+            # Molas por junta: continuidade de velocidade ao longo do crossfade,
+            # em vez do blend linear que reiniciava a velocidade a cada troca.
+            frequencia = max(0.6, 1.0 / self._active_transition_seconds)
+            for mola in self._crossfade.molas.values():
+                mola.x.frequency = mola.y.frequency = mola.z.frequency = frequencia
+            self._pose = self._crossfade.atualizar(dt, composed)
         displayed_pose = self.hand_motion.apply(self._pose, dt, self.state.value)
         self.rig.current = dict(displayed_pose)
         self.leg_motion.update(dt, self.state.value, velocity, self._reaction_time,

@@ -1,5 +1,12 @@
-"""Audio-driven dance phrasing with smoothed energy and style dwell time."""
-from math import cos, exp, sin, tau
+"""Dança guiada por áudio: fraseado por batida/compasso e molas por junta.
+
+A amplitude e os acentos vêm de um envelope por batida (acento no downbeat,
+transições em borda de frase) em vez de ``sin(t)`` cru; o resultado por junta
+é suavizado por molas amortecidas, dando peso e recuperação naturais.
+"""
+from math import exp, sin, tau
+
+from .joint_springs import SpringPose
 
 
 class DanceMotion:
@@ -14,6 +21,9 @@ class DanceMotion:
         self.strength = 0.0
         self.override = 'auto'
         self.style_beats = 0.0
+        # Acento do downbeat (0..1) e molas por junta para a saída.
+        self.acento = 0.0
+        self._molas = SpringPose(frequencia=4.5, amortecimento=0.55)
 
     def update(self, dt, level, bass, bpm=None, beat=False):
         self.dt = dt
@@ -42,12 +52,20 @@ class DanceMotion:
             self.style_beats = 0.0
         target_strength = .22 if self.style == 'head_bob' else .65 if self.style == 'hip_hop' else 1.0
         self.strength += (target_strength-self.strength)*(1-exp(-dt*4))
+        # Envelope por batida: acento forte no downbeat (início do compasso),
+        # decaindo ao longo da batida. A energia do áudio escala o acento.
+        batida = (self.phase / tau) % 1
+        downbeat = (self.phase / (4 * tau)) % 1
+        acento = (1 - batida) ** 2 * (1 + (1 - downbeat) * .6)
+        self.acento += (acento * (.4 + self.energy * .6) - self.acento) * (1 - exp(-dt * 9))
 
     def apply(self, rig):
         p = self.phase
-        # Quick downward accent, slower recovery, then a readable rest.
+        # Acento vindo do envelope por batida/compasso (downbeat mais forte),
+        # em vez de um pulso derivado só da fase local.
         local = (p/tau) % 1
         pulse = (sin(local/.42*3.14159265)**2 if local < .42 else 0)
+        pulse = max(pulse, self.acento)
         amount = .4+self.energy*.6
         rig.set_rotation('door', y=0)
         if self.style == 'head_bob':
@@ -85,12 +103,11 @@ class DanceMotion:
             rig.set_rotation('ant-arm2', z=20+35*floor)
             rig.set_rotation('head', x=-8-12*floor, z=5*floor)
         target = rig.pose()
-        blend = 1-exp(-self.dt*7)
-        from .rig import Rotation3
-        for group, rotation in target.items():
-            previous = self.pose.get(group, rotation)
-            self.pose[group] = Rotation3(*(a+(b-a)*blend for a,b in zip(
-                (previous.x, previous.y, previous.z), (rotation.x, rotation.y, rotation.z))))
+        # Molas por junta: o corpo "pesa" no acento e recupera suavemente,
+        # em vez de um blend exponencial uniforme para todas as juntas.
+        if not self.pose:
+            self._molas.definir(target)
+        self.pose = self._molas.atualizar(max(0.0, self.dt), target)
         rig.current = dict(self.pose)
 
     @property
