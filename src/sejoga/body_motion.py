@@ -47,6 +47,7 @@ class BodyPose:
     compression: float = 0.0
     hanging: float = 0.0
     limb_swing: float = 0.0
+    stretch: float = 0.0
 
 
 class BodyMotion:
@@ -78,7 +79,7 @@ class BodyMotion:
             self.compression.velocity += 4.5 * strength
 
     def update(self, dt, *, pointer=None, dragging=False, hovered=False,
-               look=(0.0, 0.0), grounded=True, velocity=(0.0, 0.0)):
+               look=(0.0, 0.0), grounded=True, velocity=(0.0, 0.0), grab_part='body'):
         dt = clamp(dt, 0.0, .1) if isfinite(dt) else 0.0
         if dt == 0:
             return self.snapshot
@@ -95,7 +96,11 @@ class BodyMotion:
         vx, vy = self.pointer_velocity
         if dragging:
             roll_target = clamp(vx * .012, -23, 23)
-            pitch_target = clamp(-9-vy * .009, -21, 4)
+            if grab_part in ('left-feet', 'right-feet', 'legs'):
+                roll_target += 155 if grab_part != 'left-feet' else -155
+            elif grab_part in ('right-arm', 'left-arm'):
+                roll_target += 45 if grab_part == 'right-arm' else -45
+            pitch_target = clamp((-26 if grab_part == 'body' else -9)-vy * .009, -36, 4)
             yaw_target = clamp(-vx * .003, -5, 5)
         elif hovered:
             roll_target = clamp(vx * .003 - look[0] * 3.8, -8, 8)
@@ -117,8 +122,8 @@ class BodyMotion:
         self.limbs.update(dt, clamp(-vx*.016, -25, 25) if dragging else 0)
         # Bound the visual response without modifying desktop physics or cursor.
         self.snapshot = BodyPose(
-            roll=clamp(self.roll.value, -28, 28),
-            pitch=clamp(self.pitch.value, -24, 16),
+            roll=clamp(self.roll.value, -178, 178),
+            pitch=clamp(self.pitch.value, -38, 16),
             yaw=clamp(self.yaw.value, -7, 7),
             head_roll=clamp((self.neck_roll.value - self.roll.value) * .65, -8, 8),
             head_pitch=clamp((self.neck_pitch.value - self.pitch.value) * .6 - 5*self.suspension.value, -12, 6),
@@ -126,5 +131,6 @@ class BodyMotion:
             compression=clamp(self.compression.value, -.12, .20),
             hanging=clamp(self.suspension.value, 0, 1),
             limb_swing=clamp(self.limbs.value, -30, 30),
+            stretch=(.08 if grab_part != 'body' else .025)*clamp(self.suspension.value,0,1) if dragging else 0,
         )
         return self.snapshot

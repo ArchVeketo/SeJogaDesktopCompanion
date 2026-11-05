@@ -28,6 +28,8 @@ def main():
         "calm", "curious", "playful", "shy", "confident", "street", "fighter", "rhythm", "stylish"
     ))
     cases.extend((name, {}) for name in ("hang_loose", "thumbs_up", "rock", "finger_gun"))
+    cases.extend((f'grab-{part}', dict(dragging=True, grab_part=part))
+                 for part in ('right-arm', 'left-arm', 'left-feet', 'right-feet'))
     cases.extend((name, dict(music_playing=True, music_intensity=level,
                              music_bass=bass, music_bpm=bpm, dance_chance=1.0))
                  for name, level, bass, bpm in (('music-soft', .2, .02, 75),
@@ -55,13 +57,16 @@ def main():
             for frame in range(frame_count):
                 dt=1/60
                 params=dict(args)
-                if kind == 'drag':
+                if kind == 'drag' or kind.startswith('grab-'):
                     from math import sin
                     params['pointer_position'] = (600+120*sin(frame/25), 300+35*sin(frame/35))
                 if kind=="fall":params["velocity"]=(180,-450+frame*8)
                 pose=animation.update(dt,**params)
                 app.renderer.apply_rig_pose(pose)
-                app.renderer.apply_body_motion(animation.body_motion.snapshot,grounded=params.get("grounded",True))
+                part = params.get('grab_part', 'body')
+                grip = app.renderer._rig_nodes[part].getPos(app.renderer.model_np)
+                app.renderer.apply_body_motion(animation.body_motion.snapshot, grip,
+                    grounded=params.get("grounded",True), dragging=params.get('dragging',False))
                 app.renderer.lower_body.apply(animation.leg_motion.pose,params.get("grounded",True))
                 app.renderer.update_appendages(dt,False)
                 app.taskMgr.step()

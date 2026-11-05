@@ -194,13 +194,14 @@ class AnimationController:
         look_direction: float = 0.0,
         look_vertical: float = 0.0,
         pointer_position: tuple[float, float] | None = None,
+        grab_part: str = 'body',
     ) -> dict[str, Rotation3]:
         """Atualiza o estado e devolve um snapshot de rotações em radianos."""
         dt = min(0.1, max(0.0, dt))
         self.clock += dt
         self.body_motion.update(dt, pointer=pointer_position, dragging=dragging,
                                 hovered=hovered, look=(look_direction, look_vertical),
-                                grounded=grounded, velocity=velocity)
+                                grounded=grounded, velocity=velocity, grab_part=grab_part)
         if self.state == AnimationState.DRAG and not dragging:
             self._release_time = 0.0
             self._release_grip = self.drag_intensity
@@ -339,6 +340,19 @@ class AnimationController:
                                   z=-62-motion.roll*.55+motion.limb_swing*.4)
             self.rig.set_rotation('ant-arm', x=motion.limb_swing*.3, z=-8)
             self.rig.set_rotation('ant-arm2', x=motion.limb_swing*.25, z=8)
+            if grab_part == 'right-arm':
+                self.rig.set_rotation('right-arm', x=-8, z=-55)
+                self.rig.set_rotation('ant-arm', x=0, z=-8)
+            elif grab_part == 'left-arm':
+                self.rig.set_rotation('left-arm', x=-8, z=55)
+                self.rig.set_rotation('ant-arm2', x=0, z=8)
+            elif grab_part == 'body':
+                # Loose arms and a drooping neck when lifted by the back.
+                self.rig.set_rotation('head', x=-12, z=motion.limb_swing*.08)
+                self.rig.set_rotation('right-arm', x=-motion.pitch*.9, z=65+motion.limb_swing*.25)
+                self.rig.set_rotation('left-arm', x=-motion.pitch*.9, z=-65+motion.limb_swing*.25)
+                self.rig.set_rotation('ant-arm', x=3+motion.limb_swing*.2, z=-4)
+                self.rig.set_rotation('ant-arm2', x=3+motion.limb_swing*.18, z=4)
         target = self.rig.pose()
         if self._active_transition_seconds == 0.0:
             alpha = 1.0

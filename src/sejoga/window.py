@@ -217,6 +217,14 @@ class Panda3DRenderer:
         if self._pick_queue.getNumEntries():
             self._pick_queue.sortEntries()
             self._pick_point_model = self._pick_queue.getEntry(0).getSurfacePoint(self.model_np)
+            picked = self._pick_queue.getEntry(0).getIntoNodePath()
+            self._pick_part = 'body'
+            while not picked.isEmpty() and picked != self.model_np:
+                name = picked.getName()
+                if name in ('right-arm', 'left-arm', 'left-feet', 'right-feet', 'legs', 'head'):
+                    self._pick_part = name
+                    break
+                picked = picked.getParent()
         return self._pick_queue.getNumEntries() > 0
 
     def _setup_scene(self) -> None:
@@ -518,6 +526,10 @@ void main() {
                        motion.roll * (1 - .7 * hanging), Vec3(0, 0, -motion.compression * .08))
         whole = around(grip if dragging else hip, motion.pitch * .6 * hanging, 0,
                        motion.roll * .7 * hanging)
+        if dragging:
+            stretch = (Mat4.translateMat(-grip) * Mat4.scaleMat(1-motion.stretch*.3, 1, 1+motion.stretch)
+                       * Mat4.translateMat(grip))
+            whole = stretch * whole
         for group in ("head", "body", "right-arm", "left-arm", "legs", "left-feet", "right-feet"):
             node = self._rig_nodes[group]
             transform = node.getMat(self.model_np)
@@ -1030,6 +1042,7 @@ class OverlayApp(ShowBase):
             grounded=state.grounded if state else True,
             gravity_active=state.gravity_active if state else False,
             dragging=self._drag_active,
+            grab_part=getattr(self, '_body_grab_part', 'body'),
             drag_direction=self._drag_direction,
             drag_intensity=self._drag_intensity,
             music_playing=music_playing,
@@ -1299,6 +1312,7 @@ class OverlayApp(ShowBase):
             hit = target == self.hwnd or win32gui.IsChild(self.hwnd, target)
         if hit and "left" in newly_pressed:
             self._body_grab_point = Vec3(self.renderer._pick_point_model)
+            self._body_grab_part = getattr(self.renderer, '_pick_part', 'body')
         events = self.mouse_interaction.update(
             position, buttons, hit=hit, enabled=enabled,
             allow_drag=self.settings.behavior.react_to_drag,
