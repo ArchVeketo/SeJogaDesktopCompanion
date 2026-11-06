@@ -1,0 +1,171 @@
+# Workflow reutilizavel (reusable workflow) com o build comum de um canal.
+# Orquestra APENAS os scripts existentes (build.ps1, tools/build-update.py,
+# tools/build-installer.ps1) — nao reimplementa a logica de empacotamento.
+#
+# Chamado por ci.yml para cada gatilho (push main / tag / manual). Faz:
+#   checkout -> setup Python 3.12 -> instala o stack -> pytest (gate) ->
+#   ruff check (gate) -> build.ps1 -> build-update.py -> (opcional) instalador ->
+#   sobe os artefatos do Actions e, se publicar=true, publica nas Releases via gh.
+#
+# AVISO: o runner do GitHub nao tem GPU. O CI garante build + empacota + publica,
+# NAO a aparencia (app abre / overlay / render). A validacao visual continua manual.
+name: build-comum
+
+on:
+  workflow_call:
+    inputs:
+      canal:
+        description: Canal de distribuicao (nightly, prerelease, release).
+        type: string
+        required: true
+      gerar_instalador:
+        description: Gera o instalador unico (Inno Setup) alem do ZIP do feed.
+        type: boolean
+        required: false
+        default: true
+      publicar:
+        description: Publica nas Releases do GitHub (feed updates-<canal> e, se houver, release de versao).
+        type: boolean
+        required: false
+        default: false
+      tag_versao:
+        description: 'Tag da release de versao (ex.: v0.2.0rc1). Vazio em nightly.'
+        type: string
+        required: false
+        default: ''
+      version:
+        description: Versao explicita repassada a build-update.py (vazio = deriva do pyproject/canal).
+        type: string
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write # necessario para o gh criar/atualizar Releases com o GITHUB_TOKEN padrao.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # build-update.py grava o commit HEAD no channel.json.
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instala o stack do app + PyInstaller
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[panda3d,windows,tray,music,music-analysis,dev]"
+          pip install pyinstaller
+
+      - name: Testes (gate — falhou, nao publica)
+        shell: pwsh
+        run: python -m pytest
+
+      - name: Ruff check (gate)
+        shell: pwsh
+        run: python -m ruff check
+
+      - name: Build do bundle PyInstaller (dist/SeJogaCompanion)
+        shell: pwsh
+        run: .\build.ps1
+
+      # Normaliza a versao: remove o prefixo 'v' da tag (v0.2.0rc1 -> 0.2.0rc1).
+      # Vazio quando nightly/manual sem version (build-update deriva do pyproject).
+      - name: Deriva a versao limpa
+        id: ver
+        shell: pwsh
+        run: |
+          $v = '${{ inputs.version }}'
+          if ($v -like 'v*') { $v = $v.Substring(1) }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Empacota o canal (dist/updates/<canal>)
+        shell: pwsh
+        run: |
+          $args = @('--channel', '${{ inputs.canal }}')
+          if ('${{ steps.ver.outputs.version }}') { $args += @('--version', '${{ steps.ver.outputs.version }}') }
+          python tools/build-update.py @args
+
+      - name: Instala o Inno Setup (ISCC) via Chocolatey
+        if: ${{ inputs.gerar_instalador }}
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      # O instalador unico e sempre do canal 'release' (build-installer.ps1 fixa
+      # channel='release' no release-info.json). Versao rc/dev quebraria o
+      # ReleaseInfo('release', ...); por isso so repassamos -Version no canal release
+      # (versao estavel). Nos demais canais, usa a versao estavel do pyproject.
+      - name: Monta o instalador unico (dist/installer/*.exe)
+        if: ${{ inputs.gerar_instalador }}
+        shell: pwsh
+        run: |
+          $args = @()
+          if ('${{ inputs.canal }}' -eq 'release' -and '${{ steps.ver.outputs.version }}') {
+            $args += @('-Version', '${{ steps.ver.outputs.version }}')
+          }
+          .\tools\build-installer.ps1 @args
+
+      # Artefatos do Actions: sempre subir para inspecao, mesmo com publicar=false.
+      - name: Sobe o ZIP do feed como artefato do Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: feed-${{ inputs.canal }}
+          path: dist/updates/${{ inputs.canal }}/*
+          if-no-files-found: error
+
+      - name: Sobe o instalador como artefato do Actions
+        if: ${{ inputs.gerar_instalador }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: instalador-${{ inputs.canal }}
+          path: dist/installer/*
+          if-no-files-found: error
+
+      # Publicacao do FEED: release de tag fixa updates-<canal> com ZIP + channel.json + .sha256.
+      # O updater le releases/download/updates-<canal>/channel.json. --clobber substitui os assets.
+      # build-update/updater ja rejeitam downgrade/build_id regressivo.
+      - name: Publica o feed updates-<canal>
+        if: ${{ inputs.publicar }}
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $canal = '${{ inputs.canal }}'
+          $tagFeed = "updates-$canal"
+          $assets = Get-ChildItem "dist/updates/$canal" -File | ForEach-Object { $_.FullName }
+          $existe = gh release view $tagFeed 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tagFeed @assets --clobber
+          } else {
+            gh release create $tagFeed @assets `
+              --title "Feed de atualizacoes ($canal)" `
+              --notes "Feed automatico do canal $canal. Assets lidos pelo updater do app." `
+              --prerelease
+          }
+
+      # Publicacao da RELEASE DE VERSAO (tag v*): anexa o instalador .exe + .sha256.
+      # prerelease (rc) entra com --prerelease; release estavel sem a flag.
+      - name: Publica a release de versao (instalador)
+        if: ${{ inputs.publicar && inputs.tag_versao != '' && inputs.gerar_instalador }}
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = '${{ inputs.tag_versao }}'
+          $canal = '${{ inputs.canal }}'
+          $assets = Get-ChildItem 'dist/installer' -File -Filter '*.exe*' | ForEach-Object { $_.FullName }
+          $flagPre = if ($canal -eq 'release') { @() } else { @('--prerelease') }
+          $existe = gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @assets --clobber
+          } else {
+            gh release create $tag @assets `
+              --title "SeJoga Companion $tag" `
+              --notes "Instalador unico (Inno Setup). Canal: $canal." `
+              @flagPre
+          }

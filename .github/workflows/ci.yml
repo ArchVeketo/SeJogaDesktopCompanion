@@ -1,0 +1,88 @@
+# Pipeline de CI/CD do SeJoga Desktop Companion.
+#
+# Automatiza build, empacotamento e publicacao nos canais de distribuicao,
+# substituindo o processo manual (build.ps1 -> build-update.py -> gh release).
+# Toda a logica fica nos scripts existentes; aqui so decidimos CANAL e se PUBLICA.
+#
+# GATILHOS:
+#   push na main          -> NIGHTLY automatico (feed updates-nightly) + instalador nightly.
+#   tag v*rc* / v*dev*    -> PRERELEASE (feed updates-prerelease + release marcada pre-release).
+#   tag v* estavel        -> RELEASE (feed updates-release + release com instalador).
+#   workflow_dispatch      -> manual: escolhe canal, se gera instalador e se publica
+#                             (publicar DEFAULT FALSE por seguranca).
+#
+# Publicacao usa o GITHUB_TOKEN padrao do Actions (permissions: contents: write).
+# Nao e necessario secret extra. Assinatura de codigo esta FORA de escopo.
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      canal:
+        description: Canal de distribuicao.
+        type: choice
+        options: [nightly, prerelease, release]
+        default: nightly
+      gerar_instalador:
+        description: Gerar o instalador unico (Inno Setup).
+        type: boolean
+        default: true
+      publicar:
+        description: Publicar nas Releases do GitHub (feed e, se aplicavel, release de versao). Padrao desligado.
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  # NIGHTLY automatico a cada push na main.
+  nightly:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    uses: ./.github/workflows/_build-comum.yml
+    permissions:
+      contents: write
+    with:
+      canal: nightly
+      gerar_instalador: true
+      publicar: true
+
+  # PRERELEASE em tags rc (ex.: v0.2.0rc1).
+  prerelease:
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, 'rc') }}
+    uses: ./.github/workflows/_build-comum.yml
+    permissions:
+      contents: write
+    with:
+      canal: prerelease
+      gerar_instalador: true
+      publicar: true
+      tag_versao: ${{ github.ref_name }}
+      version: ${{ github.ref_name }}
+
+  # RELEASE estavel em tags v* sem rc/dev.
+  release:
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, 'rc') && !contains(github.ref_name, 'dev') }}
+    uses: ./.github/workflows/_build-comum.yml
+    permissions:
+      contents: write
+    with:
+      canal: release
+      gerar_instalador: true
+      publicar: true
+      tag_versao: ${{ github.ref_name }}
+      version: ${{ github.ref_name }}
+
+  # Execucao MANUAL sob demanda; por padrao NAO publica (so builda e sobe artefatos).
+  manual:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    uses: ./.github/workflows/_build-comum.yml
+    permissions:
+      contents: write
+    with:
+      canal: ${{ inputs.canal }}
+      gerar_instalador: ${{ inputs.gerar_instalador }}
+      publicar: ${{ inputs.publicar }}

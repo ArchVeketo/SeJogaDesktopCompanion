@@ -73,9 +73,16 @@ python tools/build-update.py --channel nightly
 
 Saídas em `dist/updates/<canal>`: ZIP com metadados, checksum e manifesto. Exclui perfis `user-data`, logs e fontes de arte. Os padrões de versão vêm de `pyproject.toml`, com `rc1` ou `.dev<UTC>` conforme o canal. Release/prerelease precisam de versão nova para cada publicação; nightly usa timestamp. `build_id` também é monotônico.
 
-O workflow **Windows runtime updates** roda testes/build/empacotamento. Push na main publica nightly; tags `v*` publicam release/prerelease conforme a versão; execução manual permite selecionar canal/versão, com publicação desmarcada por padrão. A publicação verifica regressão, envia ZIP/checksum primeiro e só então avança `channel.json`. Falha antes disso mantém o feed antigo. Não chama Inno Setup.
+A publicação agora é feita por um **pipeline de CI/CD no GitHub Actions** (`.github/workflows/ci.yml` + o workflow reutilizável `_build-comum.yml`). Os comandos manuais acima continuam válidos como **fallback** quando se quer publicar da própria máquina. O pipeline:
 
-O workflow separado **Windows stable installer** é manual e constrói o instalador único com runtime embutido. Publicação exige opt-in e cria `installer-v<versão>`, independente dos feeds de runtime. Não executar esses workflows de publicação para testar esta branch.
+- **push na `main`** → publica **nightly** automático (feed `updates-nightly`) e gera o instalador nightly;
+- **tag `v*rc*`** (ex.: `v0.2.0rc1`) → publica **prerelease** (feed `updates-prerelease` + release marcada como pré-release com o instalador);
+- **tag `v*` estável** (ex.: `v0.2.0`) → publica **release** (feed `updates-release` + release com o instalador);
+- **execução manual** (`workflow_dispatch`) → escolhe `canal`, `gerar_instalador` e `publicar` (publicar **default FALSE**: só builda, empacota e sobe os artefatos do Actions para inspeção).
+
+Cada job roda testes/ruff como gate (falhou, não publica), `build.ps1`, `tools/build-update.py --channel <canal>` e, quando `gerar_instalador=true`, Inno Setup (`choco install innosetup`) + `tools/build-installer.ps1`. O instalador é sempre do canal `release` (o `release-info.json` embutido usa `channel=release` e versão estável do `pyproject`); por isso, em nightly/prerelease o instalador usa a versão do `pyproject`, não a versão rc/dev do feed. O feed verifica regressão via `build-update`/`updater` e sobe ZIP/checksum junto com o `channel.json`. A publicação usa o `GITHUB_TOKEN` padrão do Actions (`permissions: contents: write`), sem secret extra.
+
+> O runner do GitHub **não tem GPU**: o CI garante **build + empacote + publica**, não a **aparência** (app abre / overlay / render). A validação visual continua **manual**. Detalhes de disparo em `.github/workflows/README.md`.
 
 Antes de disponibilizar um setup, publicar o primeiro feed compatível do canal. Sem feed, o setup aborta a preparação com mensagem; não contém um aplicativo offline de reserva. Ainda não há feed público publicado por esta implementação.
 
