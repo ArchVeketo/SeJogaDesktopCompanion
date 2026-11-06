@@ -39,7 +39,7 @@ uma normal de repouso que, girada 180° em X, resulta em "palma para fora".
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import degrees, radians, sin
+from math import asin, degrees, radians, sin
 
 from sejoga.nucleo.model import Model
 from sejoga.nucleo.rig import ALL_GROUPS, Rotation3
@@ -94,6 +94,25 @@ ARTICULACAO_DOBRADA_MIN_GRAUS = 20.0
 #: Membro (braço/perna): tolerância (graus) para considerar o eixo longo ainda
 #: "legível" como daquele eixo do mundo ao classificar a direção do membro.
 MEMBRO_CENTRO_MAX_GRAUS = 30.0
+
+#: Abertura lateral (graus de afastamento do tronco no eixo X): abaixo disto o
+#: braço está praticamente COLADO ao corpo; acima, ABERTO ("boneco de posto").
+#: Z=28 (repouso atual) dá ~28° — ainda um pouco aberto; Z=90 (T-pose) dá ~90°.
+BRACO_ABERTURA_LATERAL_MIN_GRAUS = 20.0
+BRACO_ABERTURA_LATERAL_MAX_GRAUS = 55.0
+
+#: Abertura frontal (graus de avanço do braço no eixo Z): a partir disto o
+#: braço é considerado projetado À FRENTE (ou ATRÁS, se negativo).
+BRACO_ABERTURA_FRONTAL_MIN_GRAUS = 20.0
+
+#: Posição da mão: fração da meia-largura do modelo (``bounds``) usada como
+#: limiar de afastamento lateral da ponta da mão em relação à raiz do corpo.
+#: Abaixo -> MAO_JUNTO_AO_CORPO; acima -> MAO_AFASTADA.
+MAO_AFASTAMENTO_LATERAL_FRAC = 0.4
+
+#: Posição da mão: fração da meia-largura usada como limiar de avanço frontal
+#: (eixo Z) da ponta da mão; acima disto a mão é reportada como MAO_A_FRENTE.
+MAO_AVANCO_FRONTAL_FRAC = 0.35
 
 #: Os seis eixos do mundo glTF, rotulados com a flag de direção correspondente.
 #: (vetor_unitario, rotulo). Y é cima.
@@ -288,12 +307,67 @@ def estado_acumulado(pose: dict[str, Rotation3], model: Model) -> dict[str, Mat3
   return acumulado
 
 
+def posicao_acumulada(pose: dict[str, Rotation3], model: Model) -> dict[str, Vec3]:
+  """Posição 3D de mundo da ORIGEM de cada grupo do rig, propagando TRS.
+
+  Para cada grupo de ``rig.ALL_GROUPS`` presente no modelo, acumula do nó raiz
+  até o grupo a translação local de cada nó (``node.translation``) rotacionada
+  pela rotação de mundo acumulada do pai — ou seja, propaga translações E
+  rotações (repouso + HPR animado) pela cadeia pai->filho. É assim que se chega
+  à posição real da ponta da mão (``hand``/``hand2``) via a cadeia
+  ``right-arm -> ant-arm -> hand`` lida do glTF (ver ``tools/inspect_model.py``).
+  """
+  por_nome = _indice_por_nome(model)
+  por_indice = {n.index: n for n in model.nodes}
+  cache: dict[int, Vec3] = {}
+
+  def posicao_do_no(indice: int) -> Vec3:
+    if indice in cache:
+      return cache[indice]
+
+    node = por_indice[indice]
+    # Translação local posicionada pela rotação de mundo do PAI (a origem do nó
+    # está no espaço do pai, antes de aplicar a rotação do próprio nó).
+    if node.parent is not None and node.parent in por_indice:
+      rot_pai = estado_acumulado_pai(node.parent)
+      base = posicao_do_no(node.parent)
+    else:
+      rot_pai = _identidade3()
+      base = (0.0, 0.0, 0.0)
+
+    deslocado = _aplicar3(rot_pai, node.translation)
+    resultado = (base[0] + deslocado[0], base[1] + deslocado[1], base[2] + deslocado[2])
+    cache[indice] = resultado
+
+    return resultado
+
+  acumulado_rot = estado_acumulado(pose, model)
+  rot_por_indice: dict[int, Mat3] = {}
+
+  for grupo, matriz in acumulado_rot.items():
+    if grupo in por_nome:
+      rot_por_indice[por_nome[grupo]] = matriz
+
+  def estado_acumulado_pai(indice_pai: int) -> Mat3:
+    # Rotação de mundo acumulada do pai: usa o acumulado por grupo quando o pai
+    # é um grupo do rig; senão identidade (nós intermediários sem pose).
+    return rot_por_indice.get(indice_pai, _identidade3())
+
+  posicoes: dict[str, Vec3] = {}
+
+  for grupo in ALL_GROUPS:
+    if grupo in por_nome:
+      posicoes[grupo] = posicao_do_no(por_nome[grupo])
+
+  return posicoes
+
+
 # --------------------------------------------------------------------------- #
 # Flags do núcleo
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True, slots=True)
 class EstadoMao:
-  """Como uma mão está orientada."""
+  """Como uma mão está orientada e ONDE a ponta dela termina no espaço."""
 
   palma_flag: str
   palma_graus: float
@@ -303,6 +377,12 @@ class EstadoMao:
   dedos_graus: float
   punho_flag: str      # PUNHO_ABERTO | PUNHO_FECHADO
   punho_graus: float
+  #: Offset 3D (x, y, z) da ponta da mão relativo à raiz do corpo (unidades do
+  #: modelo). x+ = para a direita, y+ = para cima, z+ = para a frente.
+  posicao_offset: Vec3
+  #: Flag legível do afastamento da mão: MAO_JUNTO_AO_CORPO | MAO_AFASTADA
+  #: (lateral) combinada com MAO_A_FRENTE quando projetada para a frente.
+  posicao_flag: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -342,12 +422,45 @@ def _graus(rot: Rotation3) -> tuple[float, float, float]:
   return (degrees(rot.x), degrees(rot.y), degrees(rot.z))
 
 
+def _flag_posicao_mao(offset: Vec3, meia_largura: float) -> str:
+  """Flag legível da posição da ponta da mão a partir do offset ao corpo.
+
+  Combina o afastamento lateral (eixo X) com o avanço frontal (eixo Z). A base
+  é a meia-largura do modelo (``bounds``), para a leitura ser robusta à escala:
+
+  - lateral abaixo de ``MAO_AFASTAMENTO_LATERAL_FRAC`` -> MAO_JUNTO_AO_CORPO;
+  - lateral acima -> MAO_AFASTADA;
+  - avanço frontal acima de ``MAO_AVANCO_FRONTAL_FRAC`` acrescenta MAO_A_FRENTE.
+  """
+  limiar_lateral = MAO_AFASTAMENTO_LATERAL_FRAC * meia_largura
+  limiar_frontal = MAO_AVANCO_FRONTAL_FRAC * meia_largura
+
+  if abs(offset[0]) >= limiar_lateral:
+    flag = "MAO_AFASTADA"
+  else:
+    flag = "MAO_JUNTO_AO_CORPO"
+
+  if offset[2] >= limiar_frontal:
+    flag = f"{flag}+MAO_A_FRENTE"
+  elif offset[2] <= -limiar_frontal:
+    flag = f"{flag}+MAO_ATRAS"
+
+  return flag
+
+
 def flag_mao(
   grupo: str,
   acumulado: dict[str, Mat3],
   pose: dict[str, Rotation3],
+  posicoes: dict[str, Vec3],
+  model: Model,
 ) -> EstadoMao:
-  """Classifica a orientação de ``hand``/``hand2`` e o estado do punho."""
+  """Classifica a orientação de ``hand``/``hand2``, o punho e a POSIÇÃO da mão.
+
+  A posição da ponta da mão vem de ``posicoes`` (propagação de translações +
+  rotações pela cadeia ``braço -> antebraço -> mão``), relativa à raiz do corpo
+  (``body``). O offset é reportado cru (x, y, z) e também como flag legível.
+  """
   ref = VETORES_REFERENCIA[grupo]
   m = acumulado.get(grupo, _identidade3())
 
@@ -369,6 +482,18 @@ def flag_mao(
 
   punho_flag = "PUNHO_FECHADO" if dobra >= PUNHO_FECHADO_MIN_GRAUS else "PUNHO_ABERTO"
 
+  # Posição da ponta da mão relativa à raiz do corpo (offset no espaço do
+  # modelo). Sem o grupo no modelo, cai para offset nulo (mão na raiz).
+  mao_pos = posicoes.get(grupo, (0.0, 0.0, 0.0))
+  corpo_pos = posicoes.get("body", (0.0, 0.0, 0.0))
+  offset = (
+    mao_pos[0] - corpo_pos[0],
+    mao_pos[1] - corpo_pos[1],
+    mao_pos[2] - corpo_pos[2],
+  )
+  meia_largura = max(model.bounds.size[0] / 2.0, 1e-6)
+  posicao_flag = _flag_posicao_mao(offset, meia_largura)
+
   return EstadoMao(
     palma_flag=palma_flag,
     palma_graus=graus_palma,
@@ -378,6 +503,8 @@ def flag_mao(
     dedos_graus=graus_dedos,
     punho_flag=punho_flag,
     punho_graus=dobra,
+    posicao_offset=offset,
+    posicao_flag=posicao_flag,
   )
 
 
@@ -502,6 +629,13 @@ class EstadoMembro:
   direcao_graus: float   # ângulo (graus) contra o eixo do mundo dominante
   eixo_flag: str      # rótulo cru do eixo do mundo (CIMA/BAIXO/DIREITA/...)
   elevacao_graus: float   # ângulo (graus) do eixo longo acima da horizontal
+  #: Abertura lateral: afastamento do eixo longo do plano sagital (eixo X), em
+  #: graus. Separado da elevação — um braço BAIXADO ainda pode estar bem aberto.
+  abertura_lateral_graus: float
+  #: Abertura frontal: avanço do eixo longo no eixo Z, em graus (+ = à frente).
+  abertura_frontal_graus: float
+  #: Flag legível da abertura lateral: COLADO | SEMIABERTO | ABERTO.
+  abertura_flag: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -513,8 +647,27 @@ class EstadoArticulacao:
   graus: float   # ângulo (graus) entre o eixo longo de cima e o de baixo
 
 
+def _flag_abertura(abertura_lateral_graus: float) -> str:
+  """Classifica a abertura lateral de um braço em COLADO/SEMIABERTO/ABERTO."""
+  abertura = abs(abertura_lateral_graus)
+
+  if abertura < BRACO_ABERTURA_LATERAL_MIN_GRAUS:
+    return "COLADO"
+
+  if abertura < BRACO_ABERTURA_LATERAL_MAX_GRAUS:
+    return "SEMIABERTO"
+
+  return "ABERTO"
+
+
 def direcao_membro(grupo: str, acumulado: dict[str, Mat3]) -> EstadoMembro:
-  """Classifica a direção do eixo longo acumulado de um membro."""
+  """Classifica a direção, a elevação e a ABERTURA do eixo longo de um membro.
+
+  Além do eixo dominante (baixo/lateral/cima), separa a **abertura lateral**
+  (afastamento do tronco no eixo X) e a **abertura frontal** (avanço no eixo Z)
+  da elevação (componente Y). Assim um braço pode ser BAIXADO e, ainda assim,
+  bem ABERTO para fora — o que o eixo dominante sozinho não revela.
+  """
   longo_repouso = VETORES_REFERENCIA["eixo_longo_membro"]["longo"]
   m = acumulado.get(grupo, _identidade3())
 
@@ -523,9 +676,12 @@ def direcao_membro(grupo: str, acumulado: dict[str, Mat3]) -> EstadoMembro:
 
   # Elevação: quanto o eixo longo está acima (+) ou abaixo (-) da horizontal.
   # Componente Y do vetor normalizado dá o seno do ângulo de elevação.
-  from math import asin
-
   elevacao = degrees(asin(max(-1.0, min(1.0, longo[1]))))
+
+  # Abertura lateral/frontal: os senos das componentes X e Z dão, em graus, o
+  # afastamento do eixo longo em relação ao plano sagital (X) e o avanço (Z).
+  abertura_lateral = degrees(asin(max(-1.0, min(1.0, longo[0]))))
+  abertura_frontal = degrees(asin(max(-1.0, min(1.0, longo[2]))))
 
   return EstadoMembro(
     grupo=grupo,
@@ -533,6 +689,9 @@ def direcao_membro(grupo: str, acumulado: dict[str, Mat3]) -> EstadoMembro:
     direcao_graus=graus,
     eixo_flag=rotulo,
     elevacao_graus=elevacao,
+    abertura_lateral_graus=abertura_lateral,
+    abertura_frontal_graus=abertura_frontal,
+    abertura_flag=_flag_abertura(abertura_lateral),
   )
 
 
@@ -627,6 +786,7 @@ def estado_rig(pose: dict[str, Rotation3], model: Model) -> EstadoRig:
   em radianos). ``model`` é o ``Model`` lido do glTF (``model.load_model``).
   """
   acumulado = estado_acumulado(pose, model)
+  posicoes = posicao_acumulada(pose, model)
 
   membros = {
     grupo: direcao_membro(grupo, acumulado)
@@ -639,8 +799,8 @@ def estado_rig(pose: dict[str, Rotation3], model: Model) -> EstadoRig:
   }
 
   return EstadoRig(
-    mao_direita=flag_mao("hand", acumulado, pose),
-    mao_esquerda=flag_mao("hand2", acumulado, pose),
+    mao_direita=flag_mao("hand", acumulado, pose, posicoes, model),
+    mao_esquerda=flag_mao("hand2", acumulado, pose, posicoes, model),
     cabeca=flag_cabeca(acumulado, pose),
     corpo=flag_corpo(acumulado, pose),
     porta=flag_porta(pose),

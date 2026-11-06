@@ -151,6 +151,11 @@ def _formatar_dump(nome: str, t: float, estado: rd.EstadoRig) -> str:
     linhas.append(f"    dorso: {mao.dorso_flag} ({mao.dorso_graus:.1f}°)")
     linhas.append(f"    dedos: {mao.dedos_flag} ({mao.dedos_graus:.1f}°)")
     linhas.append(f"    punho: {mao.punho_flag} ({mao.punho_graus:.1f}°)")
+    ox, oy, oz = mao.posicao_offset
+    linhas.append(
+      f"    posição: {mao.posicao_flag} "
+      f"(offset x={ox:+.3f} y={oy:+.3f} z={oz:+.3f})"
+    )
 
   linhas.append("")
   linhas.append("  ── MEMBROS ──")
@@ -159,6 +164,11 @@ def _formatar_dump(nome: str, t: float, estado: rd.EstadoRig) -> str:
     linhas.append(
       f"    {grupo:<11} {membro.direcao_flag} "
       f"(eixo {membro.eixo_flag}, elevação {membro.elevacao_graus:.1f}°)"
+    )
+    linhas.append(
+      f"    {'':<11} abertura {membro.abertura_flag} "
+      f"(lateral {membro.abertura_lateral_graus:+.1f}°, "
+      f"frontal {membro.abertura_frontal_graus:+.1f}°)"
     )
 
   linhas.append("")
