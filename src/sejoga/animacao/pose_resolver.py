@@ -20,26 +20,26 @@ from sejoga.rig_mapa import rig_medidas as medidas
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                       Limites anatômicos (clamps)                         ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
-# Convenção de ELEVAÇÃO do braço PÓS-IK, medida no RENDERER real (ver arm_ik):
-# a elevação é o HEADING (H = ``Rotation3.y``), NÃO o roll. O eixo longo do bone
-# é +X; o renderer mapeia H=y, P=x, R=z.
-#   Y=-90 → BAIXADO (reto para baixo, ao lado do quadril)
-#   Y=-74 → repouso natural de idle
-#   Y=0   → LATERAL/T-pose (braço na horizontal, apontando +X)
-#   Y=+90 → ERGUIDO (reto para CIMA)
-# O azimute (avanço/recuo frente↔trás) é o ROLL (R = ``Rotation3.z``). A
-# convenção MUDOU DUAS VEZES: a base antiga tratava Z como elevação (errado); a
-# medição real do renderer mostrou que a elevação é Y (heading) e o azimute é Z.
-# Clampamos a ELEVAÇÃO (Y) de reto p/ baixo até um pouco além de reto p/ cima,
-# com folga para overshoot de crossfade; o azimute (Z) é limitado a uma faixa
-# ampla só para conter deriva (os gestos ficam dentro de -95..+95). Em radianos.
-_CLAMP_RIGHT_ARM_Y_MIN = radians(-100)
-_CLAMP_RIGHT_ARM_Y_MAX = radians(110)
-_CLAMP_LEFT_ARM_Y_MIN = radians(-110)
-_CLAMP_LEFT_ARM_Y_MAX = radians(100)
-# Azimute (Z/roll): faixa ampla para conter apenas deriva extrema.
-_CLAMP_ARM_Z_MIN = radians(-120)
-_CLAMP_ARM_Z_MAX = radians(120)
+# Convenção de ELEVAÇÃO do braço PROVADA em pixels de tela (ver arm_ik): a
+# elevação na TELA (sobe/desce) é o ROLL (R = ``Rotation3.z``), com z NEGATIVO
+# erguendo. O HEADING (H = ``Rotation3.y``) é a PROFUNDIDADE/azimute. O eixo
+# longo do bone é +X; o renderer mapeia H=y, P=x, R=z.
+#   Z=+90 → BAIXADO (reto para baixo, ao lado do quadril)
+#   Z=+74 → repouso natural de idle
+#   Z=0   → LATERAL/T-pose (braço na horizontal)
+#   Z=-90 → ERGUIDO (reto para CIMA; wave fica em ~-66)
+# A convenção MUDOU: a medição por FRAME mostrou que a elevação é o ROLL (Z) e
+# a profundidade o HEADING (Y) — o oposto do que o código assumia. Clampamos a
+# ELEVAÇÃO (Z) de reto p/ cima (negativo) até um pouco além de reto p/ baixo
+# (positivo), com folga para overshoot de crossfade; a profundidade (Y) fica
+# numa faixa ampla só para conter deriva. Em radianos.
+_CLAMP_RIGHT_ARM_Z_MIN = radians(-120)
+_CLAMP_RIGHT_ARM_Z_MAX = radians(110)
+_CLAMP_LEFT_ARM_Z_MIN = radians(-110)
+_CLAMP_LEFT_ARM_Z_MAX = radians(120)
+# Profundidade (Y/heading): faixa ampla para conter apenas deriva extrema.
+_CLAMP_ARM_Y_MIN = radians(-120)
+_CLAMP_ARM_Y_MAX = radians(120)
 
 #: Grupos de braço excluídos da correção de colisão (ver _resolver_colisoes_suave):
 #: a colisão usa rig_medidas, cujo modelo de braço não bate com o renderer; a
@@ -323,20 +323,20 @@ class PoseResolver:
         """
         resultado = dict(pose)
 
-        # Right arm: elevação Y em [-100°, 110°] (baixado → um pouco além de
-        # reto p/ cima); azimute Z em faixa ampla (contém só deriva extrema).
+        # Right arm: elevação Z em [-120°, 110°] (erguido → um pouco além de
+        # reto p/ baixo); profundidade Y em faixa ampla (contém só deriva).
         if "right-arm" in resultado:
             r = resultado["right-arm"]
-            y = max(_CLAMP_RIGHT_ARM_Y_MIN, min(_CLAMP_RIGHT_ARM_Y_MAX, r.y))
-            z = max(_CLAMP_ARM_Z_MIN, min(_CLAMP_ARM_Z_MAX, r.z))
+            y = max(_CLAMP_ARM_Y_MIN, min(_CLAMP_ARM_Y_MAX, r.y))
+            z = max(_CLAMP_RIGHT_ARM_Z_MIN, min(_CLAMP_RIGHT_ARM_Z_MAX, r.z))
             if y != r.y or z != r.z:
                 resultado["right-arm"] = Rotation3(r.x, y, z)
 
-        # Left arm: espelho (elevação Y em [-110°, 100°]).
+        # Left arm: espelho (elevação Z em [-110°, 120°]).
         if "left-arm" in resultado:
             r = resultado["left-arm"]
-            y = max(_CLAMP_LEFT_ARM_Y_MIN, min(_CLAMP_LEFT_ARM_Y_MAX, r.y))
-            z = max(_CLAMP_ARM_Z_MIN, min(_CLAMP_ARM_Z_MAX, r.z))
+            y = max(_CLAMP_ARM_Y_MIN, min(_CLAMP_ARM_Y_MAX, r.y))
+            z = max(_CLAMP_LEFT_ARM_Z_MIN, min(_CLAMP_LEFT_ARM_Z_MAX, r.z))
             if y != r.y or z != r.z:
                 resultado["left-arm"] = Rotation3(r.x, y, z)
 

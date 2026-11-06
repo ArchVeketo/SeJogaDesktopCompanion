@@ -7,25 +7,28 @@ foi usar IK: um gesto declara ONDE a mão deve ficar no espaço (alvo relativo a
 ombro) e este módulo calcula os HPR de ``right-arm``/``ant-arm`` (e o espelho
 ``left-arm``/``ant-arm2``) que levam a ponta da mão até lá.
 
-IMPORTANTE — a FK é calibrada contra o RENDERER REAL, não contra ``rig_debug``.
-Medindo frames reais (ver a investigação na task), a geometria do braço NO
-RENDERER é:
+IMPORTANTE — a convenção de eixo foi PROVADA capturando frames do renderer REAL
+(câmera ortográfica frontal), NÃO por números. Medindo a ponta da mão em PIXELS
+de tela, a geometria do braço NO RENDERER é:
 
   - Eixo longo do braço em repouso = +X (right-arm → ant-arm → hand, todas as
     translations locais em +X). Upper ≈ 0.125, forearm ≈ 0.15625.
-  - ``Rotation3.y`` (HEADING/H do renderer) ELEVA o braço no plano frontal XY:
-    y=0 → braço lateral (+X), y=+90 → reto p/ CIMA (+Y), y=-90 → reto p/ BAIXO.
-  - ``Rotation3.z`` (ROLL/R do renderer) gira o braço no plano horizontal XZ
-    (AZIMUTE: avanço/recuo): z=0 → +X, z=+90 → -Z (trás), z=-90 → +Z (frente).
-  - ``Rotation3.x`` (PITCH/P) é torção em torno do eixo longo: NÃO move a mão.
+  - ``Rotation3.z`` (ROLL/R do renderer) é a ELEVAÇÃO na tela (sobe/desce): z
+    mais NEGATIVO ERGUE o braço (mão sobe acima do ombro); z positivo BAIXA o
+    braço ao lado do corpo. ESTE é o eixo de elevação.
+  - ``Rotation3.y`` (HEADING/H do renderer) move em PROFUNDIDADE (dentro/fora
+    da tela) — NÃO sobe. É o AZIMUTE (avanço/recuo frente↔trás).
+  - ``Rotation3.x`` (PITCH/P) varre na horizontal (frente/trás) — torção.
   - O cotovelo é ``ant-arm.Rotation3.z`` (roll), que dobra no plano local do
     braço, composto DEPOIS da rotação do ombro (``R_arm · R_elbow``).
 
 Esta é a convenção que o renderer de fato aplica (``renderer.apply_rig_pose``:
-``setHpr(base_h+deg(y), base_p+deg(x), base_r+deg(z))`` sobre os nós do Panda).
-``rig_debug`` reimplementa uma composição que NÃO bate com o renderer para os
-braços (eixo longo assumido -Y); por isso aqui usamos o modelo de FK medido do
-renderer, em matrizes 3x3 puras — e os previews reais confirmam a pose.
+``setHpr(base_h+deg(y), base_p+deg(x), base_r+deg(z))`` sobre os nós do Panda)
+MAIS o ``model_np.setH(180)`` que mostra o rosto e ESPELHA o eixo lateral — por
+isso o lado esquerdo usa o sinal espelhado (``espelhar_braco`` inverte Y e Z).
+A FK abaixo é um modelo invertível e monotônico: a elevação (vertical na tela)
+é produzida pelo ROLL e a profundidade pelo HEADING, coerente com a medição em
+pixels (ver ``tools/verificar_eixos.py`` e ``tests/test_eixos_bracos_tela.py``).
 
 Eixos do mundo no espaço do corpo (medidos): +X=direita, +Y=cima, +Z=frente.
 
@@ -122,16 +125,29 @@ def _norma_translacao(model: Model, grupo: str) -> float:
     return sqrt(tx * tx + ty * ty + tz * tz)
 
 
+def _elev(e: float) -> Mat3:
+    """Elevação (vertical na tela), radianos: +X → +Y no plano frontal XY.
+
+    Geometricamente igual a ``_rh``; o ângulo de elevação sobe a mão no plano
+    da tela. No HPR do renderer este ângulo é escrito no ROLL (``Rotation3.z``),
+    com o SINAL invertido (z mais negativo ERGUE) — ver ``_hpr_dos_angulos``.
+    """
+    c, s = cos(e), sin(e)
+    return (c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0)
+
+
 def _ponta_mao_render(
     elevacao: float, azimute: float, cotovelo: float, upper: float, forearm: float
 ) -> Vec3:
-    """FK do renderer (puro): ponta da mão relativa ao ombro, no espaço do corpo.
+    """FK (puro): ponta da mão relativa ao ombro, no espaço do corpo.
 
-    ``R_arm = H(elevacao) · R(azimute)`` e o antebraço é ``R_arm · R(cotovelo)``
-    (o cotovelo dobra no plano local, composto DEPOIS do ombro). Ângulos em graus.
-    Este modelo bate com a FK medida do renderer dentro de ~0.002 unidades.
+    ``R_arm = Elev(elevacao) · Azim(azimute)`` e o antebraço é
+    ``R_arm · Elbow(cotovelo)`` (o cotovelo dobra no plano local, composto
+    DEPOIS do ombro). Ângulos em graus. A ELEVAÇÃO (``_elev``) sobe a mão no
+    plano frontal da tela; o AZIMUTE (``_rr``) a leva em PROFUNDIDADE. Esta é a
+    convenção provada em pixels (elevação = roll no HPR; profundidade = heading).
     """
-    r_arm = _mul(_rh(radians(elevacao)), _rr(radians(azimute)))
+    r_arm = _mul(_elev(radians(elevacao)), _rr(radians(azimute)))
     r_elbow = _rr(radians(cotovelo))
 
     upper_dir = _apply(r_arm, (1.0, 0.0, 0.0))
@@ -164,8 +180,9 @@ def posicao_mao_para_hpr(
         hpr_braco = espelhar_braco(hpr_braco)
         hpr_antebraco = espelhar_braco(hpr_antebraco)
 
-    elevacao = degrees(hpr_braco.y)
-    azimute = degrees(hpr_braco.z)
+    # Inverso de _hpr_dos_angulos: elevação = -roll(.z); azimute = heading(.y).
+    elevacao = -degrees(hpr_braco.z)
+    azimute = degrees(hpr_braco.y)
     cotovelo = degrees(hpr_antebraco.z)
 
     pos = _ponta_mao_render(elevacao, azimute, cotovelo, upper, forearm)
@@ -264,11 +281,13 @@ def _hpr_dos_angulos(
 ) -> tuple[Rotation3, Rotation3]:
     """Monta os ``Rotation3`` (radianos) do braço/antebraço a partir dos ângulos.
 
-    Convenção do renderer: elevação → H (``Rotation3.y``), azimute → R
-    (``Rotation3.z``) do braço; cotovelo → R (``Rotation3.z``) do antebraço. O
-    lado esquerdo é o espelho (``espelhar_braco`` inverte Y e Z).
+    Convenção PROVADA (pixels de tela): a ELEVAÇÃO é o ROLL (``Rotation3.z``),
+    com z NEGATIVO erguendo — logo ``.z = -elevacao`` (o solver mede elevação
+    positiva-para-cima). O AZIMUTE/profundidade é o HEADING (``Rotation3.y``);
+    o cotovelo é o ROLL (``Rotation3.z``) do antebraço. O lado esquerdo é o
+    espelho (``espelhar_braco`` inverte Y e Z, por causa do ``setH(180)``).
     """
-    braco_dir = Rotation3(0.0, radians(elevacao), radians(azimute))
+    braco_dir = Rotation3(0.0, radians(azimute), radians(-elevacao))
     antebraco_dir = Rotation3(0.0, 0.0, radians(cotovelo))
 
     if lado == "left":
@@ -347,8 +366,9 @@ def medir_braco_render(
     de forma coerente com o renderer (o modelo Y-up dele supõe o eixo longo em
     -Y e a elevação no roll, o que NÃO bate para braços).
 
-    Composição (medida e validada contra o renderer):
-      - braço: ``Rh(y)·Rr(z)`` (elevação=heading Y, azimute=roll Z);
+    Composição coerente com a FK provada (elevação = roll, profundidade =
+    heading; z negativo ergue):
+      - braço: ``Elev(-z)·Azim(y)`` (elevação=-roll Z, azimute=heading Y);
       - antebraço: ``braço · Rr(z_cotovelo)`` (cotovelo dobra no plano local);
       - mão: ``antebraço · Rh(y)·Rp(x)·Rr(z)`` da mão.
     """
@@ -360,7 +380,7 @@ def medir_braco_render(
     ha = pose.get(antebraco, Rotation3())
     hm = pose.get(mao, Rotation3())
 
-    r_braco = _mul(_rh(hb.y), _rr(hb.z))
+    r_braco = _mul(_elev(-hb.z), _rr(hb.y))
     r_ante = _mul(r_braco, _rr(ha.z))
     r_mao = _mul(r_ante, _mul(_rh(hm.y), _mul(_rpitch(hm.x), _rr(hm.z))))
 

@@ -88,9 +88,9 @@ def delta_idle(
         for grupo, (x, y, z) in pose_absoluta.items():
             # A base de repouso em graus para comparação
             if grupo == "right-arm":
-                base = (REPOUSO.BRACO_X, 0, REPOUSO.BRACO_Z)
+                base = (REPOUSO.BRACO_X, REPOUSO.BRACO_Y, REPOUSO.BRACO_Z)
             elif grupo == "left-arm":
-                base = (REPOUSO.BRACO_X, 0, -REPOUSO.BRACO_Z)
+                base = (REPOUSO.BRACO_X, -REPOUSO.BRACO_Y, -REPOUSO.BRACO_Z)
             elif grupo == "ant-arm":
                 base = (REPOUSO.ANTEBRACO_X, 0, REPOUSO.ANTEBRACO_Z)
             elif grupo == "ant-arm2":

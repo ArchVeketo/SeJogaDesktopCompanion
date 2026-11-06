@@ -18,12 +18,12 @@ class RepousoAnatomico:
     Convenção de espelho: o lado esquerdo usa o sinal oposto nos eixos Y e Z,
     então left-arm = (-BRACO_Y, -BRACO_Z) e ant-arm2 = -ANTEBRACO_Z.
 
-    IMPORTANTE — convenção de elevação pós-IK, MEDIDA NO RENDERER (ver arm_ik):
+    IMPORTANTE — convenção de elevação PROVADA em pixels de tela (ver arm_ik):
     o eixo LONGO do bone é +X e o renderer mapeia H=y, P=x, R=z. A ELEVAÇÃO do
-    braço é o HEADING (Y), NÃO o roll:
-      Y (heading) do ``right-arm``: Y=0 → lateral (+X), Y=+90 → reto p/ CIMA,
-        Y=-90 → reto p/ BAIXO. Logo "braço baixado" ≈ Y=-74 (idle natural).
-      Z (roll) do ``right-arm``: AZIMUTE (avanço/recuo frente↔trás).
+    braço na TELA (sobe/desce) é o ROLL (Z), NÃO o heading:
+      Z (roll) do ``right-arm``: z NEGATIVO ERGUE (mão acima do ombro); z
+        POSITIVO BAIXA. "braço baixado" (idle) ≈ Z=+74.
+      Y (heading) do ``right-arm``: AZIMUTE/profundidade (dentro/fora da tela).
     Estes valores vêm do solver de IK para o ALVO DE MÃO de idle (mãos ao lado
     do quadril), em ``arm_targets.ALVO_IDLE`` — não são mais ângulos chutados.
     Mantidos aqui como fallback/const para quem não injeta o ``Model``
@@ -32,8 +32,8 @@ class RepousoAnatomico:
 
     # Braço (ombro): baixado ao lado do quadril (IK do alvo idle, render-exato).
     BRACO_X: float = 0.0       # torção neutra (não move a ponta da mão)
-    BRACO_Y: float = -73.93    # ELEVAÇÃO: braço quase reto para BAIXO
-    BRACO_Z: float = -14.45    # AZIMUTE: leve avanço para a frente
+    BRACO_Y: float = -14.45    # AZIMUTE: leve avanço/profundidade
+    BRACO_Z: float = 73.93     # ELEVAÇÃO: braço baixado ao lado (z+ baixa)
 
     # Antebraço (cotovelo): leve dobra (IK do alvo idle).
     ANTEBRACO_X: float = 0.0
