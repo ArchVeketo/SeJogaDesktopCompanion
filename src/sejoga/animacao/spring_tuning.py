@@ -42,6 +42,19 @@ class TensaoJunta:
 TENSAO_PADRAO = TensaoJunta(frequencia=2.2, amortecimento=0.72, lag=0.0)
 
 
+#: Amortecimento (ζ) da cadeia do braço — ombro->antebraço->mão->dedos.
+#: Subidos em relação à calibração antiga (valores ANTES entre parênteses) para
+#: tirar a sensação de "sem ossos / gelatina" no idle de repouso: a ponta
+#: passava do alvo em 16-25 % e demorava 1.3-2.9 s para assentar. Mantidos
+#: abaixo de 1.0 (a mola analítica usa sqrt(1-ζ²)) e com body (0.90) >= dedos,
+#: o invariante de ``tests/test_spring_tuning.py``. NOMEADOS para calibração
+#: fina na GPU: mexer aqui ajusta o "osso" sem tocar na pose de repouso.
+AMORT_BRACO = 0.72       # right-arm/left-arm (antes 0.60)
+AMORT_ANTEBRACO = 0.78   # ant-arm/ant-arm2   (antes 0.50) — pior gelatina
+AMORT_MAO = 0.75         # hand/hand2         (antes 0.50)
+AMORT_DEDOS = 0.62       # fingers/fingers2   (antes 0.40)
+
+
 #: Uma entrada por grupo de ``rig.ALL_GROUPS``. Valores de PARTIDA aprovados;
 #: a ordenação (rigidez decrescente da âncora para a ponta) é um invariante
 #: testado em ``tests/test_spring_tuning.py``.
@@ -59,21 +72,28 @@ TENSAO_POR_JUNTA: dict[str, TensaoJunta] = {
     # amortecimento alto, sem atraso.
     "shoulder": TensaoJunta(frequencia=3.0, amortecimento=0.85, lag=0.0),
     "shoulder2": TensaoJunta(frequencia=3.0, amortecimento=0.85, lag=0.0),
-    # Braços (parte alta): rigidez média, amortecimento médio, atraso leve —
-    # começam a soltar em relação ao ombro.
-    "right-arm": TensaoJunta(frequencia=2.2, amortecimento=0.6, lag=0.15),
-    "left-arm": TensaoJunta(frequencia=2.2, amortecimento=0.6, lag=0.15),
-    # Antebraços: rigidez média-baixa, mais balanço, atraso médio — arrastam
-    # atrás do braço.
-    "ant-arm": TensaoJunta(frequencia=1.8, amortecimento=0.5, lag=0.3),
-    "ant-arm2": TensaoJunta(frequencia=1.8, amortecimento=0.5, lag=0.3),
-    # Mãos: rigidez baixa, bastante balanço, atraso alto — a ponta solta.
-    "hand": TensaoJunta(frequencia=1.4, amortecimento=0.5, lag=0.5),
-    "hand2": TensaoJunta(frequencia=1.4, amortecimento=0.5, lag=0.5),
-    # Dedos: a ponta mais solta de todas. Rigidez muito baixa, mais balanço,
-    # atraso o mais alto.
-    "fingers": TensaoJunta(frequencia=1.1, amortecimento=0.4, lag=0.6),
-    "fingers2": TensaoJunta(frequencia=1.1, amortecimento=0.4, lag=0.6),
+    # Braços (parte alta): rigidez média, atraso leve — começam a soltar em
+    # relação ao ombro. Amortecimento firmado (0.60 -> 0.72) para dar "osso":
+    # alvo de overshoot de repouso < ~5 % (antes ~9.5 %). A frequência não muda
+    # (preserva a ordenação âncora->ponta testada).
+    "right-arm": TensaoJunta(frequencia=2.2, amortecimento=AMORT_BRACO, lag=0.15),
+    "left-arm": TensaoJunta(frequencia=2.2, amortecimento=AMORT_BRACO, lag=0.15),
+    # Antebraços: rigidez média-baixa, atraso médio — arrastam atrás do braço.
+    # Amortecimento firmado (0.50 -> 0.78) para matar o balanço do cotovelo, que
+    # era o pior ofensor da "gelatina": alvo de overshoot < ~5 % (antes 16.3 %).
+    "ant-arm": TensaoJunta(frequencia=1.8, amortecimento=AMORT_ANTEBRACO, lag=0.3),
+    "ant-arm2": TensaoJunta(frequencia=1.8, amortecimento=AMORT_ANTEBRACO, lag=0.3),
+    # Mãos: rigidez baixa, atraso alto — a ponta solta, mas com tônus.
+    # Amortecimento firmado (0.50 -> 0.75) para a mão não ficar "morta":
+    # alvo de overshoot < ~8 % (antes 16.3 %).
+    "hand": TensaoJunta(frequencia=1.4, amortecimento=AMORT_MAO, lag=0.5),
+    "hand2": TensaoJunta(frequencia=1.4, amortecimento=AMORT_MAO, lag=0.5),
+    # Dedos: a ponta mais solta de todas. Rigidez muito baixa, atraso o mais
+    # alto. Amortecimento firmado (0.40 -> 0.62): ainda soltos, mas sem gelatina;
+    # alvo de overshoot < ~12 % (antes 25.4 %). Mantido abaixo de body (0.90)
+    # para o invariante `body >= fingers` de test_spring_tuning.
+    "fingers": TensaoJunta(frequencia=1.1, amortecimento=AMORT_DEDOS, lag=0.6),
+    "fingers2": TensaoJunta(frequencia=1.1, amortecimento=AMORT_DEDOS, lag=0.6),
     # Pés: presos ao chão pela IK, mas soltos o suficiente para acompanhar o
     # passo. Rigidez baixa, amortecimento médio, atraso médio.
     "left-feet": TensaoJunta(frequencia=1.6, amortecimento=0.55, lag=0.3),

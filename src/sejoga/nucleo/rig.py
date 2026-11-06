@@ -150,7 +150,15 @@ def pose_idle(
     (``body`` eixo x) infla e ombros/cabeça acompanham de leve, garantindo que
     NENHUM idle fique totalmente estático (sempre respiração + micro-movimento).
     """
-    from sejoga.animacao.idle_clips import CLIPS, camada_respiracao, sample_idle
+    from sejoga.animacao.idle_clips import (
+        CLIPS,
+        REPOUSO_ANTEBRACO_X,
+        REPOUSO_ANTEBRACO_Z,
+        REPOUSO_BRACO_X,
+        REPOUSO_BRACO_Z,
+        camada_respiracao,
+        sample_idle,
+    )
     from sejoga.animacao.respiracao_tuning import parametros_de
     parametros = parametros_de(personality)
     if personality.value in CLIPS:
@@ -170,10 +178,12 @@ def pose_idle(
         rig.set_rotation("body", x=breath * 0.9, y=sway * 1.5, z=tilt * 1.2)
         rig.set_rotation("head", x=-3.0 + sin(t * 0.62) * 1.5, y=look * 16.0, z=tilt * 8.0)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=sin(t * 0.43) * 3.0, z=48.0)
-        rig.set_rotation("left-arm", x=-sin(t * 0.43 + .4) * 2.5, z=-64.0)
-        rig.set_rotation("ant-arm", x=3.0 + sin(t * 0.48) * 4.5, z=-25.0 + tilt * 5.0)
-        rig.set_rotation("ant-arm2", x=3.0 - sin(t * 0.48 + .5) * 3.5, z=20.0 - tilt * 4.0)
+        # Curiosa: um braço um pouco mais aberto que a base, para gesto. Parte
+        # da base natural (REPOUSO_*) e soma a assinatura própria por cima.
+        rig.set_rotation("right-arm", x=REPOUSO_BRACO_X + sin(t * 0.43) * 3.0, z=REPOUSO_BRACO_Z - 20.0)
+        rig.set_rotation("left-arm", x=REPOUSO_BRACO_X - sin(t * 0.43 + .4) * 2.5, z=-REPOUSO_BRACO_Z)
+        rig.set_rotation("ant-arm", x=REPOUSO_ANTEBRACO_X + sin(t * 0.48) * 4.5, z=REPOUSO_ANTEBRACO_Z + tilt * 5.0)
+        rig.set_rotation("ant-arm2", x=REPOUSO_ANTEBRACO_X - sin(t * 0.48 + .5) * 3.5, z=-REPOUSO_ANTEBRACO_Z - tilt * 4.0)
         rig.set_rotation("fingers", z=finger_breath + sin(t * .33) * 1.0)
         rig.set_rotation("fingers2", z=finger_breath - sin(t * .33 + .6) * 1.0)
     elif personality == IdlePersonality.PLAYFUL:
@@ -184,10 +194,12 @@ def pose_idle(
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
         # More varied arm positions - not always down
         arm_bounce = sin(t * 1.12 + .6)
-        rig.set_rotation("right-arm", x=bounce * 6.0 - 2, z=54.0 + bounce * 5.0)
-        rig.set_rotation("left-arm", x=-bounce * 6.0 + 2, z=-62.0 - arm_bounce * 5.0)
-        rig.set_rotation("ant-arm", x=sin(t * 1.12 + .35) * 8.0 + 4, z=-20.0 + bounce * 7.0)
-        rig.set_rotation("ant-arm2", x=-sin(t * 1.12 + .35) * 8.0 - 2, z=18.0 - arm_bounce * 7.0)
+        # Brincalhona: muito quique, mas a partir da base natural (não do braço
+        # pendurado). O balanço vivo fica no sin(...), a pose de osso na base.
+        rig.set_rotation("right-arm", x=REPOUSO_BRACO_X + bounce * 6.0, z=REPOUSO_BRACO_Z - 14.0 + bounce * 5.0)
+        rig.set_rotation("left-arm", x=REPOUSO_BRACO_X - bounce * 6.0, z=-REPOUSO_BRACO_Z + 2.0 - arm_bounce * 5.0)
+        rig.set_rotation("ant-arm", x=REPOUSO_ANTEBRACO_X + sin(t * 1.12 + .35) * 8.0, z=REPOUSO_ANTEBRACO_Z + bounce * 7.0)
+        rig.set_rotation("ant-arm2", x=REPOUSO_ANTEBRACO_X - sin(t * 1.12 + .35) * 8.0, z=-REPOUSO_ANTEBRACO_Z - arm_bounce * 7.0)
         rig.set_rotation("fingers", z=finger_breath * 1.4 + sin(t * .78) * 2.0)
         rig.set_rotation("fingers2", z=finger_breath * 1.4 - sin(t * .78 + .45) * 2.0)
     elif personality == IdlePersonality.SHY:
@@ -196,10 +208,12 @@ def pose_idle(
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
         # Varied arm positions - sometimes crossed, sometimes at sides
         arm_variation = sin(t * 0.25) * 8.0
-        rig.set_rotation("right-arm", x=2.0 + sin(t * 0.3) * 2, z=62.0 + arm_variation)
-        rig.set_rotation("left-arm", x=-2.0 - sin(t * 0.3 + .4) * 2, z=-64.0 - arm_variation)
-        rig.set_rotation("ant-arm", x=7.0 + breath * 1.5, z=-24.0 + sin(t * 0.36) * 4.0)
-        rig.set_rotation("ant-arm2", x=7.5 + breath * 1.2, z=20.0 - sin(t * 0.36 + .25) * 4.0)
+        # Tímida: braços recolhidos junto ao corpo (ombro ainda mais fechado) e
+        # cotovelo um pouco mais à frente, partindo da base natural.
+        rig.set_rotation("right-arm", x=REPOUSO_BRACO_X + 2.0 + sin(t * 0.3) * 2, z=REPOUSO_BRACO_Z + arm_variation)
+        rig.set_rotation("left-arm", x=REPOUSO_BRACO_X - 2.0 - sin(t * 0.3 + .4) * 2, z=-REPOUSO_BRACO_Z - arm_variation)
+        rig.set_rotation("ant-arm", x=REPOUSO_ANTEBRACO_X + 2.0 + breath * 1.5, z=REPOUSO_ANTEBRACO_Z + sin(t * 0.36) * 4.0)
+        rig.set_rotation("ant-arm2", x=REPOUSO_ANTEBRACO_X + 2.0 + breath * 1.2, z=-REPOUSO_ANTEBRACO_Z - sin(t * 0.36 + .25) * 4.0)
         rig.set_rotation("fingers", z=finger_breath * .7 + sin(t * 0.45) * 2.0)
         rig.set_rotation("fingers2", z=finger_breath * .7 + 1.0 + sin(t * 0.45 + .3) * 1.5)
     elif personality == IdlePersonality.CONFIDENT:
@@ -210,10 +224,12 @@ def pose_idle(
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
         # More open, confident arm positions with asymmetry
         arm_confidence = sin(t * 0.35) * 3.0
-        rig.set_rotation("right-arm", x=sin(t * .3) * 2.5 - 2, z=58.0 + arm_confidence)
-        rig.set_rotation("left-arm", x=-sin(t * .3 + .4) * 2.5 + 1, z=-64.0 - arm_confidence * 0.5)
-        rig.set_rotation("ant-arm", x=2.0 + sin(t * 0.4) * 3.5, z=-22.0 + sway * 3.0)
-        rig.set_rotation("ant-arm2", x=2.0 - sin(t * 0.4 + .4) * 3.5, z=18.0 - sway * 2.5)
+        # Confiante: postura aberta e com leve assimetria viva, mas ancorada na
+        # base natural (ombro ligeiramente mais aberto que o repouso).
+        rig.set_rotation("right-arm", x=REPOUSO_BRACO_X + sin(t * .3) * 2.5, z=REPOUSO_BRACO_Z - 8.0 + arm_confidence)
+        rig.set_rotation("left-arm", x=REPOUSO_BRACO_X - sin(t * .3 + .4) * 2.5, z=-REPOUSO_BRACO_Z - arm_confidence * 0.5)
+        rig.set_rotation("ant-arm", x=REPOUSO_ANTEBRACO_X + sin(t * 0.4) * 3.5, z=REPOUSO_ANTEBRACO_Z + sway * 3.0)
+        rig.set_rotation("ant-arm2", x=REPOUSO_ANTEBRACO_X - sin(t * 0.4 + .4) * 3.5, z=-REPOUSO_ANTEBRACO_Z - sway * 2.5)
         rig.set_rotation("fingers", z=finger_breath + sin(t * 0.5) * 1.5)
         rig.set_rotation("fingers2", z=finger_breath - 1.0 - sin(t * 0.5 + .3) * 1.2)
     else:
@@ -222,10 +238,12 @@ def pose_idle(
         rig.set_rotation("body", x=breath * 0.9, y=sway * 1.5, z=sway * 1.0)
         rig.set_rotation("head", x=sin(t * 0.52) * 1.3, y=sin(t * 0.36) * 3.0)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        rig.set_rotation("right-arm", x=sin(t * 0.36) * 3.0, z=62.0 + sin(t * .4) * 2.0 - breath * .5 + arm_sway * .5)
-        rig.set_rotation("left-arm", x=-sin(t * 0.36) * 3.0, z=-64.0 - sin(t * .4 + .3) * 2.0 + breath * .5 - arm_sway * .5)
-        rig.set_rotation("ant-arm", x=3.0 + sin(t * .42) * 2.5, z=-22.0 + sin(t * 0.42) * 4.0)
-        rig.set_rotation("ant-arm2", x=3.0 - sin(t * .42 + .35) * 2.5, z=20.0 - sin(t * 0.42 + .35) * 4.0)
+        # Calma: a base natural quase pura, só com micro-deriva de peso. É a
+        # referência de repouso "relaxado mas com osso" das 9 personalidades.
+        rig.set_rotation("right-arm", x=REPOUSO_BRACO_X + sin(t * 0.36) * 3.0, z=REPOUSO_BRACO_Z + sin(t * .4) * 2.0 - breath * .5 + arm_sway * .5)
+        rig.set_rotation("left-arm", x=REPOUSO_BRACO_X - sin(t * 0.36) * 3.0, z=-REPOUSO_BRACO_Z - sin(t * .4 + .3) * 2.0 + breath * .5 - arm_sway * .5)
+        rig.set_rotation("ant-arm", x=REPOUSO_ANTEBRACO_X + sin(t * .42) * 2.5, z=REPOUSO_ANTEBRACO_Z + sin(t * 0.42) * 4.0)
+        rig.set_rotation("ant-arm2", x=REPOUSO_ANTEBRACO_X - sin(t * .42 + .35) * 2.5, z=-REPOUSO_ANTEBRACO_Z - sin(t * 0.42 + .35) * 4.0)
         # Calm hands breathe with the shoulders; no rapid idle twitch.
         rig.set_rotation("fingers", z=finger_breath + sin(t * 0.38) * 1.0)
         rig.set_rotation("fingers2", z=finger_breath + sin(t * 0.38 + .4) * 1.0)

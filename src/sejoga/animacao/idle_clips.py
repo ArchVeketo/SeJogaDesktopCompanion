@@ -31,6 +31,24 @@ def phrase(*keys):
     return ((0.0, (0, 0, 0)), *keys, (10.0, (0, 0, 0)))
 
 
+# --------------------------------------------------------------------------- #
+# Pose de repouso natural do braço (base comum das 9 personalidades)
+# --------------------------------------------------------------------------- #
+# Eixos locais: X inclina à frente, Y gira, Z rola. O braço é longo
+# (right-arm/left-arm -> ombro -> ant-arm/ant-arm2 -> mão -> dedos); antes o
+# ombro ficava aberto (z≈62°, braço "pendurado" = gorila) e o cotovelo
+# assimétrico (um dobrado, outro estendido). Esta base fecha o ombro, dobra o
+# cotovelo dos dois lados por igual e deixa o punho neutro, dando um repouso
+# "relaxado mas com osso". NOMEADOS/comentados para calibração fina: as 9
+# personalidades partem daqui e só somam a oscilação própria por cima.
+#
+# Convenção de espelho: o lado esquerdo usa o sinal oposto no eixo Z (roll),
+# então left-arm = -REPOUSO_BRACO_Z e ant-arm2 = -REPOUSO_ANTEBRACO_Z.
+REPOUSO_BRACO_Z = 68.0        # ombro mais FECHADO (antes ~62°, lia aberto)
+REPOUSO_BRACO_X = -4.0        # leve rotação à frente (braço não totalmente reto)
+REPOUSO_ANTEBRACO_Z = -28.0   # cotovelo mais DOBRADO (antes ~-22°), recolhido
+REPOUSO_ANTEBRACO_X = -8.0    # leve dobra à frente, dá volume/tônus ao cotovelo
+
 # Local axes: X pitches forward, Y turns, Z rolls. Mirrored arms need
 # opposite roll signs. The hands remain children of the original forearms.
 CLIPS = {
@@ -136,22 +154,33 @@ def sample_idle(
 ) -> dict[str, tuple[float, float, float]]:
     clip = CLIPS[style]
     local = time % clip.duration
-    # Elbows stay softly bent and the hands sit closer to the torso at rest.
+    # Base de repouso natural: ombro fechado, cotovelo levemente dobrado dos dois
+    # lados (simetria correta) e punho neutro. As personalidades partem daqui.
     pose = {
         "body": (sin(time * .8) * .7, 0, -1.5),
         "head": (0, sin(time * .36) * 2, 1.5),
-        "right-arm": (-4, 0, 62), "left-arm": (-2, 0, -64),
-        "ant-arm": (-8, 0, -22), "ant-arm2": (-6, 0, 20),
+        "right-arm": (REPOUSO_BRACO_X, 0, REPOUSO_BRACO_Z),
+        "left-arm": (REPOUSO_BRACO_X, 0, -REPOUSO_BRACO_Z),
+        "ant-arm": (REPOUSO_ANTEBRACO_X, 0, REPOUSO_ANTEBRACO_Z),
+        "ant-arm2": (REPOUSO_ANTEBRACO_X, 0, -REPOUSO_ANTEBRACO_Z),
     }
     if style == "fighter":
+        # Guarda alta e fechada: ombros mais recolhidos e cotovelos bem dobrados,
+        # como offset sobre a base natural (não uma pose inventada do zero).
         pose.update({"body": (3, 5, -2), "head": (1, -5, 2),
-        "right-arm": (-16, 0, 58), "left-arm": (-12, 0, -62),
-        "ant-arm": (-23, 0, -30), "ant-arm2": (-18, 0, 25),
+        "right-arm": (REPOUSO_BRACO_X - 12, 0, REPOUSO_BRACO_Z - 4),
+        "left-arm": (REPOUSO_BRACO_X - 8, 0, -(REPOUSO_BRACO_Z - 4)),
+        "ant-arm": (REPOUSO_ANTEBRACO_X - 14, 0, REPOUSO_ANTEBRACO_Z - 4),
+        "ant-arm2": (REPOUSO_ANTEBRACO_X - 10, 0, -(REPOUSO_ANTEBRACO_Z - 4)),
                      "fingers": (0, 0, 22), "fingers2": (0, 0, -20)})
     elif style == "stylish":
+        # Um braço mais solto/aberto (assimetria intencional do estilo), partindo
+        # da base natural para o lado direito e mantendo o espelho à esquerda.
         pose.update({"body": (-2, 3, -2), "head": (-3, -4, 3),
-                     "right-arm": (-10, 0, 46), "left-arm": (-2, 0, -64),
-                     "ant-arm": (-16, 0, -28), "ant-arm2": (-8, 0, 18),
+                     "right-arm": (REPOUSO_BRACO_X - 6, 0, REPOUSO_BRACO_Z - 16),
+                     "left-arm": (REPOUSO_BRACO_X + 2, 0, -REPOUSO_BRACO_Z),
+                     "ant-arm": (REPOUSO_ANTEBRACO_X - 8, 0, REPOUSO_ANTEBRACO_Z),
+                     "ant-arm2": (REPOUSO_ANTEBRACO_X - 2, 0, -(REPOUSO_ANTEBRACO_Z - 2)),
                      "hand": (0, 12, -8)})
     elif style == "rhythm":
         # Internal cadence at 100 BPM, not a claim of synchronization to audio.
@@ -159,8 +188,10 @@ def sample_idle(
         pulse = (1 - cos(beat)) * .5
         pose["body"] = (pulse * 2.0, 0, sin(beat * .25) * 2.0)
         pose["head"] = (-1 + (1 - cos(beat - .28)), 0, 0)
-        pose["right-arm"] = (-8 + sin(beat - .45) * 5, 0, 60 - pulse * 23)
-        pose["left-arm"] = (-6 - sin(beat - .45) * 5, 0, -64 + pulse * 20)
+        pose["right-arm"] = (REPOUSO_BRACO_X - 4 + sin(beat - .45) * 5, 0,
+                             REPOUSO_BRACO_Z - 8 - pulse * 23)
+        pose["left-arm"] = (REPOUSO_BRACO_X - 2 - sin(beat - .45) * 5, 0,
+                            -REPOUSO_BRACO_Z + 4 + pulse * 20)
     for group, keys in clip.tracks.items():
         delta = sample_track(keys, local)
         base = pose.get(group, (0, 0, 0))
