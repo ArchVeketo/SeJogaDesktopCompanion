@@ -140,11 +140,12 @@ def test_composicao_delta_com_base_de_repouso():
             base_rot.z + delta_rot.z,
         )
 
-    # O resultado deve ter valores razoáveis para uma pose
-    # right-arm.z fica em torno da base de repouso (~28°) ± pequena oscilação.
-    # (Faixa 50..90 codificava a base antiga invertida z≈68; corrigida para a
-    # convenção real da geometria: Z baixo = braço baixado.)
-    assert 15 < degrees(resultado["right-arm"].z) < 45
+    # O resultado deve ter valores razoáveis para uma pose.
+    # Pós-IK, a base de repouso tem right-arm.z ≈ -86° (braço quase reto para
+    # BAIXO, mão ao lado do quadril). A convenção mudou: Z mede a elevação a
+    # partir de +X (Z=-90 baixo, Z=0 lateral, Z=+90 cima). O idle só soma uma
+    # pequena oscilação por cima, então o Z fica numa vizinhança de -86°.
+    assert -100 < degrees(resultado["right-arm"].z) < -70
 
 
 def test_delta_idle_respiracao_afeta_corpo():

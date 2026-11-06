@@ -212,14 +212,20 @@ def test_fase_braco_antes_da_mao_passa() -> None:
 # --------------------------------------------------------------------------- #
 
 def test_spec_piloto_inteira_passa_com_clipe_valido() -> None:
-    # Braço ergue (Z 70→150→70, sentido POSITIVO), mão oscila no eixo X, pés
-    # parados. (Direção corrigida: na geometria real erguer = Z cresce.)
+    # Pós-IK: um aceno válido ERGUE o braço no eixo Z (de ~-86° baixado até
+    # ~+40°, a mão sobe acima do ombro pelo cotovelo dobrado), a mão oscila no
+    # eixo X em torno do neutro (palma para FORA com o pulso neutro) e os pés
+    # ficam parados. Estes valores vêm da geometria real do rig (ver arm_ik):
+    # arm z=40 + elbow=44 coloca a mão acima do ombro com palma para fora.
     def amostrar(t: float) -> Pose:
         fase = math.pi * (t / 2.2)
-        z_braco = 70.0 + 80.0 * math.sin(fase)
-        x_mao = 180.0 * math.sin(fase) + 20.0 * math.sin(math.tau * 3 * t)
+        lift = math.sin(fase)
+        z_braco = -86.0 + (40.0 - (-86.0)) * lift   # ergue no Z (sobe)
+        z_antebraco = 0.0 + 44.0 * lift             # cotovelo dobra ao erguer
+        x_mao = 25.0 * math.sin(math.tau * 3 * t)   # aceno em torno do neutro
         return {
             "right-arm": (0.0, 0.0, z_braco),
+            "ant-arm": (0.0, 0.0, z_antebraco),
             "hand": (x_mao, 0.0, 0.0),
             "left-feet": (0.0, 0.0, 0.0),
             "right-feet": (0.0, 0.0, 0.0),

@@ -173,7 +173,16 @@ SPEC_WAVE = SpecGesto(
             tipo=TipoExpectativa.FLAG,
             parte="mao_direita",
             flag_esperada="PALMA_PARA_FORA",
-            descricao="ao fim do aceno a palma direita fica virada para FORA",
+            # Migração para IK (alvo de mão): o braço agora ergue por IK e
+            # RETORNA ao repouso ao fim do gesto (lift→0 em t=2.2), com a mão
+            # baixada — ao contrário da pose antiga, que deixava o braço preso
+            # em z=70 no fim. A palma deve ficar para FORA no PICO do aceno
+            # (quando a mão está acima do ombro), não no retorno ao repouso;
+            # por isso medimos a FLAG no pico (t≈1.0), não no fim. Além disso, a
+            # geometria diagonal inverteu o sentido do roll do pulso: a palma
+            # vira para FORA com o pulso NEUTRO (não mais com o roll de 180°).
+            instante=1.0,
+            descricao="no pico do aceno a palma direita fica virada para FORA",
         ),
     ),
 )

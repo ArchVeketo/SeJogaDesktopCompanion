@@ -50,6 +50,7 @@ from sejoga.animacao.rig_base import REPOUSO
 # Aliases para retrocompatibilidade de código que ainda usa os nomes antigos.
 REPOUSO_BRACO_Z = REPOUSO.BRACO_Z
 REPOUSO_BRACO_X = REPOUSO.BRACO_X
+REPOUSO_BRACO_Y = REPOUSO.BRACO_Y  # azimute do braço em repouso (pós-IK)
 REPOUSO_ANTEBRACO_Z = REPOUSO.ANTEBRACO_Z
 REPOUSO_ANTEBRACO_X = REPOUSO.ANTEBRACO_X
 
@@ -163,8 +164,8 @@ def sample_idle(
     pose = {
         "body": (sin(time * .8) * .7, 0, -1.5),
         "head": (0, sin(time * .36) * 2, 1.5),
-        "right-arm": (REPOUSO_BRACO_X, 0, REPOUSO_BRACO_Z),
-        "left-arm": (REPOUSO_BRACO_X, 0, -REPOUSO_BRACO_Z),
+        "right-arm": (REPOUSO_BRACO_X, REPOUSO_BRACO_Y, REPOUSO_BRACO_Z),
+        "left-arm": (REPOUSO_BRACO_X, -REPOUSO_BRACO_Y, -REPOUSO_BRACO_Z),
         "ant-arm": (REPOUSO_ANTEBRACO_X, 0, REPOUSO_ANTEBRACO_Z),
         "ant-arm2": (REPOUSO_ANTEBRACO_X, 0, -REPOUSO_ANTEBRACO_Z),
     }

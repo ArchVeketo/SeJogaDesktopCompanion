@@ -20,24 +20,21 @@ from sejoga.rig_mapa import rig_medidas as medidas
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                       Limites anatômicos (clamps)                         ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
-# Convenção de elevação do braço (Z/roll), verificada via rig_debug sobre a
-# geometria real do modelo:
-#   Z=0   → BAIXADO    (-90°, reto para baixo)
-#   Z=28  → repouso natural (~-62°)
-#   Z=90  → T-pose     (0°, horizontal)
-#   Z=180 → ERGUIDO    (+90°, reto para cima)
-# O left-arm usa o espelho (-Z). Os limites cobrem de ligeiramente atrás do
-# repouso (margem para deriva/overshoot de crossfade) até totalmente erguido.
-# O teto antigo (+65°/-65° no sentido erguido) era da base de repouso antiga
-# (~68°) e decapitava as poses erguidas recalibradas (wave/dance/flourish/
-# thrown chegam a 90-180°): foi ampliado até ±180° (braço reto para cima).
-# O piso no sentido oposto (-75°/+75°) é mantido — protege o braço de dobrar
-# para dentro do tronco (ex.: arraste pelo braço puxa o ombro além do repouso).
-# Em radianos.
-_CLAMP_RIGHT_ARM_Z_MIN = radians(-75)
-_CLAMP_RIGHT_ARM_Z_MAX = radians(180)
-_CLAMP_LEFT_ARM_Z_MIN = radians(-180)
-_CLAMP_LEFT_ARM_Z_MAX = radians(75)
+# Convenção de elevação do braço (Z/roll) PÓS-IK, verificada por FK sobre a
+# geometria real (o eixo longo do bone é +X, não -Y — ver ``arm_ik``):
+#   Z=-90 → BAIXADO (reto para baixo, ao lado do quadril)
+#   Z=-86 → repouso natural de idle (quase reto para baixo)
+#   Z=0   → LATERAL/T-pose (braço na horizontal, apontando +X)
+#   Z=+90 → ERGUIDO (reto para CIMA)
+# O left-arm usa o espelho (-Z). A convenção MUDOU com a migração para IK: antes
+# Z=0 era "baixo" e Z=180 "cima" (base antiga ~28°, errada — deixava o braço
+# aberto/lateral); agora Z mede a elevação a partir de +X. Os limites cobrem de
+# reto para baixo (com folga para overshoot de crossfade) até um pouco além de
+# reto para cima, acomodando wave/dance/flourish (que erguem a mão). Em radianos.
+_CLAMP_RIGHT_ARM_Z_MIN = radians(-100)
+_CLAMP_RIGHT_ARM_Z_MAX = radians(120)
+_CLAMP_LEFT_ARM_Z_MIN = radians(-120)
+_CLAMP_LEFT_ARM_Z_MAX = radians(100)
 
 
 class PoseResolver:

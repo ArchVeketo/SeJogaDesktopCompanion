@@ -22,6 +22,66 @@ from math import degrees, exp, pi, radians, sin, tanh
 
 from sejoga.nucleo.model import Model
 
+# --------------------------------------------------------------------------- #
+# IK de braço: resolução preguiçosa do Model + cache dos HPR por alvo de mão
+# --------------------------------------------------------------------------- #
+# Os gestos de braço declaram ALVOS DE MÃO (ver sejoga.animacao.arm_targets) e o
+# solver 3D (sejoga.animacao.arm_ik) os converte nos HPR reais dos bones. Como
+# resolver a IK a cada frame custaria caro, cacheamos o HPR por (alvo, lado): os
+# alvos dos gestos são fixos, então a cadeia FK roda uma vez por alvo.
+_MODELO_IK_CACHE: Model | None = None
+_HPR_ALVO_CACHE: dict[tuple, dict[str, "Rotation3"]] = {}
+
+
+def _modelo_ik() -> Model:
+    """Carrega o Model de produção uma vez (resolução preguiçosa, cacheada)."""
+    global _MODELO_IK_CACHE
+
+    if _MODELO_IK_CACHE is None:
+        from sejoga.nucleo.assets import resolve_model
+        from sejoga.nucleo.model import load_model
+
+        _MODELO_IK_CACHE = load_model(resolve_model())
+
+    return _MODELO_IK_CACHE
+
+
+def definir_modelo_ik(model: Model | None) -> None:
+    """Injeta o Model usado pela IK de braço (ex.: o renderer passa o seu).
+
+    Limpa o cache de HPR para recomputar os alvos com a nova geometria.
+    """
+    global _MODELO_IK_CACHE
+
+    _MODELO_IK_CACHE = model
+    _HPR_ALVO_CACHE.clear()
+
+
+def braco_hpr_graus(lado: str, nome_alvo: str, model: Model | None = None) -> dict[str, tuple[float, float, float]]:
+    """HPR (graus) do braço do ``lado`` para o alvo de mão nomeado em arm_targets.
+
+    Devolve ``{grupo: (x_pitch, y_heading, z_roll)}`` em GRAUS, pronto para
+    ``rig.set_rotation``. Cacheado por (lado, nome_alvo). O eixo X (torção) fica
+    em 0: o IK posiciona a mão; o giro do pulso é termo aditivo do gesto.
+    """
+    chave = (lado, nome_alvo)
+    cache = _HPR_ALVO_CACHE.get(chave)
+
+    if cache is None:
+        from sejoga.animacao import arm_ik
+        from sejoga.animacao.arm_targets import ALVOS
+
+        alvo = ALVOS[nome_alvo]
+        m = model if model is not None else _modelo_ik()
+        alvo_lado = alvo.alvo if lado == "right" else alvo.alvo_espelhado()
+        cache = arm_ik.braco_para(m, lado, alvo_lado, alvo.polo)
+        _HPR_ALVO_CACHE[chave] = cache
+
+    return {
+        grupo: (degrees(rot.x), degrees(rot.y), degrees(rot.z))
+        for grupo, rot in cache.items()
+    }
+
 
 def _idle_pulse(t: float, period: float, attack: float, hold: float, release: float, offset: float = 0.0) -> float:
     """One eased gesture followed by a readable rest inside an idle loop."""
@@ -155,6 +215,7 @@ def pose_idle(
         REPOUSO_ANTEBRACO_X,
         REPOUSO_ANTEBRACO_Z,
         REPOUSO_BRACO_X,
+        REPOUSO_BRACO_Y,
         REPOUSO_BRACO_Z,
         camada_respiracao,
         sample_idle,
@@ -238,10 +299,11 @@ def pose_idle(
         rig.set_rotation("body", x=breath * 0.9, y=sway * 1.5, z=sway * 1.0)
         rig.set_rotation("head", x=sin(t * 0.52) * 1.3, y=sin(t * 0.36) * 3.0)
         rig.set_rotation("door", y=max(0.0, sin(t * .28)) * 3.0)
-        # Calma: a base natural quase pura, só com micro-deriva de peso. É a
-        # referência de repouso "relaxado mas com osso" das 9 personalidades.
-        rig.set_rotation("right-arm", x=REPOUSO_BRACO_X + sin(t * 0.36) * 3.0, z=REPOUSO_BRACO_Z + sin(t * .4) * 2.0 - breath * .5 + arm_sway * .5)
-        rig.set_rotation("left-arm", x=REPOUSO_BRACO_X - sin(t * 0.36) * 3.0, z=-REPOUSO_BRACO_Z - sin(t * .4 + .3) * 2.0 + breath * .5 - arm_sway * .5)
+        # Calma: a base natural quase pura (braços baixados pelo IK do alvo
+        # idle), só com micro-deriva de peso. Referência de repouso das 9
+        # personalidades. O heading (REPOUSO_BRACO_Y) vem do solver de IK.
+        rig.set_rotation("right-arm", x=REPOUSO_BRACO_X + sin(t * 0.36) * 3.0, y=REPOUSO_BRACO_Y, z=REPOUSO_BRACO_Z + sin(t * .4) * 2.0 - breath * .5 + arm_sway * .5)
+        rig.set_rotation("left-arm", x=REPOUSO_BRACO_X - sin(t * 0.36) * 3.0, y=-REPOUSO_BRACO_Y, z=-REPOUSO_BRACO_Z - sin(t * .4 + .3) * 2.0 + breath * .5 - arm_sway * .5)
         rig.set_rotation("ant-arm", x=REPOUSO_ANTEBRACO_X + sin(t * .42) * 2.5, z=REPOUSO_ANTEBRACO_Z + sin(t * 0.42) * 4.0)
         rig.set_rotation("ant-arm2", x=REPOUSO_ANTEBRACO_X - sin(t * .42 + .35) * 2.5, z=-REPOUSO_ANTEBRACO_Z - sin(t * 0.42 + .35) * 4.0)
         # Calm hands breathe with the shoulders; no rapid idle twitch.
@@ -541,19 +603,38 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
         def value(*keys):
             return sample_track(tuple((at, (v, 0, 0)) for at, v in keys), t)[0]
         if kind == "wave":
-            # Raise the upper arm modestly, bend at the elbow and turn the
-            # palm toward the viewer. The wrist carries the wave; the shoulder
-            # no longer sweeps across the face.
+            # IK: a mão vai para o ALVO do aceno (acima do ombro, à direita) —
+            # os HPR do ombro/cotovelo vêm do solver 3D sobre a geometria real,
+            # não de ângulos diretos. O ``lift`` interpola do repouso ao alvo; o
+            # balanço (``wave``) e o giro do pulso entram aditivos por cima.
             lift = value((0, 0), (.18, -.04), (.58, 1), (1.28, 1), (1.92, .12), (2.2, 0))
             wave = value((0, 0), (.56, 0), (.82, 1), (1.08, -.78), (1.34, .78),
                          (1.58, -.5), (1.82, 0), (2.2, 0))
-            rig.set_rotation("right-arm", x=-12 * lift, z=70 + 80 * lift)
+            repouso = braco_hpr_graus("right", "idle")
+            aceno = braco_hpr_graus("right", "wave")
+
+            def _interp(grupo: str, eixo: int) -> float:
+                return repouso[grupo][eixo] + (aceno[grupo][eixo] - repouso[grupo][eixo]) * lift
+
+            rig.set_rotation(
+                "right-arm",
+                x=_interp("right-arm", 0),
+                y=_interp("right-arm", 1),
+                z=_interp("right-arm", 2),
+            )
+            rig.set_rotation(
+                "ant-arm",
+                x=_interp("ant-arm", 0),
+                y=_interp("ant-arm", 1),
+                z=_interp("ant-arm", 2) + 7 * wave,
+            )
             rig.set_rotation("left-arm", x=2 * lift, z=-70 + 2 * lift)
-            rig.set_rotation("ant-arm", x=-8 * lift, z=-26 * lift + 7 * wave)
             rig.set_rotation("ant-arm2", x=-3 * lift, z=13 * lift)
-            # The GLTF palm normal is flipped around the forearm's long axis;
-            # roll the wrist through 180° while raising it so the palm faces out.
-            rig.set_rotation("hand", x=180 * lift + 12 * wave, z=2 * wave)
+            # Com o braço na nova orientação de IK (mão acima do ombro), a palma
+            # já aponta para FORA com o pulso neutro — a geometria diagonal fez o
+            # roll de 180° (necessário na pose antiga) virar a palma para DENTRO.
+            # O balanço do aceno (``wave``) oscila o pulso em torno do neutro.
+            rig.set_rotation("hand", x=12 * wave, z=2 * wave)
             rig.set_rotation("fingers", z=-8 * lift + 3 * wave)
             rig.set_rotation("body", y=-3 * lift, z=-3 * lift - wave)
             rig.set_rotation("head", y=5 * lift, z=4 * lift + 2 * wave)
