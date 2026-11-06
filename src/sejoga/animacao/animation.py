@@ -494,6 +494,31 @@ class AnimationController:
                 self.rig.set_rotation('left-arm', x=-motion.pitch*.9, z=-65+motion.limb_swing*.25)
                 self.rig.set_rotation('ant-arm', x=3+motion.limb_swing*.2, z=-4)
                 self.rig.set_rotation('ant-arm2', x=3+motion.limb_swing*.18, z=4)
+            elif grab_part in ('legs', 'left-feet', 'right-feet'):
+                # Pego pela perna/pé: o tronco está rolado ~155° (quase de
+                # cabeça para baixo). Os braços e a cabeça devem PENDER a favor
+                # da gravidade — ou seja, no espaço do mundo caem AFASTANDO-SE
+                # do ponto de pega (o pé, que está por cima). Com o tronco
+                # invertido, isso significa recolher os braços para perto do
+                # corpo (sair dos ±62° "abertos" do caso genérico) e deixá-los
+                # cair ao longo do tronco, com a cabeça pendendo para baixo.
+                #
+                # Ângulos CALIBRÁVEIS (a validar na GPU — ver relatorio Q4):
+                _BRACO_PENDENTE_Z = 12.0   # fecha os braços (longe dos ±62 abertos)
+                _BRACO_PENDENTE_X = 18.0    # joga os braços "para baixo" no mundo
+                _CABECA_PENDENTE_X = 22.0   # cabeça pende (olhar para baixo no mundo)
+                _OSCILACAO_PENDENTE = .18   # resíduo de balanço, reduzido
+                self.rig.set_rotation(
+                    'head', x=_CABECA_PENDENTE_X,
+                    z=motion.limb_swing*_OSCILACAO_PENDENTE*.4)
+                self.rig.set_rotation(
+                    'right-arm', x=_BRACO_PENDENTE_X,
+                    z=_BRACO_PENDENTE_Z+motion.limb_swing*_OSCILACAO_PENDENTE)
+                self.rig.set_rotation(
+                    'left-arm', x=_BRACO_PENDENTE_X,
+                    z=-_BRACO_PENDENTE_Z+motion.limb_swing*_OSCILACAO_PENDENTE)
+                self.rig.set_rotation('ant-arm', x=_BRACO_PENDENTE_X*.4, z=-4)
+                self.rig.set_rotation('ant-arm2', x=_BRACO_PENDENTE_X*.4, z=4)
         if self.appendage_remaining > 0:
             self.rig.set_rotation('door', y=85)
         target = self.rig.pose()

@@ -110,6 +110,46 @@ def test_leg_steps_alternate_and_airborne_pose_settles():
     assert abs(rest.left) < .001 and rest.left_knee < .001
 
 
+def _arraste_por(part):
+    """Dirige o controlador em DRAG por ``part`` até a pose convergir."""
+    animation = controller()
+    pose = None
+    for _ in range(240):
+        pose = animation.update(1/60, dragging=True, grab_part=part)
+    assert animation.state == AnimationState.DRAG
+    return pose
+
+
+def test_arraste_por_perna_pendura_bracos_e_cabeca():
+    from math import degrees
+
+    # Pego pela perna/pé: braços e cabeça pendem a favor da gravidade.
+    for part in ('legs', 'left-feet', 'right-feet'):
+        pose = _arraste_por(part)
+        braco_dir = degrees(pose["right-arm"].z)
+        braco_esq = degrees(pose["left-arm"].z)
+        # Saem da faixa "aberta" (±55..±65) do caso genérico/braço/corpo e
+        # ficam recolhidos (pequena magnitude), pendendo junto ao tronco.
+        assert abs(braco_dir) < 30, part
+        assert abs(braco_esq) < 30, part
+        # Cabeça pende (olhar para baixo no mundo com o tronco invertido).
+        assert degrees(pose["head"].x) > 10, part
+
+
+def test_arraste_por_perna_difere_de_corpo_e_braco():
+    from math import degrees
+
+    perna = _arraste_por('legs')
+    corpo = _arraste_por('body')
+    braco = _arraste_por('right-arm')
+    # A pose de perna recolhe os braços; corpo os mantém abertos (~±65).
+    assert abs(degrees(perna["right-arm"].z)) < abs(degrees(corpo["right-arm"].z))
+    assert abs(degrees(perna["left-arm"].z)) < abs(degrees(corpo["left-arm"].z))
+    # O arraste por braço permanece inalterado (ramo explícito preservado).
+    assert degrees(braco["right-arm"].z) < -40
+    assert abs(degrees(braco["right-arm"].x)) < 20
+
+
 def test_click_wakes_sleep_and_does_not_immediately_fall_asleep():
     animation = controller()
     for _ in range(12):
