@@ -236,7 +236,8 @@ def test_sem_modelo_a_correcao_e_inerte() -> None:
   assert ctrl._collision_model is None
 
   pose = {g: Rotation3(0.1, 0.2, 0.3) for g in ALL_GROUPS}
-  devolvida = ctrl._resolver_colisoes_suave(pose, 1 / 60)
+  # A correção de colisão agora está no pose_resolver; sem model é inerte.
+  devolvida = ctrl.pose_resolver._resolver_colisoes_suave(pose, 1 / 60, None)
 
   assert devolvida == pose
 
@@ -255,7 +256,8 @@ def test_junta_sem_excedente_em_movimento_passa_intacta(model) -> None:
   for i in range(60):
     pose = dict(base)
     pose["head"] = Rotation3(0.0, 0.3 * (i / 59), 0.0)  # heading varia no tempo
-    devolvida = ctrl._resolver_colisoes_suave(pose, dt)
+    # A correção agora está no pose_resolver.
+    devolvida = ctrl.pose_resolver._resolver_colisoes_suave(pose, dt, model)
 
     assert devolvida["head"] == pose["head"], (
       f"junta não-colisora em movimento foi filtrada no frame {i}"

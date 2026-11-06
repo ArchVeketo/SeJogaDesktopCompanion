@@ -455,11 +455,8 @@ void main() {
                 x, y, z = rotation.x, rotation.y, rotation.z
             else:
                 x, y, z = rotation
-            # Beyond vertical the upper arms fold inward through the torso.
-            if group_name == "right-arm":
-                z = max(math.radians(-75), min(math.radians(65), z))
-            elif group_name == "left-arm":
-                z = max(math.radians(-65), min(math.radians(75), z))
+            # Clamps de braço removidos: agora são aplicados pelo PoseResolver
+            # antes de chegar aqui. O renderer só aplica a pose que recebe.
             base_h, base_p, base_r = self._rig_base_hpr.get(group_name, (0.0, 0.0, 0.0))
             if group_name == "door":
                 self._door_requested = max(0.0, math.degrees(y))
