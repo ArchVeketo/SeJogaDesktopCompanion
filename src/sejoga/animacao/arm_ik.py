@@ -330,6 +330,60 @@ def braco_para(
     return {braco: hpr_braco, antebraco: hpr_antebraco}
 
 
+def _rpitch(p: float) -> Mat3:
+    """Pitch (P do renderer, torção), radianos: rotação em torno de +X."""
+    c, s = cos(p), sin(p)
+    return (1.0, 0.0, 0.0, 0.0, c, -s, 0.0, s, c)
+
+
+def medir_braco_render(
+    model: Model, lado: str, pose: dict[str, Rotation3]
+) -> dict[str, object]:
+    """Geometria REAL (renderer) do braço do ``lado`` para uma pose.
+
+    Devolve rotações de mundo 3x3 e a ponta da mão, TUDO no referencial do corpo
+    com os eixos declarados do rig (+X=direita, +Y=cima, +Z=frente) — a mesma
+    convenção que ``rig_debug`` assume. Usado por ``rig_debug`` para ler o braço
+    de forma coerente com o renderer (o modelo Y-up dele supõe o eixo longo em
+    -Y e a elevação no roll, o que NÃO bate para braços).
+
+    Composição (medida e validada contra o renderer):
+      - braço: ``Rh(y)·Rr(z)`` (elevação=heading Y, azimute=roll Z);
+      - antebraço: ``braço · Rr(z_cotovelo)`` (cotovelo dobra no plano local);
+      - mão: ``antebraço · Rh(y)·Rp(x)·Rr(z)`` da mão.
+    """
+    braco, antebraco = _GRUPOS_BRACO[lado]
+    mao = "hand" if lado == "right" else "hand2"
+    upper, forearm = comprimentos_braco(model, lado)
+
+    hb = pose.get(braco, Rotation3())
+    ha = pose.get(antebraco, Rotation3())
+    hm = pose.get(mao, Rotation3())
+
+    r_braco = _mul(_rh(hb.y), _rr(hb.z))
+    r_ante = _mul(r_braco, _rr(ha.z))
+    r_mao = _mul(r_ante, _mul(_rh(hm.y), _mul(_rpitch(hm.x), _rr(hm.z))))
+
+    # Eixo longo do bone: +X no direito, -X no esquerdo (espelho). Os HPR do
+    # lado esquerdo já vêm espelhados (y e z invertidos); com o eixo longo -X a
+    # mesma composição Rh·Rr reproduz a pose renderizada do braço esquerdo.
+    longo = (1.0, 0.0, 0.0) if lado == "right" else (-1.0, 0.0, 0.0)
+    upper_dir = _apply(r_braco, longo)
+    fore_dir = _apply(r_ante, longo)
+    ponta = (
+        upper * upper_dir[0] + forearm * fore_dir[0],
+        upper * upper_dir[1] + forearm * fore_dir[1],
+        upper * upper_dir[2] + forearm * fore_dir[2],
+    )
+
+    return {
+        braco: r_braco,
+        antebraco: r_ante,
+        mao: r_mao,
+        "ponta_mao_rel_ombro": ponta,
+    }
+
+
 def pose_repouso_bracos(model: Model) -> dict[str, Rotation3]:
     """HPR de repouso dos quatro grupos de braço, derivados do alvo de idle.
 

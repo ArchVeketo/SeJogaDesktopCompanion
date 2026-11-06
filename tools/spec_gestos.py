@@ -137,10 +137,15 @@ SPEC_WAVE = SpecGesto(
         ExpectativaGesto(
             grupo="right-arm",
             tipo=TipoExpectativa.ERGUE,
-            eixo="z",
+            eixo="y",
             amplitude_min=40.0,
             sentido=SENTIDO_POSITIVO,
-            descricao="o braço direito ergue (eixo Z cresce de ~70° até ≈150°)",
+            # Migração para IK (convenção medida no renderer): a ELEVAÇÃO do
+            # braço é o HEADING (Y = ``Rotation3.y``), não o roll. No aceno o
+            # braço ergue de ~-74° (baixado) até ~+66° (acima do ombro), então
+            # a amplitude em Y cresce bem acima de 40°. O eixo Z passou a ser o
+            # azimute (avanço/recuo), que quase não muda no wave.
+            descricao="o braço direito ergue (elevação Y cresce de ~-74° até ≈+66°)",
         ),
         ExpectativaGesto(
             grupo="hand",

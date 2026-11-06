@@ -198,6 +198,27 @@ VETORES_REFERENCIA: dict[str, dict[str, Vec3]] = {
   },
 }
 
+#: Eixo LONGO de repouso por grupo. Os BRAÇOS (e ombros) têm o eixo longo em +X
+#: no renderer (direito) / -X (esquerdo, espelho) — medido em frames reais (ver
+#: ``arm_ik``), NÃO em -Y como o modelo antigo supunha. Pernas/pés mantêm -Y.
+#: Grupos fora deste mapa caem no padrão -Y.
+_EIXO_LONGO_POR_GRUPO: dict[str, Vec3] = {
+  "right-arm": (1.0, 0.0, 0.0),
+  "ant-arm": (1.0, 0.0, 0.0),
+  "shoulder": (1.0, 0.0, 0.0),
+  "left-arm": (-1.0, 0.0, 0.0),
+  "ant-arm2": (-1.0, 0.0, 0.0),
+  "shoulder2": (-1.0, 0.0, 0.0),
+}
+
+
+def _eixo_longo_de(grupo: str) -> Vec3:
+  """Eixo longo de repouso do grupo (+X/-X para braços; -Y para o resto)."""
+  return _EIXO_LONGO_POR_GRUPO.get(
+    grupo, VETORES_REFERENCIA["eixo_longo_membro"]["longo"]
+  )
+
+
 #: Grupos de membro cujo "eixo longo" é classificado com ``VETORES_REFERENCIA
 #: ['eixo_longo_membro']`` e cujo repouso pende para -Y. Documentado por parte.
 GRUPOS_MEMBRO: tuple[str, ...] = (
@@ -668,7 +689,7 @@ def direcao_membro(grupo: str, acumulado: dict[str, Mat3]) -> EstadoMembro:
   da elevação (componente Y). Assim um braço pode ser BAIXADO e, ainda assim,
   bem ABERTO para fora — o que o eixo dominante sozinho não revela.
   """
-  longo_repouso = VETORES_REFERENCIA["eixo_longo_membro"]["longo"]
+  longo_repouso = _eixo_longo_de(grupo)
   m = acumulado.get(grupo, _identidade3())
 
   longo = _normalizar(_aplicar3(m, longo_repouso))
@@ -706,13 +727,13 @@ def flag_articulacao(
   ângulo cresce.
   """
   cima_grupo, baixo_grupo = PARES_ARTICULACAO[nome]
-  longo_repouso = VETORES_REFERENCIA["eixo_longo_membro"]["longo"]
 
   m_cima = acumulado.get(cima_grupo, _identidade3())
   m_baixo = acumulado.get(baixo_grupo, _identidade3())
 
-  eixo_cima = _aplicar3(m_cima, longo_repouso)
-  eixo_baixo = _aplicar3(m_baixo, longo_repouso)
+  # Cada segmento usa seu próprio eixo longo de repouso (braços em ±X).
+  eixo_cima = _aplicar3(m_cima, _eixo_longo_de(cima_grupo))
+  eixo_baixo = _aplicar3(m_baixo, _eixo_longo_de(baixo_grupo))
   graus = _angulo_entre(eixo_cima, eixo_baixo)
 
   flag = "DOBRADO" if graus >= ARTICULACAO_DOBRADA_MIN_GRAUS else "ESTENDIDO"
@@ -779,14 +800,66 @@ class EstadoRig:
   orientacao_global: EstadoGlobal
 
 
+#: Grupos do braço cuja geometria é medida pela FK do RENDERER (``arm_ik``) em
+#: vez do modelo Y-up deste módulo. O modelo Y-up supõe o eixo longo do membro
+#: em -Y e a elevação no roll; medindo frames reais, o renderer tem o eixo longo
+#: em +X e a elevação no heading (ver ``arm_ik``). Para os braços baterem com o
+#: que é renderizado, sobrescrevemos a rotação de mundo e a posição da mão desses
+#: grupos com a FK do renderer (os demais grupos seguem o modelo deste módulo).
+_GRUPOS_BRACO_RENDER = {
+  "right": ("right-arm", "ant-arm", "hand"),
+  "left": ("left-arm", "ant-arm2", "hand2"),
+}
+
+
+def _sobrescrever_bracos_render(
+  pose: dict[str, Rotation3],
+  model: Model,
+  acumulado: dict[str, Mat3],
+  posicoes: dict[str, Vec3],
+) -> None:
+  """Substitui, in-place, a rotação/posição dos grupos de braço pela FK real.
+
+  Usa ``arm_ik.medir_braco_render`` (validado contra o renderer) para as
+  rotações de mundo de braço/antebraço/mão e para a POSIÇÃO da ponta da mão
+  (relativa ao ombro, somada à origem do ombro já medida neste módulo). Mantém a
+  origem do ombro deste módulo (translação pura, independente da rotação do
+  braço). Tudo nos eixos declarados do rig (+X dir, +Y cima, +Z frente).
+  """
+  from sejoga.animacao import arm_ik
+
+  for lado, (braco, antebraco, mao) in _GRUPOS_BRACO_RENDER.items():
+    if braco not in acumulado:
+      continue
+
+    medido = arm_ik.medir_braco_render(model, lado, pose)
+    acumulado[braco] = medido[braco]  # type: ignore[assignment]
+    acumulado[antebraco] = medido[antebraco]  # type: ignore[assignment]
+    acumulado[mao] = medido[mao]  # type: ignore[assignment]
+
+    ombro = posicoes.get(braco)
+    ponta_rel = medido["ponta_mao_rel_ombro"]
+
+    if ombro is not None:
+      posicoes[mao] = (
+        ombro[0] + ponta_rel[0],  # type: ignore[index]
+        ombro[1] + ponta_rel[1],  # type: ignore[index]
+        ombro[2] + ponta_rel[2],  # type: ignore[index]
+      )
+
+
 def estado_rig(pose: dict[str, Rotation3], model: Model) -> EstadoRig:
   """Agrega as flags de TODO o rig para uma pose completa.
 
   ``pose`` é o mesmo ``dict`` que o renderizador consome (``grupo -> Rotation3``
   em radianos). ``model`` é o ``Model`` lido do glTF (``model.load_model``).
+
+  Os grupos de braço têm a rotação/posição corrigidas pela FK do renderer
+  (``arm_ik``): o modelo Y-up deste módulo não bate com o renderer para braços.
   """
   acumulado = estado_acumulado(pose, model)
   posicoes = posicao_acumulada(pose, model)
+  _sobrescrever_bracos_render(pose, model, acumulado, posicoes)
 
   membros = {
     grupo: direcao_membro(grupo, acumulado)
