@@ -468,6 +468,39 @@ void main() {
             if outline_node:
                 outline_node.setHpr(node.getHpr())
         self._resolve_arm_clearance()
+        self._aplicar_respiracao()
+
+    # Amplitudes da respiração aplicada ao nó 'body' (modelo low poly sem skin:
+    # infla o tórax escalando/deslocando o nó raiz, sem tocar na malha). Valor
+    # centrado (-1..1) do controller: +1 = peito cheio, -1 = vazio.
+    RESPIRACAO_AMPLITUDE_ESCALA = 0.04  # fração da escala base no pico
+    RESPIRACAO_AMPLITUDE_OFFSET = 0.012  # deslocamento vertical no pico
+
+    def _aplicar_respiracao(self) -> None:
+        """Infla o tórax (nó 'body') pela respiração do controller, no idle."""
+        node = self._rig_nodes.get("body")
+        if node is None:
+            return
+
+        controller = getattr(self.showbase, "animation_controller", None)
+        centrada = getattr(controller, "respiracao_valor", None)
+        if controller is None or centrada is None:
+            return
+
+        base_scale = self._rig_base_scale.get("body")
+        base_pos = self._rig_base_pos.get("body")
+        if base_scale is None or base_pos is None:
+            return
+
+        fator = 1.0 + centrada * self.RESPIRACAO_AMPLITUDE_ESCALA
+        deslocamento = Vec3(0.0, 0.0, centrada * self.RESPIRACAO_AMPLITUDE_OFFSET)
+        node.setScale(base_scale * fator)
+        node.setPos(base_pos + deslocamento)
+
+        outline_node = self._outline_nodes.get("body")
+        if outline_node:
+            outline_node.setScale(base_scale * fator)
+            outline_node.setPos(base_pos + deslocamento)
 
     def apply_body_motion(self, motion, grab_point=None, *, grounded=True, dragging=False):
         """Rotate connected root parts around the hips/grip without editing the asset rig."""

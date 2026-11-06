@@ -22,6 +22,8 @@ from .joint_springs import (
     SpringPose,
 )
 from .leg_motion import LegMotion
+from .respiracao import Respiracao
+from .respiracao_tuning import parametros_de
 from .rig import (
     ALL_GROUPS,
     IdlePersonality,
@@ -79,6 +81,11 @@ class AnimationController:
         self._idle_clock = 0.0
         self.clock = 0.0
         self.idle_personality = IdlePersonality.CALM
+        # Respiração contínua (engine-agnóstica): oscilador lento suavizado por
+        # mola, calibrado pela personalidade atual. O renderer lê o valor
+        # centrado para inflar o tórax no idle.
+        self.respiracao = self._criar_respiracao(self.idle_personality)
+        self.respiracao_valor = 0.0
         self._personality_rng = random.Random()
         self._personality_elapsed = 0.0
         self._personality_interval = self._personality_rng.uniform(24.0, 36.0)
@@ -150,6 +157,30 @@ class AnimationController:
         self.dance_motion.style_beats = 0
         self.dance_motion.pose.clear()
 
+    @staticmethod
+    def _criar_respiracao(personality: IdlePersonality) -> Respiracao:
+        """Cria a respiração calibrada pelos parâmetros da personalidade."""
+        parametros = parametros_de(personality)
+        return Respiracao(
+            frequencia=parametros.frequencia,
+            amplitude=parametros.amplitude,
+            amortecimento=1.0 - parametros.bounce,
+        )
+
+    def _recalibrar_respiracao(self, personality: IdlePersonality) -> None:
+        """Recria a respiração para a nova personalidade, começando no repouso."""
+        self.respiracao = self._criar_respiracao(personality)
+        self.respiracao_valor = 0.0
+
+    def empurrar_respiracao(self, quantidade: float) -> None:
+        """Soma um impulso à respiração para inflar o tórax por evento.
+
+        Delega a ``Respiracao.empurrar``. TODO: ligar este gancho ao estado
+        SNEEZE (inspiração antes do espirro) quando a FEAT do espirro existir.
+        NÃO implementar o sneeze aqui.
+        """
+        self.respiracao.empurrar(quantidade)
+
     def set_idle_personality(self, personality: IdlePersonality | str | None) -> None:
         """Escolhe uma personalidade ou devolve o idle à rotação automática."""
         if personality is None or personality == "auto":
@@ -161,6 +192,7 @@ class AnimationController:
         if selected == self.idle_personality and self._personality_locked:
             return
         self.idle_personality = selected
+        self._recalibrar_respiracao(selected)
         self._idle_clock = 0.0
         self._personality_locked = True
         self._personality_elapsed = 0.0
@@ -264,6 +296,10 @@ class AnimationController:
             self._dance_remaining = 1.0
         self.clock += dt
         self.delta_time = dt
+        # Avança a respiração com o dt já saturado e expõe o valor centrado do
+        # frame (-1..1) para o renderer inflar o tórax.
+        self.respiracao.atualizar(dt)
+        self.respiracao_valor = self.respiracao.centrada
         self.music_active = music_playing
         self.appendage_remaining = max(0, self.appendage_remaining-dt)
         self.body_motion.update(dt, pointer=pointer_position, dragging=dragging,
@@ -343,6 +379,7 @@ class AnimationController:
                     if personality != self.idle_personality
                 ]
                 self.idle_personality = self._personality_rng.choice(choices)
+                self._recalibrar_respiracao(self.idle_personality)
                 self._idle_clock = 0.0
                 self._personality_elapsed = 0.0
                 self._personality_interval = self._personality_rng.uniform(24.0, 36.0)
