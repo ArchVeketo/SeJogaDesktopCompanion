@@ -10,6 +10,7 @@ contrato rígido): base < locomoção < interação < música < física.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import IntEnum
 
 from sejoga.nucleo.rig import Rotation3
 
@@ -31,6 +32,93 @@ MASCARA_INTERACAO = frozenset({
     "right-arm", "left-arm", "ant-arm", "ant-arm2",
     "hand", "hand2", "fingers", "fingers2", "shoulder", "shoulder2",
 })
+
+
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║                   Prioridades e camadas delta (Fase 3)                    ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+
+
+class Prioridade(IntEnum):
+    """Ordem de aplicação das camadas (menor = primeiro)."""
+
+    BASE = 0
+    LOCOMOCAO = 10
+    ESTADO = 20
+    REACAO = 30
+    MUSICA = 40
+    FISICA = 50
+    FOLLOW_THROUGH = 60
+
+
+@dataclass
+class CamadaDelta:
+    """Delta aditivo por junta, com máscara e peso.
+
+    Diferente de ``CamadaAnim``, que guarda contribuição absoluta, esta
+    representa DELTAS sobre a pose base. Cada camada soma seu delta à pose
+    acumulada, na ordem de prioridade.
+    """
+
+    nome: str
+    prioridade: Prioridade
+    delta: dict[str, Rotation3] = field(default_factory=dict)
+    peso: float = 1.0
+    mascara: frozenset[str] | None = None  # None = afeta tudo
+
+    def aplicado(self, grupo: str, base: Rotation3) -> Rotation3:
+        """Soma o delta à rotação base, respeitando máscara e peso."""
+        if self.mascara is not None and grupo not in self.mascara:
+            return base
+        d = self.delta.get(grupo)
+        if d is None or self.peso == 0.0:
+            return base
+        return Rotation3(
+            base.x + d.x * self.peso,
+            base.y + d.y * self.peso,
+            base.z + d.z * self.peso,
+        )
+
+
+class LayerStack:
+    """Gerencia e compõe camadas aditivas sobre a pose de repouso.
+
+    Cada camada contribui um delta sobre a pose base (única fonte de verdade).
+    A composição ocorre em ordem de prioridade: prioridades menores primeiro.
+    """
+
+    def __init__(self) -> None:
+        from sejoga.animacao.rig_base import pose_repouso
+
+        self._camadas: dict[str, CamadaDelta] = {}
+        self._base = pose_repouso()
+
+    def set_camada(self, camada: CamadaDelta) -> None:
+        """Adiciona ou atualiza uma camada."""
+        self._camadas[camada.nome] = camada
+
+    def remove_camada(self, nome: str) -> None:
+        """Remove uma camada (ex.: reação que terminou)."""
+        self._camadas.pop(nome, None)
+
+    def compor(self) -> dict[str, Rotation3]:
+        """Compõe todas as camadas sobre a base, em ordem de prioridade.
+
+        Returns
+        -------
+        Pose composta com todos os deltas aplicados sobre a base.
+        """
+        ordenadas = sorted(
+            self._camadas.values(),
+            key=lambda c: (c.prioridade, c.nome),
+        )
+
+        resultado = dict(self._base)
+        for camada in ordenadas:
+            for grupo in resultado:
+                resultado[grupo] = camada.aplicado(grupo, resultado[grupo])
+
+        return resultado
 
 
 @dataclass

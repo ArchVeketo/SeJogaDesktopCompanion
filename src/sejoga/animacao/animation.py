@@ -11,8 +11,23 @@ import random
 from enum import StrEnum
 from typing import ClassVar
 
-from sejoga.animacao.anim_layers import MASCARA_MUSICA, CamadaAnim, MixerCamadas
+from sejoga.animacao.anim_layers import (
+    MASCARA_MUSICA,
+    CamadaAnim,
+    CamadaDelta,
+    LayerStack,
+    MixerCamadas,
+    Prioridade,
+)
 from sejoga.animacao.body_motion import BodyMotion
+from sejoga.animacao.delta_states import (
+    delta_drag,
+    delta_fall,
+    delta_fisica,
+    delta_idle,
+    delta_sleep,
+    delta_walk,
+)
 from sejoga.animacao.rig_base import REPOUSO
 from sejoga.animacao.dance_motion import DanceMotion
 from sejoga.animacao.hand_motion import HandMotion
@@ -151,6 +166,8 @@ class AnimationController:
         self.pose_resolver.iniciar_transicao(
             dict(self._pose), transition_seconds=self.transition_seconds
         )
+        # LayerStack para composição aditiva de deltas (Fase 3).
+        self.layer_stack = LayerStack()
 
     def preview_dance(self, style):
         if style not in ('head_bob', 'hip_hop', 'rock', 'breakdance'):
@@ -521,22 +538,64 @@ class AnimationController:
         if self.appendage_remaining > 0:
             self.rig.set_rotation('door', y=85)
         target = self.rig.pose()
-        # A saída por junta passa pelo mixer de camadas aditivas. A pose
-        # autoral vira a camada 'base'; na dança, as juntas de música saem da
-        # base (zeradas) e entram como camada aditiva 'musica', de modo que
-        # base + musica reproduz a dança de hoje sem dupla aplicação. Pernas e
-        # pés permanecem na base (fora da máscara) e no IK de lower_body.
-        camadas = [CamadaAnim("base", dict(target))]
-        if self.state == AnimationState.DANCE:
-            base = camadas[0].contribuicao
-            contribuicao_musica = {
-                grupo: base[grupo] for grupo in MASCARA_MUSICA if grupo in base
-            }
-            for grupo in contribuicao_musica:
-                base[grupo] = Rotation3()
-            camadas.append(CamadaAnim("musica", contribuicao_musica,
-                                      mascara=MASCARA_MUSICA))
-        composed = MixerCamadas.compor(camadas)
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # Composição via LayerStack (Fase 3): produz delta do estado atual
+        # e usa layer_stack.compor() para obter pose composta.
+        # ═══════════════════════════════════════════════════════════════════════
+        motion = self.body_motion.snapshot
+
+        # Produz delta do estado atual
+        delta_estado = self._delta_do_estado(
+            self.state,
+            self._idle_clock if self.state in (AnimationState.IDLE, AnimationState.HOVER) else self.clock,
+            velocity,
+            grab_part,
+        )
+
+        # Determina se o estado atual está totalmente migrado para deltas
+        # Estados não migrados usam a pose legada diretamente
+        estados_migrados = {
+            AnimationState.IDLE, AnimationState.WALK, AnimationState.RUN,
+            AnimationState.DRAG, AnimationState.FALL, AnimationState.SLEEP,
+        }
+        estado_migrado = self.state in estados_migrados and delta_estado
+
+        if estado_migrado:
+            # Set camadas no LayerStack
+            self.layer_stack.set_camada(CamadaDelta(
+                nome="estado",
+                prioridade=Prioridade.ESTADO,
+                delta=delta_estado,
+            ))
+
+            # Camada de física (roll, pitch, yaw do body_motion)
+            self.layer_stack.set_camada(CamadaDelta(
+                nome="fisica",
+                prioridade=Prioridade.FISICA,
+                delta=delta_fisica(motion),
+            ))
+
+            # Compõe camadas sobre a base de repouso
+            composed = self.layer_stack.compor()
+
+            # Garante que grupos não cobertos pelo delta usem valores da pose legada
+            for grupo, rotacao in target.items():
+                if grupo not in composed:
+                    composed[grupo] = rotacao
+        else:
+            # Estados não migrados: usa sistema legado com MixerCamadas
+            camadas = [CamadaAnim("base", dict(target))]
+            if self.state == AnimationState.DANCE:
+                base = camadas[0].contribuicao
+                contribuicao_musica = {
+                    grupo: base[grupo] for grupo in MASCARA_MUSICA if grupo in base
+                }
+                for grupo in contribuicao_musica:
+                    base[grupo] = Rotation3()
+                camadas.append(CamadaAnim("musica", contribuicao_musica,
+                                          mascara=MASCARA_MUSICA))
+            composed = MixerCamadas.compor(camadas)
 
         # Crossfade, colisão e clamps delegados ao PoseResolver.
         # O resolver aplica crossfade com molas (continuidade de velocidade),
@@ -591,3 +650,32 @@ class AnimationController:
             y=start.y * inverse + end.y * amount,
             z=start.z * inverse + end.z * amount,
         )
+
+    def _delta_do_estado(
+        self,
+        state: AnimationState,
+        t: float,
+        velocity: tuple[float, float],
+        grab_part: str,
+    ) -> dict[str, Rotation3]:
+        """Produz o delta do estado atual via funções delta_*.
+
+        Cada delta retorna apenas a diferença sobre a pose base, não a pose
+        absoluta. Estados não migrados retornam delta vazio.
+        """
+        motion = self.body_motion.snapshot
+
+        if state in (AnimationState.IDLE, AnimationState.HOVER):
+            return delta_idle(t, self.idle_personality, self.respiracao_valor)
+        if state == AnimationState.DRAG:
+            return delta_drag(motion, grab_part)
+        if state == AnimationState.WALK:
+            return delta_walk(t, run=False)
+        if state == AnimationState.RUN:
+            return delta_walk(t, run=True)
+        if state == AnimationState.FALL:
+            return delta_fall(self.state_time, velocity)
+        if state == AnimationState.SLEEP:
+            return delta_sleep(t)
+        # Estados não migrados: delta vazio (usa pose legada)
+        return {}
