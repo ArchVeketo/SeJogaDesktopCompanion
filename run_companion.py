@@ -4,9 +4,10 @@ Entry point for SeJogaDesktopCompanion executable.
 Handles both development and frozen (PyInstaller) modes.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
+
 
 def setup_frozen_paths():
     """Configure paths for PyInstaller frozen executable."""
