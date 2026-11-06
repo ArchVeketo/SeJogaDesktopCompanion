@@ -1,3 +1,4 @@
+import math
 from itertools import pairwise
 
 from sejoga.animacao.animation import AnimationController, AnimationState
@@ -101,6 +102,50 @@ def test_walk_dance_and_drag_poses_have_counterbalanced_arms():
     left_drag = animation.rig.pose()
     assert right_drag["left-arm"].z > left_drag["left-arm"].z
     assert right_drag["right-arm"].z > left_drag["right-arm"].z
+
+
+def test_raised_arm_survives_the_resolver_clamp_in_the_live_pipeline():
+    # Regressão: o clamp anatômico do PoseResolver (passo final do pipeline
+    # vivo, aplicado em TODO frame) precisa deixar passar as poses erguidas da
+    # base nova. O teto antigo (+65°/-65°) decapitava wave/dance/flourish para
+    # ~65° (abaixo da horizontal) — o sintoma "as poses continuam iguais".
+    # Este teste dirige pose_resolver.resolver() diretamente (a montante só da
+    # composição, a jusante do clamp) e exige que o braço erguido chegue
+    # erguido ao renderer.
+    from math import degrees
+
+    animation = controller()
+    animation.pose_resolver.definir_pose({g: Rotation3() for g in ALL_GROUPS})
+    alvo = {g: Rotation3() for g in ALL_GROUPS}
+    alvo["right-arm"] = Rotation3(z=math.radians(150.0))   # wave/flourish
+    alvo["left-arm"] = Rotation3(z=math.radians(-150.0))   # espelho
+    resolvida = None
+    for _ in range(120):
+        resolvida = animation.pose_resolver.resolver(1 / 60, alvo)
+    # Após o clamp, o braço continua erguido (bem acima do teto antigo de 65°).
+    assert degrees(resolvida["right-arm"].z) > 120
+    assert degrees(resolvida["left-arm"].z) < -120
+
+
+def test_wave_reaches_renderer_raised_end_to_end():
+    # Pipeline completo: interact('wave') → update() leva o estado a WAVE e
+    # a pose renderizada (após crossfade + clamp) precisa erguer o braço no
+    # pico do gesto, não ser rebaixada pelo clamp.
+    from math import degrees
+
+    animation = controller()
+    animation.interact("wave")
+    pico = -1.0
+    viu_wave = False
+    for _ in range(140):
+        pose = animation.update(1 / 60)
+        if animation.state == AnimationState.WAVE:
+            viu_wave = True
+        pico = max(pico, degrees(pose["right-arm"].z))
+    assert viu_wave
+    # No pico o braço ultrapassa a horizontal (T-pose=90°) rumo ao erguido,
+    # muito além do teto antigo de 65° que anulava a recalibração.
+    assert pico > 100
 
 
 def test_leg_steps_alternate_and_airborne_pose_settles():
