@@ -368,3 +368,27 @@ def test_surprise_pose_recoils_body_and_turns_head_toward_stimulus():
     pose = animation.rig.pose()
     assert degrees(pose["head"].y) > 0
     assert degrees(pose["body"].x) < 0
+
+
+def test_respiracao_fica_parada_no_idle_sem_empurrar():
+    # Idle por vários segundos sem empurrar: a respiração não oscila, o valor
+    # exposto permanece 0.0 (respiração sob demanda).
+    animation = controller()
+    for _ in range(600):  # 10 s a 60 fps
+        animation.update(1 / 60)
+        assert animation.respiracao_valor == 0.0
+
+
+def test_empurrar_respiracao_infla_e_decai_sozinho():
+    # Após empurrar, o valor sobe por alguns frames e depois recua para ~0.
+    animation = controller()
+    animation.empurrar_respiracao(0.8)
+    valor_pico = 0.0
+    for _ in range(30):
+        animation.update(1 / 60)
+        valor_pico = max(valor_pico, abs(animation.respiracao_valor))
+    assert valor_pico > 0.0
+    # Deixa o impulso decair: o valor volta a 0.0 (sob demanda, sem desligar).
+    for _ in range(600):
+        animation.update(1 / 60)
+    assert abs(animation.respiracao_valor) < 1e-3

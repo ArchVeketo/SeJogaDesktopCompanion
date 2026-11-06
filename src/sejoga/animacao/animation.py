@@ -90,9 +90,10 @@ class AnimationController:
         self._idle_clock = 0.0
         self.clock = 0.0
         self.idle_personality = IdlePersonality.CALM
-        # Respiração contínua (engine-agnóstica): oscilador lento suavizado por
-        # mola, calibrado pela personalidade atual. O renderer lê o valor
-        # centrado para inflar o tórax no idle.
+        # Respiração sob demanda (engine-agnóstica): o oscilador lento e a
+        # mola seguem avançando a cada frame, mas o valor exposto só sai de
+        # zero enquanto houver impulso de empurrar_respiracao ativo. No idle
+        # normal o tórax fica parado; o renderer lê 0.0 até alguém empurrar.
         self.respiracao = self._criar_respiracao(self.idle_personality)
         self.respiracao_valor = 0.0
         self._personality_rng = random.Random()
@@ -194,11 +195,14 @@ class AnimationController:
         self.respiracao_valor = 0.0
 
     def empurrar_respiracao(self, quantidade: float) -> None:
-        """Soma um impulso à respiração para inflar o tórax por evento.
+        """Ativa a respiração sob demanda, inflando o tórax por evento.
 
-        Delega a ``Respiracao.empurrar``. TODO: ligar este gancho ao estado
-        SNEEZE (inspiração antes do espirro) quando a FEAT do espirro existir.
-        NÃO implementar o sneeze aqui.
+        A respiração não ocorre mais no idle; este é o único gancho que a
+        liga. Chamar ``empurrar_respiracao(quantidade)`` a partir de um estado
+        ou evento (ex.: inspiração antes do espirro) faz ``respiracao_valor``
+        subir por alguns frames e decair sozinho de volta a 0.0, sem precisar
+        desligar nada. Delega a ``Respiracao.empurrar``. TODO: ligar ao estado
+        SNEEZE quando a FEAT do espirro existir. NÃO implementar o sneeze aqui.
         """
         self.respiracao.empurrar(quantidade)
 
@@ -321,10 +325,14 @@ class AnimationController:
             self._dance_remaining = 1.0
         self.clock += dt
         self.delta_time = dt
-        # Avança a respiração com o dt já saturado e expõe o valor centrado do
-        # frame (-1..1) para o renderer inflar o tórax.
+        # Avança a respiração com o dt já saturado (o oscilador e o impulso de
+        # empurrar precisam evoluir todo frame), mas só expõe o valor centrado
+        # ENQUANTO houver impulso ativo. Sem empurrar, fica 0.0: o idle não
+        # respira sozinho (respiração sob demanda).
         self.respiracao.atualizar(dt)
-        self.respiracao_valor = self.respiracao.centrada
+        self.respiracao_valor = (
+            self.respiracao.centrada if self.respiracao.impulso_ativo else 0.0
+        )
         self.music_active = music_playing
         self.appendage_remaining = max(0, self.appendage_remaining-dt)
         self.body_motion.update(dt, pointer=pointer_position, dragging=dragging,
@@ -432,10 +440,10 @@ class AnimationController:
         if self.state in (AnimationState.IDLE, AnimationState.HOVER):
             if idle_enabled:
                 self._idle_clock += dt
-                # A respiração só alimenta pose_idle nos estados IDLE/HOVER
-                # (únicos que chamam pose_idle com respiração). Walk/run/drag/
-                # fall/dance/sleep NÃO recebem respiração: ela não vaza para
-                # estados onde não faz sentido um peito respirando parado.
+                # A respiração é sob demanda: respiracao_valor fica 0.0 no idle
+                # normal, então pose_idle recebe 0.0 e NÃO infla o tórax. Só
+                # quando empurrar_respiracao é chamado o valor sobe por alguns
+                # frames. Walk/run/drag/fall/dance/sleep seguem sem respiração.
                 pose_idle(self.rig, self._idle_clock, self.idle_personality,
                           self.respiracao_valor)
             if self.state == AnimationState.HOVER:

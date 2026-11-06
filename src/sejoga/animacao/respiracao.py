@@ -90,6 +90,15 @@ class Respiracao:
     self._impulso = clamp(self._impulso + quantidade, -1.0, 1.0)
 
   @property
+  def impulso_ativo(self) -> bool:
+    """Indica se ainda há impulso de ``empurrar`` em curso (sob demanda).
+
+    Read-only; não altera a API existente. Serve para o controlador só expor
+    a respiração enquanto houver um impulso vivo, deixando o idle parado.
+    """
+    return abs(self._impulso) > 1e-4
+
+  @property
   def centrada(self) -> float:
     """Valor suavizado ao redor do repouso, na faixa ``-1..1``."""
     return clamp(self._mola.value, -1.0, 1.0)
