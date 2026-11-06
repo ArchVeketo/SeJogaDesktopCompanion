@@ -9,6 +9,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Principal;
@@ -17,6 +18,18 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+
+// VERSION_INFO do executavel. Sem /win32res, o csc gera o recurso Win32 de versao
+// a partir destes atributos; e esse recurso que o UAC le para exibir o editor.
+// Produto e fornecedor em portugues; nao ha assinatura de codigo (ver tools/build-launcher.ps1).
+[assembly: AssemblyTitle("Se Joga Desktop Companion")]
+[assembly: AssemblyProduct("Se Joga Desktop Companion")]
+[assembly: AssemblyCompany("Se Joga no Armário")]
+[assembly: AssemblyDescription("Atualizador e inicializador do Se Joga Desktop Companion")]
+[assembly: AssemblyCopyright("© Se Joga no Armário")]
+[assembly: AssemblyVersion("1.0.0.0")]
+[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: ComVisible(false)]
 
 internal static class SeJogaLauncher
 {
@@ -102,7 +115,8 @@ internal static class SeJogaLauncher
                 catch (System.ComponentModel.Win32Exception error)
                 {
                     if (error.NativeErrorCode != 1223) throw;
-                    return 0; // UAC was declined; the existing mascot was not closed.
+                    // UAC recusado: o mascote ja foi fechado pelo companion antes do handoff,
+                    // entao caimos para StartCurrent para reabri-lo e nao deixar o usuario sem app.
                 }
             }
             StartCurrent(); // Also recovers the previous app if an attempted update rolled back.
@@ -245,6 +259,12 @@ internal static class SeJogaLauncher
             return data;
         }
     }
+    static string FormatarTamanho(long bytes)
+    {
+        // Mostra o tamanho em MB para o usuario acompanhar o download.
+        double mb = bytes / 1048576.0;
+        return mb.ToString("0.0", CultureInfo.InvariantCulture) + " MB";
+    }
     static string Hash(string path)
     {
         using (var sha = SHA256.Create())
@@ -262,6 +282,7 @@ internal static class SeJogaLauncher
         if (Verified(cache, manifest)) File.Copy(cache, target, true);
         else
         {
+            long tamanho = Number(manifest, "size");
             using (var response = Open(new Uri(Text(manifest, "url"))))
             using (var input = response.GetResponseStream())
             using (var output = File.Create(target))
@@ -270,18 +291,22 @@ internal static class SeJogaLauncher
                 while ((count = input.Read(buffer, 0, buffer.Length)) > 0)
                 {
                     total += count;
-                    if (total > Number(manifest, "size")) throw new InvalidDataException("Pacote maior que o informado.");
+                    if (total > tamanho) throw new InvalidDataException("Pacote maior que o informado.");
                     output.Write(buffer, 0, count);
-                    Status("Baixando o aplicativo…", 5 + (int)(total * 55 / Number(manifest, "size")));
+                    int percentual = (int)(total * 100 / tamanho);
+                    Status("Baixando atualização… " + percentual + "% (" +
+                        FormatarTamanho(total) + " de " + FormatarTamanho(tamanho) + ")",
+                        5 + (int)(total * 55 / tamanho));
                 }
             }
         }
+        Status("Verificando a integridade do pacote…", 60);
         if (!Verified(target, manifest)) throw new InvalidDataException("SHA256 inválido ou download incompleto.");
         return target;
     }
     static void Extract(string archive, string destination, Dictionary<string, object> manifest)
     {
-        Status("Verificando e preparando os arquivos…", 65);
+        Status("Instalando: extraindo os arquivos da atualização…", 65);
         Directory.CreateDirectory(destination);
         long total = 0;
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -313,7 +338,7 @@ internal static class SeJogaLauncher
                     }
                     if (written != entry.Length) throw new InvalidDataException("Arquivo truncado no pacote.");
                 }
-                Status("Preparando os arquivos…", 70);
+                Status("Instalando: preparando os arquivos…", 70);
             }
         }
         var info = ReadJson(Path.Combine(destination, "release-info.json"));
@@ -356,14 +381,27 @@ internal static class SeJogaLauncher
                     if (CompareVersion(installed, manifest) > 0 || Number(installed, "build_id") > Number(manifest, "build_id") ||
                         (!repair && Number(installed, "build_id") == Number(manifest, "build_id"))) return;
                 }
+                // Fecha o mascote ANTES do download para que ele nao fique renderizando
+                // atras da barra de progresso (o "bloco preto" que o usuario relatava). O
+                // mascote e reaberto por StartCurrent apos a troca do runtime. O cancelamento
+                // ainda e permitido durante o download: Committing so liga na fase de troca.
+                string[] mascote = new[] { Path.Combine(current, "SeJogaCompanion.exe"),
+                    Path.Combine(Root, "SeJogaCompanion.exe") }.Where(File.Exists).ToArray();
+                if (!prepare)
+                {
+                    Status("Fechando o Mário para iniciar a atualização…", 4);
+                    CloseApplications(mascote);
+                }
                 Directory.CreateDirectory(work);
                 string archive = Download(manifest, work, cache);
                 string staged = Path.Combine(work, "staged");
                 Extract(archive, staged, manifest);
                 if (prepare) { File.Copy(archive, Path.Combine(Root, "prepared-payload.zip"), true); return; }
                 Committing = true;
-                Status("Fechando o Mário para aplicar a atualização…", 80);
-                CloseApplications(new[] { Path.Combine(current, "SeJogaCompanion.exe"), Path.Combine(Root, "SeJogaCompanion.exe") }.Where(File.Exists).ToArray());
+                Status("Aplicando a atualização…", 80);
+                // Rede de seguranca: fecha novamente caso algo tenha reaberto o mascote
+                // durante o download (ex.: usuario clicou no atalho).
+                CloseApplications(mascote.Where(File.Exists).ToArray());
                 Directory.CreateDirectory(Path.GetDirectoryName(current));
                 if (Directory.Exists(previous)) Directory.Delete(previous, true);
                 bool moved = false;

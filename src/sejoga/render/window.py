@@ -805,11 +805,13 @@ class OverlayApp(ShowBase):
         settings_action.triggered.connect(lambda _checked=False: self.open_settings_dialog())
 
         from sejoga.distribuicao.update_ui import UpdateDialog
-        # The stable launcher requests elevation separately; wait for Restart
-        # Manager's confirmed shutdown instead of quitting before UAC is answered.
+        # Fluxo fecha->barra->reabre: ao confirmar a atualização, o launcher nativo
+        # assume (download/verificação/instalação com barra de progresso própria) e
+        # pede elevação. O companion fecha aqui para não ficar renderizando atrás da
+        # barra (o "bloco preto"); o launcher reabre o mascote ao terminar, inclusive
+        # se o usuário cancelar o UAC.
         # O canal da config (não o release-info.json) decide qual feed consultar.
-        self._update_dialog = UpdateDialog(
-            lambda: self.logger.info('Update agent launched'), self.settings)
+        self._update_dialog = UpdateDialog(self._ao_iniciar_atualizacao, self.settings)
         canal = self.settings.update.channel
         if self._update_dialog.current:
             current = self._update_dialog.current
@@ -1106,6 +1108,7 @@ class OverlayApp(ShowBase):
 
         dialog = SettingsDialog(self.settings)
         dialog.settings_applied.connect(self._apply_settings)
+        dialog.atualizacao_iniciada.connect(self._ao_iniciar_atualizacao)
         dialog.finished.connect(lambda _result: setattr(self, "_settings_dialog", None))
         self._settings_dialog = dialog
         dialog.show()
@@ -1192,6 +1195,16 @@ class OverlayApp(ShowBase):
             save_settings(self.settings)
         except OSError as exc:
             self.logger.error("Falha ao salvar configuração: %s", exc)
+
+    def _ao_iniciar_atualizacao(self) -> None:
+        """Fecha o companion quando a atualização inicia.
+
+        O launcher nativo mostra só a barra de progresso e reabre o mascote ao
+        terminar (ou se o usuário cancelar o UAC). Fechar aqui evita o mascote
+        renderizando atrás da barra (o "bloco preto" relatado pelo usuário).
+        """
+        self.logger.info('Atualização iniciada; fechando o companion para o launcher assumir.')
+        self.quit_app()
 
     def quit_app(self) -> None:
         self.userExit()

@@ -42,6 +42,9 @@ class SettingsDialog(QDialog):
     """Edita preferências e salva uma cópia validada em TOML."""
 
     settings_applied = Signal(object)
+    # Emitido quando o handoff ao launcher nativo acontece: o companion deve fechar
+    # para não ficar renderizando atrás da barra de progresso (fluxo fecha->barra->reabre).
+    atualizacao_iniciada = Signal()
     # Resultado da busca de atualizações feita em thread (ver _buscar_atualizacoes).
     _busca_concluida = Signal(object)
 
@@ -319,8 +322,10 @@ class SettingsDialog(QDialog):
         resposta = QMessageBox.question(
             self, "Atualização disponível",
             f"Versão {valor.version} está disponível no canal {canal}.\n\n"
-            "Deseja atualizar agora? O Windows pedirá permissão de administrador e "
-            "o Mário será reaberto ao terminar. Suas configurações serão preservadas.",
+            "Deseja atualizar agora? O Mário será fechado e aparecerá apenas uma barra "
+            "de progresso. O Windows pedirá permissão de administrador e o Mário será "
+            "reaberto ao terminar (ou se você cancelar a permissão). "
+            "Suas configurações serão preservadas.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -340,6 +345,11 @@ class SettingsDialog(QDialog):
             win32api.ShellExecute(0, "open", str(launcher), "--update", str(launcher.parent), 1)
         except Exception as exc:
             self.update_status_label.setText(f"Atualização não iniciada: {exc}")
+        else:
+            # Handoff feito: fecha o diálogo e sinaliza para o companion encerrar.
+            # O launcher assume a barra e reabre o mascote ao terminar.
+            self.accept()
+            self.atualizacao_iniciada.emit()
 
 
 _WM_HOTKEY = 0x0312

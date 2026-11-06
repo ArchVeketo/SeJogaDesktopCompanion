@@ -94,10 +94,11 @@ class UpdateDialog(QDialog):
             return
         answer = QMessageBox.question(
             self, 'Aplicar atualização?',
-            'O atualizador vai baixar e verificar a versão atual deste canal. '
+            'O Mário será fechado agora e aparecerá apenas uma barra de progresso enquanto '
+            'o atualizador baixa, verifica e instala a nova versão. '
             'O Windows solicitará permissão de administrador para atualizar todos os usuários. '
-            'O Mário só será fechado depois da preparação do pacote e será reaberto ao terminar. '
-            'Suas configurações serão preservadas.\n\nAtualizar agora?',
+            'Ao terminar, o Mário reabre automaticamente (se você cancelar a permissão, '
+            'ele também volta). Suas configurações serão preservadas.\n\nAtualizar agora?',
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:
