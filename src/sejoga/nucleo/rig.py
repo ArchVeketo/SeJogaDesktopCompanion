@@ -391,8 +391,8 @@ def pose_sleep(rig: Rig, t: float) -> None:
     breath = sin(t * 0.75)
     rig.set_rotation("body", x=1.5 + breath * 0.6, z=-2.0)
     rig.set_rotation("head", x=12.0 + breath * 0.8, y=4.0)
-    rig.set_rotation("right-arm", x=10.0, z=55.0)
-    rig.set_rotation("left-arm", x=10.0, z=-55.0)
+    rig.set_rotation("right-arm", x=10.0, z=22.0)
+    rig.set_rotation("left-arm", x=10.0, z=-22.0)
     rig.set_rotation("ant-arm", x=8.0)
     rig.set_rotation("ant-arm2", x=8.0)
 
@@ -416,8 +416,8 @@ def pose_thrown(rig: Rig, t: float = 0.0, velocity=(0.0, 450.0)) -> None:
     # the wrists lag behind the elbows.
     rig.set_rotation("body", x=-6 + 13 * descent, z=-drift * 10 + air_sway * 2)
     rig.set_rotation("head", x=-6 + 14 * descent, y=-drift * 9, z=drift * 5 - air_sway * 2)
-    rig.set_rotation("right-arm", x=-11 + 8 * descent, z=14 + 36 * descent + drift * 8 + air_sway * 6)
-    rig.set_rotation("left-arm", x=-8 + 6 * descent, z=-50 + 42 * descent + drift * 4 - air_sway * 7)
+    rig.set_rotation("right-arm", x=-11 + 8 * descent, z=55 + 35 * descent + drift * 8 + air_sway * 6)
+    rig.set_rotation("left-arm", x=-8 + 6 * descent, z=-85 + 40 * descent + drift * 4 - air_sway * 7)
     rig.set_rotation("ant-arm", x=-20 + 8 * descent, z=-34 + 12 * descent - air_sway * 5)
     rig.set_rotation("ant-arm2", x=-14 + 4 * descent, z=34 - 12 * descent + air_sway * 4)
     rig.set_rotation("hand", x=8 * settle - 5 * descent, y=drift * 3, z=-18 + drift * 5 - air_sway * 4)
@@ -435,8 +435,8 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
     direction = max(-1.0, min(1.0, direction))
     # Keep arms close during reactions. Hover starts from the current idle
     # pose so the cursor can invite one small, directional reach.
-    right_base = degrees(rig.current["right-arm"].z) if kind == "hover" else 62.0
-    left_base = degrees(rig.current["left-arm"].z) if kind == "hover" else -64.0
+    right_base = degrees(rig.current["right-arm"].z) if kind == "hover" else 70.0
+    left_base = degrees(rig.current["left-arm"].z) if kind == "hover" else -72.0
     right_elbow = degrees(rig.current["ant-arm"].z) if kind == "hover" else -22.0
     left_elbow = degrees(rig.current["ant-arm2"].z) if kind == "hover" else 20.0
     rig.set_rotation("right-arm", z=right_base)
@@ -450,9 +450,9 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
         down = max(0.0, vertical)
         up = max(0.0, -vertical)
         rig.set_rotation("right-arm", x=-3.0 - up * 10.0,
-                         z=right_base - 46.0 * right_reach - 18.0 * up + 10.0 * down)
+                         z=right_base - 40.0 * right_reach - 18.0 * up + 10.0 * down)
         rig.set_rotation("left-arm", x=-3.0 - up * 10.0,
-                         z=left_base + 46.0 * left_reach + 18.0 * up - 10.0 * down)
+                         z=left_base + 40.0 * left_reach + 18.0 * up - 10.0 * down)
         rig.set_rotation("ant-arm", x=-5.0 - up * 12.0,
                          z=right_elbow + 54.0 * right_reach + 14.0 * up)
         rig.set_rotation("ant-arm2", x=-5.0 - up * 12.0,
@@ -475,7 +475,7 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
         extension = track((0, 0), (.20, -6), (.48, -48), (.72, -42), (1.4, 0))
         rig.set_rotation("body", x=recoil, y=-direction * reach)
         rig.set_rotation("head", x=-recoil * .65, y=direction * 15, z=-recoil * .4)
-        rig.set_rotation("right-arm", x=-abs(extension) * .2, z=65 + extension)
+        rig.set_rotation("right-arm", x=-abs(extension) * .2, z=72 + extension)
         rig.set_rotation("ant-arm", x=extension * .4, z=extension * .3)
         rig.set_rotation("hand", x=-recoil, z=-extension * .2)
         curl = track((0, 0), (.18, 20), (.43, -10), (.8, 4), (1.4, 0))
@@ -490,7 +490,7 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
         pulse = sin(pi * min(1.0, t / 0.4))
         rig.set_rotation("body", x=-8.0 * pulse)
         rig.set_rotation("head", x=-12.0 * pulse, z=8.0 * pulse)
-        rig.set_rotation("right-arm", z=65.0 - pulse * 75.0)
+        rig.set_rotation("right-arm", z=72.0 - pulse * 82.0)
         rig.set_rotation("door", y=35.0 * pulse)
     elif kind == "land":
         pulse = sin(pi * min(1.0, t / 0.45))
@@ -503,10 +503,10 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
         rig.set_rotation("body", x=-6.0 * pulse)
         rig.set_rotation("head", x=-10.0 * pulse, y=sin(t * 12.0) * 5.0 * pulse)
         rig.set_rotation("door", y=75.0 * pulse)
-        rig.set_rotation("right-arm", z=65.0 - 95.0 * pulse)
-        rig.set_rotation("left-arm", z=-65.0 + 95.0 * pulse)
+        rig.set_rotation("right-arm", z=72.0 - 90.0 * pulse)
+        rig.set_rotation("left-arm", z=-72.0 + 90.0 * pulse)
         # Shoulder compensation for wake (arms move)
-        shoulder_comp = -47.5 * pulse * 0.15  # approx half of 95
+        shoulder_comp = -45.0 * pulse * 0.15  # approx half of 90
         rig.set_rotation("shoulder", x=shoulder_comp)
         rig.set_rotation("shoulder2", x=-shoulder_comp)
     elif kind == "surprise":
@@ -525,8 +525,8 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
             x=-max(-1.0, min(1.0, vertical)) * 26.0 - _SURPRESA_CABECA * pulse,
             y=direction * 40.0,
         )
-        rig.set_rotation("right-arm", z=62.0 - _SURPRESA_BRACO * pulse)
-        rig.set_rotation("left-arm", z=-64.0 + _SURPRESA_BRACO * pulse)
+        rig.set_rotation("right-arm", z=70.0 - _SURPRESA_BRACO * pulse)
+        rig.set_rotation("left-arm", z=-72.0 + _SURPRESA_BRACO * pulse)
 
 
 def pose_flourish(rig: Rig, kind: str, t: float) -> None:
@@ -601,8 +601,8 @@ def pose_sneeze(rig: Rig, t: float) -> None:
     settle = sin(max(0, t-3.8)*8)*exp(-max(0,t-3.8)*4) if t > 3.8 else 0
     rig.set_rotation('head', x=-10*inhale-42*hit-5*settle, z=-3*inhale)
     rig.set_rotation('body', x=-5*inhale-22*hit-3*settle)
-    rig.set_rotation('right-arm', x=-12*inhale-48*hit, z=60-12*inhale)
-    rig.set_rotation('left-arm', x=-10*inhale-44*hit, z=-62+10*inhale)
+    rig.set_rotation('right-arm', x=-12*inhale-48*hit, z=70-12*inhale)
+    rig.set_rotation('left-arm', x=-10*inhale-44*hit, z=-72+10*inhale)
     rig.set_rotation('ant-arm', x=-12*inhale-18*hit, z=-20-20*inhale)
     rig.set_rotation('ant-arm2', x=-10*inhale-16*hit, z=20+18*inhale)
     rig.set_rotation('hand', x=15*hit, z=-8*inhale)
@@ -615,7 +615,7 @@ def pose_sneeze(rig: Rig, t: float) -> None:
     rub = max(0.0, min(1.0, (t-7.7)/.3, (8.8-t)/.5))
     stroke = sin(t*12)*rub
     if rub:
-        rig.set_rotation('right-arm', x=-35*rub, z=60-65*rub)
+        rig.set_rotation('right-arm', x=-35*rub, z=70-55*rub)
         rig.set_rotation('ant-arm', x=-28*rub, z=-20-48*rub)
         rig.set_rotation('hand', x=20*rub, y=8*stroke, z=10*stroke)
         rig.set_rotation('head', x=3*rub, z=-2*rub)
