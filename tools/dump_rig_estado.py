@@ -39,9 +39,13 @@ from sejoga.assets import resolve_model  # noqa: E402
 from sejoga.body_motion import Spring  # noqa: E402
 from sejoga.model import load_model  # noqa: E402
 
+#: Valor centrado (-1..1) de respiração usado no dump do idle: peito quase
+#: cheio, para o estado instrumentado mostrar a inflação do tórax respirando.
+_RESPIRACAO_DUMP = 0.8
+
 
 def _pose_idle(rig: rig_mod.Rig, t: float) -> None:
-  rig_mod.pose_idle(rig, t)
+  rig_mod.pose_idle(rig, t, respiracao=_RESPIRACAO_DUMP)
 
 
 def _pose_wave(rig: rig_mod.Rig, t: float) -> None:

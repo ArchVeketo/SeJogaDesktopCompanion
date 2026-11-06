@@ -140,11 +140,22 @@ def pose_idle(
     rig: Rig,
     t: float,
     personality: IdlePersonality = IdlePersonality.CALM,
+    respiracao: float = 0.0,
 ) -> None:
-    """Idle com personalidade própria, sem deixar de respeitar a dobradiça."""
-    from .idle_clips import CLIPS, sample_idle
+    """Idle com personalidade própria, sem deixar de respeitar a dobradiça.
+
+    ``respiracao`` é o valor centrado (-1..1) vindo de ``Respiracao`` (0 no
+    repouso); default 0.0 preserva o comportamento de quem não passa respiração.
+    A amplitude/bounce por personalidade vêm de ``respiracao_tuning``: o peito
+    (``body`` eixo x) infla e ombros/cabeça acompanham de leve, garantindo que
+    NENHUM idle fique totalmente estático (sempre respiração + micro-movimento).
+    """
+    from .idle_clips import CLIPS, camada_respiracao, sample_idle
+    from .respiracao_tuning import parametros_de
+    parametros = parametros_de(personality)
     if personality.value in CLIPS:
-        for group, (x, y, z) in sample_idle(personality.value, t).items():
+        pose = sample_idle(personality.value, t, respiracao, parametros.amplitude)
+        for group, (x, y, z) in pose.items():
             rig.set_rotation(group, x=x, y=y, z=z)
         return
 
@@ -270,6 +281,13 @@ def pose_idle(
         add("head", z=-2.5 * settle)
         add("right-arm", z=-3 * settle)
         add("left-arm", z=-3 * settle)
+
+    # Respiração viva por cima das senoides: o peito infla (body.x) e ombros/
+    # cabeça acompanham de leve. Somada por último para nunca deixar o idle
+    # estático; a amplitude/bounce por personalidade vêm de respiracao_tuning.
+    if respiracao:
+        for group, (bx, by, bz) in camada_respiracao(respiracao, parametros.amplitude).items():
+            add(group, x=bx, y=by, z=bz)
 
 
 def pose_walk(rig: Rig, t: float, *, run: bool = False) -> None:

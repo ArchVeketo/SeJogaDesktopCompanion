@@ -407,7 +407,12 @@ class AnimationController:
         if self.state in (AnimationState.IDLE, AnimationState.HOVER):
             if idle_enabled:
                 self._idle_clock += dt
-                pose_idle(self.rig, self._idle_clock, self.idle_personality)
+                # A respiração só alimenta pose_idle nos estados IDLE/HOVER
+                # (únicos que chamam pose_idle com respiração). Walk/run/drag/
+                # fall/dance/sleep NÃO recebem respiração: ela não vaza para
+                # estados onde não faz sentido um peito respirando parado.
+                pose_idle(self.rig, self._idle_clock, self.idle_personality,
+                          self.respiracao_valor)
             if self.state == AnimationState.HOVER:
                 pose_interaction(self.rig, "hover", self.state_time,
                                  self._look_direction, self._look_vertical)

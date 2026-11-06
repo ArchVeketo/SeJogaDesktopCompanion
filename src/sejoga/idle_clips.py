@@ -95,7 +95,45 @@ CLIPS = {
 }
 
 
-def sample_idle(style: str, time: float) -> dict[str, tuple[float, float, float]]:
+#: Ganho (graus) da respiração sobre cada parte, para uma respiração cheia
+#: (centrada == 1). O peito (body.x) carrega o grosso do movimento; ombros e
+#: cabeça só acompanham de leve, como num corpo que respira de verdade. A
+#: calibração fina por personalidade vem de ``respiracao_tuning`` (amplitude).
+RESPIRACAO_GANHO_PEITO = 1.6
+RESPIRACAO_GANHO_OMBRO = 0.5
+RESPIRACAO_GANHO_CABECA = 0.4
+
+
+def camada_respiracao(
+    respiracao: float,
+    amplitude: float = 1.0,
+) -> dict[str, tuple[float, float, float]]:
+    """Camada aditiva de respiração em graus, a ser somada à pose do idle.
+
+    ``respiracao`` é o valor centrado (-1..1) vindo de ``Respiracao`` (0 no
+    repouso). ``amplitude`` escala o quanto o peito infla por personalidade
+    (vem de ``respiracao_tuning.parametros_de``). O peito (``body`` eixo x) sobe
+    e desce; ombros e cabeça acompanham de leve, como a respiração real causa.
+    Com ``respiracao == 0`` devolve tudo zero, preservando quem não respira.
+    """
+    peito = respiracao * amplitude * RESPIRACAO_GANHO_PEITO
+    ombro = respiracao * amplitude * RESPIRACAO_GANHO_OMBRO
+    cabeca = respiracao * amplitude * RESPIRACAO_GANHO_CABECA
+
+    return {
+        "body": (peito, 0.0, 0.0),
+        "right-arm": (ombro, 0.0, 0.0),
+        "left-arm": (ombro, 0.0, 0.0),
+        "head": (cabeca, 0.0, 0.0),
+    }
+
+
+def sample_idle(
+    style: str,
+    time: float,
+    respiracao: float = 0.0,
+    amplitude_respiracao: float = 1.0,
+) -> dict[str, tuple[float, float, float]]:
     clip = CLIPS[style]
     local = time % clip.duration
     # Elbows stay softly bent and the hands sit closer to the torso at rest.
@@ -127,4 +165,10 @@ def sample_idle(style: str, time: float) -> dict[str, tuple[float, float, float]
         delta = sample_track(keys, local)
         base = pose.get(group, (0, 0, 0))
         pose[group] = tuple(a + b for a, b in zip(base, delta, strict=True))
+    # Respiração viva por cima da frase autoral: peito sobe/desce sempre, mesmo
+    # quando a frase está no repouso, então nenhum idle fica totalmente estático.
+    if respiracao:
+        for group, (ex, ey, ez) in camada_respiracao(respiracao, amplitude_respiracao).items():
+            bx, by, bz = pose.get(group, (0, 0, 0))
+            pose[group] = (bx + ex, by + ey, bz + ez)
     return pose

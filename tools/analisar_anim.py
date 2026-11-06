@@ -670,23 +670,69 @@ def _carregar_producao() -> dict[str, ClipeAnalisavel]:
     return clipes
 
 
+#: Janela (s) de amostragem do idle procedural. NÃO é um "ciclo fechado": a base
+#: procedural do idle é INTENCIONALMENTE APERIÓDICA (frequências incomensuráveis
+#: + frases de 4.8-14 s) para parecer viva e não repetir mecanicamente. Em
+#: produção o clock só cresce e o idle roda aberto para sempre; por isso o idle
+#: é analisado como ``loop=False`` (sem teste de fechamento de loop). A janela
+#: cobre as frases mais longas (~14 s) para medir energia e suavidade.
+IDLE_JANELA_ANALISE = 30.0
+
+
 def _carregar_idle() -> dict[str, ClipeAnalisavel]:
-    """Frases de idle de ``sejoga.idle_clips`` (só os deltas autorais)."""
-    from sejoga import idle_clips
+    """Idle procedural COMPLETO das 9 personalidades (Rig em repouso + pose_idle).
+
+    Amostra o idle inteiro (base senoidal + frases autorais + camada de
+    respiração viva), não apenas os deltas autorais de ``idle_clips.CLIPS``.
+    A respiração é dirigida por uma ``Respiracao`` por personalidade (calibrada
+    em ``respiracao_tuning``), igual ao que o ``AnimationController`` faz em
+    tempo real.
+
+    Marcado como ``loop=False``: a base procedural é aperiódica de propósito
+    (roda aberta em produção), então NÃO se aplica teste de fechamento de loop a
+    ela. O fechamento cíclico é verificado à parte, só sobre a camada de
+    respiração (ver ``tests/test_idle_vivo.py``). Aqui medimos VIDA (energia > 0)
+    e SUAVIDADE (ausência de trancos).
+    """
+    from sejoga import rig as rig_mod
+    from sejoga.respiracao import Respiracao
+    from sejoga.respiracao_tuning import parametros_de
+
+    fps = FPS
+    dt = 1.0 / fps
+    n_passos = max(2, round(IDLE_JANELA_ANALISE * fps))
 
     clipes: dict[str, ClipeAnalisavel] = {}
 
-    for nome, clipe in idle_clips.CLIPS.items():
-        def amostrar(t: float, c: idle_clips.IdleClip = clipe
-                     ) -> dict[str, tuple[float, float, float]]:
-            local = t % c.duration
-            return {g: idle_clips.sample_track(k, local) for g, k in c.tracks.items()}
+    for personalidade in rig_mod.IdlePersonality:
+        # Pré-simula a respiração da personalidade frame a frame (como o
+        # controller), guardando o valor centrado por índice de amostra.
+        parametros = parametros_de(personalidade)
+        respira = Respiracao(frequencia=parametros.frequencia,
+                             amplitude=parametros.amplitude,
+                             amortecimento=1.0 - parametros.bounce)
+        trilha_respiracao: list[float] = [0.0]
+        for _ in range(n_passos):
+            trilha_respiracao.append(respira.atualizar(dt))
 
-        clipes[nome] = ClipeAnalisavel(
-            nome=nome,
+        def amostrar(t: float, p: rig_mod.IdlePersonality = personalidade,
+                     trilha: list[float] = trilha_respiracao
+                     ) -> dict[str, tuple[float, float, float]]:
+            indice = min(len(trilha) - 1, round(t * fps))
+            repouso = {g: rig_mod.Rotation3() for g in rig_mod.ALL_GROUPS}
+            rig = rig_mod.Rig(rest=dict(repouso), current=dict(repouso))
+            rig_mod.pose_idle(rig, t, p, trilha[indice])
+            from math import degrees
+            return {
+                g: (degrees(r.x), degrees(r.y), degrees(r.z))
+                for g, r in rig.pose().items()
+            }
+
+        clipes[personalidade.value] = ClipeAnalisavel(
+            nome=personalidade.value,
             amostrar=amostrar,
-            duracao=clipe.duration,
-            loop=True,
+            duracao=IDLE_JANELA_ANALISE,
+            loop=False,
         )
 
     return clipes
