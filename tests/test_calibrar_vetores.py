@@ -87,9 +87,11 @@ def test_rotulo_traz_a_flag_do_rig_debug() -> None:
   assert "hand" in por_grupo
 
 
-def test_wave_reporta_palma_para_cima_na_mao_direita() -> None:
-  # Regressão do bug observado: no aceno, a mão direita sai PALMA_PARA_CIMA — é
-  # exatamente o que a calibração visual deve ajudar a confirmar/refutar.
+def test_wave_nao_sai_palma_para_cima_na_mao_direita() -> None:
+  # Antes o aceno saía com PALMA_PARA_CIMA — bug da convenção de eixos invertida
+  # (braço "erguido" que na verdade ficava baixado). Recalibrado para a geometria
+  # real, a palma não aponta mais para CIMA no gesto; ao fim do aceno fica virada
+  # para FORA (ver SPEC_WAVE/verificar_gesto). Este teste trava a regressão.
   estado = _estado("wave")
 
-  assert estado.mao_direita.palma_flag == "PALMA_PARA_CIMA"
+  assert estado.mao_direita.palma_flag != "PALMA_PARA_CIMA"

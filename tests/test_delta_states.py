@@ -141,8 +141,10 @@ def test_composicao_delta_com_base_de_repouso():
         )
 
     # O resultado deve ter valores razoáveis para uma pose
-    # Por exemplo, right-arm.z deve estar em torno de 68° ± pequena oscilação
-    assert 50 < degrees(resultado["right-arm"].z) < 90
+    # right-arm.z fica em torno da base de repouso (~28°) ± pequena oscilação.
+    # (Faixa 50..90 codificava a base antiga invertida z≈68; corrigida para a
+    # convenção real da geometria: Z baixo = braço baixado.)
+    assert 15 < degrees(resultado["right-arm"].z) < 45
 
 
 def test_delta_idle_respiracao_afeta_corpo():

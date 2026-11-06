@@ -212,10 +212,11 @@ def test_fase_braco_antes_da_mao_passa() -> None:
 # --------------------------------------------------------------------------- #
 
 def test_spec_piloto_inteira_passa_com_clipe_valido() -> None:
-    # Braço ergue (Z 56→-10→56), mão oscila no eixo X, pés parados.
+    # Braço ergue (Z 70→150→70, sentido POSITIVO), mão oscila no eixo X, pés
+    # parados. (Direção corrigida: na geometria real erguer = Z cresce.)
     def amostrar(t: float) -> Pose:
         fase = math.pi * (t / 2.2)
-        z_braco = 56.0 - 66.0 * math.sin(fase)
+        z_braco = 70.0 + 80.0 * math.sin(fase)
         x_mao = 180.0 * math.sin(fase) + 20.0 * math.sin(math.tau * 3 * t)
         return {
             "right-arm": (0.0, 0.0, z_braco),
@@ -235,7 +236,7 @@ def test_spec_piloto_falha_quando_mao_fica_parada() -> None:
     # Igual ao válido, mas a mão NÃO acena (fica parada) → reprova a spec.
     def amostrar(t: float) -> Pose:
         fase = math.pi * (t / 2.2)
-        z_braco = 56.0 - 66.0 * math.sin(fase)
+        z_braco = 70.0 + 80.0 * math.sin(fase)
         return {
             "right-arm": (0.0, 0.0, z_braco),
             "hand": (0.0, 0.0, 0.0),

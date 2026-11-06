@@ -12,8 +12,11 @@ def test_controller_starts_in_composed_idle_pose_not_t_pose():
     from math import degrees
     animation = controller()
     pose = animation.update(1 / 60)
-    assert degrees(pose["right-arm"].z) > 30
-    assert degrees(pose["left-arm"].z) < -30
+    # Limiar reajustado para a base de repouso BRACO_Z=28 (antes >30/<-30
+    # codificava a base antiga ~68). A INTENÇÃO (não iniciar em T-pose nem com
+    # braço solto) continua: ~28° é repouso natural, longe de 0° (T-pose).
+    assert degrees(pose["right-arm"].z) > 20
+    assert degrees(pose["left-arm"].z) < -20
 
 
 def test_hover_reaches_toward_the_cursor_without_flapping_both_arms():
@@ -66,7 +69,11 @@ def test_wave_turns_palm_out_and_keeps_elbow_bent():
     pose_flourish(animation.rig, "wave", .95)
     pose = animation.rig.pose()
     assert 140 <= degrees(pose["hand"].x) <= 195
-    assert abs(degrees(pose["right-arm"].z)) < 35
+    # O braço ERGUE no aceno (Z cresce para ~150° = braço para cima). A
+    # asserção antiga `abs(z) < 35` codificava o bug da convenção invertida,
+    # em que "erguer" reduzia Z — na geometria real isso deixava o braço
+    # baixado/cruzando. Agora exigimos braço erguido de verdade.
+    assert degrees(pose["right-arm"].z) > 120
     assert degrees(pose["ant-arm"].z) < -15
 
 
@@ -82,7 +89,12 @@ def test_walk_dance_and_drag_poses_have_counterbalanced_arms():
     assert abs(walk_left - walk_other) > 10
     pose_dance(animation.rig, pi / 18)
     dance = animation.rig.pose()
-    assert degrees(dance["right-arm"].z) < 45
+    # No beat o braço condutor ERGUE enquanto o outro fica baixo — braços
+    # contrabalançados, não escancarados em espelho. A asserção antiga
+    # `right-arm.z < 45` codificava a convenção invertida (erguer = Z baixo);
+    # na geometria real, erguer = Z alto. Aqui t=pi/18 → right_lift=1 (direito
+    # conduz): o direito sobe (Z alto) e o esquerdo permanece recolhido.
+    assert degrees(dance["right-arm"].z) > degrees(dance["left-arm"].z) + 90
     pose_drag(animation.rig, 0, direction=1, drag_intensity=.8)
     right_drag = animation.rig.pose()
     pose_drag(animation.rig, 0, direction=-1, drag_intensity=.8)

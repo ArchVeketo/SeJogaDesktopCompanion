@@ -114,7 +114,9 @@ class SpecGesto:
 # que uma saudação humana deve ter. Leitura das curvas de pose_flourish wave
 # (lift sobe de 0→1→0; wave inverte +1,-0.78,+0.78,-0.5,0):
 #
-#   right-arm: x=-12*lift, z=56-66*lift  → ERGUE no eixo Z (56→~-10, amp ~66°).
+#   right-arm: x=-12*lift, z=70+80*lift  → ERGUE no eixo Z (70→~150, amp ~80°).
+#     (Convenção da geometria real: Z CRESCE para erguer o braço; a base antiga
+#      invertia isso — Z reduzia — deixando o braço baixado/cruzando no aceno.)
 #   ant-arm:   z=-26*lift + 7*wave.
 #   hand:      x=180*lift + 12*wave, z=2*wave
 #              → o eixo X carrega o lift (gira o pulso 180° pra mostrar a palma)
@@ -137,8 +139,8 @@ SPEC_WAVE = SpecGesto(
             tipo=TipoExpectativa.ERGUE,
             eixo="z",
             amplitude_min=40.0,
-            sentido=SENTIDO_NEGATIVO,
-            descricao="o braço direito ergue (eixo Z reduz de ~56° até <=0°)",
+            sentido=SENTIDO_POSITIVO,
+            descricao="o braço direito ergue (eixo Z cresce de ~70° até ≈150°)",
         ),
         ExpectativaGesto(
             grupo="hand",
