@@ -99,6 +99,18 @@ def test_angulo_pedido_tem_precedencia_sobre_o_olhar():
     assert _assentar(giro, direcao_olhar=1.0, angulo_pedido=-60) == pytest.approx(-60, abs=1e-6)
 
 
+def test_fonte_do_olhar_zerada_no_uso_normal_mantem_corpo_de_frente():
+    # Contrato "atenção move cabeça, não o corpo": no uso normal a window passa
+    # direcao_olhar=0.0 (o olhar segue o cursor por outro caminho). Mesmo que o
+    # cursor esteja muito para o lado, a FONTE que chega ao corpo é 0 => giro 0.
+    giro = GiroCorpo()
+    assert _assentar(giro, direcao_olhar=0.0) == 0.0
+    # E um ângulo explícito ainda gira o corpo (gancho de animação/locomoção),
+    # mesmo com a fonte do olhar zerada.
+    gancho = GiroCorpo()
+    assert _assentar(gancho, direcao_olhar=0.0, angulo_pedido=-60) == pytest.approx(-60, abs=1e-6)
+
+
 def test_giro_resposta_independe_da_taxa_de_quadros():
     resultados = []
     for rate in (30, 60, 120):

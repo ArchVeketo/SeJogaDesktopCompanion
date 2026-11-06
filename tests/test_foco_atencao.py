@@ -119,7 +119,7 @@ def test_surpresa_nao_dispara_para_gatilho_fraco():
 def test_ambiente_espontaneo_acaba_produzindo_olhar_sem_gatilhos():
     gate = _gate()
     viu_ambiente = False
-    for _ in range(3000):  # ~50 s a 60 fps: cobre o intervalo de ambiente.
+    for _ in range(3600):  # ~60 s a 60 fps: cobre o novo AMBIENTE_INTERVALO_MAX (40 s).
         alvo = gate.atualizar(
             1 / 60, gatilhos=[], origem_janela=(1000, 1000),
             largura=200, altura=200,

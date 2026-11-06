@@ -631,7 +631,12 @@ class OverlayApp(ShowBase):
         self.renderer.apply_body_motion(
             self.animation_controller.body_motion.snapshot, self._body_grab_point,
             grounded=state.grounded if state else True, dragging=self._drag_active,
-            direcao_olhar=alvo.direcao,
+            # Giro de corpo PONTUAL: no uso normal (idle/hover) o corpo fica de
+            # frente. O olhar (alvo.direcao) segue movendo cabeça/tronco/braço
+            # via look_direction/look_vertical no controller, mas NÃO vira mais
+            # o corpo. O giro só ocorre por angulo_giro_pedido explícito
+            # (ganchos de animação/locomoção futura), que aqui fica no default.
+            direcao_olhar=0.0,
         )
         self.renderer.update_appendages(dt, self.animation_controller.appendage_remaining > 0)
         self._fit_pose_window(dt)

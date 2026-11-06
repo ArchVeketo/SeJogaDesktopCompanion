@@ -510,7 +510,17 @@ void main() {
 
     def apply_body_motion(self, motion, grab_point=None, *, grounded=True, dragging=False,
                           direcao_olhar=0.0, angulo_giro_pedido=None):
-        """Rotate connected root parts around the hips/grip without editing the asset rig."""
+        """Rotate connected root parts around the hips/grip without editing the asset rig.
+
+        Sobre o GIRO DE CORPO (body_facing): no uso normal ``direcao_olhar``
+        chega 0.0 (window passa 0.0), ou seja, o olhar/atenção NÃO dirige mais
+        o giro — a cabeça/tronco/braço seguem o cursor por outro caminho
+        (look_direction/look_vertical no controller). O giro de corpo vem SÓ de
+        ``angulo_giro_pedido`` explícito (ganchos de animação/locomoção
+        futura); quando é ``None`` e ``direcao_olhar`` é 0.0, o corpo fica de
+        frente. O parâmetro ``direcao_olhar`` segue existindo para chamadas que
+        queiram, deliberadamente, acoplar giro ao olhar.
+        """
         from panda3d.core import Mat4, TransformState
         dt = getattr(self.showbase.animation_controller, 'delta_time', 1/60)
         self._update_outline_breath(dt, motion)
@@ -578,6 +588,12 @@ void main() {
         NÃO reaplica color key, z-order ou SetLayeredWindowAttributes; é apenas
         transformação no grafo de cena. O hit-test segue a pose (raycast contra
         model_np), então a região clicável acompanha o giro, como esperado.
+
+        Semântica das fontes do giro: no uso normal ``direcao_olhar`` chega 0.0
+        (window não acopla mais o giro ao olhar no hover/idle), então o giro
+        vem SÓ de ``angulo_pedido`` (ganchos de animação/locomoção). A classe
+        ``GiroCorpo`` dá precedência a ``angulo_pedido`` sobre ``direcao_olhar``
+        quando ambos chegam; a mola/clamp/LIMITE_GRAUS permanecem inalterados.
         """
         from panda3d.core import Mat4, Point3, TransformState
         if self._body_facing is None:

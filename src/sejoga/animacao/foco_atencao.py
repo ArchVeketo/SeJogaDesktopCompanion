@@ -41,10 +41,13 @@ PRIORIDADE_AMBIENTE = 5
 
 # Janela de ambiente espontâneo: de tempos em tempos o mascote lança o olhar
 # para um ponto aleatório, como quem repara em algo. Intervalos em segundos.
-AMBIENTE_INTERVALO_MIN = 8.0
-AMBIENTE_INTERVALO_MAX = 18.0
+# CALIBRÁVEL (validar na GPU): contido para ficar SUTIL — episódios mais raros
+# e curtos, de modo que a atenção de ambiente não dispare o tempo todo.
+AMBIENTE_INTERVALO_MIN = 18.0
+AMBIENTE_INTERVALO_MAX = 40.0
 # Quanto dura cada episódio de atenção de ambiente antes de expirar.
-AMBIENTE_DURACAO = 2.2
+# CALIBRÁVEL (validar na GPU): mais curto para o olhar espontâneo ser breve.
+AMBIENTE_DURACAO = 1.5
 
 # Surpresa: diferença angular mínima (em unidades de direção, -1..1) entre o
 # alvo atual e o anterior para disparar o susto. Evita sustos por micro-ajustes.
