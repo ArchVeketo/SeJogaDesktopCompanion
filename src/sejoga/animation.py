@@ -159,14 +159,14 @@ class AnimationController:
         # injetado (o app real passa o modelo; controllers de teste não, e aí a
         # correção fica inerte, preservando o comportamento). O alvo corrigido
         # por `colisao.resolver_colisoes` é perseguido por molas amortecidas
-        # (sem tranco), com a tensão de `colisao.CORRECAO_*`. Guarda a última
-        # pose exibida para semear as molas no repouso e evitar salto inicial.
+        # (sem tranco), com a tensão de `colisao.CORRECAO_*`. O SpringPose
+        # mantém mola SÓ para as juntas em correção/relaxamento; as demais nem
+        # recebem mola, preservando a pose autoral intacta.
         self._collision_model = model
         self._correcao_colisao = SpringPose(
             frequencia=colisao.CORRECAO_FREQUENCIA_HZ,
             amortecimento=colisao.CORRECAO_AMORTECIMENTO,
         )
-        self._correcao_semeada = False
 
     def preview_dance(self, style):
         if style not in ('head_bob', 'hip_hop', 'rock', 'breakdance'):
@@ -593,9 +593,15 @@ class AnimationController:
         alvo com o PISO ESTRUTURAL já descontado (só o excedente dirigido pela
         pose) e persegue esse alvo por molas por junta (``SpringPose`` com
         ``CORRECAO_FREQUENCIA_HZ``/``CORRECAO_AMORTECIMENTO``), de modo que a
-        correção entre GRADUAL, sem tranco. Só as juntas que o resolvedor tocou
-        são perseguidas; as demais seguem a pose crua. Inerte sem ``model``
-        injetado (controllers de teste), preservando o comportamento.
+        correção entre GRADUAL, sem tranco.
+
+        SÓ as juntas que o resolvedor empurra (e as que ainda estão RELAXANDO de
+        uma correção recente) ganham mola e são reescritas; todas as outras
+        seguem a pose crua, intactas. A mola de uma junta nasce semeada na pose
+        crua daquele frame (entra sem salto) e, quando a colisão some, relaxa de
+        volta à pose crua e é descartada ao assentar — assim uma junta que só se
+        move (respiração, idle) nunca passa pelo filtro da correção. Inerte sem
+        ``model`` injetado (controllers de teste), preservando o comportamento.
         """
         if self._collision_model is None:
             return pose
@@ -603,34 +609,66 @@ class AnimationController:
         partes = medidas.medir_todas_as_partes(pose, self._collision_model)
         alvo = colisao.resolver_colisoes(pose, partes)
 
-        # Juntas que o resolvedor empurrou (diferem da pose crua).
+        # Juntas que o resolvedor empurrou (diferem da pose crua neste frame).
         corrigidas = {
             grupo: alvo[grupo]
             for grupo in alvo
             if grupo in pose and alvo[grupo] != pose[grupo]
         }
 
-        # Semeia as molas no repouso da pose para o primeiro frame não saltar.
-        if not self._correcao_semeada:
-            self._correcao_semeada = True
-            self._correcao_colisao.definir(dict(pose))
-
-        # O alvo de cada junta é o valor corrigido quando há excedente, ou a
-        # própria pose crua quando não há: assim a mola RELAXA de volta à pose
-        # autoral (sem tranco) quando a colisão some.
-        alvos_mola = {
-            grupo: corrigidas.get(grupo, pose[grupo])
-            for grupo in self._correcao_colisao.molas
-        }
-        for grupo in corrigidas:
-            alvos_mola[grupo] = corrigidas[grupo]
-
-        suavizado = self._correcao_colisao.atualizar(dt, alvos_mola)
+        molas = self._correcao_colisao.molas
+        # Conjunto ativo = juntas com excedente agora + juntas com mola viva de
+        # uma correção recente (ainda relaxando). As demais nem entram no laço.
+        ativas = set(corrigidas) | set(molas)
 
         resultado = dict(pose)
-        resultado.update(suavizado)
+        for grupo in ativas:
+            if grupo not in pose:
+                molas.pop(grupo, None)
+                continue
+
+            if grupo in corrigidas:
+                # Primeira correção desta junta: semeia a mola na pose crua do
+                # frame para a correção entrar gradual, sem salto.
+                if grupo not in molas:
+                    self._correcao_colisao._mola(grupo).definir(pose[grupo])
+                alvo_mola = corrigidas[grupo]
+            else:
+                # Sem excedente: relaxa de volta à pose autoral (sem tranco).
+                alvo_mola = pose[grupo]
+
+            suavizado = self._correcao_colisao._mola(grupo).atualizar(dt, alvo_mola)
+
+            if grupo not in corrigidas and self._mola_assentou(grupo, pose[grupo]):
+                # Relaxou até a pose crua: descarta a mola e deixa a junta
+                # passar intacta, para não filtrar o movimento autoral depois.
+                molas.pop(grupo, None)
+                continue
+
+            resultado[grupo] = suavizado
 
         return resultado
+
+    def _mola_assentou(self, grupo: str, alvo: Rotation3) -> bool:
+        """Diz se a mola da junta já relaxou até ``alvo`` (posição e velocidade).
+
+        Tolerâncias em graus/graus-por-segundo: abaixo delas a diferença para a
+        pose crua é imperceptível, então a mola pode ser descartada.
+        """
+        mola = self._correcao_colisao.molas.get(grupo)
+        if mola is None:
+            return True
+
+        tol_pos = colisao.CORRECAO_ASSENTA_POS
+        tol_vel = colisao.CORRECAO_ASSENTA_VEL
+        return (
+            abs(mola.x.value - alvo.x) < tol_pos
+            and abs(mola.y.value - alvo.y) < tol_pos
+            and abs(mola.z.value - alvo.z) < tol_pos
+            and abs(mola.x.velocity) < tol_vel
+            and abs(mola.y.velocity) < tol_vel
+            and abs(mola.z.velocity) < tol_vel
+        )
 
     @staticmethod
     def _blend(start: Rotation3, end: Rotation3, amount: float) -> Rotation3:

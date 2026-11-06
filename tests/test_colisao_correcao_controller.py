@@ -134,33 +134,69 @@ def _pior_jerk_total(trilha, duracao, analisar) -> float:
   return pior
 
 
-def _trilha_wake(com_modelo, model, analisar):
-  """Amostra a reação wake de um controller (com/sem correção) em graus."""
-  ctrl = AnimationController(_rig(), model=model if com_modelo else None)
+def _trilhas_wake_correcao(model, analisar):
+  """Amostra a reação wake COM correção, devolvendo duas trilhas em graus.
+
+  Como a correção agora toca SÓ as juntas colisoras (e não mais filtra a pose
+  inteira), o teste de tranco não pode comparar contra a pose globalmente
+  amaciada de antes — isso só passava por causa do bug que o review apontou.
+  A medida correta de "sem tranco" é a mola CUMPRINDO seu papel: a saída
+  suavizada tem de ter jerk MUITO menor que o ALVO CORRIGIDO aplicado CRU (sem
+  mola). Esta função produz as duas trilhas do MESMO gesto:
+
+  - ``sprung``: a saída real do controller (alvo corrigido perseguido pela mola);
+  - ``crua``: o alvo corrigido do frame aplicado direto, sem mola (o que a
+    correção faria SEM amortecimento — cheio de tranco).
+  """
+  ctrl = AnimationController(_rig(), model=model)
   ctrl.interact("wake")
   dt = 1.0 / analisar.FPS
-  trilha: list[dict[str, tuple[float, float, float]]] = []
-  for _ in range(int(analisar.FPS * 2.5)):
-    pose = ctrl.update(dt)
-    trilha.append({
-      g: (degrees(r.x), degrees(r.y), degrees(r.z)) for g, r in pose.items()
-    })
-  return trilha
+
+  sprung: list[dict[str, tuple[float, float, float]]] = []
+  crua: list[dict[str, tuple[float, float, float]]] = []
+
+  original = col.resolver_colisoes
+  capturado: dict[str, dict] = {}
+
+  def _capturar(pose, partes, parametros=None):
+    alvo = original(pose, partes, parametros)
+    capturado["pose"] = dict(pose)
+    capturado["alvo"] = {g: alvo[g] for g in alvo}
+    return alvo
+
+  col.resolver_colisoes = _capturar
+  try:
+    for _ in range(int(analisar.FPS * 2.5)):
+      pose = ctrl.update(dt)
+      sprung.append({
+        g: (degrees(r.x), degrees(r.y), degrees(r.z)) for g, r in pose.items()
+      })
+      # Alvo corrigido do frame, sem mola: pose crua com as juntas empurradas.
+      alvo_cru = dict(capturado.get("pose", {}))
+      alvo_cru.update(capturado.get("alvo", {}))
+      crua.append({
+        g: (degrees(r.x), degrees(r.y), degrees(r.z)) for g, r in alvo_cru.items()
+      })
+  finally:
+    col.resolver_colisoes = original
+
+  return sprung, crua
 
 
 def test_correcao_nao_introduz_tranco(model) -> None:
-  # Compara o jerk da MESMA reação wake sem e com correção. A reação de acordar
-  # já é um gesto autoral rápido e, por si só, tem jerk alto; o que a FEAT-B
-  # promete é NÃO PIORAR isso. A mola lenta (0,6 Hz) age como passa-baixa: não
-  # persegue o pico de penetração sub-segundo, então o jerk com correção fica
-  # ABAIXO do jerk da animação autoral crua — não introduz tranco novo.
+  # A correção toca SÓ as juntas colisoras; a suavidade tem de vir da mola.
+  # "Sem tranco" = a saída amortecida tem jerk MUITO menor que o alvo corrigido
+  # aplicado cru (sem mola), que é o que introduziria tranco. A mola de 0,6 Hz
+  # age como passa-baixa: não persegue o pico de penetração sub-segundo da
+  # reação de acordar, então corrige o overlap SUSTENTADO sem somar tranco.
   analisar = _carregar_analisar_anim()
 
-  jerk_inerte = _pior_jerk_total(_trilha_wake(False, model, analisar), 2.5, analisar)
-  jerk_ligado = _pior_jerk_total(_trilha_wake(True, model, analisar), 2.5, analisar)
+  sprung, crua = _trilhas_wake_correcao(model, analisar)
+  jerk_sprung = _pior_jerk_total(sprung, 2.5, analisar)
+  jerk_cru = _pior_jerk_total(crua, 2.5, analisar)
 
-  assert jerk_ligado <= jerk_inerte, (
-    f"correção somou jerk: inerte={jerk_inerte:.0f} ligado={jerk_ligado:.0f}"
+  assert jerk_sprung < jerk_cru * 0.5, (
+    f"mola não amorteceu a correção: cru={jerk_cru:.0f} sprung={jerk_sprung:.0f}"
   )
 
 
@@ -203,3 +239,24 @@ def test_sem_modelo_a_correcao_e_inerte() -> None:
   devolvida = ctrl._resolver_colisoes_suave(pose, 1 / 60)
 
   assert devolvida == pose
+
+
+def test_junta_sem_excedente_em_movimento_passa_intacta(model) -> None:
+  # Invariância no CAMINHO DO CONTROLLER (com Model): uma junta que NÃO colide,
+  # mas se MOVE a cada frame (ex.: `head`, que o resolvedor nunca empurra), tem
+  # de sair IDÊNTICA à pose crua. Se a correção semeasse/filtrasse todas as
+  # juntas, a mola lenta de 0,6 Hz atrasaria `head` e este teste falharia.
+  ctrl = AnimationController(_rig(), model=model)
+  assert ctrl._collision_model is not None
+
+  dt = 1 / 60
+  # Parte da pose de repouso (sem excedente acima do limiar) e varia só `head`.
+  base = {g: Rotation3() for g in ALL_GROUPS}
+  for i in range(60):
+    pose = dict(base)
+    pose["head"] = Rotation3(0.0, 0.3 * (i / 59), 0.0)  # heading varia no tempo
+    devolvida = ctrl._resolver_colisoes_suave(pose, dt)
+
+    assert devolvida["head"] == pose["head"], (
+      f"junta não-colisora em movimento foi filtrada no frame {i}"
+    )

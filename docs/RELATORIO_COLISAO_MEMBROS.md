@@ -466,7 +466,9 @@ Três camadas garantem a ausência de tranco:
 
 1. **Desconto do piso** — a correção só existe quando há excedente, então some a zero no repouso (nenhum empurrão constante).
 2. **Joelho suave (`JOELHO_EXCEDENTE_U`)** — o peso do empurrão sobe de 0 a 1 por um `smoothstep` logo acima do limiar, sem degrau de liga/desliga.
-3. **Mola lenta passa-baixa (`CORRECAO_FREQUENCIA_HZ = 0,6 Hz`, `CORRECAO_AMORTECIMENTO = 0,95`)** — a 0,6 Hz a mola é lenta demais para perseguir um pico de penetração sub-segundo (um gesto rápido como o de acordar), então corrige só o overlap **sustentado** e ignora o transiente. Medido com `tools/analisar_anim.py`: na reação `wake`, o pior jerk COM correção fica **abaixo** do jerk da própria animação autoral crua — a correção não soma tranco (teste `test_correcao_nao_introduz_tranco`). Subir a frequência acima de ~1 Hz faz a correção somar jerk no transiente (varredura documentada no commit).
+3. **Mola lenta passa-baixa (`CORRECAO_FREQUENCIA_HZ = 0,6 Hz`, `CORRECAO_AMORTECIMENTO = 0,95`)** — a 0,6 Hz a mola é lenta demais para perseguir um pico de penetração sub-segundo (um gesto rápido como o de acordar), então corrige só o overlap **sustentado** e ignora o transiente. Medido com `tools/analisar_anim.py`: na reação `wake`, o pior jerk da saída **amortecida pela mola** fica **~22× abaixo** do jerk do alvo corrigido aplicado CRU (sem mola) — é a mola cumprindo seu papel de remover o tranco (teste `test_correcao_nao_introduz_tranco`, que compara a saída sprung contra o alvo cru do mesmo gesto). Subir a frequência acima de ~1 Hz faz a correção somar jerk no transiente.
+
+Além disso, a correção toca **só as juntas que o resolvedor empurra** (e as que ainda estão relaxando de uma correção recente): o `_resolver_colisoes_suave` mantém mola por junta APENAS para essas, e descarta a mola quando ela assenta de volta na pose crua (tolerâncias `CORRECAO_ASSENTA_POS`/`CORRECAO_ASSENTA_VEL`). Juntas que só se movem sem colidir (respiração, idle, balanço) passam **intactas** — não há filtro passa-baixa global sobre a animação autoral (teste `test_junta_sem_excedente_em_movimento_passa_intacta`).
 
 ### Antes/depois de `tools/detectar_colisao.py` (excedente = penetração − piso)
 
@@ -520,3 +522,4 @@ Correção pontual suave (FEAT-B):
 - `FORCA_CORRECAO` — fração do excedente removida por aplicação (1.0 = até zerar + folga).
 - `FOLGA_U` — folga extra deixada entre os volumes após corrigir.
 - `CORRECAO_FREQUENCIA_HZ`, `CORRECAO_AMORTECIMENTO` — tensão da mola amortecida que persegue o alvo no controller (0,6 Hz / 0,95 calibrados para não somar jerk).
+- `CORRECAO_ASSENTA_POS`, `CORRECAO_ASSENTA_VEL` — tolerâncias (graus, graus/s) para considerar a mola de uma junta assentada na pose crua e descartá-la, devolvendo a junta intacta (evita filtrar o movimento autoral depois de a colisão sumir).

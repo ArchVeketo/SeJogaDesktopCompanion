@@ -167,6 +167,15 @@ FOLGA_U: float = 0.01
 CORRECAO_FREQUENCIA_HZ: float = 0.6
 CORRECAO_AMORTECIMENTO: float = 0.95
 
+#: Tolerâncias de ASSENTAMENTO da mola de correção (graus e graus/s). Quando uma
+#: junta DEIXA de ter excedente, a mola relaxa de volta à pose autoral; abaixo
+#: destas tolerâncias a mola é considerada assentada na pose crua e DESCARTADA,
+#: para a junta voltar a passar INTACTA (sem a correção filtrar o movimento
+#: autoral depois). Valores pequenos = descarta só quando imperceptível; maiores
+#: = descarta antes (corte mais cedo, risco de um micro-degrau). Calibrável.
+CORRECAO_ASSENTA_POS: float = 0.05
+CORRECAO_ASSENTA_VEL: float = 0.05
+
 #: Deslocamento mínimo de ponta (``u``) para valer uma reorientação do membro.
 #: Abaixo disso o empurrão é ruído e o alvo volta inalterado (fail-safe).
 _DESLOCAMENTO_MINIMO_U: float = 1e-6
