@@ -491,6 +491,24 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
         shoulder_comp = -47.5 * pulse * 0.15  # approx half of 95
         rig.set_rotation("shoulder", x=shoulder_comp)
         rig.set_rotation("shoulder2", x=-shoulder_comp)
+    elif kind == "surprise":
+        # Susto: recuo rápido do tronco + volta, cabeça e tronco reagindo na
+        # direção do estímulo (direction/vertical vêm do gatilho de atenção).
+        # Fica na camada de olhar da cabeça/tronco/braço — NADA de giro amplo
+        # de corpo aqui (fase posterior). Ganhos CALIBRÁVEIS (validar na GPU).
+        _SURPRESA_RECUO = 16.0      # recuo do tronco no pico do susto
+        _SURPRESA_CABECA = 20.0     # inclinação extra da cabeça para trás
+        _SURPRESA_GIRO = 18.0       # leve giro do tronco em direção ao estímulo
+        _SURPRESA_BRACO = 22.0      # braços sobem um pouco (reação de guarda)
+        pulse = sin(pi * min(1.0, t / 0.7))
+        rig.set_rotation("body", x=-_SURPRESA_RECUO * pulse, y=direction * _SURPRESA_GIRO * pulse)
+        rig.set_rotation(
+            "head",
+            x=-max(-1.0, min(1.0, vertical)) * 26.0 - _SURPRESA_CABECA * pulse,
+            y=direction * 40.0,
+        )
+        rig.set_rotation("right-arm", z=62.0 - _SURPRESA_BRACO * pulse)
+        rig.set_rotation("left-arm", z=-64.0 + _SURPRESA_BRACO * pulse)
 
 
 def pose_flourish(rig: Rig, kind: str, t: float) -> None:

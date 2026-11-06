@@ -345,3 +345,26 @@ def test_double_click_interrupts_single_click_then_recovers():
     for _ in range(10):
         animation.update(.1)
     assert animation.state == AnimationState.IDLE
+
+
+def test_surprise_reaction_fires_and_expires_like_the_others():
+    animation = controller()
+    animation.interact("surprise", direction=.8, strength=1.0)
+    animation.update(0.1)
+    assert animation.state == AnimationState.SURPRISE
+    # Expira dentro da sua janela (0.7 s) e volta ao idle, como as demais.
+    for _ in range(10):
+        animation.update(0.1)
+    assert animation.state == AnimationState.IDLE
+
+
+def test_surprise_pose_recoils_body_and_turns_head_toward_stimulus():
+    from math import degrees
+
+    from sejoga.nucleo.rig import pose_interaction
+    animation = controller()
+    # Estímulo à direita: a cabeça gira para o lado (y>0) e o tronco recua (x<0).
+    pose_interaction(animation.rig, "surprise", 0.35, direction=1.0, vertical=0.0)
+    pose = animation.rig.pose()
+    assert degrees(pose["head"].y) > 0
+    assert degrees(pose["body"].x) < 0

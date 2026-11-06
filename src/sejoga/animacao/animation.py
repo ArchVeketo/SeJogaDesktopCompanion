@@ -69,6 +69,7 @@ class AnimationState(StrEnum):
     THUMBS_UP = "thumbs_up"
     ROCK = "rock"
     FINGER_GUN = "finger_gun"
+    SURPRISE = "surprise"
 
 
 class AnimationController:
@@ -235,6 +236,10 @@ class AnimationController:
         AnimationState.STRETCH: 2.8,
         AnimationState.PEEK: 9.0,
         AnimationState.HIT: 0.65,
+        # SURPRESA: recuo rápido + retorno no mesmo padrão das outras reações.
+        # Duração CALIBRÁVEL (validar na GPU): curta o bastante para parecer um
+        # susto, longa o bastante para o retorno ser visível.
+        AnimationState.SURPRISE: 0.7,
     }
 
     def interact(self, kind: str, *, direction: float | None = None, strength: float = 1.0) -> None:

@@ -59,6 +59,14 @@ from panda3d.core import (
 from sejoga.animacao.animation import AnimationController
 from sejoga.animacao.attention import HoverAttention
 from sejoga.animacao.exit_animation import ExitAnimation
+from sejoga.animacao.foco_atencao import (
+    PRIORIDADE_BEAT,
+    PRIORIDADE_BORDA,
+    PRIORIDADE_CURSOR,
+    PRIORIDADE_FOCO,
+    GateAtencao,
+    GatilhoAtencao,
+)
 from sejoga.animacao.interaction import MouseInteraction
 from sejoga.config import Settings, load_settings, save_settings
 from sejoga.desktop.desktop_shell import DesktopIntegration
@@ -135,6 +143,13 @@ class OverlayApp(ShowBase):
         self._body_grab_point = None
         self._native_buttons: set[str] = set()
         self._hover_attention = HoverAttention()
+        # Camada de olhar/atenção: escolhe o alvo entre gatilhos concorrentes.
+        self._gate_atencao = GateAtencao()
+        # Foco em foreground usado pelo gatilho de atenção (distinto do
+        # _hover_foreground do gate de hover): marca "algo mudou" por um curto
+        # tempo para o mascote virar a cabeça naquela direção.
+        self._atencao_foreground = win32gui.GetForegroundWindow()
+        self._atencao_foco_restante = 0.0
         self._hover_foreground = win32gui.GetForegroundWindow()
         self._busy_cursors = {win32gui.LoadCursor(0, cursor) for cursor in
                               (win32con.IDC_IBEAM, win32con.IDC_HAND, win32con.IDC_SIZEALL,
@@ -460,6 +475,111 @@ class OverlayApp(ShowBase):
         else:
             self.renderer.set_model_rotation()
 
+    # Janela (em segundos) em que uma troca de foreground mantém a atenção do
+    # mascote virada para a janela recém-ativada. CALIBRÁVEL (validar na GPU).
+    _ATENCAO_FOCO_SEGUNDOS = 1.2
+    # Energia mínima da batida para virar micro-reação de atenção rítmica.
+    _ATENCAO_BEAT_FORCA_MINIMA = 0.15
+
+    def _resolver_alvo_atencao(self, dt, music, state):
+        """Monta os gatilhos não-invasivos e devolve o alvo de olhar do quadro.
+
+        Gatilhos (nenhum lê conteúdo/pixels da tela):
+        - cursor GLOBAL (win32api): olhar para o cursor mesmo fora da janela;
+        - troca de janela em foco (GetForegroundWindow): "algo mudou", vira a
+          cabeça para a direção/borda da nova janela por um curto tempo;
+        - batida/energia (music_listener): micro-reação rítmica de atenção;
+        - borda de tela mais próxima: olhar para a borda de onde "veio" algo;
+        - ambiente (timer + aleatório), tratado dentro do GateAtencao.
+        """
+        self._atencao_foco_restante = max(0.0, self._atencao_foco_restante - dt)
+        gatilhos: list[GatilhoAtencao] = []
+
+        largura = self.renderer.width
+        altura = self.renderer.height
+        try:
+            origem = win32gui.ClientToScreen(self.hwnd, (0, 0))
+        except win32gui.error:
+            origem = (0, 0)
+
+        centro_tela = (origem[0] + largura * 0.5, origem[1] + altura * 0.5)
+
+        # Cursor global: o alvo é a posição do cursor em coordenadas de tela.
+        if self._mouse_screen is not None:
+            gatilhos.append(GatilhoAtencao("cursor", self._mouse_screen,
+                                           PRIORIDADE_CURSOR))
+
+        # Troca de janela em foco: marca atenção por _ATENCAO_FOCO_SEGUNDOS e
+        # olha para o centro da janela recém-ativada (borda de onde "surgiu").
+        foreground = win32gui.GetForegroundWindow()
+        if foreground != self._atencao_foreground:
+            self._atencao_foreground = foreground
+            if foreground and foreground != self.hwnd:
+                self._atencao_foco_restante = self._ATENCAO_FOCO_SEGUNDOS
+                self._atencao_foco_ponto = self._centro_da_janela(foreground, centro_tela)
+        if self._atencao_foco_restante > 0 and getattr(self, "_atencao_foco_ponto", None):
+            gatilhos.append(GatilhoAtencao("foco", self._atencao_foco_ponto,
+                                           PRIORIDADE_FOCO))
+
+        # Batida/energia: micro-reação rítmica. O ponto é a borda horizontal do
+        # monitor no lado da energia, mantendo o olhar sutil e no ritmo.
+        if music and music.beat_detected and music.audio_level >= self._ATENCAO_BEAT_FORCA_MINIMA:
+            lado = 1.0 if (self._gate_atencao.rng.random() < 0.5) else -1.0
+            ponto_beat = (centro_tela[0] + lado * largura, centro_tela[1])
+            gatilhos.append(GatilhoAtencao("beat", ponto_beat, PRIORIDADE_BEAT,
+                                           forca=music.audio_level))
+
+        # Borda de tela mais próxima da posição física do mascote: olhar para a
+        # borda de onde "veio" algo (ex.: o mascote acabou de bater na borda).
+        if state is not None:
+            ponto_borda = self._borda_mais_proxima(state.position)
+            if ponto_borda is not None:
+                gatilhos.append(GatilhoAtencao("borda", ponto_borda, PRIORIDADE_BORDA))
+
+        alvo = self._gate_atencao.atualizar(
+            dt,
+            gatilhos=gatilhos,
+            origem_janela=(origem[0], origem[1]),
+            largura=largura,
+            altura=altura,
+            habilitado=self.settings.behavior.react_to_attention,
+            ambiente_habilitado=self.settings.behavior.idle_animation,
+        )
+        return alvo
+
+    def _centro_da_janela(self, hwnd, padrao):
+        """Centro de uma janela em coordenadas de tela, com fallback seguro."""
+        try:
+            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        except win32gui.error:
+            return padrao
+        return ((left + right) * 0.5, (top + bottom) * 0.5)
+
+    def _borda_mais_proxima(self, posicao):
+        """Ponto na borda do monitor mais próxima da posição física do mascote.
+
+        Só dispara perto da borda (dentro de _ATENCAO_BORDA_MARGEM) para não
+        competir o tempo todo com cursor/foco.
+        """
+        _ATENCAO_BORDA_MARGEM = 60.0  # px da borda para a atenção acordar
+        try:
+            monitor = win32api.MonitorFromPoint(tuple(map(int, posicao)), 2)
+            left, top, right, bottom = win32api.GetMonitorInfo(monitor)["Work"]
+        except Exception:
+            return None
+        x, y = posicao
+        dist = {
+            "esq": x - left, "dir": right - x,
+            "cima": y - top, "baixo": bottom - y,
+        }
+        lado = min(dist, key=dist.get)
+        if dist[lado] > _ATENCAO_BORDA_MARGEM:
+            return None
+        return {
+            "esq": (left, y), "dir": (right, y),
+            "cima": (x, top), "baixo": (x, bottom),
+        }[lado]
+
     def _animation_tick(self) -> None:
         if self._exit_started is not None:
             self._exit_tick()
@@ -477,6 +597,7 @@ class OverlayApp(ShowBase):
         if music_playing and music_intensity == 0.0:
             music_intensity = 0.25
         self.animation_controller.dance_motion.override = self.settings.music.dance_style
+        alvo = self._resolver_alvo_atencao(dt, music, state)
         pose = self.animation_controller.update(
             dt,
             velocity=state.velocity if state else (0.0, 0.0),
@@ -496,10 +617,14 @@ class OverlayApp(ShowBase):
             idle_enabled=self.settings.behavior.idle_animation,
             sleep_after_idle_seconds=self.settings.behavior.sleep_after_idle_seconds,
             hovered=self._mouse_hovered and self.settings.behavior.react_to_click,
-            look_direction=(self._mouse_local[0] / self.renderer.width - 0.5) * 2.0,
-            look_vertical=(self._mouse_local[1] / self.renderer.height - .52) * 2.0,
+            look_direction=alvo.direcao,
+            look_vertical=alvo.vertical,
             pointer_position=self._mouse_screen,
         )
+        if alvo.surpresa and self.settings.behavior.react_to_click:
+            # Susto temporizado no mesmo padrão das outras reações.
+            self.animation_controller.interact("surprise", direction=alvo.direcao,
+                                                strength=alvo.forca)
         self.renderer.apply_rig_pose(pose)
         self.renderer.lower_body.apply(self.animation_controller.leg_motion.pose,
                                        bool(not self._drag_active and (state.grounded if state else True)))

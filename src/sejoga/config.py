@@ -148,6 +148,9 @@ class BehaviorSettings(BaseModel):
     wander: bool = True
     react_to_click: bool = True
     react_to_drag: bool = True
+    # Olhar/atenção: o mascote segue pontos de atenção não-invasivos (cursor
+    # global, troca de foco, batida, borda do monitor, ambiente espontâneo).
+    react_to_attention: bool = True
     sleep_after_idle_seconds: int = Field(default=90, ge=0)
 
 
