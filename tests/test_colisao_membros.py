@@ -10,6 +10,7 @@ formada; (c) a fronteira Python puro, sem engine. Segue o estilo de
 from __future__ import annotations
 
 import ast
+from math import cos, sin
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,14 @@ from sejoga import rig as rig_mod
 from sejoga import rig_medidas as med
 from sejoga.assets import resolve_model
 from sejoga.model import load_model
-from sejoga.rig_mapa import Parte
+from sejoga.rig import Rotation3
+from sejoga.rig_mapa import (
+  AlturaRelativa,
+  EstadoParte,
+  Lado,
+  Parte,
+  Validacao,
+)
 
 
 @pytest.fixture(scope="module")
@@ -190,6 +198,126 @@ def test_montar_volumes_classifica_membro_e_bloco(model) -> None:
   assert isinstance(volumes[Parte.MAO_DIREITA], col.Capsula)
   assert isinstance(volumes[Parte.CORPO], col.CaixaOrientada)
   assert isinstance(volumes[Parte.CABECA], col.CaixaOrientada)
+
+
+# --------------------------------------------------------------------------- #
+# (FEAT-002) Gancho de correção inerte — resolver_colisoes reduz penetração
+# --------------------------------------------------------------------------- #
+def _estado_sintetico(
+  parte: Parte,
+  origem: tuple[float, float, float],
+  ponta: tuple[float, float, float] | None,
+) -> EstadoParte:
+  """``EstadoParte`` mínimo para teste (só origem/ponta importam à colisão)."""
+  comprimento = None
+
+  if ponta is not None:
+    comprimento = col._norma(col._sub(ponta, origem))
+
+  return EstadoParte(
+    parte=parte,
+    lado=Lado.DIREITA,
+    pai=None,
+    validacao=Validacao.A_VALIDAR,
+    rot_local_graus=(0.0, 0.0, 0.0),
+    rot_mundo_graus=(0.0, 0.0, 0.0),
+    desvio_repouso_graus=0.0,
+    torcao_graus=0.0,
+    vetores_mundo={},
+    direcoes={},
+    flags={},
+    origem_mundo=origem,
+    ponta_mundo=ponta,
+    comprimento_u=comprimento,
+    altura_relativa=AlturaRelativa.NIVEL_PEITO,
+    distancia_ao_eixo_central_u=0.0,
+  )
+
+
+def _ponta_apos_delta(
+  origem: tuple[float, float, float],
+  ponta: tuple[float, float, float],
+  rot: Rotation3,
+) -> tuple[float, float, float]:
+  """Reconstrói a ponta girando o segmento ``origem->ponta`` pelo delta (H=y,P=x).
+
+  Aplica heading (em torno de +Y) e depois pitch (em torno de +X) ao vetor do
+  segmento, do jeito que o rig interpreta ``Rotation3``, preservando o
+  comprimento. Serve para medir a penetração do membro já reorientado.
+  """
+  vetor = col._sub(ponta, origem)
+
+  # Heading (y): giro no plano XZ.
+  ch, sh = cos(rot.y), sin(rot.y)
+  vx = vetor[0] * ch + vetor[2] * sh
+  vz = -vetor[0] * sh + vetor[2] * ch
+
+  # Pitch (x): giro no plano YZ.
+  cp, sp = cos(rot.x), sin(rot.x)
+  vy = vetor[1] * cp - vz * sp
+  vz2 = vetor[1] * sp + vz * cp
+
+  return (origem[0] + vx, origem[1] + vy, origem[2] + vz2)
+
+
+def test_resolver_colisoes_reduz_penetracao_capsula_caixa() -> None:
+  # Antebraço cuja ponta MERGULHA na caixa do tronco (penetração clara).
+  origem = (0.5, 0.0, 0.0)
+  ponta = (0.0, 0.0, 0.0)  # ponta no centro do tronco
+  caixa_meia = col.MEIA_DIM_TRONCO
+
+  partes = {
+    Parte.ANTEBRACO_DIREITO: _estado_sintetico(Parte.ANTEBRACO_DIREITO, origem, ponta),
+    Parte.CORPO: _estado_sintetico(Parte.CORPO, (0.0, 0.0, 0.0), None),
+  }
+  pose = {Parte.ANTEBRACO_DIREITO.value: Rotation3()}
+
+  raio = col._raio_de(Parte.ANTEBRACO_DIREITO)
+  caixa = col.CaixaOrientada(centro=(0.0, 0.0, 0.0), eixos=col._EIXOS_MUNDO, meias_dim=caixa_meia)
+  antes = col.penetracao_capsula_caixa(col.Capsula(a=origem, b=ponta, raio=raio), caixa)
+
+  assert antes > col.LIMIAR_PENETRACAO_U  # o caso de teste de fato colide
+
+  corrigida = col.resolver_colisoes(pose, partes)
+  rot = corrigida[Parte.ANTEBRACO_DIREITO.value]
+
+  # A correção REORIENTA o membro (não é a pose crua).
+  assert (rot.x, rot.y, rot.z) != (0.0, 0.0, 0.0)
+
+  ponta_nova = _ponta_apos_delta(origem, ponta, rot)
+  depois = col.penetracao_capsula_caixa(col.Capsula(a=origem, b=ponta_nova, raio=raio), caixa)
+
+  assert depois < antes  # empurrou o alvo para fora: penetração menor
+
+
+def test_resolver_colisoes_sem_colisao_nao_altera_pose() -> None:
+  # Antebraço bem longe do tronco: nada a corrigir.
+  origem = (3.0, 0.0, 0.0)
+  ponta = (3.5, 0.0, 0.0)
+
+  partes = {
+    Parte.ANTEBRACO_DIREITO: _estado_sintetico(Parte.ANTEBRACO_DIREITO, origem, ponta),
+    Parte.CORPO: _estado_sintetico(Parte.CORPO, (0.0, 0.0, 0.0), None),
+  }
+  pose = {Parte.ANTEBRACO_DIREITO.value: Rotation3(0.1, 0.2, 0.3)}
+
+  corrigida = col.resolver_colisoes(pose, partes)
+
+  assert corrigida == pose
+
+
+def test_resolver_colisoes_e_puro_nao_muta_entrada() -> None:
+  origem = (0.5, 0.0, 0.0)
+  ponta = (0.0, 0.0, 0.0)
+  partes = {
+    Parte.ANTEBRACO_DIREITO: _estado_sintetico(Parte.ANTEBRACO_DIREITO, origem, ponta),
+    Parte.CORPO: _estado_sintetico(Parte.CORPO, (0.0, 0.0, 0.0), None),
+  }
+  pose = {Parte.ANTEBRACO_DIREITO.value: Rotation3()}
+
+  col.resolver_colisoes(pose, partes)
+
+  assert pose == {Parte.ANTEBRACO_DIREITO.value: Rotation3()}
 
 
 # --------------------------------------------------------------------------- #

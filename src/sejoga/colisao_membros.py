@@ -23,8 +23,9 @@ Eixos do mundo glTF: +X=direita, +Y=cima, +Z=frente.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import sqrt
+from math import atan2, sqrt
 
+from .rig import Rotation3
 from .rig_mapa import Parte, Vetor3
 from .rig_medidas import PARTES_MEMBRO, EstadoParte
 
@@ -77,6 +78,29 @@ AMOSTRAS_CAPSULA_CAIXA: int = 12
 #: é toque de casca/ruído de medição e é descartado. Calibrável: subir reduz
 #: falsos positivos; descer flagra roçadas leves.
 LIMIAR_PENETRACAO_U: float = 0.02
+
+# --------------------------------------------------------------------------- #
+# PARÂMETROS da CORREÇÃO (FEAT-002) — usados só por ``resolver_colisoes``.
+#
+# A correção é um GANCHO INERTE: nada no projeto a chama por padrão (ver a
+# decisão em docs/RELATORIO_COLISAO_MEMBROS.md). Estes valores só entram em jogo
+# se o AnimationController ligar a correção amortecida (instruções no docstring
+# de ``resolver_colisoes``). Também em unidades do modelo (``u``).
+# --------------------------------------------------------------------------- #
+
+#: Fração da penetração que a correção REMOVE por aplicação. 1.0 empurra o alvo
+#: até zerar a penetração + folga; valores menores suavizam (a mola do controller
+#: ainda amorteceria o resto). Espelha o espírito de ``ObstacleBox.project``, que
+#: projeta até ``raio + margem`` — aqui a margem é ``FOLGA_U``.
+FORCA_CORRECAO: float = 1.0
+
+#: Folga (``u``) extra deixada entre os volumes DEPOIS de corrigir, para o alvo
+#: não assentar exatamente na casca (equivalente à ``margin`` de ``project``).
+FOLGA_U: float = 0.01
+
+#: Deslocamento mínimo de ponta (``u``) para valer uma reorientação do membro.
+#: Abaixo disso o empurrão é ruído e o alvo volta inalterado (fail-safe).
+_DESLOCAMENTO_MINIMO_U: float = 1e-6
 
 
 # --------------------------------------------------------------------------- #
@@ -438,6 +462,213 @@ def _penetracao_entre(a: Volume, b: Volume) -> float:
   return 0.0
 
 
+def _ponto_mais_proximo_no_segmento(p: Vetor3, a: Vetor3, b: Vetor3) -> Vetor3:
+  """Ponto do segmento ``[a,b]`` mais próximo de ``p`` (clamp em [0,1])."""
+  ab = _sub(b, a)
+  comprimento2 = _dot(ab, ab)
+
+  if comprimento2 <= 1e-12:
+    return a
+
+  t = _clamp(_dot(_sub(p, a), ab) / comprimento2, 0.0, 1.0)
+
+  return _soma(a, _escala(ab, t))
+
+
+def _eixo_separacao_capsula_capsula(ca: Capsula, cb: Capsula) -> Vetor3:
+  """Direção unitária que empurra ``ca`` para FORA de ``cb`` (de cb para ca).
+
+  Liga os pontos mais próximos dos dois eixos. Segmentos coincidentes caem num
+  eixo lateral padrão (+X) para não devolver vetor nulo.
+  """
+  pa = _ponto_mais_proximo_no_segmento(
+    _escala(_soma(cb.a, cb.b), 0.5), ca.a, ca.b
+  )
+  pb = _ponto_mais_proximo_no_segmento(pa, cb.a, cb.b)
+  direcao = _sub(pa, pb)
+
+  if _norma(direcao) <= _DESLOCAMENTO_MINIMO_U:
+    return (1.0, 0.0, 0.0)
+
+  return _normalizar(direcao)
+
+
+def _eixo_separacao_capsula_caixa(cap: Capsula, caixa: CaixaOrientada) -> Vetor3:
+  """Direção unitária que empurra ``cap`` para FORA de ``caixa``.
+
+  Usa o ponto mais FUNDO da cápsula (maior penetração) e a face mais próxima da
+  caixa — o eixo local de menor folga —, espelhando a escolha de eixo de
+  ``ObstacleBox.project`` quando o ponto está dentro do bloco.
+  """
+  passos = max(2, AMOSTRAS_CAPSULA_CAIXA)
+  direcao_cap = _sub(cap.b, cap.a)
+  melhor_ponto = cap.a
+  menor_dist = float("inf")
+
+  for i in range(passos):
+    fracao = i / (passos - 1)
+    ponto = _soma(cap.a, _escala(direcao_cap, fracao))
+    dist = dist_ponto_caixa(ponto, caixa)
+
+    if dist < menor_dist:
+      menor_dist = dist
+      melhor_ponto = ponto
+
+  rel = _sub(melhor_ponto, caixa.centro)
+  locais = [_dot(rel, eixo) for eixo in caixa.eixos]
+  meias = list(caixa.meias_dim)
+
+  # Eixo local de menor folga (mais perto da face) = direção de saída.
+  menor_folga = float("inf")
+  indice = 0
+  sinal = 1.0
+
+  for k in range(3):
+    folga = meias[k] - abs(locais[k])
+
+    if folga < menor_folga:
+      menor_folga = folga
+      indice = k
+      sinal = 1.0 if locais[k] >= 0.0 else -1.0
+
+  return _normalizar(_escala(caixa.eixos[indice], sinal))
+
+
+def _delta_reorientacao(
+  origem: Vetor3,
+  ponta: Vetor3,
+  ponta_corrigida: Vetor3,
+) -> tuple[float, float]:
+  """Delta (dx_pitch, dy_heading) em RADIANOS para a ponta ir ao alvo empurrado.
+
+  Mede o giro do segmento ``origem->ponta`` para ``origem->ponta_corrigida`` em
+  torno dos eixos X (pitch) e Y (heading) do mundo, na convenção do rig
+  (H=y, P=x). É o ângulo MÍNIMO que leva a ponta ao alvo sem saltar: some-o ao
+  ``Rotation3`` do membro (mover o alvo, não reescrever o ângulo).
+  """
+  antigo = _sub(ponta, origem)
+  novo = _sub(ponta_corrigida, origem)
+
+  if _norma(antigo) <= _DESLOCAMENTO_MINIMO_U or _norma(novo) <= _DESLOCAMENTO_MINIMO_U:
+    return (0.0, 0.0)
+
+  # Heading: giro no plano XZ (em torno de +Y). Pitch: giro no plano YZ (+X).
+  heading_antigo = atan2(antigo[0], antigo[2])
+  heading_novo = atan2(novo[0], novo[2])
+  pitch_antigo = atan2(antigo[1], sqrt(antigo[0] ** 2 + antigo[2] ** 2))
+  pitch_novo = atan2(novo[1], sqrt(novo[0] ** 2 + novo[2] ** 2))
+
+  return (pitch_novo - pitch_antigo, heading_novo - heading_antigo)
+
+
+def resolver_colisoes(
+  pose: dict[str, Rotation3],
+  partes: dict[Parte, EstadoParte],
+  parametros: dict[str, float] | None = None,
+) -> dict[str, Rotation3]:
+  """GANCHO DE CORREÇÃO (inerte): devolve a pose com os ALVOS empurrados.
+
+  A partir das colisões detectadas, empurra o ALVO do membro para FORA da
+  colisão (mover o alvo, nunca saltar o ângulo), espelhando
+  ``tentacle_constraints.ObstacleBox.project``: desloca ao longo da MENOR
+  separação até ``raio + folga`` e reorienta o membro o MÍNIMO para a ponta
+  alcançar o alvo empurrado. O deslocamento é proporcional à penetração, logo
+  some suavemente a zero quando não há colisão.
+
+  Função PURA: só lê ``pose``/``partes`` e devolve uma nova pose; não toca
+  engine, não guarda estado. Membros sem colisão saem inalterados.
+
+  **Esta função NÃO é chamada por padrão.** A decisão registrada em
+  ``docs/RELATORIO_COLISAO_MEMBROS.md`` (seção *Decisão para a correção*) é NÃO
+  ligar a correção ao vivo, porque o detector mede a profundidade BRUTA e não
+  separa o piso estrutural (raiz do membro nascendo dentro do bloco, constante
+  em todas as poses) do excedente dirigido pela pose; corrigir sobre o bruto
+  empurraria os membros por causa do piso, movimento que o usuário não pediu.
+
+  Como LIGAR no ``AnimationController.update`` (só se a evidência passar a
+  justificar, p.ex. descontando o piso estrutural por par em
+  ``LIMIAR_PENETRACAO_U``/``PARES_A_CHECAR``):
+
+  1. após ``displayed_pose`` ser calculada e ANTES do ``return``, medir as
+     partes da pose exibida com ``rig_medidas.medir_todas_as_partes``;
+  2. ``alvo = resolver_colisoes(displayed_pose, partes)``;
+  3. perseguir ``alvo`` com uma mola (``body_motion.Spring`` ou
+     ``joint_springs.SpringPose`` com tensões de ``spring_tuning``), guardando o
+     estado da mola entre frames no controller, para a correção entrar
+     AMORTECIDA (sem tranco) e só nas juntas problemáticas.
+
+  ``parametros`` (opcional) sobrepõe ``FORCA_CORRECAO`` e ``FOLGA_U`` por chave
+  de mesmo nome; ausente, usa os valores do bloco PARÂMETROS.
+  """
+  forca = FORCA_CORRECAO
+  folga = FOLGA_U
+
+  if parametros is not None:
+    forca = parametros.get("FORCA_CORRECAO", forca)
+    folga = parametros.get("FOLGA_U", folga)
+
+  volumes = montar_volumes(partes)
+  # Acumula o empurrão de ponta por membro (um membro pode colidir com vários).
+  empurrao: dict[Parte, Vetor3] = {}
+
+  for parte_a, parte_b in PARES_A_CHECAR:
+    vol_a = volumes.get(parte_a)
+    vol_b = volumes.get(parte_b)
+
+    if vol_a is None or vol_b is None:
+      continue
+
+    profundidade = _penetracao_entre(vol_a, vol_b)
+
+    if profundidade < LIMIAR_PENETRACAO_U:
+      continue
+
+    deslocamento = forca * (profundidade + folga)
+
+    # Empurra o membro (cápsula) para fora do parceiro. Pares cápsula-cápsula
+    # empurram o lado A; cápsula-caixa empurram a cápsula.
+    if isinstance(vol_a, Capsula) and isinstance(vol_b, Capsula):
+      eixo = _eixo_separacao_capsula_capsula(vol_a, vol_b)
+      _somar_empurrao(empurrao, parte_a, _escala(eixo, deslocamento))
+    elif isinstance(vol_a, Capsula) and isinstance(vol_b, CaixaOrientada):
+      eixo = _eixo_separacao_capsula_caixa(vol_a, vol_b)
+      _somar_empurrao(empurrao, parte_a, _escala(eixo, deslocamento))
+    elif isinstance(vol_a, CaixaOrientada) and isinstance(vol_b, Capsula):
+      eixo = _eixo_separacao_capsula_caixa(vol_b, vol_a)
+      _somar_empurrao(empurrao, parte_b, _escala(eixo, deslocamento))
+
+  if not empurrao:
+    return dict(pose)
+
+  corrigida = dict(pose)
+
+  for parte, empurrao_ponta in empurrao.items():
+    estado = partes.get(parte)
+
+    if estado is None or estado.ponta_mundo is None:
+      continue
+
+    ponta_corrigida = _soma(estado.ponta_mundo, empurrao_ponta)
+    d_pitch, d_heading = _delta_reorientacao(
+      estado.origem_mundo, estado.ponta_mundo, ponta_corrigida
+    )
+
+    atual = corrigida.get(parte.value, Rotation3())
+    corrigida[parte.value] = Rotation3(
+      x=atual.x + d_pitch,
+      y=atual.y + d_heading,
+      z=atual.z,
+    )
+
+  return corrigida
+
+
+def _somar_empurrao(acumulado: dict[Parte, Vetor3], parte: Parte, delta: Vetor3) -> None:
+  """Acumula o deslocamento de ponta de um membro (soma vetorial)."""
+  atual = acumulado.get(parte, (0.0, 0.0, 0.0))
+  acumulado[parte] = _soma(atual, delta)
+
+
 def detectar_colisoes(
   partes: dict[Parte, EstadoParte],
   pose_nome: str,
@@ -471,6 +702,8 @@ def detectar_colisoes(
 
 __all__ = [
   "AMOSTRAS_CAPSULA_CAIXA",
+  "FOLGA_U",
+  "FORCA_CORRECAO",
   "LIMIAR_PENETRACAO_U",
   "MEIA_DIM_CABECA",
   "MEIA_DIM_PORTA",
@@ -489,4 +722,5 @@ __all__ = [
   "montar_volumes",
   "penetracao_capsula_caixa",
   "penetracao_capsula_capsula",
+  "resolver_colisoes",
 ]

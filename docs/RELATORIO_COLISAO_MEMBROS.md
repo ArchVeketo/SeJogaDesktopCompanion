@@ -428,4 +428,52 @@ Valores atuais:
 
 ## Decisão para a correção (FEAT-002)
 
-_Em aberto — a ser preenchido pelo FEAT-002 com a estratégia de correção (mover o alvo da pose sem saltar o ângulo, à moda de `tentacle_constraints`), escolhendo quais pares corrigir primeiro a partir dos piores casos acima e provando ausência de tranco com `tools/analisar_anim.py`._
+**Decisão: NÃO ligar a correção ao vivo no `AnimationController`. Entregar o gancho `resolver_colisoes` documentado e inerte.** A decisão é guiada pelos números acima, não assumida.
+
+### Por que (a leitura dos números)
+
+O detector mede a profundidade **bruta** de penetração e, como a própria tabela mostra, nessa profundidade convivem dois sinais que precisam ser separados antes de decidir corrigir:
+
+1. **Piso estrutural (constante em TODA pose, inclusive repouso):** `braço vs tronco` fica em ~0,45 u e `pernas vs pé` em exatamente **0,195 u** em todas as 29 poses, sem variar com o gesto. Não é a animação atravessando o corpo: é a **raiz do membro nascendo dentro do volume-bloco** (ombro/braço começa dentro da caixa do tronco; a perna encosta na caixa do pé). É consequência da montagem dos volumes, não defeito de animação.
+2. **Excedente dirigido pela pose (o único candidato real a correção):** descontando o piso por par (recomendação da seção *Como ler os números*), o que sobra é modesto:
+   - `braço dir. vs braço esq.`: piso de repouso **0,070 u**, pico **0,320 u** em `interaction:wake` t=0.60 → excedente real ~**0,25 u** (recorrente em `wake`/`hover`);
+   - `antebraço vs tronco`: piso ~**0,30 u**, pico **0,414 u** (`wake`/`wave`) → excedente ~**0,11 u**;
+   - `antebraço vs cabeça`: piso ~**0,18 u**, pico **0,282 u** (`wake`) → excedente ~**0,10 u**;
+   - `mão vs tronco`, `antebraço/mão vs portinha`: excedentes abaixo de ~0,10 u.
+
+O detector, como calibrado hoje (`LIMIAR_PENETRACAO_U = 0,020 u`, sem desconto do piso por par), **não distingue** (1) de (2): ele entregaria à correção, em todas as poses, os ~0,45 u e os 0,195 u do piso estrutural. Ligar uma correção amortecida sobre esses números brutos empurraria os membros de forma **constante e visível por causa do piso**, não por causa de uma interpenetração real dirigida pela pose — justamente o tipo de movimento não solicitado e o "efeito duro" que o projeto acabou de combater. Mexer no que o usuário vê a partir de evidência que não isola o defeito real é uma decisão de produto que não cabe fechar aqui.
+
+O excedente dirigido pela pose existe e é recorrente (sobretudo `interaction:wake`, `flourish:wave`, `idle:curious/stylish/fighter`, `dance`), mas é **pequeno** (0,10–0,25 u) e **só aparece depois de descontar o piso estrutural** — o que o detector ainda não faz. Portanto a pré-condição do FEAT-002 ("os números comprovarem interpenetração real e recorrente" de forma isolável) **não está satisfeita com a calibração atual**.
+
+### O que foi entregue mesmo assim (caminho SEMPRE do FEAT-002)
+
+`src/sejoga/colisao_membros.py` → `resolver_colisoes(pose, partes, parametros)`: função **pura e inerte** que, a partir das colisões detectadas, empurra o **alvo** do membro para fora da colisão ao longo da menor separação até `raio + FOLGA_U` (espelha `tentacle_constraints.ObstacleBox.project`) e **reorienta o membro o mínimo** para a ponta alcançar o alvo empurrado — move o alvo, nunca salta o ângulo; o deslocamento é proporcional à penetração, logo some a zero quando não há colisão. **Nada no projeto a chama por padrão.** O docstring descreve passo a passo como ligá-la ao fim de `AnimationController.update` com mola amortecida (`body_motion.Spring`/`joint_springs.SpringPose`) quando a evidência passar a justificar. Teste `tests/test_colisao_membros.py::test_resolver_colisoes_reduz_penetracao_capsula_caixa` prova que ela reduz a penetração de uma pose sintética sobreposta; outros dois provam que não altera poses sem colisão e que é pura.
+
+### Pré-condição para reabrir a correção (recalibração recomendada)
+
+Antes de ligar a correção, recalibrar o detector para que a profundidade medida seja **só o excedente dirigido pela pose**:
+
+- descontar o **piso estrutural por par** (subtrair a profundidade medida no repouso de cada par), ou
+- **encolher a cápsula do membro perto da raiz** / **afundar menos a origem na caixa** (ajustar `RAIOS_MEMBRO`, `MEIA_DIM_TRONCO`/`CABECA`, origem dos volumes), de modo que o piso caia para ~0 e só o excedente conte.
+
+Com isso, `PARES_A_CHECAR` e `LIMIAR_PENETRACAO_U` passam a flagrar apenas a interpenetração real; aí o excedente de 0,10–0,25 u nos pares `braço dir. vs braço esq.`, `antebraço vs tronco` e `antebraço vs cabeça` (piores em `interaction:wake`) justifica ligar `resolver_colisoes` com mola, e o FEAT-002 deve então acrescentar o teste de ausência de tranco via `tools/analisar_anim.detectar_trancos` (`LIMIAR_JERK_TRANCO`).
+
+## Validação visual pendente (GPU)
+
+A "naturalidade" do movimento — se a pose corrigida *parece* natural — **só se valida na GPU** e não foi verificada aqui: esta máquina pode cair para `p3tinydisplay` (sem GPU real). Como a correção não foi ligada, não há mudança visual a validar neste passo; se a correção for reativada após a recalibração, abrir o executável e conferir render/captura é obrigatório antes de aceitar o resultado.
+
+## Parâmetros calibráveis (todos em `src/sejoga/colisao_membros.py`, bloco PARÂMETROS)
+
+Detecção:
+
+- `RAIOS_MEMBRO`, `RAIO_MEMBRO_PADRAO` — raio da cápsula por membro.
+- `MEIA_DIM_TRONCO`, `MEIA_DIM_CABECA`, `MEIA_DIM_PORTA` — meias-dimensões das caixas orientadas.
+- `AMOSTRAS_CAPSULA_CAIXA` — densidade da amostragem cápsula-vs-caixa.
+- `LIMIAR_PENETRACAO_U` — profundidade mínima para contar como colisão.
+- `PARES_A_CHECAR` — pares plausíveis varridos.
+
+Correção (usados só por `resolver_colisoes`, inerte):
+
+- `FORCA_CORRECAO` — fração da penetração removida por aplicação (1.0 = até zerar + folga).
+- `FOLGA_U` — folga extra deixada entre os volumes após corrigir.
+- tensão da mola — ao ligar a correção, viria de `spring_tuning` (frequência/amortecimento por junta), guardada entre frames no controller.
