@@ -82,14 +82,18 @@ def _excedente_wake(pose: dict[str, Rotation3], model) -> float:
 
 
 def test_correcao_reduz_excedente_no_pico_da_pose_colisora(model) -> None:
-  # No INSTANTE de pico da pose wake (t=0.6s, o braço cruzando o outro), a
-  # meta cheia de resolver_colisoes empurra os membros e reduz o excedente do
+  # Numa pose COLISORA (os dois braços bem erguidos convergindo acima do corpo),
+  # a meta cheia de resolver_colisoes empurra os membros e reduz o excedente do
   # pior par. É a meta que a mola do controller persegue; prova que a geometria
   # da correção de fato remove o excedente dirigido pela pose.
-  from sejoga.nucleo import rig as rig_mod
+  # Convenção PROVADA: elevação = ROLL (Z), z NEGATIVO ergue; z=-60 nos dois
+  # braços os leva para cima e eles colidem (o `wake`, já corrigido, NÃO cruza
+  # mais — por isso montamos aqui uma pose explicitamente colisora).
+  from math import radians
 
   rig = _rig()
-  rig_mod.pose_interaction(rig, "wake", 0.6, direction=0.5, vertical=0.3)
+  rig.current["right-arm"] = Rotation3(0.0, 0.0, radians(-60.0))
+  rig.current["left-arm"] = Rotation3(0.0, 0.0, radians(60.0))
   pose = rig.pose()
 
   exc_antes = _excedente_wake(pose, model)
