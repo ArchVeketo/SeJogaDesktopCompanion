@@ -20,7 +20,6 @@ from sejoga.animacao.joint_springs import (
     CADEIA_DIREITA,
     CADEIA_ESQUERDA,
     LagChain,
-    SpringPose,
 )
 from sejoga.animacao.leg_motion import LegMotion
 from sejoga.animacao.pose_resolver import PoseResolver
@@ -105,7 +104,6 @@ class AnimationController:
         pose_idle(rig, 0.0, self.idle_personality)
         pose_secondary(rig, 0.0, AnimationState.IDLE.value, self.idle_personality)
         self._pose = rig.pose()
-        self._transition_from = dict(self._pose)
         rig.reset()
         self._reaction: AnimationState | None = None
         self._reaction_time = 0.0
@@ -129,26 +127,6 @@ class AnimationController:
         self.dance_motion = DanceMotion()
         self._dance_preview_remaining = 0.0
         self._dance_preview_style = 'head_bob'
-        # Crossfade por junta com continuidade de velocidade: a pose exibida
-        # persegue o alvo autoral com molas, em vez de um blend linear que
-        # zera a velocidade a cada troca de estado. Cada junta recebe a sua
-        # tensão de spring_tuning (âncora firme, ponta solta). EXCEÇÃO: legs,
-        # left-feet e right-feet recebem a tensão FIRME do corpo, porque o
-        # movimento real das pernas/pés vem do IK de lower_body via leg_motion
-        # (fora do mixer): não se duplica amortecimento aqui.
-        firme = (frequencia_de("body"), amortecimento_de("body"))
-        tensoes_crossfade = {
-            grupo: (firme if grupo in ("legs", "left-feet", "right-feet")
-                    else (frequencia_de(grupo), amortecimento_de(grupo)))
-            for grupo in ALL_GROUPS
-        }
-        self._crossfade = SpringPose(tensoes=tensoes_crossfade)
-        # Frequência-base de cada junta (regime estável): usada para devolver a
-        # tensão da tabela depois que a aceleração da troca termina.
-        self._frequencia_base = {grupo: tensao[0]
-                                 for grupo, tensao in tensoes_crossfade.items()}
-        self._crossfade.definir(dict(self._pose))
-        self._just_transitioned = True
         # Camada 'interacao': atraso efetivo da cadeia dos braços (braço ->
         # antebraço -> mão -> dedos). Cada cadeia persegue o alvo autoral com
         # molas, e a diferença (saída - alvo) vira um follow-through aditivo
@@ -157,11 +135,22 @@ class AnimationController:
         self.cadeia_esquerda = LagChain(CADEIA_ESQUERDA)
         self.cadeia_direita.definir(dict(self._pose))
         self.cadeia_esquerda.definir(dict(self._pose))
-        # Correção pontual suave de colisão + clamps: delegado ao PoseResolver.
-        # O PoseResolver recebe o model (se injetado) e aplica colisão + clamps
-        # finais. Controllers de teste sem model mantêm o comportamento antigo.
+        # Crossfade, colisão e clamps delegados ao PoseResolver.
+        # As tensões de crossfade vêm de spring_tuning: âncora firme, ponta
+        # solta. EXCEÇÃO: legs, left-feet e right-feet recebem a tensão FIRME
+        # do corpo, porque o movimento real vem do IK de lower_body via
+        # leg_motion (fora do mixer): não se duplica amortecimento aqui.
+        firme = (frequencia_de("body"), amortecimento_de("body"))
+        tensoes_crossfade = {
+            grupo: (firme if grupo in ("legs", "left-feet", "right-feet")
+                    else (frequencia_de(grupo), amortecimento_de(grupo)))
+            for grupo in ALL_GROUPS
+        }
         self._collision_model = model
-        self.pose_resolver = PoseResolver()
+        self.pose_resolver = PoseResolver(tensoes_crossfade=tensoes_crossfade)
+        self.pose_resolver.iniciar_transicao(
+            dict(self._pose), transition_seconds=self.transition_seconds
+        )
 
     def preview_dance(self, style):
         if style not in ('head_bob', 'hip_hop', 'rock', 'breakdance'):
@@ -214,9 +203,9 @@ class AnimationController:
         self._idle_clock = 0.0
         self._personality_locked = True
         self._personality_elapsed = 0.0
-        self._transition_from = dict(self._pose)
-        self._crossfade.definir(dict(self._pose))
-        self._just_transitioned = True
+        self.pose_resolver.iniciar_transicao(
+            dict(self._pose), transition_seconds=max(self.transition_seconds, 1.0)
+        )
         self._active_transition_seconds = max(self.transition_seconds, 1.0)
         self.state_time = 0.0
 
@@ -409,23 +398,23 @@ class AnimationController:
                 self._idle_clock = 0.0
                 self._personality_elapsed = 0.0
                 self._personality_interval = self._personality_rng.uniform(24.0, 36.0)
-                self._transition_from = dict(self._pose)
-                self._crossfade.definir(dict(self._pose))
-                self._just_transitioned = True
                 self._active_transition_seconds = max(self.transition_seconds, 1.4)
+                self.pose_resolver.iniciar_transicao(
+                    dict(self._pose), transition_seconds=self._active_transition_seconds
+                )
                 self.state_time = 0.0
         elif next_state != AnimationState.IDLE:
             self._personality_elapsed = 0.0
 
         if next_state != self.state:
-            self._transition_from = dict(self._pose)
-            self._crossfade.definir(dict(self._pose))
-            self._just_transitioned = True
-            self.state = next_state
-            self.state_time = 0.0
             self._active_transition_seconds = (min(self.transition_seconds, .22)
                 if next_state in (AnimationState.DRAG, AnimationState.FALL, AnimationState.HIT)
                 else self.transition_seconds)
+            self.pose_resolver.iniciar_transicao(
+                dict(self._pose), transition_seconds=self._active_transition_seconds
+            )
+            self.state = next_state
+            self.state_time = 0.0
         else:
             self.state_time += dt
 
@@ -549,44 +538,14 @@ class AnimationController:
                                       mascara=MASCARA_MUSICA))
         composed = MixerCamadas.compor(camadas)
 
-        if self._active_transition_seconds == 0.0:
-            # Sem crossfade: a pose exibida acompanha o alvo diretamente.
-            self._crossfade.definir(composed)
-            self._pose = {group: composed.get(group, Rotation3()) for group in composed}
-            self._just_transitioned = False
-        elif self._just_transitioned:
-            # Primeiro frame após a troca: segura a pose anterior (continuidade
-            # de posição e velocidade) antes de a mola começar a perseguir. As
-            # cadeias de atraso NÃO são reposicionadas: a pose segurada mantém
-            # os alvos dos braços estáveis na borda, então o follow-through
-            # evolui por um único passo de mola, sem salto perceptível.
-            self._crossfade.definir({group: self._transition_from.get(group, Rotation3())
-                                     for group in composed})
-            self._pose = {group: self._transition_from.get(group, Rotation3())
-                          for group in composed}
-            self._just_transitioned = False
-        else:
-            # Molas por junta com continuidade de velocidade. Durante a janela
-            # de transição acelera-se o retargeting (sensação de troca rápida
-            # de estado), sem uniformizar todas as juntas: usa-se o MAIOR entre
-            # a tensão própria da junta e a frequência da troca, preservando a
-            # hierarquia âncora-firme / ponta-solta. No regime estável cada
-            # junta volta à sua tensão da tabela (não se reescreve frequency).
-            em_transicao = self.state_time < self._active_transition_seconds
-            freq_troca = max(0.6, 1.0 / self._active_transition_seconds)
-            for grupo, mola in self._crossfade.molas.items():
-                freq_junta = self._frequencia_base.get(grupo, freq_troca)
-                frequencia = max(freq_junta, freq_troca) if em_transicao else freq_junta
-                mola.x.frequency = mola.y.frequency = mola.z.frequency = frequencia
-            self._pose = self._crossfade.atualizar(dt, composed)
+        # Crossfade, colisão e clamps delegados ao PoseResolver.
+        # O resolver aplica crossfade com molas (continuidade de velocidade),
+        # correção de colisão (se model injetado) e clamps finais.
+        self._pose = self.pose_resolver.resolver(
+            dt, composed, model=self._collision_model, state_time=self.state_time
+        )
         displayed_pose = self.hand_motion.apply(self._pose, dt, self.state.value)
         displayed_pose = self._aplicar_interacao(displayed_pose, dt)
-        # Colisão + clamps delegados ao PoseResolver.
-        # O resolver aplica correção de colisão (se model injetado) e clamps finais.
-        displayed_pose = self.pose_resolver._resolver_colisoes_suave(
-            displayed_pose, dt, self._collision_model
-        )
-        displayed_pose = self.pose_resolver._aplicar_clamps(displayed_pose)
         self.rig.current = dict(displayed_pose)
         self.leg_motion.update(dt, self.state.value, velocity, self._reaction_time,
                                self.body_motion.snapshot.limb_swing if dragging else self.body_motion.snapshot.roll,

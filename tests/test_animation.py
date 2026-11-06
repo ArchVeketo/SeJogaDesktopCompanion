@@ -318,13 +318,13 @@ def test_crossfade_por_junta_deixa_a_ponta_balancar_mais_que_a_ancora():
     # Degrau de alvo igual em body (âncora) e fingers (ponta) a partir do mesmo
     # ponto de repouso, avançando só o crossfade por junta.
     degrau = {grupo: Rotation3() for grupo in ALL_GROUPS}
-    animation._crossfade.definir(degrau)
+    animation.pose_resolver.definir_pose(degrau)
     alvo = {grupo: Rotation3(x=0.7) for grupo in ("body", "fingers")}
     for _ in range(60):
-        resultado = animation._crossfade.atualizar(1 / 60, alvo)
+        resultado = animation.pose_resolver.resolver(1 / 60, alvo)
 
-    body = animation._crossfade.molas["body"]
-    fingers = animation._crossfade.molas["fingers"]
+    body = animation.pose_resolver.molas["body"]
+    fingers = animation.pose_resolver.molas["fingers"]
     # Depois da acomodação da âncora, a ponta solta ainda balança/atrasa mais.
     assert abs(fingers.x.value - 0.7) > abs(body.x.value - 0.7)
     for rotacao in resultado.values():
