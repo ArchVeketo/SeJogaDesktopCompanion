@@ -85,10 +85,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Prévia offscreen de um estado de animação.")
     parser.add_argument("--estado", default="idle", help="estado ou estilo de dança a renderizar")
     parser.add_argument("--frames", type=int, default=60, help="número de frames a renderizar")
+    parser.add_argument("--camera", default="frente", choices=["frente", "lado", "cima", "tras"],
+                        help="ângulo da câmera: frente (padrão), lado, cima, tras")
+    parser.add_argument("--personalidade", default=None,
+                        help="personalidade de idle (street, fighter, stylish, rhythm, calm, curious, playful, shy, confident)")
     args = parser.parse_args()
 
     estado = args.estado
     frames = max(1, args.frames)
+    camera = args.camera
+    personalidade = args.personalidade
 
     perfil = _perfil()
     config.default_config_path = lambda: perfil / "config.toml"
@@ -112,11 +118,22 @@ def main() -> int:
     app.taskMgr.remove("mouse-poll")
     animation = app.animation_controller
 
+    # Define a personalidade de idle se especificada
+    if personalidade:
+        animation.set_idle_personality(personalidade)
+
     # Dispara o estado pedido antes do loop.
     if estado in ESTILOS_DANCA:
         animation.preview_dance(estado)
     elif estado in GESTOS:
         animation.interact(estado)
+
+    # Rotaciona o modelo pra simular diferentes ângulos de câmera
+    angulos_camera = {"frente": 0, "lado": 90, "tras": 180, "cima": 0}
+    if camera != "frente":
+        app.renderer.set_model_rotation(y=angulos_camera[camera])
+        if camera == "cima":
+            app.renderer.set_model_rotation(x=60, y=0)
 
     def tick():
         pose = _pilotar(animation, estado, app._drag_active)
