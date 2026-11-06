@@ -43,11 +43,15 @@ def phrase(*keys):
 # personalidades partem daqui e só somam a oscilação própria por cima.
 #
 # Convenção de espelho: o lado esquerdo usa o sinal oposto no eixo Z (roll),
-# então left-arm = -REPOUSO_BRACO_Z e ant-arm2 = -REPOUSO_ANTEBRACO_Z.
-REPOUSO_BRACO_Z = 68.0        # ombro mais FECHADO (antes ~62°, lia aberto)
-REPOUSO_BRACO_X = -4.0        # leve rotação à frente (braço não totalmente reto)
-REPOUSO_ANTEBRACO_Z = -28.0   # cotovelo mais DOBRADO (antes ~-22°), recolhido
-REPOUSO_ANTEBRACO_X = -8.0    # leve dobra à frente, dá volume/tônus ao cotovelo
+# então left-arm = -REPOUSO.BRACO_Z e ant-arm2 = -REPOUSO.ANTEBRACO_Z.
+# Constantes migradas para rig_base.py — importar de lá.
+from sejoga.animacao.rig_base import REPOUSO
+
+# Aliases para retrocompatibilidade de código que ainda usa os nomes antigos.
+REPOUSO_BRACO_Z = REPOUSO.BRACO_Z
+REPOUSO_BRACO_X = REPOUSO.BRACO_X
+REPOUSO_ANTEBRACO_Z = REPOUSO.ANTEBRACO_Z
+REPOUSO_ANTEBRACO_X = REPOUSO.ANTEBRACO_X
 
 # Local axes: X pitches forward, Y turns, Z rolls. Mirrored arms need
 # opposite roll signs. The hands remain children of the original forearms.

@@ -13,6 +13,7 @@ from typing import ClassVar
 
 from sejoga.animacao.anim_layers import MASCARA_MUSICA, CamadaAnim, MixerCamadas
 from sejoga.animacao.body_motion import BodyMotion
+from sejoga.animacao.rig_base import REPOUSO
 from sejoga.animacao.dance_motion import DanceMotion
 from sejoga.animacao.hand_motion import HandMotion
 from sejoga.animacao.joint_springs import (
@@ -488,10 +489,12 @@ class AnimationController:
         if dragging:
             motion = self.body_motion.snapshot
             # Hanging limbs counter-rotate the torso and trail pointer motion.
+            # O z=62 original era REPOUSO.BRACO_Z - 6 (arraste afasta um pouco os braços).
+            _DRAG_OFFSET_Z = REPOUSO.BRACO_Z - 6  # 62 original
             self.rig.set_rotation('right-arm', x=-motion.pitch*.55,
-                                  z=62-motion.roll*.55+motion.limb_swing*.45)
+                                  z=_DRAG_OFFSET_Z-motion.roll*.55+motion.limb_swing*.45)
             self.rig.set_rotation('left-arm', x=-motion.pitch*.55,
-                                  z=-62-motion.roll*.55+motion.limb_swing*.4)
+                                  z=-_DRAG_OFFSET_Z-motion.roll*.55+motion.limb_swing*.4)
             self.rig.set_rotation('ant-arm', x=motion.limb_swing*.3, z=-8)
             self.rig.set_rotation('ant-arm2', x=motion.limb_swing*.25, z=8)
             if grab_part == 'right-arm':
@@ -502,9 +505,11 @@ class AnimationController:
                 self.rig.set_rotation('ant-arm2', x=0, z=8)
             elif grab_part == 'body':
                 # Loose arms and a drooping neck when lifted by the back.
+                # O z=65 original era REPOUSO.BRACO_Z - 3 (braços um pouco mais soltos).
+                _BODY_GRAB_Z = REPOUSO.BRACO_Z - 3  # 65 original
                 self.rig.set_rotation('head', x=-12, z=motion.limb_swing*.08)
-                self.rig.set_rotation('right-arm', x=-motion.pitch*.9, z=65+motion.limb_swing*.25)
-                self.rig.set_rotation('left-arm', x=-motion.pitch*.9, z=-65+motion.limb_swing*.25)
+                self.rig.set_rotation('right-arm', x=-motion.pitch*.9, z=_BODY_GRAB_Z+motion.limb_swing*.25)
+                self.rig.set_rotation('left-arm', x=-motion.pitch*.9, z=-_BODY_GRAB_Z+motion.limb_swing*.25)
                 self.rig.set_rotation('ant-arm', x=3+motion.limb_swing*.2, z=-4)
                 self.rig.set_rotation('ant-arm2', x=3+motion.limb_swing*.18, z=4)
             elif grab_part in ('legs', 'left-feet', 'right-feet'):
