@@ -188,14 +188,26 @@ def varrer(
   model: Model,
   poses: dict[str, Aplicador],
   instantes: tuple[float, ...],
+  corrigir: bool = False,
 ) -> list[Agregado]:
-  """Roda a detecção em cada pose/instante e agrega por par/pose."""
+  """Roda a detecção em cada pose/instante e agrega por par/pose.
+
+  Com ``corrigir=True``, aplica a CORREÇÃO PONTUAL SUAVE (FEAT-B,
+  ``colisao.resolver_colisoes``, que desconta o piso estrutural e empurra só o
+  excedente) à pose ANTES de medir — é a medição DEPOIS, a meta cheia que a mola
+  do controller persegue. Serve para comparar a penetração de pose antes/depois.
+  """
   agregados: dict[tuple[str, tuple[Parte, Parte]], Agregado] = {}
 
   for nome_pose, aplicador in poses.items():
     for t in instantes:
       pose = _pose_de(aplicador, t)
       partes = med.medir_todas_as_partes(pose, model)
+
+      if corrigir:
+        pose = col.resolver_colisoes(pose, partes)
+        partes = med.medir_todas_as_partes(pose, model)
+
       colisoes = col.detectar_colisoes(partes, nome_pose, t)
 
       for colisao in colisoes:
@@ -361,13 +373,15 @@ def montar_markdown(agregados: list[Agregado], total_poses: int) -> str:
   linhas.append(f"- `LIMIAR_PENETRACAO_U` = {col.LIMIAR_PENETRACAO_U:.3f} u")
   linhas.append("")
 
-  linhas.append("## Decisão para a correção (FEAT-002)")
+  linhas.append("## Decisão para a correção")
   linhas.append("")
   linhas.append(
-    "_Em aberto — a ser preenchido pelo FEAT-002 com a estratégia de correção "
-    "(mover o alvo da pose sem saltar o ângulo, à moda de `tentacle_constraints`), "
-    "escolhendo quais pares corrigir primeiro a partir dos piores casos acima e "
-    "provando ausência de tranco com `tools/analisar_anim.py`._"
+    "_A estratégia de correção (FEAT-B: descontar o piso estrutural por par e "
+    "empurrar só o excedente, amortecido por mola, sem tranco) é mantida à mão "
+    "nas seções finais de `docs/RELATORIO_COLISAO_MEMBROS.md`. Este gerador só "
+    "reescreve a tabela de interpenetração acima; rode-o com `--md` apenas para "
+    "atualizar os números, e reaplique as seções de decisão/parâmetros/validação "
+    "GPU por cima (elas não são geradas aqui)._"
   )
   linhas.append("")
 
@@ -384,6 +398,10 @@ def _montar_parser() -> argparse.ArgumentParser:
   parser.add_argument(
     "--md", metavar="CAMINHO", default=None,
     help="grava o relatório em markdown no caminho dado",
+  )
+  parser.add_argument(
+    "--corrigir", action="store_true",
+    help="aplica a correção pontual suave (FEAT-B) antes de medir (medição DEPOIS)",
   )
 
   return parser
@@ -402,7 +420,7 @@ def main(argv: list[str] | None = None) -> int:
 
   model = load_model(resolve_model())
   poses = _construir_poses()
-  agregados = varrer(model, poses, INSTANTES_PADRAO)
+  agregados = varrer(model, poses, INSTANTES_PADRAO, corrigir=args.corrigir)
 
   print(montar_laudo(agregados, len(poses)))
 

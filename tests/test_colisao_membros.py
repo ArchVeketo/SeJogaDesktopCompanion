@@ -383,6 +383,74 @@ def test_resolver_colisoes_e_puro_nao_muta_entrada() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# (FEAT-B) Desconto do PISO ESTRUTURAL — penetração de repouso NÃO corrige
+# --------------------------------------------------------------------------- #
+def test_piso_estrutural_de_e_independente_da_ordem() -> None:
+  # O piso do par é o mesmo lendo (a, b) ou (b, a).
+  reto = col.piso_estrutural_de((Parte.ANTEBRACO_DIREITO, Parte.CORPO))
+  invertido = col.piso_estrutural_de((Parte.CORPO, Parte.ANTEBRACO_DIREITO))
+
+  assert reto == invertido == col.PISO_ESTRUTURAL_POR_PAR[(Parte.ANTEBRACO_DIREITO, Parte.CORPO)]
+  # Par fora do mapa não tem piso (nasce fora do bloco).
+  assert col.piso_estrutural_de((Parte.MAO_DIREITA, Parte.PE_ESQUERDO)) == 0.0
+
+
+def test_penetracao_so_de_piso_estrutural_nao_dispara_correcao() -> None:
+  # Antebraço mergulhando na caixa EXATAMENTE na profundidade do piso do par:
+  # o excedente é ~0, abaixo do limiar, então a correção não mexe na pose.
+  piso = col.PISO_ESTRUTURAL_POR_PAR[(Parte.ANTEBRACO_DIREITO, Parte.CORPO)]
+  raio = col._raio_de(Parte.ANTEBRACO_DIREITO)
+  caixa = col.CaixaOrientada(centro=(0.0, 0.0, 0.0), eixos=col._EIXOS_MUNDO,
+                             meias_dim=col.MEIA_DIM_TRONCO)
+
+  # Ponta a uma profundidade tal que raio - dist = piso (penetração == piso).
+  # dist assinada dentro = -(penetração - raio) => escolhe-se a ponta no eixo X
+  # de modo que a penetração medida bata com o piso.
+  alvo_profundidade = piso
+  x_ponta = col.MEIA_DIM_TRONCO[0] - (alvo_profundidade - raio)
+  origem = (1.0, 0.0, 0.0)
+  ponta = (x_ponta, 0.0, 0.0)
+
+  medida = col.penetracao_capsula_caixa(col.Capsula(a=origem, b=ponta, raio=raio), caixa)
+  assert medida == pytest.approx(piso, abs=1e-6)
+
+  partes = {
+    Parte.ANTEBRACO_DIREITO: _estado_sintetico(Parte.ANTEBRACO_DIREITO, origem, ponta),
+    Parte.CORPO: _estado_sintetico(Parte.CORPO, (0.0, 0.0, 0.0), None),
+  }
+  pose = {Parte.ANTEBRACO_DIREITO.value: Rotation3()}
+
+  # Penetração bruta >= piso, mas excedente ~0: correção inerte neste par.
+  corrigida = col.resolver_colisoes(pose, partes)
+
+  assert corrigida == pose
+
+
+def test_correcao_mira_apenas_o_excedente_acima_do_piso() -> None:
+  # Mesma geometria, mas a ponta afunda BEM além do piso: há excedente > limiar,
+  # então a correção empurra o membro (pose muda).
+  raio = col._raio_de(Parte.ANTEBRACO_DIREITO)
+  origem = (0.5, 0.0, 0.0)
+  ponta = (0.0, 0.0, 0.0)  # ponta no centro do tronco (penetração máxima)
+
+  partes = {
+    Parte.ANTEBRACO_DIREITO: _estado_sintetico(Parte.ANTEBRACO_DIREITO, origem, ponta),
+    Parte.CORPO: _estado_sintetico(Parte.CORPO, (0.0, 0.0, 0.0), None),
+  }
+  caixa = col.CaixaOrientada(centro=(0.0, 0.0, 0.0), eixos=col._EIXOS_MUNDO,
+                             meias_dim=col.MEIA_DIM_TRONCO)
+  bruto = col.penetracao_capsula_caixa(col.Capsula(a=origem, b=ponta, raio=raio), caixa)
+  excedente = bruto - col.PISO_ESTRUTURAL_POR_PAR[(Parte.ANTEBRACO_DIREITO, Parte.CORPO)]
+
+  assert excedente > col.LIMIAR_EXCEDENTE_U  # de fato há excedente a corrigir
+
+  pose = {Parte.ANTEBRACO_DIREITO.value: Rotation3()}
+  corrigida = col.resolver_colisoes(pose, partes)
+
+  assert corrigida[Parte.ANTEBRACO_DIREITO.value] != Rotation3()
+
+
+# --------------------------------------------------------------------------- #
 # (c) Fronteira — Python puro, sem engine
 # --------------------------------------------------------------------------- #
 def test_colisao_membros_nao_importa_engine() -> None:

@@ -175,7 +175,9 @@ class OverlayApp(ShowBase):
         self._init_renderer()
         self._setup_mouse_hooks()
         if self.renderer and self.renderer.rig:
-            self.animation_controller = AnimationController(self.renderer.rig)
+            self.animation_controller = AnimationController(
+                self.renderer.rig, model=self._carregar_modelo_colisao()
+            )
             self.animation_controller.set_idle_personality(self.settings.behavior.idle_personality)
         if self.renderer:
             self.debug_tools = DebugTools(
@@ -343,6 +345,22 @@ class OverlayApp(ShowBase):
         # Panda3DRenderer is defined in this same file
         self.renderer = Panda3DRenderer(self, self._get_hwnd(),
                                        self.settings.window.size, self.settings.window.size)
+
+    def _carregar_modelo_colisao(self):
+        """Carrega o ``Model`` puro para a correção pontual de colisão (FEAT-B).
+
+        A correção amortecida no ``AnimationController`` mede as partes do rig a
+        partir deste modelo. É o mesmo glTF/GLB do render, lido pelo leitor puro
+        (``sejoga.model``), independente do Panda3D. Falha de carga NÃO derruba
+        o companion: devolve ``None`` e a correção fica inerte.
+        """
+        try:
+            from .assets import resolve_model
+            from .model import load_model
+
+            return load_model(resolve_model())
+        except Exception:
+            return None
 
     def _init_physics(self) -> None:
         """Inicializa sistema de física 2D (pymunk)."""

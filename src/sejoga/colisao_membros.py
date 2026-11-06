@@ -74,9 +74,11 @@ MEIA_DIM_PORTA: Vetor3 = (0.24, 0.24, 0.05)
 #: penetração contra uma caixa. Mais pontos = profundidade mais fiel, mais custo.
 AMOSTRAS_CAPSULA_CAIXA: int = 12
 
-#: Profundidade mínima (``u``) para um contato CONTAR como colisão. Abaixo disso
-#: é toque de casca/ruído de medição e é descartado. Calibrável: subir reduz
-#: falsos positivos; descer flagra roçadas leves.
+#: Profundidade mínima (``u``) para um contato CONTAR como colisão (detecção
+#: BRUTA, sem desconto do piso). Abaixo disso é toque de casca/ruído de medição
+#: e é descartado. Calibrável: subir reduz falsos positivos; descer flagra
+#: roçadas leves. Usado por ``detectar_colisoes`` (relatório); a CORREÇÃO usa
+#: ``LIMIAR_EXCEDENTE_U`` sobre o excedente (ver abaixo).
 LIMIAR_PENETRACAO_U: float = 0.02
 
 #: Extensão (``u``) que a cápsula da mão ganha ALÉM da ponta medida, para cobrir
@@ -92,23 +94,78 @@ LIMIAR_PENETRACAO_U: float = 0.02
 EXTENSAO_DEDOS_U: float = 0.06
 
 # --------------------------------------------------------------------------- #
-# PARÂMETROS da CORREÇÃO (FEAT-002) — usados só por ``resolver_colisoes``.
+# PARÂMETROS da CORREÇÃO PONTUAL SUAVE (FEAT-B) — usados por ``resolver_colisoes``
+# e pela mola amortecida que o ``AnimationController`` liga no fim do pipeline.
 #
-# A correção é um GANCHO INERTE: nada no projeto a chama por padrão (ver a
-# decisão em docs/RELATORIO_COLISAO_MEMBROS.md). Estes valores só entram em jogo
-# se o AnimationController ligar a correção amortecida (instruções no docstring
-# de ``resolver_colisoes``). Também em unidades do modelo (``u``).
+# A estratégia, guiada pelos números da FEAT-A (docs/RELATORIO_COLISAO_MEMBROS):
+# cada par tem um PISO ESTRUTURAL (penetração constante da raiz do membro
+# nascendo dentro do volume-bloco, presente ATÉ no repouso). A correção DESCONTA
+# esse piso por par e só empurra o EXCEDENTE dirigido pela pose acima de
+# ``LIMIAR_EXCEDENTE_U`` — assim a silhueta de repouso NÃO é deformada e só o
+# gesto que cruza o corpo é corrigido. O amortecimento (sem tranco) vem da mola
+# do controller; aqui só se calcula o ALVO empurrado. Tudo em unidades do
+# modelo (``u``), calibrável.
 # --------------------------------------------------------------------------- #
 
-#: Fração da penetração que a correção REMOVE por aplicação. 1.0 empurra o alvo
-#: até zerar a penetração + folga; valores menores suavizam (a mola do controller
-#: ainda amorteceria o resto). Espelha o espírito de ``ObstacleBox.project``, que
-#: projeta até ``raio + margem`` — aqui a margem é ``FOLGA_U``.
+#: PISO ESTRUTURAL por par: a penetração BRUTA medida na pose de REPOUSO (todos
+#: os ângulos zero), que NÃO deve ser corrigida (é a montagem dos volumes, não a
+#: pose atravessando o corpo). Medido uma vez por ``_tmp_piso`` a partir dos
+#: mesmos volumes do detector; ver a tabela em docs/RELATORIO_COLISAO_MEMBROS.md.
+#: A correção subtrai este valor da penetração antes de comparar ao limiar e de
+#: empurrar o membro. Pares fora do mapa têm piso 0 (nascem fora dos blocos).
+#: Recalibrar junto com ``RAIOS_MEMBRO``/``MEIA_DIM_*`` (mexer num muda o outro).
+PISO_ESTRUTURAL_POR_PAR: dict[tuple[Parte, Parte], float] = {
+  (Parte.BRACO_DIREITO, Parte.CORPO): 0.455,
+  (Parte.BRACO_ESQUERDO, Parte.CORPO): 0.455,
+  (Parte.ANTEBRACO_DIREITO, Parte.CORPO): 0.300,
+  (Parte.ANTEBRACO_ESQUERDO, Parte.CORPO): 0.300,
+  (Parte.MAO_DIREITA, Parte.CORPO): 0.124,
+  (Parte.MAO_ESQUERDA, Parte.CORPO): 0.124,
+  (Parte.ANTEBRACO_DIREITO, Parte.CABECA): 0.180,
+  (Parte.ANTEBRACO_ESQUERDO, Parte.CABECA): 0.180,
+  (Parte.BRACO_DIREITO, Parte.BRACO_ESQUERDO): 0.070,
+  (Parte.PERNAS, Parte.PE_ESQUERDO): 0.195,
+  (Parte.PERNAS, Parte.PE_DIREITO): 0.195,
+  (Parte.ANTEBRACO_DIREITO, Parte.PERNAS): 0.063,
+  (Parte.ANTEBRACO_ESQUERDO, Parte.PERNAS): 0.063,
+}
+
+#: Excedente mínimo (``u``) — profundidade JÁ DESCONTADA do piso — para a
+#: correção empurrar o membro. Calibrado pelos números da FEAT-A: os casos reais
+#: (braços cruzando, mão/antebraço vs tronco/cabeça/porta/pernas) deixam
+#: excedente de 0,07 a 0,25 u; os pares de PISO PURO (`braço vs tronco` ~0,003 u,
+#: `pernas vs pé` ~0,000 u) ficam abaixo deste limiar e NÃO são corrigidos.
+LIMIAR_EXCEDENTE_U: float = 0.04
+
+#: Largura (``u``) do JOELHO SUAVE de entrada da correção acima do limiar. Em
+#: vez de a correção ligar/desligar de um frame para o outro no limiar (degrau
+#: que vira tranco quando a penetração aparece/some rápido, p.ex. num gesto de
+#: acordar), o peso do empurrão sobe de 0 a 1 por um ``smoothstep`` ao longo
+#: desta faixa logo acima do limiar. Maior = entrada mais macia. Calibrável.
+JOELHO_EXCEDENTE_U: float = 0.06
+
+#: Fração do EXCEDENTE que a correção REMOVE por aplicação. 1.0 empurra o alvo
+#: até zerar o excedente + folga; valores menores suavizam ainda mais (a mola do
+#: controller amortece o resto). Espelha o espírito de ``ObstacleBox.project``.
 FORCA_CORRECAO: float = 1.0
 
 #: Folga (``u``) extra deixada entre os volumes DEPOIS de corrigir, para o alvo
 #: não assentar exatamente na casca (equivalente à ``margin`` de ``project``).
 FOLGA_U: float = 0.01
+
+#: Tensão da MOLA amortecida que persegue o alvo corrigido no controller
+#: (frequência em Hz, amortecimento 0..1). Entra via ``joint_springs`` para a
+#: correção chegar SUAVE, sem tranco: frequência BAIXA = resposta macia, agindo
+#: como filtro passa-baixa; amortecimento alto (perto de 1) = sem overshoot.
+#: Calibração (medida por ``tools/analisar_anim.py``, ver relatório): 0,6 Hz
+#: mantém o jerk da correção ABAIXO do jerk da própria animação autoral, mesmo
+#: num gesto rápido como o de acordar (``wake``) — a mola é lenta demais para
+#: perseguir um pico de penetração sub-segundo, então só corrige o overlap
+#: SUSTENTADO e ignora o transiente, sem introduzir tranco. Subir a frequência
+#: deixa a correção mais firme, mas acima de ~1 Hz ela passa a somar jerk no
+#: transiente. Ajuste fino é visual, na GPU.
+CORRECAO_FREQUENCIA_HZ: float = 0.6
+CORRECAO_AMORTECIMENTO: float = 0.95
 
 #: Deslocamento mínimo de ponta (``u``) para valer uma reorientação do membro.
 #: Abaixo disso o empurrão é ruído e o alvo volta inalterado (fail-safe).
@@ -180,6 +237,21 @@ def _normalizar(v: Vetor3) -> Vetor3:
 
 def _clamp(valor: float, minimo: float, maximo: float) -> float:
   return max(minimo, min(maximo, valor))
+
+
+def _smoothstep(borda0: float, borda1: float, valor: float) -> float:
+  """Transição suave 0->1 (Hermite) entre ``borda0`` e ``borda1``.
+
+  Fora da faixa satura em 0/1; dentro usa ``3t² - 2t³`` (derivada zero nas
+  bordas), de modo que o peso da correção entre e saia sem degrau. ``borda0 ==
+  borda1`` degenera num degrau no ponto (fail-safe sem divisão por zero).
+  """
+  if borda1 <= borda0:
+    return 0.0 if valor < borda0 else 1.0
+
+  t = _clamp((valor - borda0) / (borda1 - borda0), 0.0, 1.0)
+
+  return t * t * (3.0 - 2.0 * t)
 
 
 # --------------------------------------------------------------------------- #
@@ -402,6 +474,21 @@ def _raio_de(parte: Parte) -> float:
   return RAIOS_MEMBRO.get(parte, RAIO_MEMBRO_PADRAO)
 
 
+def piso_estrutural_de(par: tuple[Parte, Parte]) -> float:
+  """Piso estrutural do par (penetração de repouso a descontar na correção).
+
+  Busca independente da ordem ``(a, b)``/``(b, a)``. Par fora de
+  ``PISO_ESTRUTURAL_POR_PAR`` tem piso 0 (o membro não nasce dentro do bloco),
+  então todo o excedente conta.
+  """
+  a, b = par
+
+  if (a, b) in PISO_ESTRUTURAL_POR_PAR:
+    return PISO_ESTRUTURAL_POR_PAR[(a, b)]
+
+  return PISO_ESTRUTURAL_POR_PAR.get((b, a), 0.0)
+
+
 def _estender_ate_dedos(origem: Vetor3, ponta: Vetor3) -> Vetor3:
   """Estende a ponta da mão por ``EXTENSAO_DEDOS_U`` ao longo do eixo da mão.
 
@@ -622,46 +709,41 @@ def resolver_colisoes(
   partes: dict[Parte, EstadoParte],
   parametros: dict[str, float] | None = None,
 ) -> dict[str, Rotation3]:
-  """GANCHO DE CORREÇÃO (inerte): devolve a pose com os ALVOS empurrados.
+  """CORREÇÃO PONTUAL SUAVE (FEAT-B): devolve a pose com os ALVOS empurrados.
 
-  A partir das colisões detectadas, empurra o ALVO do membro para FORA da
-  colisão (mover o alvo, nunca saltar o ângulo), espelhando
+  A partir das colisões detectadas, DESCONTA o PISO ESTRUTURAL do par
+  (``piso_estrutural_de``: a penetração de repouso, que NÃO é defeito de pose) e
+  empurra o ALVO do membro para FORA só do EXCEDENTE dirigido pela pose — mover
+  o alvo, nunca saltar o ângulo —, espelhando
   ``tentacle_constraints.ObstacleBox.project``: desloca ao longo da MENOR
-  separação até ``raio + folga`` e reorienta o membro o MÍNIMO para a ponta
-  alcançar o alvo empurrado. O deslocamento é proporcional à penetração, logo
-  some suavemente a zero quando não há colisão.
+  separação por ``excedente + folga`` e reorienta o membro o MÍNIMO para a ponta
+  alcançar o alvo empurrado. Como o deslocamento é proporcional ao EXCEDENTE
+  (não à penetração bruta), ele some a zero no repouso: a silhueta parada fica
+  intacta e só o gesto que cruza o corpo é corrigido.
 
   Função PURA: só lê ``pose``/``partes`` e devolve uma nova pose; não toca
-  engine, não guarda estado. Membros sem colisão saem inalterados.
+  engine, não guarda estado. Membros sem excedente saem inalterados. O
+  AMORTECIMENTO (sem tranco) é responsabilidade de quem chama: o alvo aqui é a
+  META, perseguida por uma mola no controller.
 
-  **Esta função NÃO é chamada por padrão.** A decisão registrada em
-  ``docs/RELATORIO_COLISAO_MEMBROS.md`` (seção *Decisão para a correção*) é NÃO
-  ligar a correção ao vivo, porque o detector mede a profundidade BRUTA e não
-  separa o piso estrutural (raiz do membro nascendo dentro do bloco, constante
-  em todas as poses) do excedente dirigido pela pose; corrigir sobre o bruto
-  empurraria os membros por causa do piso, movimento que o usuário não pediu.
+  Ligada no ``AnimationController.update`` (ver ``_resolver_colisoes_suave``):
+  após a pose exibida, medem-se as partes com
+  ``rig_medidas.medir_todas_as_partes``, chama-se esta função e o resultado é
+  perseguido por ``joint_springs.SpringPose`` com tensão
+  ``CORRECAO_FREQUENCIA_HZ``/``CORRECAO_AMORTECIMENTO``, guardada entre frames,
+  para a correção entrar suave e só nas juntas com excedente.
 
-  Como LIGAR no ``AnimationController.update`` (só se a evidência passar a
-  justificar, p.ex. descontando o piso estrutural por par em
-  ``LIMIAR_PENETRACAO_U``/``PARES_A_CHECAR``):
-
-  1. após ``displayed_pose`` ser calculada e ANTES do ``return``, medir as
-     partes da pose exibida com ``rig_medidas.medir_todas_as_partes``;
-  2. ``alvo = resolver_colisoes(displayed_pose, partes)``;
-  3. perseguir ``alvo`` com uma mola (``body_motion.Spring`` ou
-     ``joint_springs.SpringPose`` com tensões de ``spring_tuning``), guardando o
-     estado da mola entre frames no controller, para a correção entrar
-     AMORTECIDA (sem tranco) e só nas juntas problemáticas.
-
-  ``parametros`` (opcional) sobrepõe ``FORCA_CORRECAO`` e ``FOLGA_U`` por chave
-  de mesmo nome; ausente, usa os valores do bloco PARÂMETROS.
+  ``parametros`` (opcional) sobrepõe ``FORCA_CORRECAO``, ``FOLGA_U`` e
+  ``LIMIAR_EXCEDENTE_U`` por chave de mesmo nome; ausente, usa o bloco PARÂMETROS.
   """
   forca = FORCA_CORRECAO
   folga = FOLGA_U
+  limiar = LIMIAR_EXCEDENTE_U
 
   if parametros is not None:
     forca = parametros.get("FORCA_CORRECAO", forca)
     folga = parametros.get("FOLGA_U", folga)
+    limiar = parametros.get("LIMIAR_EXCEDENTE_U", limiar)
 
   volumes = montar_volumes(partes)
   # Acumula o empurrão de ponta por membro (um membro pode colidir com vários).
@@ -675,11 +757,17 @@ def resolver_colisoes(
       continue
 
     profundidade = _penetracao_entre(vol_a, vol_b)
+    # Desconta o piso estrutural: só o EXCEDENTE dirigido pela pose é corrigido.
+    excedente = profundidade - piso_estrutural_de((parte_a, parte_b))
 
-    if profundidade < LIMIAR_PENETRACAO_U:
+    if excedente < limiar:
       continue
 
-    deslocamento = forca * (profundidade + folga)
+    # Joelho suave: o empurrão entra pesando de 0 a 1 por um smoothstep na faixa
+    # [limiar, limiar+joelho]. Evita o degrau no limiar (origem de tranco quando
+    # a penetração surge/some rápido); acima da faixa o peso satura em 1.
+    peso = _smoothstep(limiar, limiar + JOELHO_EXCEDENTE_U, excedente)
+    deslocamento = peso * forca * (excedente + folga)
 
     # Empurra o membro (cápsula) para fora do parceiro. Pares cápsula-cápsula
     # empurram o lado A; cápsula-caixa empurram a cápsula.
@@ -758,9 +846,13 @@ def detectar_colisoes(
 
 __all__ = [
   "AMOSTRAS_CAPSULA_CAIXA",
+  "CORRECAO_AMORTECIMENTO",
+  "CORRECAO_FREQUENCIA_HZ",
   "EXTENSAO_DEDOS_U",
   "FOLGA_U",
   "FORCA_CORRECAO",
+  "JOELHO_EXCEDENTE_U",
+  "LIMIAR_EXCEDENTE_U",
   "LIMIAR_PENETRACAO_U",
   "MEIA_DIM_CABECA",
   "MEIA_DIM_PORTA",
@@ -768,6 +860,7 @@ __all__ = [
   "PARES_A_CHECAR",
   "PARTES_CAIXA",
   "PARTES_MAO",
+  "PISO_ESTRUTURAL_POR_PAR",
   "RAIOS_MEMBRO",
   "RAIO_MEMBRO_PADRAO",
   "CaixaOrientada",
@@ -780,5 +873,6 @@ __all__ = [
   "montar_volumes",
   "penetracao_capsula_caixa",
   "penetracao_capsula_capsula",
+  "piso_estrutural_de",
   "resolver_colisoes",
 ]
