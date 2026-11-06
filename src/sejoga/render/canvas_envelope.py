@@ -96,6 +96,7 @@ def escolher_tamanho(
     dt: float,
     *,
     dragging: bool = False,
+    fixar_degrau: bool = False,
     teto_mult: int = 3,
 ) -> int:
     """Decide o lado da janela para o frame atual (puro, determinístico).
@@ -109,11 +110,28 @@ def escolher_tamanho(
     - Dentro de um degrau a pose balança sem redimensionar (zona-morta: o
       degrau é largo o bastante para absorver o ringing da mola).
 
+    Quando ``fixar_degrau=True`` (arraste pelo pé: o torso rola ~155° e o
+    bbox projetado oscila frame a frame, podendo PULAR degraus para cima e
+    reintroduzir o resize/piscada): NÃO reavalia o degrau por frame. Trava no
+    ``atual`` enquanto ele já comportar ``necessario`` (sempre ≥ necessario,
+    nunca corta); só quando ``necessario`` exceder o degrau atual sobe UMA
+    vez para o menor degrau que comporte (via ``degrau_para``) e ali
+    permanece. Assim, para uma necessidade oscilante que já cabe no pico, o
+    tamanho fica constante — sem cooldown nem zona-morta, que não bastam
+    contra saltos de degrau. Nunca encolhe nesse modo.
+
     Retorna o tamanho a aplicar (igual a ``atual`` quando nada muda).
     """
 
     estado.cooldown = max(0.0, estado.cooldown - dt)
     alvo = degrau_para(necessario, base, teto_mult)
+
+    if fixar_degrau:
+      # Degrau travado: só sobe se o atual não comporta mais a necessidade;
+      # caso contrário fica cravado, ignorando a oscilação do bbox rolado.
+      if alvo > atual:
+        return alvo
+      return atual
 
     if alvo == atual:
         return atual

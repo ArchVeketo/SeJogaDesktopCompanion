@@ -102,6 +102,57 @@ def test_arraste_cresce_imediato_mas_nunca_encolhe():
     assert size == 1440
 
 
+def test_arraste_por_pe_fixa_degrau_sem_pular():
+    # Pose rolada ~155° pendurado pelo pé: o bbox projetado oscila muito
+    # (ex.: alternando ~700 e ~1000 px) por muitos frames. Com fixar_degrau,
+    # o tamanho deve ficar CONSTANTE e comportar o maior necessário da
+    # sequência (nunca corta). Começa já no degrau estendido que a fiação de
+    # window.py garante (>= 2*base) para o arraste por pé.
+    necessarios = [700 if i % 2 == 0 else 1000 for i in range(200)]
+    # O degrau inicial já comporta o pico da sequência (como a fiação de
+    # window.py garante ao arrastar pelo pé): não há nenhuma troca.
+    atual_inicial = degrau_para(max(necessarios), BASE)
+    estado = EstadoEnvelope()
+    atual = atual_inicial
+    tamanhos = []
+    for necessario in necessarios:
+        atual = escolher_tamanho(
+            necessario, atual, BASE, estado, 1.0 / 60,
+            dragging=True, fixar_degrau=True,
+        )
+        tamanhos.append(atual)
+
+    assert set(tamanhos) == {atual_inicial}
+    assert min(tamanhos) >= max(necessarios)
+
+
+def test_arraste_por_pe_sobe_uma_vez_se_exceder_e_estabiliza():
+    # Se a necessidade exceder o degrau travado, sobe UMA vez para o menor
+    # que comporta e ali permanece, mesmo com a oscilação continuando.
+    estado = EstadoEnvelope()
+    atual = BASE * 2
+    tamanhos = []
+    for i in range(120):
+        necessario = 1500 if i % 3 == 0 else 900
+        atual = escolher_tamanho(
+            necessario, atual, BASE, estado, 1.0 / 60,
+            dragging=True, fixar_degrau=True,
+        )
+        tamanhos.append(atual)
+
+    # Sobe para o teto (1440) por causa do pico 1500 e fica cravado lá.
+    assert set(tamanhos) == {BASE * 3}
+
+
+def test_sem_fixar_degrau_a_mesma_sequencia_pode_pular():
+    # Contraste: sem fixar_degrau, uma sequência que cruza fronteiras pode
+    # trocar de degrau (o que no arraste por pé causaria a piscada).
+    necessarios = [700 if i % 2 == 0 else 1000 for i in range(200)]
+    tamanhos = _rodar_sequencia(necessarios, dragging=True)
+
+    assert len(set(tamanhos)) > 1
+
+
 def test_encolhe_apos_soltar_respeitando_cooldown():
     estado = EstadoEnvelope()
     size = escolher_tamanho(BASE * 2, BASE, BASE, estado, 0.01, dragging=True)

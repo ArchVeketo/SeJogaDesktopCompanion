@@ -746,9 +746,18 @@ class OverlayApp(ShowBase):
                 return
             necessario = extensao_necessaria(projected)
             self._fit_pose_cache = (snapshot, necessario)
+        # Arraste pelo PÉ: o torso rola ~155° por uma mola subamortecida e o
+        # bbox projetado oscila frame a frame, podendo pular degraus e piscar.
+        # Nesse caso fixamos o degrau (não reavalia por frame) garantindo pelo
+        # menos 2*base para comportar a pose rolada com membros estendidos.
+        arraste_por_pe = self._drag_active and getattr(
+            self, '_body_grab_part', 'body'
+        ) in ('legs', 'left-feet', 'right-feet')
+        if arraste_por_pe:
+            necessario = max(necessario, base * 2)
         size = escolher_tamanho(
             necessario, current, base, self._envelope_estado, dt,
-            dragging=self._drag_active,
+            dragging=self._drag_active, fixar_degrau=arraste_por_pe,
         )
         if size == current:
             return
