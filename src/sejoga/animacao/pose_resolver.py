@@ -20,21 +20,33 @@ from sejoga.rig_mapa import rig_medidas as medidas
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                       Limites anatômicos (clamps)                         ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
-# Convenção de elevação do braço (Z/roll) PÓS-IK, verificada por FK sobre a
-# geometria real (o eixo longo do bone é +X, não -Y — ver ``arm_ik``):
-#   Z=-90 → BAIXADO (reto para baixo, ao lado do quadril)
-#   Z=-86 → repouso natural de idle (quase reto para baixo)
-#   Z=0   → LATERAL/T-pose (braço na horizontal, apontando +X)
-#   Z=+90 → ERGUIDO (reto para CIMA)
-# O left-arm usa o espelho (-Z). A convenção MUDOU com a migração para IK: antes
-# Z=0 era "baixo" e Z=180 "cima" (base antiga ~28°, errada — deixava o braço
-# aberto/lateral); agora Z mede a elevação a partir de +X. Os limites cobrem de
-# reto para baixo (com folga para overshoot de crossfade) até um pouco além de
-# reto para cima, acomodando wave/dance/flourish (que erguem a mão). Em radianos.
-_CLAMP_RIGHT_ARM_Z_MIN = radians(-100)
-_CLAMP_RIGHT_ARM_Z_MAX = radians(120)
-_CLAMP_LEFT_ARM_Z_MIN = radians(-120)
-_CLAMP_LEFT_ARM_Z_MAX = radians(100)
+# Convenção de ELEVAÇÃO do braço PÓS-IK, medida no RENDERER real (ver arm_ik):
+# a elevação é o HEADING (H = ``Rotation3.y``), NÃO o roll. O eixo longo do bone
+# é +X; o renderer mapeia H=y, P=x, R=z.
+#   Y=-90 → BAIXADO (reto para baixo, ao lado do quadril)
+#   Y=-74 → repouso natural de idle
+#   Y=0   → LATERAL/T-pose (braço na horizontal, apontando +X)
+#   Y=+90 → ERGUIDO (reto para CIMA)
+# O azimute (avanço/recuo frente↔trás) é o ROLL (R = ``Rotation3.z``). A
+# convenção MUDOU DUAS VEZES: a base antiga tratava Z como elevação (errado); a
+# medição real do renderer mostrou que a elevação é Y (heading) e o azimute é Z.
+# Clampamos a ELEVAÇÃO (Y) de reto p/ baixo até um pouco além de reto p/ cima,
+# com folga para overshoot de crossfade; o azimute (Z) é limitado a uma faixa
+# ampla só para conter deriva (os gestos ficam dentro de -95..+95). Em radianos.
+_CLAMP_RIGHT_ARM_Y_MIN = radians(-100)
+_CLAMP_RIGHT_ARM_Y_MAX = radians(110)
+_CLAMP_LEFT_ARM_Y_MIN = radians(-110)
+_CLAMP_LEFT_ARM_Y_MAX = radians(100)
+# Azimute (Z/roll): faixa ampla para conter apenas deriva extrema.
+_CLAMP_ARM_Z_MIN = radians(-120)
+_CLAMP_ARM_Z_MAX = radians(120)
+
+#: Grupos de braço excluídos da correção de colisão (ver _resolver_colisoes_suave):
+#: a colisão usa rig_medidas, cujo modelo de braço não bate com o renderer; a
+#: pose de braço vem do IK 3D (arm_ik), já anatomicamente válida.
+_GRUPOS_BRACO_SEM_COLISAO = frozenset(
+    {"right-arm", "left-arm", "ant-arm", "ant-arm2", "hand", "hand2"}
+)
 
 
 class PoseResolver:
@@ -238,10 +250,20 @@ class PoseResolver:
         alvo = colisao.resolver_colisoes(pose, partes)
 
         # Juntas que o resolvedor empurrou (diferem da pose crua neste frame).
+        # IMPORTANTE: os GRUPOS DE BRAÇO são EXCLUÍDOS da correção de colisão.
+        # A correção mede via rig_medidas/colisao_membros, cujo modelo de braço
+        # (eixo longo -Y, elevação via roll) NÃO bate com o renderer real (eixo
+        # longo +X, elevação via heading — ver arm_ik). Aplicada aos braços, ela
+        # media penetração espúria e reorientava o braço do IK para longe do
+        # alvo (chegando a bater no clamp). Como a pose de braço agora vem do IK
+        # 3D (anatomicamente válida por construção), a correção de colisão não é
+        # necessária para os braços; mantém-se ativa para pernas/pés/porta.
         corrigidas = {
             grupo: alvo[grupo]
             for grupo in alvo
-            if grupo in pose and alvo[grupo] != pose[grupo]
+            if grupo in pose
+            and alvo[grupo] != pose[grupo]
+            and grupo not in _GRUPOS_BRACO_SEM_COLISAO
         }
 
         molas = self._correcao_colisao.molas
@@ -301,18 +323,21 @@ class PoseResolver:
         """
         resultado = dict(pose)
 
-        # Right arm: z in [-75°, 180°] (dobra-interna protegida → erguido)
+        # Right arm: elevação Y em [-100°, 110°] (baixado → um pouco além de
+        # reto p/ cima); azimute Z em faixa ampla (contém só deriva extrema).
         if "right-arm" in resultado:
             r = resultado["right-arm"]
-            z = max(_CLAMP_RIGHT_ARM_Z_MIN, min(_CLAMP_RIGHT_ARM_Z_MAX, r.z))
-            if z != r.z:
-                resultado["right-arm"] = Rotation3(r.x, r.y, z)
+            y = max(_CLAMP_RIGHT_ARM_Y_MIN, min(_CLAMP_RIGHT_ARM_Y_MAX, r.y))
+            z = max(_CLAMP_ARM_Z_MIN, min(_CLAMP_ARM_Z_MAX, r.z))
+            if y != r.y or z != r.z:
+                resultado["right-arm"] = Rotation3(r.x, y, z)
 
-        # Left arm: z in [-180°, 75°] (espelho: erguido → dobra-interna protegida)
+        # Left arm: espelho (elevação Y em [-110°, 100°]).
         if "left-arm" in resultado:
             r = resultado["left-arm"]
-            z = max(_CLAMP_LEFT_ARM_Z_MIN, min(_CLAMP_LEFT_ARM_Z_MAX, r.z))
-            if z != r.z:
-                resultado["left-arm"] = Rotation3(r.x, r.y, z)
+            y = max(_CLAMP_LEFT_ARM_Y_MIN, min(_CLAMP_LEFT_ARM_Y_MAX, r.y))
+            z = max(_CLAMP_ARM_Z_MIN, min(_CLAMP_ARM_Z_MAX, r.z))
+            if y != r.y or z != r.z:
+                resultado["left-arm"] = Rotation3(r.x, y, z)
 
         return resultado

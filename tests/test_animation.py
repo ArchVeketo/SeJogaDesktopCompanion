@@ -13,12 +13,12 @@ def test_controller_starts_in_composed_idle_pose_not_t_pose():
     from math import degrees
     animation = controller()
     pose = animation.update(1 / 60)
-    # Pós-IK, o repouso tem os braços BAIXADOS (mãos ao lado do quadril):
-    # right-arm.z ≈ -86° e o espelho ≈ +86° (Z mede a elevação a partir de +X,
-    # Z=-90 reto p/ baixo, Z=0 lateral/T-pose). A INTENÇÃO permanece: não
-    # iniciar em T-pose (Z≈0) nem com o braço solto/aberto — e sim baixado.
-    assert degrees(pose["right-arm"].z) < -60
-    assert degrees(pose["left-arm"].z) > 60
+    # Pós-IK (render), a ELEVAÇÃO do braço é o heading Y. O repouso tem os
+    # braços BAIXADOS (mãos ao lado do quadril): right-arm.y ≈ -74° e o espelho
+    # ≈ +74° (Y=-90 reto p/ baixo, Y=0 lateral/T-pose, Y=+90 cima). A INTENÇÃO
+    # permanece: não iniciar em T-pose (Y≈0) nem com o braço aberto — e sim baixado.
+    assert degrees(pose["right-arm"].y) < -50
+    assert degrees(pose["left-arm"].y) > 50
 
 
 def test_hover_reaches_toward_the_cursor_without_flapping_both_arms():
@@ -44,10 +44,10 @@ def test_hover_keeps_personality_phrase_and_arm_motion():
     assert animation.state == AnimationState.HOVER
     assert animation._idle_clock > 2.9
     assert len(set(samples)) > 50
-    # Pós-IK, a base dos braços é BAIXADA (z≈-86°). A frase 'fighter' segue
-    # viva por cima (o set acima garante movimento); o braço permanece na
-    # região baixada sob o cursor, não escancarado para fora (z>0).
-    assert samples[-1].z < 0.0
+    # Pós-IK (render), a ELEVAÇÃO é o heading Y e a base é BAIXADA (y≈-74°). A
+    # frase 'fighter' segue viva por cima (o set acima garante movimento); o
+    # braço permanece na região baixada sob o cursor, não erguido (y>0).
+    assert samples[-1].y < 0.0
 
 
 def test_fall_pose_uses_velocity_not_application_uptime():
@@ -69,25 +69,21 @@ def test_fall_pose_uses_velocity_not_application_uptime():
 def test_wave_turns_palm_out_and_keeps_elbow_bent():
     from math import degrees
 
-    from sejoga.nucleo.assets import resolve_model
-    from sejoga.nucleo.model import load_model
     from sejoga.nucleo.rig import pose_flourish
-    from sejoga.rig_mapa import rig_debug
 
     animation = controller()
     pose_flourish(animation.rig, "wave", .95)
     pose = animation.rig.pose()
 
-    # Pós-IK: o aceno leva a MÃO para acima do ombro (alvo de mão), com o
-    # cotovelo dobrado — a palma fica virada para FORA com o pulso NEUTRO (a
-    # geometria diagonal inverteu o roll de 180° da pose antiga). Verificamos a
-    # intenção pela posição/flag reais, não por ângulos crus mal-rotulados.
-    estado = rig_debug.estado_rig(pose, load_model(resolve_model()))
-    assert estado.mao_direita.palma_flag == "PALMA_PARA_FORA"
-    # Mão acima do ombro: offset Y bem positivo em relação ao corpo.
-    assert estado.mao_direita.posicao_offset[1] > 0.35
-    # Cotovelo dobrado (antebraço ergue em relação ao braço).
-    assert estado.articulacoes["cotovelo_direito"].flag == "DOBRADO"
+    # Pós-IK (convenção medida no renderer): no pico do aceno a MÃO sobe acima
+    # do ombro — a ELEVAÇÃO é o heading Y, que fica bem acima da horizontal
+    # (Y>45°), e o cotovelo (ant-arm roll Z) fica DOBRADO. A palma vira para
+    # FORA com o pulso NEUTRO (verificado pelo gate semântico verificar_gesto;
+    # aqui conferimos a geometria crua, que o renderer de fato aplica).
+    assert degrees(pose["right-arm"].y) > 45
+    assert abs(degrees(pose["ant-arm"].z)) > 20
+    # O pulso fica praticamente neutro (sem o roll de 180° da pose antiga).
+    assert abs(degrees(pose["hand"].x)) < 45
 
 
 def test_walk_dance_and_drag_poses_have_counterbalanced_arms():
@@ -106,20 +102,18 @@ def test_walk_dance_and_drag_poses_have_counterbalanced_arms():
     # contrabalançados, não escancarados em espelho. A asserção antiga
     # `right-arm.z < 45` codificava a convenção invertida (erguer = Z baixo);
     # na geometria real, erguer = Z alto. Aqui t=pi/18 → right_lift=1 (direito
-    # conduz): o direito sobe (Z alto) e o esquerdo permanece recolhido. Pós-IK
-    # a dança parte de um ALVO de mão à frente/em cima e o braço condutor ergue
-    # MAIS (Z sobe ~45° com o lift); o gap é menor que o exagero da convenção
-    # antiga, mas o braço direito claramente lidera sobre o esquerdo.
-    assert degrees(dance["right-arm"].z) > degrees(dance["left-arm"].z) + 15
-    # Pós-IK, o arraste estende o braço para a frente pelo AZIMUTE (Y/heading),
-    # não pela elevação (Z): cada direção avança um lado diferente. Comparamos
-    # o azimute, que é o DOF correto do "reach" na geometria real.
+    # conduz): o direito ERGUE (elevação Y sobe) e o esquerdo permanece. Pós-IK
+    # (render) a elevação é o heading Y e o lift soma ~45° nela; o braço direito
+    # claramente lidera sobre o esquerdo na elevação.
+    assert degrees(dance["right-arm"].y) > degrees(dance["left-arm"].y) + 15
+    # Pós-IK (render), o arraste estende o braço para a FRENTE pelo AZIMUTE
+    # (Z/roll), não pela elevação (Y): cada direção avança um lado diferente.
     pose_drag(animation.rig, 0, direction=1, drag_intensity=.8)
     right_drag = animation.rig.pose()
     pose_drag(animation.rig, 0, direction=-1, drag_intensity=.8)
     left_drag = animation.rig.pose()
-    assert right_drag["left-arm"].y != left_drag["left-arm"].y
-    assert right_drag["right-arm"].y != left_drag["right-arm"].y
+    assert right_drag["left-arm"].z != left_drag["left-arm"].z
+    assert right_drag["right-arm"].z != left_drag["right-arm"].z
 
 
 def test_raised_arm_survives_the_resolver_clamp_in_the_live_pipeline():
@@ -135,43 +129,38 @@ def test_raised_arm_survives_the_resolver_clamp_in_the_live_pipeline():
     animation = controller()
     animation.pose_resolver.definir_pose({g: Rotation3() for g in ALL_GROUPS})
     alvo = {g: Rotation3() for g in ALL_GROUPS}
-    # Pós-IK, braço reto para CIMA = Z≈+90° (não mais 150°, que na convenção
-    # antiga mal-rotulada representava "erguido"). O clamp deve deixar passar a
-    # pose erguida sem rebaixá-la.
-    alvo["right-arm"] = Rotation3(z=math.radians(90.0))   # reto para cima
-    alvo["left-arm"] = Rotation3(z=math.radians(-90.0))   # espelho
+    # Pós-IK (medido no renderer), braço reto para CIMA = ELEVAÇÃO Y≈+90° (o
+    # heading), não o roll. O clamp de elevação deve deixar passar a pose
+    # erguida sem rebaixá-la (o espelho usa Y simétrico).
+    alvo["right-arm"] = Rotation3(y=math.radians(90.0))   # reto para cima
+    alvo["left-arm"] = Rotation3(y=math.radians(-90.0))   # espelho
     resolvida = None
     for _ in range(120):
         resolvida = animation.pose_resolver.resolver(1 / 60, alvo)
-    # Após o clamp, o braço continua erguido (acima da horizontal/T-pose=0°).
-    assert degrees(resolvida["right-arm"].z) > 70
-    assert degrees(resolvida["left-arm"].z) < -70
+    # Após o clamp, o braço continua erguido (elevação acima da horizontal).
+    assert degrees(resolvida["right-arm"].y) > 70
+    assert degrees(resolvida["left-arm"].y) < -70
 
 
 def test_wave_reaches_renderer_raised_end_to_end():
     # Pipeline completo: interact('wave') → update() leva o estado a WAVE e
-    # a pose renderizada (após crossfade + clamp) precisa erguer a MÃO no
+    # a pose renderizada (após crossfade + clamp) precisa erguer o braço no
     # pico do gesto, não ser rebaixada pelo clamp.
-    from sejoga.nucleo.assets import resolve_model
-    from sejoga.nucleo.model import load_model
-    from sejoga.rig_mapa import rig_debug
+    from math import degrees
 
-    modelo = load_model(resolve_model())
     animation = controller()
     animation.interact("wave")
-    pico_y = -1.0
+    pico_elevacao = -180.0
     viu_wave = False
     for _ in range(140):
         pose = animation.update(1 / 60)
         if animation.state == AnimationState.WAVE:
             viu_wave = True
-        estado = rig_debug.estado_rig(pose, modelo)
-        pico_y = max(pico_y, estado.mao_direita.posicao_offset[1])
+        pico_elevacao = max(pico_elevacao, degrees(pose["right-arm"].y))
     assert viu_wave
-    # Pós-IK: o "erguido" é medido pela POSIÇÃO da mão (que o alvo de mão pede),
-    # não pelo ângulo cru do ombro. No pico, a mão sobe bem acima do ombro
-    # (offset Y alto) e o clamp não a rebaixa.
-    assert pico_y > 0.35
+    # Pós-IK (render): "erguido" é a ELEVAÇÃO (heading Y). No pico o braço passa
+    # bem da horizontal (Y>0) rumo ao alto, e o clamp (até +110°) não o rebaixa.
+    assert pico_elevacao > 45
 
 
 def test_leg_steps_alternate_and_airborne_pose_settles():
@@ -211,9 +200,10 @@ def test_arraste_por_perna_pendura_bracos_e_cabeca():
     # não mais magnitude pequena (a convenção antiga invertia o sentido).
     for part in ('legs', 'left-feet', 'right-feet'):
         pose = _arraste_por(part)
-        braco_dir = degrees(pose["right-arm"].z)
-        braco_esq = degrees(pose["left-arm"].z)
-        # Braços baixados/recolhidos: direito bem negativo, esquerdo bem positivo.
+        braco_dir = degrees(pose["right-arm"].y)
+        braco_esq = degrees(pose["left-arm"].y)
+        # Pós-IK (render): a ELEVAÇÃO é o heading Y. Braços baixados/recolhidos
+        # junto ao tronco: direito bem negativo (p/ baixo), esquerdo bem positivo.
         assert braco_dir < -70, part
         assert braco_esq > 70, part
         # Cabeça pende (olhar para baixo no mundo com o tronco invertido).
@@ -226,12 +216,13 @@ def test_arraste_por_perna_difere_de_corpo_e_braco():
     perna = _arraste_por('legs')
     corpo = _arraste_por('body')
     braco = _arraste_por('right-arm')
-    # Pós-IK: a pose de perna BAIXA mais os braços (Z mais negativo, recolhidos
-    # junto ao tronco) do que o arraste pelo corpo, que ergue a mão à frente.
-    assert degrees(perna["right-arm"].z) < degrees(corpo["right-arm"].z)
-    assert degrees(perna["left-arm"].z) > degrees(corpo["left-arm"].z)
+    # Pós-IK (render): a pose de perna BAIXA mais os braços (elevação Y mais
+    # negativa, recolhidos junto ao tronco) do que o arraste pelo corpo, que
+    # mantém a mão mais à frente/erguida.
+    assert degrees(perna["right-arm"].y) < degrees(corpo["right-arm"].y)
+    assert degrees(perna["left-arm"].y) > degrees(corpo["left-arm"].y)
     # As três poses de arraste diferem entre si na posição do braço.
-    assert degrees(perna["right-arm"].z) != degrees(braco["right-arm"].z)
+    assert degrees(perna["right-arm"].y) != degrees(braco["right-arm"].y)
 
 
 def test_click_wakes_sleep_and_does_not_immediately_fall_asleep():

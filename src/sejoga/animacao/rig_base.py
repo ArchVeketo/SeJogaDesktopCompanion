@@ -18,25 +18,26 @@ class RepousoAnatomico:
     Convenção de espelho: o lado esquerdo usa o sinal oposto nos eixos Y e Z,
     então left-arm = (-BRACO_Y, -BRACO_Z) e ant-arm2 = -ANTEBRACO_Z.
 
-    IMPORTANTE — convenção de elevação pós-IK: os bones de braço do Mário têm o
-    eixo LONGO em +X (não -Y). Verificado por FK (ver ``arm_ik``):
-      Z (roll) do ``right-arm``: Z=0 → braço lateral (+X), Z=+90 → reto p/ CIMA,
-        Z=-90 → reto p/ BAIXO. Logo "braço baixado" ≈ Z=-86 (quase reto p/ baixo).
-      Y (heading) do ``right-arm``: gira o braço frente↔trás (azimute).
-    Estes valores de repouso vêm do solver de IK para o ALVO DE MÃO de idle
-    (mãos ao lado do quadril), em ``arm_targets.ALVO_IDLE`` — não são mais
-    ângulos chutados. Mantidos aqui como fallback/const para quem não injeta o
-    ``Model`` (``pose_repouso()`` sem modelo e os deltas de ``delta_states``).
+    IMPORTANTE — convenção de elevação pós-IK, MEDIDA NO RENDERER (ver arm_ik):
+    o eixo LONGO do bone é +X e o renderer mapeia H=y, P=x, R=z. A ELEVAÇÃO do
+    braço é o HEADING (Y), NÃO o roll:
+      Y (heading) do ``right-arm``: Y=0 → lateral (+X), Y=+90 → reto p/ CIMA,
+        Y=-90 → reto p/ BAIXO. Logo "braço baixado" ≈ Y=-74 (idle natural).
+      Z (roll) do ``right-arm``: AZIMUTE (avanço/recuo frente↔trás).
+    Estes valores vêm do solver de IK para o ALVO DE MÃO de idle (mãos ao lado
+    do quadril), em ``arm_targets.ALVO_IDLE`` — não são mais ângulos chutados.
+    Mantidos aqui como fallback/const para quem não injeta o ``Model``
+    (``pose_repouso()`` sem modelo e os deltas de ``delta_states``).
     """
 
-    # Braço (ombro): baixado ao lado do quadril (IK do alvo idle).
+    # Braço (ombro): baixado ao lado do quadril (IK do alvo idle, render-exato).
     BRACO_X: float = 0.0       # torção neutra (não move a ponta da mão)
-    BRACO_Y: float = -14.45    # leve azimute para a frente
-    BRACO_Z: float = -85.93    # braço quase reto para BAIXO
+    BRACO_Y: float = -73.93    # ELEVAÇÃO: braço quase reto para BAIXO
+    BRACO_Z: float = -14.45    # AZIMUTE: leve avanço para a frente
 
     # Antebraço (cotovelo): leve dobra (IK do alvo idle).
     ANTEBRACO_X: float = 0.0
-    ANTEBRACO_Z: float = 22.03  # cotovelo levemente dobrado
+    ANTEBRACO_Z: float = 18.03  # cotovelo levemente dobrado
 
     # Mão
     MAO_X: float = 0.0

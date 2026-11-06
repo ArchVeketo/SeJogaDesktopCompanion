@@ -56,11 +56,11 @@ def test_delta_drag_perna_recolhe_bracos():
     motion = BodyPose(limb_swing=0)
     delta = delta_drag(motion, "legs")
 
-    # O delta de right-arm.z deve ser negativo (fechando do z=68 da base)
-    # A base tem right-arm.z ≈ 68°, o arraste por perna quer z≈12°
-    # Logo delta ≈ 12 - 68 = -56° (≈ -0.98 rad)
-    assert delta["right-arm"].z < 0, "Arraste por perna deveria fechar o braço direito"
-    assert delta["left-arm"].z > 0, "Arraste por perna deveria fechar o braço esquerdo"
+    # Pós-IK (render): a ELEVAÇÃO é o heading Y. Pego pela perna, os braços
+    # BAIXAM mais que o repouso (delta de elevação negativo no direito; no
+    # espelho esquerdo o Y cresce — ambos pendem mais para baixo no mundo).
+    assert delta["right-arm"].y < 0, "Arraste por perna deveria baixar o braço direito"
+    assert delta["left-arm"].y > 0, "Arraste por perna deveria baixar o braço esquerdo"
 
 
 def test_delta_walk_alterna_bracos():
@@ -141,11 +141,11 @@ def test_composicao_delta_com_base_de_repouso():
         )
 
     # O resultado deve ter valores razoáveis para uma pose.
-    # Pós-IK, a base de repouso tem right-arm.z ≈ -86° (braço quase reto para
-    # BAIXO, mão ao lado do quadril). A convenção mudou: Z mede a elevação a
-    # partir de +X (Z=-90 baixo, Z=0 lateral, Z=+90 cima). O idle só soma uma
-    # pequena oscilação por cima, então o Z fica numa vizinhança de -86°.
-    assert -100 < degrees(resultado["right-arm"].z) < -70
+    # Pós-IK (medido no renderer), a ELEVAÇÃO do braço é o heading Y (não o
+    # roll): a base de repouso tem right-arm.y ≈ -74° (braço quase reto para
+    # BAIXO, mão ao lado do quadril). Y=-90 baixo, Y=0 lateral, Y=+90 cima. O
+    # idle só soma pequena oscilação por cima, então Y fica em torno de -74°.
+    assert -95 < degrees(resultado["right-arm"].y) < -55
 
 
 def test_delta_idle_respiracao_afeta_corpo():

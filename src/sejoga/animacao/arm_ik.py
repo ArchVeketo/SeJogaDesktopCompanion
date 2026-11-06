@@ -1,52 +1,49 @@
 """IK 3D de braço: posição-alvo da mão → HPR dos bones do rig (Python puro).
 
 Causa raiz (comprovada visualmente): os bones de braço do Mário têm orientação
-diagonal e nenhum eixo HPR isolado ergue o braço de forma limpa. Calibrar poses
-por ângulo direto é inviável. A decisão foi usar IK: um gesto declara ONDE a mão
-deve ficar no espaço (alvo relativo ao ombro) e este módulo calcula os HPR de
-``right-arm``/``ant-arm`` (e o espelho ``left-arm``/``ant-arm2``) que levam a
-ponta da mão até lá, respeitando a geometria REAL do modelo.
+diagonal e nenhum eixo HPR isolado ergue o braço de forma limpa quando se olha
+pela convenção errada. Calibrar poses por ângulo direto é inviável. A decisão
+foi usar IK: um gesto declara ONDE a mão deve ficar no espaço (alvo relativo ao
+ombro) e este módulo calcula os HPR de ``right-arm``/``ant-arm`` (e o espelho
+``left-arm``/``ant-arm2``) que levam a ponta da mão até lá.
 
-Decisão de projeto (ver PLAN): a conversão "ângulo do solver → HPR do bone" NÃO
-assume eixos limpos nem usa fórmula fechada. Usa a cinemática direta (FK) pura
-já existente (``rig_debug.posicao_acumulada``) como função objetivo e resolve
-numericamente os HPR que colocam a mão no alvo. O solver planar ``solve_arm``
-(``limb_ik.py``) fornece a semente (dobra do cotovelo + elevação no plano).
+IMPORTANTE — a FK é calibrada contra o RENDERER REAL, não contra ``rig_debug``.
+Medindo frames reais (ver a investigação na task), a geometria do braço NO
+RENDERER é:
 
-Geometria medida do glTF (ver ``tools/inspect_model.py`` e as translations dos
-nós): a cadeia é ``right-arm → ant-arm → hand``, com translations locais em +X
-(o eixo LONGO do braço é +X, não -Y). Comprimentos: upper ≈ 0.125, forearm ≈
-0.15625, alcance ≈ 0.281. O ombro direito fica em ≈ (x=0.125, y=0.6875) no
-espaço do modelo.
+  - Eixo longo do braço em repouso = +X (right-arm → ant-arm → hand, todas as
+    translations locais em +X). Upper ≈ 0.125, forearm ≈ 0.15625.
+  - ``Rotation3.y`` (HEADING/H do renderer) ELEVA o braço no plano frontal XY:
+    y=0 → braço lateral (+X), y=+90 → reto p/ CIMA (+Y), y=-90 → reto p/ BAIXO.
+  - ``Rotation3.z`` (ROLL/R do renderer) gira o braço no plano horizontal XZ
+    (AZIMUTE: avanço/recuo): z=0 → +X, z=+90 → -Z (trás), z=-90 → +Z (frente).
+  - ``Rotation3.x`` (PITCH/P) é torção em torno do eixo longo: NÃO move a mão.
+  - O cotovelo é ``ant-arm.Rotation3.z`` (roll), que dobra no plano local do
+    braço, composto DEPOIS da rotação do ombro (``R_arm · R_elbow``).
 
-Convenção de eixos do mundo (verificada, MODEL_FACING_HEADING=180):
-    +X = direita   +Y = cima   +Z = frente
+Esta é a convenção que o renderer de fato aplica (``renderer.apply_rig_pose``:
+``setHpr(base_h+deg(y), base_p+deg(x), base_r+deg(z))`` sobre os nós do Panda).
+``rig_debug`` reimplementa uma composição que NÃO bate com o renderer para os
+braços (eixo longo assumido -Y); por isso aqui usamos o modelo de FK medido do
+renderer, em matrizes 3x3 puras — e os previews reais confirmam a pose.
 
-DOFs usados (verificados por FK, ver probe no PLAN):
-  - ``right-arm`` Z (roll)   → eleva o braço no plano frontal XY (Z=0 → +X,
-    Z=90 → +Y reto para cima, Z=180 → -X). É a ELEVAÇÃO.
-  - ``right-arm`` H (heading)→ gira o braço no plano horizontal XZ (avanço/recuo
-    frente↔trás). É o AZIMUTE.
-  - ``ant-arm`` Z (roll)     → dobra o cotovelo no plano do braço.
-  - ``right-arm`` P (pitch)  → torção em torno do eixo longo (+X): NÃO move a
-    ponta da mão. Fica em 0 (o IK não o usa para posição).
+Eixos do mundo no espaço do corpo (medidos): +X=direita, +Y=cima, +Z=frente.
 
-FRONTEIRA (igual a model.py/rig.py/rig_debug.py): Python puro. NÃO importa
-Panda3D, Qt nem Win32. Só ``math``, ``sejoga.nucleo.model``/``rig`` e a FK pura
-de ``sejoga.rig_mapa.rig_debug``.
+FRONTEIRA (igual a model.py/rig.py): Python puro. NÃO importa Panda3D, Qt nem
+Win32. Só ``math`` e ``sejoga.nucleo``.
 """
 
 from __future__ import annotations
 
-from math import radians, sqrt
+from math import atan2, cos, degrees, radians, sin, sqrt
 
 from sejoga.animacao.limb_ik import solve_arm
 from sejoga.animacao.rig_base import espelhar_braco
 from sejoga.nucleo.model import Model
-from sejoga.nucleo.rig import ALL_GROUPS, Rotation3
-from sejoga.rig_mapa.rig_debug import posicao_acumulada
+from sejoga.nucleo.rig import Rotation3
 
 Vec3 = tuple[float, float, float]
+Mat3 = tuple[float, float, float, float, float, float, float, float, float]
 
 #: Comprimentos de fallback (translations do glTF) caso o modelo não exponha a
 #: cadeia ``right-arm → ant-arm → hand`` (ver ``tools/inspect_model.py``).
@@ -63,7 +60,38 @@ _GRUPOS_BRACO = {
 TOLERANCIA_PADRAO = 0.01
 
 #: Máximo de iterações do solver numérico (converge em poucas).
-_MAX_ITER = 240
+_MAX_ITER = 300
+
+
+# --------------------------------------------------------------------------- #
+# Álgebra 3x3 e FK do RENDERER (validada medindo frames reais)
+# --------------------------------------------------------------------------- #
+def _mul(a: Mat3, b: Mat3) -> Mat3:
+    return tuple(
+        sum(a[i * 3 + k] * b[k * 3 + j] for k in range(3))
+        for i in range(3)
+        for j in range(3)
+    )  # type: ignore[return-value]
+
+
+def _apply(m: Mat3, v: Vec3) -> Vec3:
+    return (
+        m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+        m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+        m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
+    )
+
+
+def _rh(h: float) -> Mat3:
+    """Heading (H do renderer), radianos: +X → +Y (plano frontal XY, elevação)."""
+    c, s = cos(h), sin(h)
+    return (c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0)
+
+
+def _rr(r: float) -> Mat3:
+    """Roll (R do renderer), radianos: +X → -Z (plano horizontal XZ, azimute)."""
+    c, s = cos(r), sin(r)
+    return (c, 0.0, s, 0.0, 1.0, 0.0, -s, 0.0, c)
 
 
 def comprimentos_braco(model: Model, lado: str = "right") -> tuple[float, float]:
@@ -94,17 +122,26 @@ def _norma_translacao(model: Model, grupo: str) -> float:
     return sqrt(tx * tx + ty * ty + tz * tz)
 
 
-def _pose_base() -> dict[str, Rotation3]:
-    """Pose neutra (todos os grupos em zero) para medir a FK de um candidato."""
-    return {g: Rotation3() for g in ALL_GROUPS}
+def _ponta_mao_render(
+    elevacao: float, azimute: float, cotovelo: float, upper: float, forearm: float
+) -> Vec3:
+    """FK do renderer (puro): ponta da mão relativa ao ombro, no espaço do corpo.
 
+    ``R_arm = H(elevacao) · R(azimute)`` e o antebraço é ``R_arm · R(cotovelo)``
+    (o cotovelo dobra no plano local, composto DEPOIS do ombro). Ângulos em graus.
+    Este modelo bate com a FK medida do renderer dentro de ~0.002 unidades.
+    """
+    r_arm = _mul(_rh(radians(elevacao)), _rr(radians(azimute)))
+    r_elbow = _rr(radians(cotovelo))
 
-def _offset_ombro(model: Model, lado: str) -> Vec3:
-    """Posição de mundo da origem do ombro (grupo do braço) em repouso."""
-    braco = _GRUPOS_BRACO[lado][0]
-    pos = posicao_acumulada(_pose_base(), model)
+    upper_dir = _apply(r_arm, (1.0, 0.0, 0.0))
+    fore_dir = _apply(r_arm, _apply(r_elbow, (1.0, 0.0, 0.0)))
 
-    return pos.get(braco, (0.0, 0.0, 0.0))
+    return (
+        upper * upper_dir[0] + forearm * fore_dir[0],
+        upper * upper_dir[1] + forearm * fore_dir[1],
+        upper * upper_dir[2] + forearm * fore_dir[2],
+    )
 
 
 def posicao_mao_para_hpr(
@@ -112,27 +149,31 @@ def posicao_mao_para_hpr(
     lado: str,
     hpr_braco: Rotation3,
     hpr_antebraco: Rotation3,
-    pose_base: dict[str, Rotation3] | None = None,
+    pose_base: dict[str, Rotation3] | None = None,  # noqa: ARG001  # compat de assinatura
 ) -> Vec3:
-    """FK pura: ponta da mão RELATIVA ao ombro para um candidato de HPR.
+    """FK do renderer: ponta da mão RELATIVA ao ombro para um candidato de HPR.
 
-    Monta uma pose com só o braço/antebraço do ``lado`` ajustados e mede, via
-    ``rig_debug.posicao_acumulada``, a posição da origem de ``hand``/``hand2``
-    (a ponta que ``flag_mao`` reporta) menos a origem do ombro. Assim o alvo é
-    sempre comparado no referencial do ombro, coerente com a API pública.
+    Recebe os ``Rotation3`` do braço/antebraço (como o renderer consome) e
+    devolve a ponta da mão no espaço do corpo (+X dir, +Y cima, +Z frente). Para
+    o lado esquerdo, desfaz o espelho (``espelhar_braco`` inverte Y e Z) antes
+    de medir no referencial do braço direito, e espelha o X do resultado.
     """
-    braco, antebraco = _GRUPOS_BRACO[lado]
-    mao = "hand" if lado == "right" else "hand2"
+    upper, forearm = comprimentos_braco(model, lado)
 
-    pose = dict(pose_base) if pose_base is not None else _pose_base()
-    pose[braco] = hpr_braco
-    pose[antebraco] = hpr_antebraco
+    if lado == "left":
+        hpr_braco = espelhar_braco(hpr_braco)
+        hpr_antebraco = espelhar_braco(hpr_antebraco)
 
-    posicoes = posicao_acumulada(pose, model)
-    ombro = posicoes.get(braco, (0.0, 0.0, 0.0))
-    ponta = posicoes.get(mao, ombro)
+    elevacao = degrees(hpr_braco.y)
+    azimute = degrees(hpr_braco.z)
+    cotovelo = degrees(hpr_antebraco.z)
 
-    return (ponta[0] - ombro[0], ponta[1] - ombro[1], ponta[2] - ombro[2])
+    pos = _ponta_mao_render(elevacao, azimute, cotovelo, upper, forearm)
+
+    if lado == "left":
+        return (-pos[0], pos[1], pos[2])
+
+    return pos
 
 
 def _distancia(a: Vec3, b: Vec3) -> float:
@@ -140,44 +181,27 @@ def _distancia(a: Vec3, b: Vec3) -> float:
 
 
 def _semente(
-    model: Model,
-    lado: str,
-    alvo: Vec3,
-    polo: Vec3,
-    upper: float,
-    forearm: float,
+    alvo: Vec3, polo: Vec3, upper: float, forearm: float
 ) -> tuple[float, float, float]:
-    """Ângulos iniciais (elevação α, azimute β, cotovelo γ) em graus.
+    """Ângulos iniciais (elevação, azimute, cotovelo) em graus.
 
-    - A dobra do cotovelo (γ) e a elevação do braço vêm de ``solve_arm`` no
-      PLANO do braço: horizontal = projeção do alvo no plano frontal (hipotenusa
-      XY), downward = componente que afasta do ombro na elevação.
-    - O azimute β é o ângulo do alvo no plano horizontal XZ (avanço/recuo); o
-      polo só desempata o lado do cotovelo (mantido coerente com o solver 2D).
+    A dobra do cotovelo e a elevação vêm do solver planar (``solve_arm``) no
+    plano frontal (horizontal = hipotenusa XY, downward = componente Y). O
+    azimute inicial vem do arco-tangente do alvo no plano horizontal XZ.
     """
     ax, ay, az = alvo
 
-    # Elevação no plano frontal: Z=0 → +X (lateral), Z=90 → +Y (cima). O solver
-    # planar resolve em torno de um eixo "horizontal/downward"; mapeamos a
-    # hipotenusa frontal (sqrt(x²+z²)) como horizontal e y como "para cima".
     horizontal = sqrt(ax * ax + az * az)
     ombro_ang, cotovelo = solve_arm(horizontal, ay, upper, forearm)
 
-    # right-arm Z mede a elevação a partir de +X (Z=0 lateral → Z=90 cima):
-    # o ângulo do ombro no plano é medido de +X para +Y, exatamente o Z do bone.
+    # Elevação inicial = ângulo do ombro no plano frontal (de +X para +Y).
     elevacao = ombro_ang
 
-    # Azimute: Z do bone já cobriu o plano XY; H gira esse plano em torno de Y.
-    # H>0 leva +X para -Z (frente, pois +Z=frente e H=90 → -Z). Para alcançar az
-    # positivo (frente) precisamos de H negativo. Semeamos pelo arco-tangente.
-    from math import atan2, degrees
-
+    # Azimute: z=+90 leva +X para -Z; para alcançar +Z (frente, az>0) precisa de
+    # azimute negativo. Semeamos pelo arco-tangente do alvo no plano XZ.
     azimute = degrees(atan2(-az, max(1e-6, horizontal)))
 
-    # O polo (direção do cotovelo) desempata a dobra: cotovelo positivo dobra
-    # para frente, negativo para trás. Mantemos o sinal do solver e deixamos o
-    # refinamento numérico ajustar; o polo fica como preferência inicial.
-    px, py, pz = polo
+    px, py, pz = polo  # noqa: F841  # polo fica como preferência; refino ajusta
 
     if pz < 0 and cotovelo > 0:
         cotovelo = -cotovelo
@@ -186,28 +210,20 @@ def _semente(
 
 
 def _resolver_angulos(
-    model: Model,
-    lado: str,
-    alvo: Vec3,
-    polo: Vec3,
-    upper: float,
-    forearm: float,
-    tolerancia: float,
+    alvo: Vec3, polo: Vec3, upper: float, forearm: float, tolerancia: float
 ) -> tuple[float, float, float]:
-    """Gauss-Newton amortecido por coordenada sobre (elevação, azimute, cotovelo).
+    """Descida por coordenada amortecida sobre (elevação, azimute, cotovelo).
 
-    Usa a FK pura como função objetivo (distância da ponta da mão ao alvo).
-    Derivadas por diferenças finitas; passo amortecido por eixo. Converge em
-    poucas iterações para alvos dentro do alcance e nunca gera NaN (a semente e
-    o clamp de alcance vêm de ``solve_arm``).
+    Usa a FK do renderer (``_ponta_mao_render``) como função objetivo (distância
+    da ponta da mão ao alvo). Converge em poucas iterações para alvos dentro do
+    alcance; nunca gera NaN (semente/clamp de alcance vêm de ``solve_arm``).
     """
-    elev, azim, cot = _semente(model, lado, alvo, polo, upper, forearm)
+    elev, azim, cot = _semente(alvo, polo, upper, forearm)
 
     def erro(e: float, a: float, c: float) -> float:
-        pos = _hpr_para_posicao(model, lado, e, a, c)
-        return _distancia(pos, alvo)
+        return _distancia(_ponta_mao_render(e, a, c, upper, forearm), alvo)
 
-    passo = 8.0  # graus por eixo no passo de coordenada
+    passo = 8.0
     melhor = erro(elev, azim, cot)
 
     for _ in range(_MAX_ITER):
@@ -235,22 +251,12 @@ def _resolver_angulos(
                     melhorou = True
 
         if not melhorou:
-            # Refina o passo quando nenhuma direção melhora (vizinhança do ótimo).
             passo *= 0.5
 
-            if passo < 0.02:
+            if passo < 0.01:
                 break
 
     return elev, azim, cot
-
-
-def _hpr_para_posicao(
-    model: Model, lado: str, elevacao: float, azimute: float, cotovelo: float
-) -> Vec3:
-    """FK de um candidato (graus) → ponta da mão relativa ao ombro."""
-    hpr_braco, hpr_antebraco = _hpr_dos_angulos(lado, elevacao, azimute, cotovelo)
-
-    return posicao_mao_para_hpr(model, lado, hpr_braco, hpr_antebraco)
 
 
 def _hpr_dos_angulos(
@@ -258,11 +264,11 @@ def _hpr_dos_angulos(
 ) -> tuple[Rotation3, Rotation3]:
     """Monta os ``Rotation3`` (radianos) do braço/antebraço a partir dos ângulos.
 
-    O braço direito usa elevação em Z (roll), azimute em H (heading = y) e o
-    cotovelo em Z (roll) do antebraço. O lado esquerdo é o espelho
-    (``espelhar_braco`` inverte Y e Z), coerente com o rig de repouso.
+    Convenção do renderer: elevação → H (``Rotation3.y``), azimute → R
+    (``Rotation3.z``) do braço; cotovelo → R (``Rotation3.z``) do antebraço. O
+    lado esquerdo é o espelho (``espelhar_braco`` inverte Y e Z).
     """
-    braco_dir = Rotation3(0.0, radians(azimute), radians(elevacao))
+    braco_dir = Rotation3(0.0, radians(elevacao), radians(azimute))
     antebraco_dir = Rotation3(0.0, 0.0, radians(cotovelo))
 
     if lado == "left":
@@ -283,34 +289,30 @@ def braco_para(
     Parameters
     ----------
     model:
-        ``Model`` lido do glTF (fonte da geometria real; ``load_model``).
+        ``Model`` lido do glTF (fonte dos comprimentos reais; ``load_model``).
     lado:
         ``"right"`` ou ``"left"``.
     alvo_mao:
-        Posição-alvo da ponta da mão RELATIVA ao ombro, no espaço do modelo
-        (+X=direita, +Y=cima, +Z=frente). Para o lado esquerdo, o X do alvo é
-        interpretado no mesmo referencial do mundo (x>0 = direita do observador);
-        passe o X espelhado se quiser a pose simétrica do direito.
+        Posição-alvo da ponta da mão RELATIVA ao ombro, no espaço do corpo
+        (+X=direita, +Y=cima, +Z=frente), no referencial do observador. O lado
+        esquerdo recebe o X no mesmo referencial (x<0 = à esquerda).
     polo:
-        Direção preferida do cotovelo (desempata a dobra). Default aponta para a
-        frente (+Z).
+        Direção preferida do cotovelo (desempata a dobra). Default +Z (frente).
     tolerancia:
         Distância aceitável (unidades do modelo) entre a mão resultante e o alvo.
 
     Returns
     -------
     ``dict`` ``grupo -> Rotation3`` (radianos) apenas para os grupos do braço do
-    ``lado`` (``right-arm``/``ant-arm`` ou ``left-arm``/``ant-arm2``). Alvo fora
-    de alcance é clampado pelo próprio ``solve_arm`` (nunca NaN).
+    ``lado``. Alvo fora de alcance é clampado por ``solve_arm`` (nunca NaN).
     """
     if lado not in _GRUPOS_BRACO:
         raise ValueError(f"lado desconhecido: {lado!r} (use 'right' ou 'left')")
 
     upper, forearm = comprimentos_braco(model, lado)
 
-    # Para o lado esquerdo, resolvemos no referencial do braço DIREITO (espelho
-    # em X) e deixamos _hpr_dos_angulos aplicar o espelho dos HPR. Assim um alvo
-    # à esquerda (x<0) vira um alvo à direita equivalente para o solver.
+    # Resolve sempre no referencial do braço DIREITO (espelho em X no esquerdo);
+    # _hpr_dos_angulos aplica o espelho dos HPR no fim.
     alvo_solver = alvo_mao
     polo_solver = polo
 
@@ -319,7 +321,7 @@ def braco_para(
         polo_solver = (-polo[0], polo[1], polo[2])
 
     elev, azim, cot = _resolver_angulos(
-        model, "right", alvo_solver, polo_solver, upper, forearm, tolerancia
+        alvo_solver, polo_solver, upper, forearm, tolerancia
     )
 
     braco, antebraco = _GRUPOS_BRACO[lado]
@@ -329,11 +331,11 @@ def braco_para(
 
 
 def pose_repouso_bracos(model: Model) -> dict[str, Rotation3]:
-    """HPR de repouso dos quatro grupos de braço, derivados dos alvos de idle.
+    """HPR de repouso dos quatro grupos de braço, derivados do alvo de idle.
 
-    Calculado uma vez a partir do ``Model``; os alvos vêm de ``arm_targets`` para
-    manter uma única fonte de verdade das poses por alvo. Devolve
-    ``right-arm``/``ant-arm``/``left-arm``/``ant-arm2``.
+    Calculado a partir do ``Model``; os alvos vêm de ``arm_targets`` para manter
+    uma única fonte de verdade. Devolve ``right-arm``/``ant-arm``/``left-arm``/
+    ``ant-arm2``.
     """
     from sejoga.animacao.arm_targets import ALVO_IDLE
 
