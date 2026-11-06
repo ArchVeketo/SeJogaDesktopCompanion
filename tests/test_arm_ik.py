@@ -97,10 +97,26 @@ def test_comprimentos_lidos_do_modelo(modelo):
 
 
 def test_modulo_e_python_puro():
-    """O solver não pode depender de engine (Panda3D/Qt)."""
+    """O solver não pode depender de engine (Panda3D/Qt).
+
+    Verifica num interpretador LIMPO (subprocesso) que importar ``arm_ik`` não
+    puxa Panda3D nem PySide6 — no processo compartilhado do pytest outros
+    testes já carregam a engine, então a checagem precisa de um processo novo.
+    """
+    import subprocess
     import sys
+    from pathlib import Path
 
-    import sejoga.animacao.arm_ik  # noqa: F401
+    src = str(Path(__file__).resolve().parent.parent / "src")
+    codigo = (
+        "import sys; "
+        "sys.path.insert(0, %r); "
+        "import sejoga.animacao.arm_ik; "
+        "assert 'panda3d' not in sys.modules, 'panda3d vazou'; "
+        "assert 'PySide6' not in sys.modules, 'PySide6 vazou'" % src
+    )
+    resultado = subprocess.run(
+        [sys.executable, "-c", codigo], capture_output=True, text=True
+    )
 
-    assert "panda3d" not in sys.modules
-    assert "PySide6" not in sys.modules
+    assert resultado.returncode == 0, resultado.stderr

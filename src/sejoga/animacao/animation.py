@@ -466,8 +466,12 @@ class AnimationController:
         elif self.state == AnimationState.SLEEP:
             pose_sleep(self.rig, self.clock)
         elif self.state.value in ('hang_loose', 'thumbs_up', 'rock', 'finger_gun'):
+            from sejoga.nucleo.rig import braco_hpr_graus
             pose_idle(self.rig, self.clock, self.idle_personality)
-            self.rig.set_rotation('right-arm', x=-20, z=0)
+            # Gesto de mão (hang loose/joinha/rock/finger gun): ergue o braço à
+            # frente a partir do alvo de interação (IK) para a mão ficar visível.
+            _g = braco_hpr_graus("right", "interaction")["right-arm"]
+            self.rig.set_rotation('right-arm', x=-20, y=_g[1], z=_g[2])
             self.rig.set_rotation('ant-arm', x=-8, z=-60)
             self.rig.set_rotation('hand', x=180, y=0, z=0)
             self.rig.set_rotation('fingers', z=0)
