@@ -19,13 +19,17 @@ class RepousoAnatomico:
     então left-arm = -BRACO_Z e ant-arm2 = -ANTEBRACO_Z.
     """
 
-    # Braço (ombro)
+    # Braço (ombro) — eixo Z (roll) controla elevação:
+    #   Z=0 → braço reto para BAIXO (-90° elevação)
+    #   Z=28 → braço baixado levemente afastado do corpo (~-62° elevação)
+    #   Z=90 → braço na horizontal/T-pose (0° elevação)
+    #   Z=180 → braço reto para CIMA (+90° elevação)
     BRACO_X: float = -4.0      # leve rotação à frente
-    BRACO_Z: float = 68.0      # ombro fechado (braços descidos)
+    BRACO_Z: float = 28.0      # braços baixados, repouso natural relaxado
 
-    # Antebraço (cotovelo)
+    # Antebraço (cotovelo) — leve dobra para dentro
     ANTEBRACO_X: float = -8.0   # leve dobra à frente
-    ANTEBRACO_Z: float = -28.0  # cotovelo dobrado
+    ANTEBRACO_Z: float = -12.0  # cotovelo levemente dobrado
 
     # Mão
     MAO_X: float = 0.0
