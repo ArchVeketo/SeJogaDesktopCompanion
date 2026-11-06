@@ -631,6 +631,7 @@ class OverlayApp(ShowBase):
         self.renderer.apply_body_motion(
             self.animation_controller.body_motion.snapshot, self._body_grab_point,
             grounded=state.grounded if state else True, dragging=self._drag_active,
+            direcao_olhar=alvo.direcao,
         )
         self.renderer.update_appendages(dt, self.animation_controller.appendage_remaining > 0)
         self._fit_pose_window(dt)

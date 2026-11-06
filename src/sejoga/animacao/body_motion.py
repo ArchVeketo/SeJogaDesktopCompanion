@@ -36,6 +36,82 @@ class Spring:
         return self.value
 
 
+class GiroCorpo:
+    """Giro de corpo LIMITADO: vira o mascote de lado mantendo a câmera fixa.
+
+    Decide um ângulo de heading (em graus) para o nó dedicado ``body_facing`` do
+    renderer, suavizado por uma mola (precedente: ``_dance_stage_yaw``) para não
+    teletransportar a orientação, e CLAMPADO em ``±LIMITE_GRAUS`` (~virar de
+    lado). NÃO faz giro amplo de costas completas nem locomoção: essas fases
+    dependem de decisão do usuário, do Plano B de fullscreen e de teste na GPU.
+
+    Esta classe é pura (sem Panda3D/Qt/Win32), para ser testável sem GPU. O
+    renderer só lê ``angulo`` e aplica ``body_facing.setH(angulo)``.
+
+    Parâmetros CALIBRÁVEIS (validar visualmente na GPU):
+    - ``LIMITE_GRAUS``: teto do giro. Mantido em 90° (perfil puro) para caber no
+      envelope da janela dinâmica atual sem braços estendidos; subir além disso
+      aproxima das costas e tende a reintroduzir franja/flicker.
+    - ``GANHO_OLHAR``: quanto do giro vem do olhar. O corpo acompanha a cabeça só
+      parcialmente (a cabeça/tronco já olham via pose_interaction); aqui o corpo
+      entra quando o alvo está muito para o lado.
+    - ``ZONA_MORTA_OLHAR``: abaixo deste |olhar| o corpo não gira (evita girar o
+      corpo por micro-ajustes de olhar perto do centro).
+    - ``FREQUENCIA``/``AMORTECIMENTO`` da mola: peso/estabilidade do giro.
+    """
+
+    # Teto do giro parcial (graus). Perfil de lado, sem costas completas.
+    LIMITE_GRAUS = 90.0
+    # Fração do olhar (-1..1) convertida em ângulo-alvo antes do clamp.
+    GANHO_OLHAR = 70.0
+    # Abaixo deste |olhar| o corpo fica de frente (só a cabeça acompanha).
+    ZONA_MORTA_OLHAR = 0.35
+    # Tensão da mola do giro (mais lenta/pesada que o olhar da cabeça).
+    FREQUENCIA = 1.1
+    AMORTECIMENTO = 0.9
+
+    def __init__(self):
+        self._mola = Spring(self.FREQUENCIA, self.AMORTECIMENTO)
+
+    @property
+    def angulo(self):
+        """Heading suavizado atual, em graus, já dentro do limite."""
+        return self._mola.value
+
+    def _alvo_do_olhar(self, direcao_olhar):
+        """Converte o olhar (-1..1) em ângulo-alvo, com zona morta e clamp.
+
+        ``direcao_olhar > 0`` significa alvo à DIREITA da janela; o corpo vira
+        nessa direção. A zona morta mantém o mascote de frente a olhares sutis.
+        """
+        direcao = clamp(direcao_olhar, -1.0, 1.0)
+        if abs(direcao) <= self.ZONA_MORTA_OLHAR:
+            return 0.0
+        # Reescala o trecho fora da zona morta para 0..1 antes do ganho.
+        excedente = (abs(direcao) - self.ZONA_MORTA_OLHAR) / (1.0 - self.ZONA_MORTA_OLHAR)
+        sinal = 1.0 if direcao > 0 else -1.0
+        return sinal * excedente * self.GANHO_OLHAR
+
+    def update(self, dt, *, direcao_olhar=0.0, angulo_pedido=None):
+        """Avança a mola um quadro e devolve o heading suavizado e clampado.
+
+        - ``direcao_olhar``: sinal de atenção (-1..1) de ``foco_atencao``; o corpo
+          acompanha a cabeça com giro parcial quando o alvo está muito de lado.
+        - ``angulo_pedido``: gancho para estados de animação (ex.: danças que
+          viram de lado) pedirem um heading explícito em graus. Quando informado,
+          tem precedência sobre o olhar. Sempre clampado em ``±LIMITE_GRAUS``.
+
+        ``dt <= 0`` não avança a mola (devolve o ângulo atual), como ``Spring``.
+        """
+        alvo = float(angulo_pedido) if angulo_pedido is not None else self._alvo_do_olhar(direcao_olhar)
+        alvo = clamp(alvo, -self.LIMITE_GRAUS, self.LIMITE_GRAUS)
+        self._mola.update(dt, alvo)
+        # Clamp de segurança: a mola pode ultrapassar o alvo no transiente; o nó
+        # de giro nunca deve passar do limite para não sair do envelope da janela.
+        self._mola.value = clamp(self._mola.value, -self.LIMITE_GRAUS, self.LIMITE_GRAUS)
+        return self._mola.value
+
+
 @dataclass(frozen=True)
 class BodyPose:
     roll: float = 0.0

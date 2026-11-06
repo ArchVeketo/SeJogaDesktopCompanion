@@ -76,8 +76,14 @@ class Panda3DRenderer:
         # Criados sob demanda no primeiro frame de física; pré-inicializados
         # para evitar hasattr por frame em apply_body_motion.
         self._suspension_pivot = None
-        from sejoga.animacao.body_motion import Spring
+        from sejoga.animacao.body_motion import GiroCorpo, Spring
         self._dance_stage_yaw = Spring(1.4, .85)
+        # Nó dedicado do GIRO DE CORPO LIMITADO (virar de lado). Criado junto do
+        # _suspension_pivot no primeiro frame de física. Mantém intactos o
+        # setH(180) base da malha (model_np), o tilt de voo (model_anchor) e o
+        # pivô de arraste/queda (_suspension_pivot): ver apply_body_motion.
+        self._body_facing = None
+        self._giro_corpo = GiroCorpo()
         # Respiração do contorno: espessura base em repouso e driver suavizado.
         from sejoga.render.outline_dynamics import RespiracaoContorno
         self._outline_base_thickness = 0.0
@@ -502,7 +508,8 @@ void main() {
             outline_node.setScale(base_scale * fator)
             outline_node.setPos(base_pos + deslocamento)
 
-    def apply_body_motion(self, motion, grab_point=None, *, grounded=True, dragging=False):
+    def apply_body_motion(self, motion, grab_point=None, *, grounded=True, dragging=False,
+                          direcao_olhar=0.0, angulo_giro_pedido=None):
         """Rotate connected root parts around the hips/grip without editing the asset rig."""
         from panda3d.core import Mat4, TransformState
         dt = getattr(self.showbase.animation_controller, 'delta_time', 1/60)
@@ -510,9 +517,13 @@ void main() {
         self.flexible_rig.update(dt, motion)
         if self._suspension_pivot is None:
             self._suspension_pivot = self.model_anchor.attachNewNode('suspension-pivot')
-            self.model_np.reparentTo(self._suspension_pivot)
-            self.outline_np.reparentTo(self._suspension_pivot)
+            # body_facing fica ENTRE o pivô de arraste e a malha: gira o corpo
+            # sem tocar no setH(180) base (model_np) nem no tilt de voo.
+            self._body_facing = self._suspension_pivot.attachNewNode('body-facing')
+            self.model_np.reparentTo(self._body_facing)
+            self.outline_np.reparentTo(self._body_facing)
         self._suspension_pivot.setMat(Mat4.identMat())
+        self._aplicar_giro_corpo(dt, direcao_olhar, angulo_giro_pedido, dragging)
         controller = getattr(self.showbase, 'animation_controller', None)
         head_nod = (not dragging and controller and controller.state == AnimationState.DANCE
                     and controller.dance_motion.style == 'head_bob')
@@ -554,6 +565,36 @@ void main() {
             limit=self.model_np.getScale().x*.60
             correction=max(-limit,min(limit,-distance))*settle
             self._suspension_pivot.setPos(self._suspension_pivot.getPos()+normal*correction)
+
+    def _aplicar_giro_corpo(self, dt, direcao_olhar, angulo_pedido, dragging):
+        """Aplica o GIRO DE CORPO LIMITADO ao nó dedicado ``body_facing``.
+
+        O giro é suavizado e clampado em ``GiroCorpo`` (até ~±90°). Gira em
+        torno do eixo vertical pelo centro do corpo (mesma estratégia do
+        ``_dance_stage_yaw``), para o mascote virar de lado NO LUGAR, sem
+        orbitar nem sair do envelope da janela dinâmica. Durante o arraste o
+        giro relaxa para 0: o arraste já reorienta o corpo pelo pivô de grip.
+
+        NÃO reaplica color key, z-order ou SetLayeredWindowAttributes; é apenas
+        transformação no grafo de cena. O hit-test segue a pose (raycast contra
+        model_np), então a região clicável acompanha o giro, como esperado.
+        """
+        from panda3d.core import Mat4, Point3, TransformState
+        if self._body_facing is None:
+            return
+        olhar = 0.0 if dragging else direcao_olhar
+        pedido = None if dragging else angulo_pedido
+        angulo = self._giro_corpo.update(dt, direcao_olhar=olhar, angulo_pedido=pedido)
+        if abs(angulo) < .01:
+            self._body_facing.setMat(Mat4.identMat())
+            return
+        # Centro do corpo no referencial do body_facing: gira em torno dele para
+        # virar no lugar (sem deslocar os pés nem o centro visível).
+        pivot = self._body_facing.getRelativePoint(self.model_np, Point3(0, 0, .44))
+        rotacao = TransformState.makeHpr(Vec3(angulo, 0, 0)).getMat()
+        self._body_facing.setMat(
+            Mat4.translateMat(-pivot) * rotacao * Mat4.translateMat(pivot)
+        )
 
     def _resolve_arm_clearance(self):
         controller = getattr(self.showbase, 'animation_controller', None)
