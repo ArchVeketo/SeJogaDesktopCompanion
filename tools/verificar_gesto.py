@@ -327,8 +327,8 @@ def _modelo():
     global _MODELO_CACHE
 
     if _MODELO_CACHE is None:
-        from sejoga.assets import resolve_model
-        from sejoga.model import load_model
+        from sejoga.nucleo.assets import resolve_model
+        from sejoga.nucleo.model import load_model
 
         _MODELO_CACHE = load_model(resolve_model())
 
@@ -359,7 +359,7 @@ def _pose_no_indice(am: aa.AmostragemClipe, indice: int):
     Lê os ângulos (em graus) já guardados em ``am.series`` e converte para o
     ``Rotation3`` que ``rig_debug.estado_rig`` espera.
     """
-    from sejoga.rig import Rotation3
+    from sejoga.nucleo.rig import Rotation3
 
     pose: dict[str, Rotation3] = {}
 
@@ -412,7 +412,7 @@ def _verificar_flag(
     Lê a pose do instante (das séries já amostradas), roda ``rig_debug.estado_rig``
     e compara a flag legível da parte com a esperada.
     """
-    from sejoga import rig_debug
+    from sejoga.rig_mapa import rig_debug
 
     if exp.parte is None or exp.flag_esperada is None:
         return False, "expectativa FLAG mal definida (falta parte/flag_esperada)"
@@ -495,7 +495,7 @@ def _carregar_wave_producao() -> aa.ClipeAnalisavel:
     (sem GLB/engine), chama ``pose_flourish(rig, "wave", t)`` e lê a pose de
     volta convertendo cada ``Rotation3`` (radianos) para graus.
     """
-    from sejoga import rig as rig_mod
+    from sejoga.nucleo import rig as rig_mod
 
     repouso = {g: rig_mod.Rotation3() for g in rig_mod.ALL_GROUPS}
 

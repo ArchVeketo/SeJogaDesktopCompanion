@@ -32,12 +32,12 @@ _SRC = RAIZ / "src"
 if str(_SRC) not in sys.path:
   sys.path.insert(0, str(_SRC))
 
-from sejoga import rig as rig_mod  # noqa: E402
-from sejoga import rig_debug as rd  # noqa: E402
-from sejoga import spring_tuning  # noqa: E402
-from sejoga.assets import resolve_model  # noqa: E402
-from sejoga.body_motion import Spring  # noqa: E402
-from sejoga.model import load_model  # noqa: E402
+from sejoga.animacao import spring_tuning  # noqa: E402
+from sejoga.animacao.body_motion import Spring  # noqa: E402
+from sejoga.nucleo import rig as rig_mod  # noqa: E402
+from sejoga.nucleo.assets import resolve_model  # noqa: E402
+from sejoga.nucleo.model import load_model  # noqa: E402
+from sejoga.rig_mapa import rig_debug as rd  # noqa: E402
 
 #: Valor centrado (-1..1) de respiração usado no dump do idle: peito quase
 #: cheio, para o estado instrumentado mostrar a inflação do tórax respirando.

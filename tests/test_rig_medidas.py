@@ -15,12 +15,12 @@ from pathlib import Path
 
 import pytest
 
-from sejoga import rig_medidas as med
-from sejoga.assets import resolve_model
-from sejoga.model import load_model
-from sejoga.rig import Rig
-from sejoga.rig_limiares import LIMIARES_PADRAO
-from sejoga.rig_mapa import AlturaRelativa, Direcao, DirecaoMundo, EstadoParte, Parte
+from sejoga.nucleo.assets import resolve_model
+from sejoga.nucleo.model import load_model
+from sejoga.nucleo.rig import Rig
+from sejoga.rig_mapa import rig_medidas as med
+from sejoga.rig_mapa.rig_limiares import LIMIARES_PADRAO
+from sejoga.rig_mapa.rig_mapa import AlturaRelativa, Direcao, DirecaoMundo, EstadoParte, Parte
 
 
 @pytest.fixture(scope="module")

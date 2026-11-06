@@ -8,7 +8,7 @@ a pose de pior caso (não reintroduz o corte do Mário).
 import itertools
 import math
 
-from sejoga.canvas_envelope import (
+from sejoga.render.canvas_envelope import (
     COOLDOWN,
     MARGEM_ANTICORTE,
     EstadoEnvelope,

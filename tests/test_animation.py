@@ -1,7 +1,7 @@
 from itertools import pairwise
 
-from sejoga.animation import AnimationController, AnimationState
-from sejoga.rig import ALL_GROUPS, Rig, Rotation3
+from sejoga.animacao.animation import AnimationController, AnimationState
+from sejoga.nucleo.rig import ALL_GROUPS, Rig, Rotation3
 
 
 def controller():
@@ -43,7 +43,7 @@ def test_hover_keeps_personality_phrase_and_arm_motion():
 
 
 def test_fall_pose_uses_velocity_not_application_uptime():
-    from sejoga.rig import pose_thrown
+    from sejoga.nucleo.rig import pose_thrown
     animation = controller()
     pose_thrown(animation.rig, .7, (0, -600))
     ascending = animation.rig.pose()
@@ -61,7 +61,7 @@ def test_fall_pose_uses_velocity_not_application_uptime():
 def test_wave_turns_palm_out_and_keeps_elbow_bent():
     from math import degrees
 
-    from sejoga.rig import pose_flourish
+    from sejoga.nucleo.rig import pose_flourish
     animation = controller()
     pose_flourish(animation.rig, "wave", .95)
     pose = animation.rig.pose()
@@ -73,7 +73,7 @@ def test_wave_turns_palm_out_and_keeps_elbow_bent():
 def test_walk_dance_and_drag_poses_have_counterbalanced_arms():
     from math import degrees, pi
 
-    from sejoga.rig import pose_dance, pose_drag, pose_walk
+    from sejoga.nucleo.rig import pose_dance, pose_drag, pose_walk
     animation = controller()
     pose_walk(animation.rig, 1 / 6)
     walk_left = degrees(animation.rig.current["left-arm"].z)
@@ -92,7 +92,7 @@ def test_walk_dance_and_drag_poses_have_counterbalanced_arms():
 
 
 def test_leg_steps_alternate_and_airborne_pose_settles():
-    from sejoga.leg_motion import LegMotion
+    from sejoga.animacao.leg_motion import LegMotion
     legs = LegMotion()
     poses = [legs.update(1/60, "walk", (200, 0)) for _ in range(120)]
     assert any(p.left > 5 and p.right < -5 for p in poses)
@@ -267,7 +267,7 @@ def test_silent_dance_preview_expires_without_restarting_itself():
 def test_crossfade_por_junta_deixa_a_ponta_balancar_mais_que_a_ancora():
     from math import isfinite
 
-    from sejoga.rig import Rotation3
+    from sejoga.nucleo.rig import Rotation3
     animation = controller()
     # Estabiliza em idle por muitos frames: o regime estável deixa cada junta
     # com a sua tensão da tabela (sem uniformizar a frequência).

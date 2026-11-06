@@ -1,7 +1,7 @@
 import math
 
-from sejoga.appendages import AppendageMotion, DoorJoint, tentacle_center
-from sejoga.exit_animation import ExitAnimation
+from sejoga.animacao.appendages import AppendageMotion, DoorJoint, tentacle_center
+from sejoga.animacao.exit_animation import ExitAnimation
 
 
 def test_tentacles_retract_progressively_instead_of_popping():
@@ -17,7 +17,7 @@ def test_tentacles_retract_progressively_instead_of_popping():
 
 
 def test_tentacle_model_is_short_thick_faceted_and_has_raised_suckers():
-    from sejoga.tentacle_model import build_tentacle
+    from sejoga.tentaculos.tentacle_model import build_tentacle
     vertices, normals, colors, indices = build_tentacle()
     width = max(v[0] for v in vertices)-min(v[0] for v in vertices)
     height = max(v[2] for v in vertices)-min(v[2] for v in vertices)

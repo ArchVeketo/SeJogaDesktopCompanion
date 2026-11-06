@@ -21,8 +21,8 @@ def main():
     import win32con
     import win32gui
 
-    from sejoga.tray_registration import IconData
-    from sejoga.window import OverlayApp
+    from sejoga.desktop.tray_registration import IconData
+    from sejoga.render.window import OverlayApp
 
     # isort: split
     # OverlayApp loads Qt's runtime DLLs before Panda3D on Windows.

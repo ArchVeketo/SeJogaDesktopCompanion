@@ -1,8 +1,8 @@
 """Contratos dos clipes de locomoção descritos como dados."""
 import pytest
 
-from sejoga.anim_clips import CLIPES, amostrar_clipe, amostrar_clipe_rotacoes
-from sejoga.idle_clips import sample_track
+from sejoga.animacao.anim_clips import CLIPES, amostrar_clipe, amostrar_clipe_rotacoes
+from sejoga.animacao.idle_clips import sample_track
 
 
 @pytest.mark.parametrize("nome", CLIPES)

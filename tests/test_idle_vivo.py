@@ -25,10 +25,10 @@ from pathlib import Path
 
 import pytest
 
-from sejoga.idle_clips import camada_respiracao
-from sejoga.respiracao import Respiracao
-from sejoga.respiracao_tuning import RESPIRACAO_POR_PERSONALIDADE, parametros_de
-from sejoga.rig import ALL_GROUPS, IdlePersonality, Rig, Rotation3, pose_idle
+from sejoga.animacao.idle_clips import camada_respiracao
+from sejoga.animacao.respiracao import Respiracao
+from sejoga.animacao.respiracao_tuning import RESPIRACAO_POR_PERSONALIDADE, parametros_de
+from sejoga.nucleo.rig import ALL_GROUPS, IdlePersonality, Rig, Rotation3, pose_idle
 
 RAIZ = Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location(

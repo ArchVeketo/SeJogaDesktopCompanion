@@ -2,7 +2,7 @@ from math import cos, isfinite, radians, sin
 
 import pytest
 
-from sejoga.limb_ik import solve_arm
+from sejoga.animacao.limb_ik import solve_arm
 
 
 @pytest.mark.parametrize('x,y',[(.16,.17),(.08,.22),(-.06,.15)])

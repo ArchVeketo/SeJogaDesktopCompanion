@@ -31,13 +31,13 @@ _SRC = RAIZ / "src"
 if str(_SRC) not in sys.path:
   sys.path.insert(0, str(_SRC))
 
-from sejoga import colisao_membros as col  # noqa: E402
-from sejoga import rig as rig_mod  # noqa: E402
-from sejoga import rig_medidas as med  # noqa: E402
-from sejoga.assets import resolve_model  # noqa: E402
-from sejoga.dance_motion import DanceMotion  # noqa: E402
-from sejoga.model import Model, load_model  # noqa: E402
-from sejoga.rig_mapa import Parte  # noqa: E402
+from sejoga.animacao.dance_motion import DanceMotion  # noqa: E402
+from sejoga.nucleo import rig as rig_mod  # noqa: E402
+from sejoga.nucleo.assets import resolve_model  # noqa: E402
+from sejoga.nucleo.model import Model, load_model  # noqa: E402
+from sejoga.rig_mapa import colisao_membros as col  # noqa: E402
+from sejoga.rig_mapa import rig_medidas as med  # noqa: E402
+from sejoga.rig_mapa.rig_mapa import Parte  # noqa: E402
 
 #: Instantes (s) amostrados por pose — cobrem início, meio e abertura do gesto.
 INSTANTES_PADRAO: tuple[float, ...] = (0.0, 0.3, 0.6, 1.0, 1.5, 2.0, 2.6)

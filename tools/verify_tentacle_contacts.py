@@ -13,7 +13,7 @@ def main():
     config.default_config_path = lambda: profile / "config.toml"
     from panda3d.core import Filename, GeomVertexReader
 
-    from sejoga.window import OverlayApp
+    from sejoga.render.window import OverlayApp
 
     settings = config.Settings()
     settings.physics.enabled = settings.music.enabled = False

@@ -19,7 +19,7 @@ def main():
     from panda3d.core import Filename
     from PIL import Image, ImageDraw
 
-    from sejoga.window import OverlayApp
+    from sejoga.render.window import OverlayApp
 
     settings = config.Settings()
     settings.physics.enabled = False

@@ -11,7 +11,7 @@ profile=Path(tempfile.mkdtemp(prefix="sejoga-new-tentacles-"))
 config.default_config_path=lambda:profile/"config.toml"
 from panda3d.core import Filename
 
-from sejoga.window import OverlayApp
+from sejoga.render.window import OverlayApp
 
 settings=config.Settings(); settings.physics.enabled=False; settings.music.enabled=False
 settings.window.outline_enabled=False

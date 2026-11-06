@@ -1,4 +1,4 @@
-from sejoga.leg_motion import LegMotion
+from sejoga.animacao.leg_motion import LegMotion
 
 
 def test_molas_de_leg_motion_assentam_no_alvo_em_walk():

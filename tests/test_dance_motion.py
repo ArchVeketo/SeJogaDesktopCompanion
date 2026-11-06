@@ -1,4 +1,4 @@
-from sejoga.dance_motion import DanceMotion
+from sejoga.animacao.dance_motion import DanceMotion
 
 
 def test_styles_follow_sustained_energy_and_bass_not_single_peak():
@@ -18,7 +18,7 @@ def test_styles_follow_sustained_energy_and_bass_not_single_peak():
 
 
 def test_shared_phase_keeps_leg_targets_independent_of_internal_clock():
-    from sejoga.leg_motion import LegMotion
+    from sejoga.animacao.leg_motion import LegMotion
     first, second = LegMotion(), LegMotion()
     second.phase = 50
     for i in range(120):

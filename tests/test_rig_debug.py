@@ -16,10 +16,10 @@ from pathlib import Path
 
 import pytest
 
-from sejoga import rig_debug as rd
-from sejoga.assets import resolve_model
-from sejoga.model import load_model
-from sejoga.rig import ALL_GROUPS, Rig, Rotation3
+from sejoga.nucleo.assets import resolve_model
+from sejoga.nucleo.model import load_model
+from sejoga.nucleo.rig import ALL_GROUPS, Rig, Rotation3
+from sejoga.rig_mapa import rig_debug as rd
 
 
 @pytest.fixture(scope="module")

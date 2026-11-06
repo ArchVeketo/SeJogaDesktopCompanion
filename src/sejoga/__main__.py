@@ -19,14 +19,15 @@ import shutil
 import sys
 from pathlib import Path
 
+from sejoga.nucleo.assets import assets_dir, resolve_model
+
 from . import __version__
-from .assets import assets_dir, resolve_model
 from .config import default_config_path, load_settings, save_settings
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
-    from .model import load_model
-    from .rig import ALL_GROUPS, Rig
+    from sejoga.nucleo.model import load_model
+    from sejoga.nucleo.rig import ALL_GROUPS, Rig
 
     path = Path(args.model) if args.model else resolve_model()
     model = load_model(path)

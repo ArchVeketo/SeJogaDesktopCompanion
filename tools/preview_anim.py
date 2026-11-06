@@ -97,7 +97,7 @@ def main() -> int:
     # Windows trazem runtimes MSVC diferentes e o primeiro carregado vence.
     # Panda3D antes de Qt quebra, então a ordem é fixada com isort: off/on.
     # isort: off
-    from sejoga.window import OverlayApp
+    from sejoga.render.window import OverlayApp
     from panda3d.core import Filename
     from PIL import Image
     # isort: on

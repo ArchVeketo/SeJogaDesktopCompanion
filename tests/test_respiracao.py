@@ -1,6 +1,6 @@
 """Contratos do motor de respiração (engine-agnóstico, sem GPU)."""
 
-from sejoga.respiracao import Respiracao
+from sejoga.animacao.respiracao import Respiracao
 
 
 def test_norm_oscila_e_fica_em_zero_um():

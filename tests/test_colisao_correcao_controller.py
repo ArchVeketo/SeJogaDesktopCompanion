@@ -23,12 +23,12 @@ from pathlib import Path
 
 import pytest
 
-from sejoga import colisao_membros as col
-from sejoga import rig_medidas as med
-from sejoga.animation import AnimationController
-from sejoga.assets import resolve_model
-from sejoga.model import load_model
-from sejoga.rig import ALL_GROUPS, Rig, Rotation3
+from sejoga.animacao.animation import AnimationController
+from sejoga.nucleo.assets import resolve_model
+from sejoga.nucleo.model import load_model
+from sejoga.nucleo.rig import ALL_GROUPS, Rig, Rotation3
+from sejoga.rig_mapa import colisao_membros as col
+from sejoga.rig_mapa import rig_medidas as med
 
 _RAIZ = Path(__file__).resolve().parent.parent
 
@@ -70,7 +70,7 @@ def _excedente_wake(pose: dict[str, Rotation3], model) -> float:
   É o par de pior excedente na pose ``wake`` (ver FEAT-A); serve de medida
   única e estável do quanto a correção removeu.
   """
-  from sejoga.rig_mapa import Parte
+  from sejoga.rig_mapa.rig_mapa import Parte
 
   volumes = col.montar_volumes(med.medir_todas_as_partes(pose, model))
   va = volumes.get(Parte.BRACO_DIREITO)
@@ -86,7 +86,7 @@ def test_correcao_reduz_excedente_no_pico_da_pose_colisora(model) -> None:
   # meta cheia de resolver_colisoes empurra os membros e reduz o excedente do
   # pior par. É a meta que a mola do controller persegue; prova que a geometria
   # da correção de fato remove o excedente dirigido pela pose.
-  import sejoga.rig as rig_mod
+  from sejoga.nucleo import rig as rig_mod
 
   rig = _rig()
   rig_mod.pose_interaction(rig, "wake", 0.6, direction=0.5, vertical=0.3)
@@ -205,7 +205,7 @@ def test_pose_sem_excedente_nao_e_alterada(model) -> None:
   # pose de repouso é o caso canônico; aqui também se confirma que membros cujo
   # ÚNICO contato é o piso puro (`braço vs tronco`, `pernas vs pé`) saem
   # inalterados mesmo medindo penetração bruta alta.
-  from sejoga.rig_mapa import Parte
+  from sejoga.rig_mapa.rig_mapa import Parte
 
   rig = _rig()
   rig.reset()

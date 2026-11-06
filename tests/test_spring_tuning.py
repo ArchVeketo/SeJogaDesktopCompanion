@@ -1,7 +1,6 @@
 """Contratos da tabela de tensão por junta e seus helpers."""
 
-from sejoga.rig import ALL_GROUPS
-from sejoga.spring_tuning import (
+from sejoga.animacao.spring_tuning import (
     TENSAO_PADRAO,
     TENSAO_POR_JUNTA,
     amortecimento_de,
@@ -9,6 +8,7 @@ from sejoga.spring_tuning import (
     lag_de,
     tensao_de,
 )
+from sejoga.nucleo.rig import ALL_GROUPS
 
 
 def test_todos_os_grupos_tem_entrada():

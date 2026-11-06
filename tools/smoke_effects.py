@@ -15,7 +15,7 @@ def main():
     import win32con
     import win32gui
 
-    from sejoga.window import OverlayApp
+    from sejoga.render.window import OverlayApp
     settings = config.Settings()
     settings.music.enabled = False
     settings.physics.enabled = False
@@ -80,7 +80,7 @@ def main():
                 app.renderer.update_appendages(.033)
             assert pose["head"].x * vertical < 0 and pose["head"].y * horizontal > 0
             capture(name)
-        from sejoga.rig import IdlePersonality, pose_idle
+        from sejoga.nucleo.rig import IdlePersonality, pose_idle
         for personality in IdlePersonality:
             for phase in (0, .6, 1.2, 2.0):
                 app.renderer.rig.reset()
@@ -103,7 +103,7 @@ def main():
         # Full opening, then a half-retracted frame and a closed frame.
         import math
 
-        from sejoga.rig import Rotation3
+        from sejoga.nucleo.rig import Rotation3
         for _ in range(150):
             app.renderer.apply_rig_pose({"door": Rotation3(y=math.radians(85))})
             app.renderer.update_appendages(.033)

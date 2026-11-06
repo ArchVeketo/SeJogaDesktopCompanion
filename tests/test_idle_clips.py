@@ -3,10 +3,10 @@ from math import degrees
 
 import pytest
 
-from sejoga.animation import AnimationController
+from sejoga.animacao.animation import AnimationController
+from sejoga.animacao.idle_clips import CLIPS, sample_idle, sample_track
 from sejoga.config import Settings
-from sejoga.idle_clips import CLIPS, sample_idle, sample_track
-from sejoga.rig import ALL_GROUPS, IdlePersonality, Rig, Rotation3, pose_idle, pose_secondary
+from sejoga.nucleo.rig import ALL_GROUPS, IdlePersonality, Rig, Rotation3, pose_idle, pose_secondary
 
 
 @pytest.mark.parametrize("style", CLIPS)

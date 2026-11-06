@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from sejoga import rig_limiares as rl
-from sejoga.rig_mapa import DirecaoMundo
+from sejoga.rig_mapa import rig_limiares as rl
+from sejoga.rig_mapa.rig_mapa import DirecaoMundo
 
 
 # --------------------------------------------------------------------------- #

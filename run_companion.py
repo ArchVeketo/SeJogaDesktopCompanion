@@ -46,7 +46,7 @@ def main():
 
     # Now run the app
     from sejoga.config import load_settings
-    from sejoga.window import OverlayApp
+    from sejoga.render.window import OverlayApp
 
     settings = load_settings()
     app = OverlayApp(settings)

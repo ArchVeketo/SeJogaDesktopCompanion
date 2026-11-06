@@ -61,8 +61,8 @@ _SRC = RAIZ / "src"
 if str(_SRC) not in sys.path:
   sys.path.insert(0, str(_SRC))
 
-from sejoga import rig as rig_mod  # noqa: E402
-from sejoga import rig_debug as rd  # noqa: E402
+from sejoga.nucleo import rig as rig_mod  # noqa: E402
+from sejoga.rig_mapa import rig_debug as rd  # noqa: E402
 
 #: Pasta de saída das imagens (sempre dentro do worktree atual).
 DIR_SAIDA = RAIZ / ".agents" / "tasks" / "calibracao-vetores" / "imagens"
@@ -287,7 +287,7 @@ class RenderizadorCalibracao:
       OrthographicLens,
     )
 
-    from sejoga.assets import resolve_model
+    from sejoga.nucleo.assets import resolve_model
 
     render = self.base.render
     render.setShaderAuto()
@@ -579,8 +579,8 @@ def main(argv: list[str] | None = None) -> int:
   args = _montar_parser().parse_args(argv)
   t = args.t if args.t is not None else _INSTANTE_PADRAO[args.pose]
 
-  from sejoga.assets import resolve_model
-  from sejoga.model import load_model
+  from sejoga.nucleo.assets import resolve_model
+  from sejoga.nucleo.model import load_model
 
   model = load_model(resolve_model())
   pose = _carregar_pose(args.pose, t)

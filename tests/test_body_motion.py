@@ -2,7 +2,7 @@ from math import isfinite
 
 import pytest
 
-from sejoga.body_motion import BodyMotion, Spring
+from sejoga.animacao.body_motion import BodyMotion, Spring
 
 
 def test_spring_response_is_frame_rate_independent():

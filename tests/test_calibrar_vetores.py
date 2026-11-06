@@ -28,9 +28,9 @@ def _carregar(nome: str, caminho: Path):
 
 cv = _carregar("calibrar_vetores", RAIZ / "tools" / "calibrar_vetores.py")
 
-from sejoga import rig_debug as rd  # noqa: E402
-from sejoga.assets import resolve_model  # noqa: E402
-from sejoga.model import load_model  # noqa: E402
+from sejoga.nucleo.assets import resolve_model  # noqa: E402
+from sejoga.nucleo.model import load_model  # noqa: E402
+from sejoga.rig_mapa import rig_debug as rd  # noqa: E402
 
 
 def _estado(pose_nome: str) -> rd.EstadoRig:
@@ -42,7 +42,7 @@ def _estado(pose_nome: str) -> rd.EstadoRig:
 
 
 def test_carregar_pose_devolve_todos_os_grupos() -> None:
-  from sejoga.rig import ALL_GROUPS
+  from sejoga.nucleo.rig import ALL_GROUPS
 
   pose = cv._carregar_pose("idle", 1.0)
 

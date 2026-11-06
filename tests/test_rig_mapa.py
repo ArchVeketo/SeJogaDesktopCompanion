@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from sejoga import rig_mapa as rm
-from sejoga.assets import resolve_model
-from sejoga.model import load_model
-from sejoga.rig import ALL_GROUPS
+from sejoga.nucleo.assets import resolve_model
+from sejoga.nucleo.model import load_model
+from sejoga.nucleo.rig import ALL_GROUPS
+from sejoga.rig_mapa import rig_mapa as rm
 
 
 @pytest.fixture(scope="module")

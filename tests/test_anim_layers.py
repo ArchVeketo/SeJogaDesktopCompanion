@@ -1,8 +1,8 @@
 """Contratos das camadas aditivas e do mixer."""
 import pytest
 
-from sejoga.anim_layers import CamadaAnim, MixerCamadas
-from sejoga.rig import Rotation3
+from sejoga.animacao.anim_layers import CamadaAnim, MixerCamadas
+from sejoga.nucleo.rig import Rotation3
 
 
 def test_soma_aditiva_por_junta():

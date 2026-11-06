@@ -1,4 +1,4 @@
-from sejoga.attention import HoverAttention
+from sejoga.animacao.attention import HoverAttention
 
 
 def test_external_interactions_suspend_hover_until_idle():

@@ -13,7 +13,7 @@ from sejoga import config
 def main():
     profile=Path(tempfile.mkdtemp(prefix='sejoga-dance-performance-'))
     config.default_config_path=lambda:profile/'config.toml'
-    from sejoga.window import OverlayApp
+    from sejoga.render.window import OverlayApp
     settings=config.Settings()
     settings.physics.enabled=settings.music.enabled=False
     settings.window.outline_enabled=False

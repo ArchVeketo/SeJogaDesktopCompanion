@@ -19,7 +19,7 @@ def main():
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QWidget
 
-    from sejoga.window import OverlayApp
+    from sejoga.render.window import OverlayApp
     settings = config.Settings()
     settings.physics.enabled = settings.music.enabled = False
     settings.window.outline_enabled = False

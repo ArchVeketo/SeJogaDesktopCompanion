@@ -15,8 +15,8 @@ def main():
     from panda3d.core import Filename
     from PIL import Image, ImageDraw, ImageGrab
 
-    from sejoga.animation import AnimationController
-    from sejoga.window import OverlayApp
+    from sejoga.animacao.animation import AnimationController
+    from sejoga.render.window import OverlayApp
     settings=config.Settings()
     settings.physics.enabled=settings.music.enabled=False
     settings.window.outline_enabled=False

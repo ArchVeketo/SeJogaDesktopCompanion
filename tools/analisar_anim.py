@@ -652,7 +652,7 @@ def salvar_grafico(am: AmostragemClipe, destino: Path) -> bool:
 
 def _carregar_producao() -> dict[str, ClipeAnalisavel]:
     """Clipes de produção (walk, run) de ``sejoga.anim_clips``."""
-    from sejoga import anim_clips
+    from sejoga.animacao import anim_clips
 
     clipes: dict[str, ClipeAnalisavel] = {}
 
@@ -694,9 +694,9 @@ def _carregar_idle() -> dict[str, ClipeAnalisavel]:
     respiração (ver ``tests/test_idle_vivo.py``). Aqui medimos VIDA (energia > 0)
     e SUAVIDADE (ausência de trancos).
     """
-    from sejoga import rig as rig_mod
-    from sejoga.respiracao import Respiracao
-    from sejoga.respiracao_tuning import parametros_de
+    from sejoga.animacao.respiracao import Respiracao
+    from sejoga.animacao.respiracao_tuning import parametros_de
+    from sejoga.nucleo import rig as rig_mod
 
     fps = FPS
     dt = 1.0 / fps

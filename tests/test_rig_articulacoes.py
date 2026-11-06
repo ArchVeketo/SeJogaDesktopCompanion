@@ -15,12 +15,12 @@ from pathlib import Path
 
 import pytest
 
-from sejoga import rig_articulacoes as ra
-from sejoga.assets import resolve_model
-from sejoga.model import load_model
-from sejoga.rig import ALL_GROUPS, Rig, Rotation3
-from sejoga.rig_mapa import EstadoFlexao, Parte, PlanoFlexao, TipoArticulacao
-from sejoga.rig_medidas import medir_todas_as_partes
+from sejoga.nucleo.assets import resolve_model
+from sejoga.nucleo.model import load_model
+from sejoga.nucleo.rig import ALL_GROUPS, Rig, Rotation3
+from sejoga.rig_mapa import rig_articulacoes as ra
+from sejoga.rig_mapa.rig_mapa import EstadoFlexao, Parte, PlanoFlexao, TipoArticulacao
+from sejoga.rig_mapa.rig_medidas import medir_todas_as_partes
 
 
 @pytest.fixture(scope="module")

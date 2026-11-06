@@ -1,12 +1,12 @@
 """Contratos da tabela de respiração por personalidade e seus helpers."""
 
-import sejoga.respiracao_tuning as tuning
-from sejoga.respiracao_tuning import (
+from sejoga.animacao import respiracao_tuning as tuning
+from sejoga.animacao.respiracao_tuning import (
     PADRAO,
     RESPIRACAO_POR_PERSONALIDADE,
     parametros_de,
 )
-from sejoga.rig import IdlePersonality
+from sejoga.nucleo.rig import IdlePersonality
 
 
 def test_todas_as_personalidades_tem_entrada():

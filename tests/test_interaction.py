@@ -1,6 +1,6 @@
 """Gestos devem pertencer ao mascote antes de provocar efeitos no desktop."""
 
-from sejoga.interaction import MouseInteraction
+from sejoga.animacao.interaction import MouseInteraction
 
 
 def kinds(mouse, position=(100, 100), buttons=(), **kwargs):

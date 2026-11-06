@@ -10,7 +10,7 @@ if sys.platform != "win32":
 pytest.importorskip("pymunk")
 
 from sejoga.config import Settings
-from sejoga.physics import MAX_VELOCITY, ScreenSpacePhysics, Shelf
+from sejoga.desktop.physics import MAX_VELOCITY, ScreenSpacePhysics, Shelf
 
 
 def physics():
@@ -29,9 +29,9 @@ def advance(p, seconds=3):
 def test_throw_uses_current_samples_multiplier_and_grab_offset():
     p = physics()
     p.settings.physics.throw_multiplier = 2
-    with patch("sejoga.physics.time.monotonic", return_value=10.0):
+    with patch("sejoga.desktop.physics.time.monotonic", return_value=10.0):
         p.start_drag(280, 190)
-    with patch("sejoga.physics.time.monotonic", return_value=10.02):
+    with patch("sejoga.desktop.physics.time.monotonic", return_value=10.02):
         p.update_drag(300, 200)
         velocity = p.end_drag()
     assert tuple(p.body.position) == pytest.approx((320, 210))
@@ -51,11 +51,11 @@ def test_heavier_body_reduces_impulse_response():
 def test_pause_before_release_and_cancel_do_not_throw():
     for cancel in (True, False):
         p = physics()
-        with patch("sejoga.physics.time.monotonic", return_value=10):
+        with patch("sejoga.desktop.physics.time.monotonic", return_value=10):
             p.start_drag(300, 200)
-        with patch("sejoga.physics.time.monotonic", return_value=10.02):
+        with patch("sejoga.desktop.physics.time.monotonic", return_value=10.02):
             p.update_drag(500, 200)
-        with patch("sejoga.physics.time.monotonic", return_value=11):
+        with patch("sejoga.desktop.physics.time.monotonic", return_value=11):
             assert p.end_drag(cancel=cancel) == (0, 0)
         assert p.state.gravity_active == (not cancel)
 
@@ -63,9 +63,9 @@ def test_pause_before_release_and_cancel_do_not_throw():
 def test_throw_clamps_velocity_and_supports_negative_monitor_origin():
     p = physics()
     p.set_bounds((-1200, -100, 0, 800))
-    with patch("sejoga.physics.time.monotonic", return_value=10):
+    with patch("sejoga.desktop.physics.time.monotonic", return_value=10):
         p.start_drag(300, 200)
-    with patch("sejoga.physics.time.monotonic", return_value=10.001):
+    with patch("sejoga.desktop.physics.time.monotonic", return_value=10.001):
         p.update_drag(1000, -500)
         p.end_drag()
     assert p.body.velocity.length <= MAX_VELOCITY + 1e-6
@@ -88,7 +88,7 @@ def test_fall_bounces_and_settles_without_sleep_crash():
 def test_shelf_lands_from_above_and_body_passes_from_below():
     p = physics()
     shelf = Shelf(123, (100, 400, 700, 600), 400, 100, 700)
-    with patch("sejoga.physics.get_all_shelves", return_value=[shelf]):
+    with patch("sejoga.desktop.physics.get_all_shelves", return_value=[shelf]):
         p.refresh_shelves(force=True)
     p.set_gravity(True)
     advance(p, 3)
@@ -104,18 +104,18 @@ def test_shelf_lands_from_above_and_body_passes_from_below():
 def test_moving_and_closing_shelf_updates_collision_shape_and_body_falls():
     p = physics()
     shelf = Shelf(123, (100, 400, 700, 600), 400, 100, 700)
-    with patch("sejoga.physics.get_all_shelves", return_value=[shelf]):
+    with patch("sejoga.desktop.physics.get_all_shelves", return_value=[shelf]):
         p.refresh_shelves(force=True)
     p.set_gravity(True)
     advance(p)
     assert p.state.grounded
     moved = Shelf(123, (100, 600, 700, 750), 600, 100, 700)
-    with patch("sejoga.physics.get_all_shelves", return_value=[moved]):
+    with patch("sejoga.desktop.physics.get_all_shelves", return_value=[moved]):
         p.refresh_shelves(force=True)
     assert p.shelf_shapes[123].a.y == 600
     advance(p)
     assert p.body.position.y == pytest.approx(558, abs=4)
-    with patch("sejoga.physics.get_all_shelves", return_value=[]):
+    with patch("sejoga.desktop.physics.get_all_shelves", return_value=[]):
         p.refresh_shelves(force=True)
     advance(p)
     assert p.state.on_shelf is None
@@ -134,7 +134,7 @@ def test_nearby_shelf_is_not_ground_without_actual_contact():
 def test_walking_off_support_keeps_gravity_and_does_not_walk_in_air():
     p = physics()
     shelf = Shelf(123, (100, 400, 450, 600), 400, 100, 450)
-    with patch("sejoga.physics.get_all_shelves", return_value=[shelf]):
+    with patch("sejoga.desktop.physics.get_all_shelves", return_value=[shelf]):
         p.refresh_shelves(force=True)
     p.set_gravity(True)
     advance(p)
@@ -149,13 +149,13 @@ def test_walking_off_support_keeps_gravity_and_does_not_walk_in_air():
 
 
 def test_only_exposed_parts_of_background_window_are_shelves():
-    from sejoga.physics import get_all_shelves
+    from sejoga.desktop.physics import get_all_shelves
     bounds = {101: (400, 100, 600, 600), 102: (100, 300, 900, 700)}
     def enumerate_windows(callback, arg):
         for hwnd in bounds:
             callback(hwnd, arg)
-    with patch("sejoga.physics.win32gui.EnumWindows", side_effect=enumerate_windows), \
-         patch("sejoga.physics.is_valid_shelf", return_value=True), \
-         patch("sejoga.physics.frame_bounds", side_effect=bounds.get):
+    with patch("sejoga.desktop.physics.win32gui.EnumWindows", side_effect=enumerate_windows), \
+         patch("sejoga.desktop.physics.is_valid_shelf", return_value=True), \
+         patch("sejoga.desktop.physics.frame_bounds", side_effect=bounds.get):
         shelves = get_all_shelves(0, 0)
     assert [(s.left, s.right) for s in shelves if s.hwnd == 102] == [(100, 400), (600, 900)]

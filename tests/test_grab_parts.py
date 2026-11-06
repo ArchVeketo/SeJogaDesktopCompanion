@@ -1,4 +1,4 @@
-from sejoga.body_motion import BodyMotion
+from sejoga.animacao.body_motion import BodyMotion
 
 
 def test_grab_parts_change_suspension_and_release_recovers():

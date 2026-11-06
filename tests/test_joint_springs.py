@@ -3,9 +3,9 @@ from math import isfinite
 
 import pytest
 
-from sejoga.joint_springs import CADEIA_DIREITA, JointSpring, LagChain, SpringPose
-from sejoga.rig import Rotation3
-from sejoga.spring_tuning import amortecimento_de, frequencia_de
+from sejoga.animacao.joint_springs import CADEIA_DIREITA, JointSpring, LagChain, SpringPose
+from sejoga.animacao.spring_tuning import amortecimento_de, frequencia_de
+from sejoga.nucleo.rig import Rotation3
 
 
 def test_joint_spring_response_is_frame_rate_independent():

@@ -4,8 +4,8 @@ import random
 import pytest
 from panda3d.core import NodePath, Vec3
 
-from sejoga.rig import ALL_GROUPS, IdlePersonality, Rig, Rotation3
-from sejoga.tentacle_system import TentacleDirector, TentaclePool, TentacleState
+from sejoga.nucleo.rig import ALL_GROUPS, IdlePersonality, Rig, Rotation3
+from sejoga.tentaculos.tentacle_system import TentacleDirector, TentaclePool, TentacleState
 
 
 def scene():

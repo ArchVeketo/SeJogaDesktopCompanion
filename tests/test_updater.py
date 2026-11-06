@@ -6,8 +6,8 @@ from urllib.error import HTTPError
 
 import pytest
 
-from sejoga import updater
-from sejoga.updater import ReleaseInfo, download_update, parse_manifest, version_order
+from sejoga.distribuicao import updater
+from sejoga.distribuicao.updater import ReleaseInfo, download_update, parse_manifest, version_order
 
 
 def manifest(channel='release', version='0.2.0', build_id=2):

@@ -23,8 +23,8 @@ def main():
     import win32gui
     from PIL import ImageGrab
 
-    from sejoga.animation import AnimationState
-    from sejoga.window import WS_EX_TRANSPARENT, OverlayApp
+    from sejoga.animacao.animation import AnimationState
+    from sejoga.render.window import WS_EX_TRANSPARENT, OverlayApp
 
     settings = config.Settings()
     settings.physics.enabled = "--physics" in sys.argv
@@ -45,10 +45,10 @@ def main():
         # Keep the virtual cursor neutral instead of inheriting an I-beam/link
         # from wherever the user is currently pointing on the real desktop.
         cursor = win32gui.LoadCursor(0, 32512)  # IDC_ARROW
-        with patch("sejoga.window.win32gui.GetCursorPos", return_value=position), \
-             patch("sejoga.window.win32gui.GetCursorInfo", return_value=(1, cursor, position)), \
-             patch("sejoga.window.win32api.GetAsyncKeyState", return_value=0), \
-             patch("sejoga.window.win32gui.GetForegroundWindow", return_value=app._hover_foreground), \
+        with patch("sejoga.render.window.win32gui.GetCursorPos", return_value=position), \
+             patch("sejoga.render.window.win32gui.GetCursorInfo", return_value=(1, cursor, position)), \
+             patch("sejoga.render.window.win32api.GetAsyncKeyState", return_value=0), \
+             patch("sejoga.render.window.win32gui.GetForegroundWindow", return_value=app._hover_foreground), \
              patch.object(app, "_mouse_buttons", return_value=frozenset(buttons)):
             app._mouse_poll(None)
 
@@ -58,7 +58,7 @@ def main():
             time.sleep(0.017)
         app.taskMgr.remove("mouse-poll")
         app.taskMgr.remove("animation-frame")
-        with patch("sejoga.window.win32api.GetAsyncKeyState", return_value=0):
+        with patch("sejoga.render.window.win32api.GetAsyncKeyState", return_value=0):
             app._native_mouse_button("left", True)
             assert "left" in app._mouse_buttons(), "Native input must survive a zero async key state"
             app._native_mouse_button("left", False)
@@ -137,9 +137,9 @@ def main():
             p = app.physics
             left, top, right, _bottom = p.bounds
             p.set_position((left + right) / 2, top + 300)
-            with patch("sejoga.physics.time.monotonic", return_value=10.0):
+            with patch("sejoga.desktop.physics.time.monotonic", return_value=10.0):
                 p.start_drag(*p.state.position)
-            with patch("sejoga.physics.time.monotonic", return_value=10.02):
+            with patch("sejoga.desktop.physics.time.monotonic", return_value=10.02):
                 p.update_drag(p.state.position[0] + 20, p.state.position[1] - 10)
                 velocity = p.end_drag()
             assert velocity[0] > 0 and velocity[1] < 0

@@ -15,13 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from sejoga import colisao_membros as col
-from sejoga import rig as rig_mod
-from sejoga import rig_medidas as med
-from sejoga.assets import resolve_model
-from sejoga.model import load_model
-from sejoga.rig import Rotation3
-from sejoga.rig_mapa import (
+from sejoga.nucleo import rig as rig_mod
+from sejoga.nucleo.assets import resolve_model
+from sejoga.nucleo.model import load_model
+from sejoga.nucleo.rig import Rotation3
+from sejoga.rig_mapa import colisao_membros as col
+from sejoga.rig_mapa import rig_medidas as med
+from sejoga.rig_mapa.rig_mapa import (
   AlturaRelativa,
   EstadoParte,
   Lado,
