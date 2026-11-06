@@ -328,7 +328,7 @@ def pose_walk(rig: Rig, t: float, *, run: bool = False) -> None:
 
 def pose_wave(rig: Rig, t: float) -> None:
     """Aceno: braço direito sobe e o antebraço oscila."""
-    rig.set_rotation("right-arm", z=-65.0, x=-15.0)
+    rig.set_rotation("right-arm", z=150.0, x=-15.0)
     rig.set_rotation("ant-arm", x=sin(t * 8.0) * 25.0)
     rig.set_rotation("head", z=6.0)
 
@@ -534,8 +534,8 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
     durations = {"wave": 2.2, "stretch": 2.8, "peek": 9.0, "hit": .65}
     phase = min(1.0, max(0.0, t / durations[kind]))
     envelope = sin(phase * pi)
-    rig.set_rotation("right-arm", z=60)
-    rig.set_rotation("left-arm", z=-60)
+    rig.set_rotation("right-arm", z=70)
+    rig.set_rotation("left-arm", z=-70)
     if kind in ("wave", "stretch"):
         from sejoga.animacao.idle_clips import sample_track
         def value(*keys):
@@ -547,8 +547,8 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
             lift = value((0, 0), (.18, -.04), (.58, 1), (1.28, 1), (1.92, .12), (2.2, 0))
             wave = value((0, 0), (.56, 0), (.82, 1), (1.08, -.78), (1.34, .78),
                          (1.58, -.5), (1.82, 0), (2.2, 0))
-            rig.set_rotation("right-arm", x=-12 * lift, z=56 - 66 * lift)
-            rig.set_rotation("left-arm", x=2 * lift, z=-60 + 2 * lift)
+            rig.set_rotation("right-arm", x=-12 * lift, z=70 + 80 * lift)
+            rig.set_rotation("left-arm", x=2 * lift, z=-70 + 2 * lift)
             rig.set_rotation("ant-arm", x=-8 * lift, z=-26 * lift + 7 * wave)
             rig.set_rotation("ant-arm2", x=-3 * lift, z=13 * lift)
             # The GLTF palm normal is flipped around the forearm's long axis;
@@ -562,8 +562,8 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
             right = value((0, 0), (.28, -.15), (.82, 1), (1.25, .68), (1.95, 0), (2.8, 0))
             left = value((0, 0), (.72, 0), (1.35, 1), (1.78, .62), (2.58, 0), (2.8, 0))
             # Sequential shoulder roll looks like adjusting jacket/collar
-            rig.set_rotation("right-arm", x=-16 * right, z=48 - 32 * right)
-            rig.set_rotation("left-arm", x=-16 * left, z=-48 + 32 * left)
+            rig.set_rotation("right-arm", x=-16 * right, z=70 + 55 * right)
+            rig.set_rotation("left-arm", x=-16 * left, z=-70 - 55 * left)
             rig.set_rotation("ant-arm", x=-24 * right, z=-22 * right)
             rig.set_rotation("ant-arm2", x=-24 * left, z=22 * left)
             rig.set_rotation("hand", y=15 * right, z=-8 * right)
