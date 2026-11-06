@@ -53,3 +53,6 @@ captures/
 # Artefatos de agente / workflows (não versionar)
 .worktrees/
 .agents/tasks/
+
+# Venv de build local (gerar bundle/instalador)
+.venv-build/
