@@ -201,6 +201,68 @@ def test_montar_volumes_classifica_membro_e_bloco(model) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# (FEAT-A) Pares novos: mão/antebraço vs pernas/pés (o caso dos dedos na perna)
+# --------------------------------------------------------------------------- #
+def test_pares_novos_mao_antebraco_vs_pernas_e_pes_existem() -> None:
+  # Os pares faltantes do buraco da FEAT-A entraram em PARES_A_CHECAR.
+  esperados = {
+    (Parte.MAO_DIREITA, Parte.PERNAS),
+    (Parte.MAO_ESQUERDA, Parte.PERNAS),
+    (Parte.ANTEBRACO_DIREITO, Parte.PERNAS),
+    (Parte.ANTEBRACO_ESQUERDO, Parte.PERNAS),
+    (Parte.MAO_DIREITA, Parte.PE_DIREITO),
+    (Parte.MAO_DIREITA, Parte.PE_ESQUERDO),
+    (Parte.MAO_ESQUERDA, Parte.PE_DIREITO),
+    (Parte.MAO_ESQUERDA, Parte.PE_ESQUERDO),
+    (Parte.ANTEBRACO_DIREITO, Parte.PE_DIREITO),
+    (Parte.ANTEBRACO_DIREITO, Parte.PE_ESQUERDO),
+    (Parte.ANTEBRACO_ESQUERDO, Parte.PE_DIREITO),
+    (Parte.ANTEBRACO_ESQUERDO, Parte.PE_ESQUERDO),
+  }
+
+  assert esperados <= set(col.PARES_A_CHECAR)
+
+
+def test_mao_dentro_da_perna_e_detectada() -> None:
+  # Pose sintética: a MÃO (cápsula) mergulha na cápsula das PERNAS.
+  origem_perna = (0.0, 0.5, 0.0)
+  ponta_perna = (0.0, 0.0, 0.0)
+  # Mão horizontal cruzando a linha central no meio da perna.
+  origem_mao = (0.3, 0.25, 0.0)
+  ponta_mao = (-0.05, 0.25, 0.0)  # ponta já dentro do eixo da perna
+
+  partes = {
+    Parte.MAO_DIREITA: _estado_sintetico(Parte.MAO_DIREITA, origem_mao, ponta_mao),
+    Parte.PERNAS: _estado_sintetico(Parte.PERNAS, origem_perna, ponta_perna),
+  }
+
+  colisoes = col.detectar_colisoes(partes, "sintetica", 0.0)
+  pares = {c.par for c in colisoes}
+
+  assert (Parte.MAO_DIREITA, Parte.PERNAS) in pares
+
+  colisao = next(c for c in colisoes if c.par == (Parte.MAO_DIREITA, Parte.PERNAS))
+  assert colisao.profundidade_u >= col.LIMIAR_PENETRACAO_U
+
+
+def test_capsula_da_mao_estende_ate_os_dedos() -> None:
+  # A cápsula da mão vai ALÉM da ponta medida por EXTENSAO_DEDOS_U (cobre os dedos).
+  origem = (0.0, 0.5, 0.0)
+  ponta = (0.0, 0.3, 0.0)  # comprimento 0,2 na vertical (-Y)
+
+  partes = {
+    Parte.MAO_DIREITA: _estado_sintetico(Parte.MAO_DIREITA, origem, ponta),
+  }
+  volumes = col.montar_volumes(partes)
+  capsula = volumes[Parte.MAO_DIREITA]
+
+  assert isinstance(capsula, col.Capsula)
+  # A ponta da cápsula desceu EXTENSAO_DEDOS_U abaixo da ponta medida.
+  assert capsula.b[1] == pytest.approx(ponta[1] - col.EXTENSAO_DEDOS_U, abs=1e-9)
+  assert capsula.a == origem
+
+
+# --------------------------------------------------------------------------- #
 # (FEAT-002) Gancho de correção inerte — resolver_colisoes reduz penetração
 # --------------------------------------------------------------------------- #
 def _estado_sintetico(

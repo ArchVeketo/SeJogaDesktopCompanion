@@ -79,6 +79,18 @@ AMOSTRAS_CAPSULA_CAIXA: int = 12
 #: falsos positivos; descer flagra roçadas leves.
 LIMIAR_PENETRACAO_U: float = 0.02
 
+#: Extensão (``u``) que a cápsula da mão ganha ALÉM da ponta medida, para cobrir
+#: os DEDOS (``fingers``/``fingers2``). MODELAGEM (FEAT-A): os dedos são a ponta
+#: real que entra na perna, mas o rig NÃO mede um comprimento de dedo confiável —
+#: ``fingers`` não tem filho, então ``rig_medidas`` cairia no fallback "distância
+#: ao chão" (~0,63 u, uma cápsula gigante indo até o piso), o que geraria
+#: interpenetração espúria contra pernas/pés em TODA pose. Por isso NÃO se usa a
+#: cápsula própria dos dedos: em vez disso a cápsula da MÃO é ESTENDIDA por este
+#: valor fixo ao longo do seu eixo longo, passando a representar mão+dedos como um
+#: único tubo cuja ponta é a ponta dos dedos. É o excedente plausível de um dedo
+#: esticado (~metade do comprimento da mão). Calibrável no relatório.
+EXTENSAO_DEDOS_U: float = 0.06
+
 # --------------------------------------------------------------------------- #
 # PARÂMETROS da CORREÇÃO (FEAT-002) — usados só por ``resolver_colisoes``.
 #
@@ -311,7 +323,11 @@ def penetracao_capsula_caixa(cap: Capsula, caixa: CaixaOrientada) -> float:
 # --------------------------------------------------------------------------- #
 #: Só os pares que de fato podem se atravessar numa pose do companion: braços e
 #: suas pontas contra o CORPO; mãos/antebraços contra CABECA e PORTA; os dois
-#: braços (e antebraços/mãos) cruzando a linha central; pernas e pés entre si.
+#: braços (e antebraços/mãos) cruzando a linha central; pernas e pés entre si; e
+#: (FEAT-A) mãos/antebraços de cada lado contra as PERNAS e os PÉS — o caso em
+#: que os braços longos, ao relaxar/esticar, levam a MÃO e os DEDOS para dentro
+#: das pernas. A cápsula da mão já se estende até a ponta dos dedos
+#: (``EXTENSAO_DEDOS_U``), então estes pares captam também os dedos.
 #: A ordem (A, B) não importa para a matemática; é só a lista a varrer.
 PARES_A_CHECAR: tuple[tuple[Parte, Parte], ...] = (
   # Braço/antebraço/mão de cada lado contra o TRONCO.
@@ -341,7 +357,26 @@ PARES_A_CHECAR: tuple[tuple[Parte, Parte], ...] = (
   (Parte.PERNAS, Parte.PE_ESQUERDO),
   (Parte.PERNAS, Parte.PE_DIREITO),
   (Parte.PE_ESQUERDO, Parte.PE_DIREITO),
+  # (FEAT-A) Mão/antebraço de cada lado contra as PERNAS (dedos entram na perna).
+  (Parte.MAO_DIREITA, Parte.PERNAS),
+  (Parte.MAO_ESQUERDA, Parte.PERNAS),
+  (Parte.ANTEBRACO_DIREITO, Parte.PERNAS),
+  (Parte.ANTEBRACO_ESQUERDO, Parte.PERNAS),
+  # (FEAT-A) Mão/antebraço de cada lado contra os PÉS (dos dois lados).
+  (Parte.MAO_DIREITA, Parte.PE_DIREITO),
+  (Parte.MAO_DIREITA, Parte.PE_ESQUERDO),
+  (Parte.MAO_ESQUERDA, Parte.PE_DIREITO),
+  (Parte.MAO_ESQUERDA, Parte.PE_ESQUERDO),
+  (Parte.ANTEBRACO_DIREITO, Parte.PE_DIREITO),
+  (Parte.ANTEBRACO_DIREITO, Parte.PE_ESQUERDO),
+  (Parte.ANTEBRACO_ESQUERDO, Parte.PE_DIREITO),
+  (Parte.ANTEBRACO_ESQUERDO, Parte.PE_ESQUERDO),
 )
+
+#: Mãos cuja cápsula é ESTENDIDA até a ponta dos dedos (ver ``EXTENSAO_DEDOS_U``).
+#: Os nós ``fingers``/``fingers2`` não viram cápsula própria por falta de
+#: comprimento medível; a mão os absorve estendendo o próprio tubo.
+PARTES_MAO: frozenset[Parte] = frozenset({Parte.MAO_DIREITA, Parte.MAO_ESQUERDA})
 
 #: Partes representadas por CAIXA ORIENTADA (as demais relevantes são cápsulas).
 PARTES_CAIXA: dict[Parte, Vetor3] = {
@@ -365,6 +400,22 @@ _EIXOS_MUNDO: tuple[Vetor3, Vetor3, Vetor3] = (
 def _raio_de(parte: Parte) -> float:
   """Raio da cápsula do membro (padrão para membros fora do mapa)."""
   return RAIOS_MEMBRO.get(parte, RAIO_MEMBRO_PADRAO)
+
+
+def _estender_ate_dedos(origem: Vetor3, ponta: Vetor3) -> Vetor3:
+  """Estende a ponta da mão por ``EXTENSAO_DEDOS_U`` ao longo do eixo da mão.
+
+  Devolve um novo ponto-ponta ``EXTENSAO_DEDOS_U`` adiante de ``ponta``, na
+  direção ``origem->ponta`` (o eixo longo medido da mão). Assim a cápsula da mão
+  passa a cobrir os DEDOS sem depender do comprimento de dedo (que o rig não
+  mede). Segmento degenerado (origem == ponta) volta inalterado (fail-safe).
+  """
+  direcao = _normalizar(_sub(ponta, origem))
+
+  if direcao == (0.0, 0.0, 0.0):
+    return ponta
+
+  return _soma(ponta, _escala(direcao, EXTENSAO_DEDOS_U))
 
 
 def _eixos_da_caixa(estado: EstadoParte) -> tuple[Vetor3, Vetor3, Vetor3]:
@@ -419,6 +470,11 @@ def montar_volumes(partes: dict[Parte, EstadoParte]) -> dict[Parte, Volume]:
       ponta = estado.ponta_mundo
 
       if ponta is not None:
+        # Mãos estendem a cápsula até a ponta dos dedos (ver EXTENSAO_DEDOS_U);
+        # as demais usam o segmento origem->ponta medido.
+        if parte in PARTES_MAO:
+          ponta = _estender_ate_dedos(estado.origem_mundo, ponta)
+
         volumes[parte] = Capsula(a=estado.origem_mundo, b=ponta, raio=_raio_de(parte))
 
     elif parte in PARTES_CAIXA:
@@ -702,6 +758,7 @@ def detectar_colisoes(
 
 __all__ = [
   "AMOSTRAS_CAPSULA_CAIXA",
+  "EXTENSAO_DEDOS_U",
   "FOLGA_U",
   "FORCA_CORRECAO",
   "LIMIAR_PENETRACAO_U",
@@ -710,6 +767,7 @@ __all__ = [
   "MEIA_DIM_TRONCO",
   "PARES_A_CHECAR",
   "PARTES_CAIXA",
+  "PARTES_MAO",
   "RAIOS_MEMBRO",
   "RAIO_MEMBRO_PADRAO",
   "CaixaOrientada",
