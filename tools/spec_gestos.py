@@ -114,9 +114,10 @@ class SpecGesto:
 # que uma saudação humana deve ter. Leitura das curvas de pose_flourish wave
 # (lift sobe de 0→1→0; wave inverte +1,-0.78,+0.78,-0.5,0):
 #
-#   right-arm: x=-12*lift, z=70+80*lift  → ERGUE no eixo Z (70→~150, amp ~80°).
-#     (Convenção da geometria real: Z CRESCE para erguer o braço; a base antiga
-#      invertia isso — Z reduzia — deixando o braço baixado/cruzando no aceno.)
+#   right-arm: x=-12*lift; elevação por IK no eixo Z → ERGUE (z vai de ~+74
+#     baixado para ~-66 acima do ombro, amp ~140°).
+#     (Convenção PROVADA em pixels: a elevação é o ROLL (Z) e z NEGATIVO ergue;
+#      o código antigo erguia por Y/heading, mandando o braço p/ profundidade.)
 #   ant-arm:   z=-26*lift + 7*wave.
 #   hand:      x=180*lift + 12*wave, z=2*wave
 #              → o eixo X carrega o lift (gira o pulso 180° pra mostrar a palma)
@@ -137,15 +138,15 @@ SPEC_WAVE = SpecGesto(
         ExpectativaGesto(
             grupo="right-arm",
             tipo=TipoExpectativa.ERGUE,
-            eixo="y",
+            eixo="z",
             amplitude_min=40.0,
-            sentido=SENTIDO_POSITIVO,
-            # Migração para IK (convenção medida no renderer): a ELEVAÇÃO do
-            # braço é o HEADING (Y = ``Rotation3.y``), não o roll. No aceno o
-            # braço ergue de ~-74° (baixado) até ~+66° (acima do ombro), então
-            # a amplitude em Y cresce bem acima de 40°. O eixo Z passou a ser o
-            # azimute (avanço/recuo), que quase não muda no wave.
-            descricao="o braço direito ergue (elevação Y cresce de ~-74° até ≈+66°)",
+            sentido=SENTIDO_NEGATIVO,
+            # Convenção PROVADA em pixels: a ELEVAÇÃO do braço é o ROLL
+            # (Z = ``Rotation3.z``), não o heading, e z NEGATIVO ergue. No aceno
+            # o braço ergue de ~+74° (baixado) até ~-66° (acima do ombro), então
+            # a amplitude em Z é grande e o SENTIDO é NEGATIVO (z diminui). O
+            # eixo Y passou a ser a profundidade, que quase não muda no wave.
+            descricao="o braço direito ergue (elevação Z cai de ~+74° até ≈-66°)",
         ),
         ExpectativaGesto(
             grupo="hand",

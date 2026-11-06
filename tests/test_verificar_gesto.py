@@ -212,24 +212,23 @@ def test_fase_braco_antes_da_mao_passa() -> None:
 # --------------------------------------------------------------------------- #
 
 def test_spec_piloto_inteira_passa_com_clipe_valido() -> None:
-    # Pós-IK: um aceno válido ERGUE o braço no eixo Z (de ~-86° baixado até
-    # ~+40°, a mão sobe acima do ombro pelo cotovelo dobrado), a mão oscila no
-    # eixo X em torno do neutro (palma para FORA com o pulso neutro) e os pés
-    # ficam parados. Estes valores vêm da geometria real do rig (ver arm_ik):
-    # arm z=40 + elbow=44 coloca a mão acima do ombro com palma para fora.
+    # Provado em pixels: um aceno válido ERGUE o braço no eixo Z (de ~+74°
+    # baixado até ~-66° acima do ombro; z NEGATIVO ergue), a mão oscila no eixo
+    # X em torno do neutro (palma para FORA com o pulso neutro) e os pés ficam
+    # parados. Estes valores vêm da geometria real do rig (ver arm_ik).
     def amostrar(t: float) -> Pose:
-        # Pós-IK (convenção do renderer): a ELEVAÇÃO do braço é o heading Y. Um
-        # aceno válido ergue Y de ~-74° (baixado) até ~+66° (acima do ombro),
-        # dobra o cotovelo (ant-arm roll Z) e balança a mão no eixo X em torno
-        # do neutro (palma para FORA com o pulso neutro). Tudo medido do rig.
-        # Rotation3 = (x, y, z); aqui setamos y (elevação) e z (azimute/cotovelo).
+        # Convenção PROVADA (renderer): a ELEVAÇÃO do braço é o ROLL (Z) e z
+        # NEGATIVO ergue. Um aceno válido move Z de ~+74° (baixado) até ~-66°
+        # (acima do ombro), dobra o cotovelo (ant-arm roll Z) e balança a mão no
+        # eixo X em torno do neutro. Rotation3 = (x, y, z); a elevação é z e a
+        # profundidade é y (≈0 no wave).
         fase = math.pi * (t / 2.2)
         lift = math.sin(fase)
-        y_braco = -74.0 + (66.0 - (-74.0)) * lift   # ELEVA no heading Y (sobe)
+        z_braco = 74.0 + (-66.0 - 74.0) * lift      # ERGUE no roll Z (z cai)
         z_antebraco = 0.0 + 44.0 * lift             # cotovelo dobra ao erguer
         x_mao = 25.0 * math.sin(math.tau * 3 * t)   # aceno em torno do neutro
         return {
-            "right-arm": (0.0, y_braco, -14.0),
+            "right-arm": (0.0, 0.0, z_braco),
             "ant-arm": (0.0, 0.0, z_antebraco),
             "hand": (x_mao, 0.0, 0.0),
             "left-feet": (0.0, 0.0, 0.0),
@@ -244,13 +243,13 @@ def test_spec_piloto_inteira_passa_com_clipe_valido() -> None:
 
 
 def test_spec_piloto_falha_quando_mao_fica_parada() -> None:
-    # Igual ao válido (braço ergue na elevação Y), mas a mão NÃO acena (fica
-    # parada) → reprova a spec. Pós-IK a elevação é o heading Y.
+    # Igual ao válido (braço ergue na elevação Z), mas a mão NÃO acena (fica
+    # parada) → reprova a spec. Provado: a elevação é o roll Z (z negativo ergue).
     def amostrar(t: float) -> Pose:
         fase = math.pi * (t / 2.2)
-        y_braco = -74.0 + (66.0 - (-74.0)) * math.sin(fase)
+        z_braco = 74.0 + (-66.0 - 74.0) * math.sin(fase)
         return {
-            "right-arm": (0.0, y_braco, -14.0),
+            "right-arm": (0.0, 0.0, z_braco),
             "hand": (0.0, 0.0, 0.0),
             "left-feet": (0.0, 0.0, 0.0),
             "right-feet": (0.0, 0.0, 0.0),

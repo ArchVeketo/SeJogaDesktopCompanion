@@ -159,14 +159,14 @@ def test_porta_classifica_por_faixa(rig, model, angulo, esperado) -> None:
 # --------------------------------------------------------------------------- #
 # MEMBROS — braço erguido vs. baixado; elevação
 # --------------------------------------------------------------------------- #
-# NOTA DE CONVENÇÃO (pós-IK, medida no RENDERER — ver arm_ik): o eixo longo do
-# braço é +X (não -Y) e a ELEVAÇÃO é o HEADING (Y), não o roll. Com a pose zero
-# o braço fica LATERAL (T-pose, elevação 0); baixar = Y negativo, erguer = Y
-# positivo; o azimute (avanço/recuo) é o roll (Z). rig_debug sobrescreve a
-# geometria dos braços pela FK do renderer para bater com o que é renderizado.
+# NOTA DE CONVENÇÃO (PROVADA em pixels de tela — ver arm_ik): o eixo longo do
+# braço é +X (não -Y) e a ELEVAÇÃO na tela é o ROLL (Z), não o heading. Com a
+# pose zero o braço fica LATERAL (T-pose, elevação 0); erguer = Z NEGATIVO,
+# baixar = Z positivo; a profundidade (avanço/recuo) é o heading (Y). rig_debug
+# sobrescreve a geometria dos braços pela FK do renderer para bater com a tela.
 def test_braco_em_repouso_fica_baixado(rig, model) -> None:
-  # "Baixado" agora é elevação Y negativa (Y=-80 = quase reto para baixo).
-  rig.set_rotation("right-arm", y=-80.0)
+  # "Baixado" agora é elevação Z positiva (Z=+80 = quase reto para baixo).
+  rig.set_rotation("right-arm", z=80.0)
   estado = rd.estado_rig(rig.pose(), model)
 
   assert estado.membros["right-arm"].direcao_flag == "BAIXADO"
@@ -174,8 +174,8 @@ def test_braco_em_repouso_fica_baixado(rig, model) -> None:
 
 
 def test_braco_erguido_pela_rotacao_em_z(rig, model) -> None:
-  # Elevação +80° no HEADING (Y) ergue o braço (eixo longo +X vira +Y).
-  rig.set_rotation("right-arm", y=80.0)
+  # Elevação por ROLL (Z) NEGATIVO ergue o braço (eixo longo +X vira +Y).
+  rig.set_rotation("right-arm", z=-80.0)
   estado = rd.estado_rig(rig.pose(), model)
 
   assert estado.membros["right-arm"].direcao_flag == "ERGUIDO"
@@ -190,41 +190,41 @@ def test_membro_lateral_pela_rotacao_em_z(rig, model) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# ABERTURA/ELEVAÇÃO DO BRAÇO — pós-IK: elevação é o heading Y
+# ABERTURA/ELEVAÇÃO DO BRAÇO — provado: elevação é o roll Z (z negativo ergue)
 # --------------------------------------------------------------------------- #
 def test_abertura_lateral_cresce_com_z(rig, model) -> None:
-  # Elevação Y=-55 vs Y=-85: ambos BAIXADOS, mas Y=-85 está mais reto p/ baixo.
-  rig.set_rotation("right-arm", y=-55.0)
+  # Elevação Z=+55 vs Z=+85: ambos BAIXADOS, mas Z=+85 está mais reto p/ baixo.
+  rig.set_rotation("right-arm", z=55.0)
   aberto_55 = rd.estado_rig(rig.pose(), model).membros["right-arm"]
 
-  rig.set_rotation("right-arm", y=-85.0)
+  rig.set_rotation("right-arm", z=85.0)
   aberto_85 = rd.estado_rig(rig.pose(), model).membros["right-arm"]
 
   assert aberto_55.direcao_flag == "BAIXADO"
   assert aberto_85.direcao_flag == "BAIXADO"
-  # Mais elevação negativa = mais baixo (elevação menor).
+  # Mais elevação (Z maior) = mais baixo (elevação menor, mais negativa).
   assert aberto_85.elevacao_graus < aberto_55.elevacao_graus - 20.0
 
 
 def test_abertura_flag_colado_semiaberto_aberto(rig, model) -> None:
-  # A abertura lateral cresce conforme o braço se aproxima da horizontal (Y→0).
-  rig.set_rotation("right-arm", y=-85.0)
+  # A abertura lateral cresce conforme o braço se aproxima da horizontal (Z→0).
+  rig.set_rotation("right-arm", z=85.0)
   assert rd.estado_rig(rig.pose(), model).membros["right-arm"].abertura_flag == "COLADO"
 
-  rig.set_rotation("right-arm", y=-55.0)
+  rig.set_rotation("right-arm", z=55.0)
   assert rd.estado_rig(rig.pose(), model).membros["right-arm"].abertura_flag == "SEMIABERTO"
 
-  rig.set_rotation("right-arm", y=-5.0)
+  rig.set_rotation("right-arm", z=5.0)
   assert rd.estado_rig(rig.pose(), model).membros["right-arm"].abertura_flag == "ABERTO"
 
 
 def test_abertura_frontal_cresce_ao_projetar_eixo_longo_a_frente(rig, model) -> None:
-  # Azimute (roll Z) negativo gira o braço para a FRENTE (+Z): a abertura
-  # frontal sai de ~0 para ~+45°.
-  rig.set_rotation("right-arm", z=0.0)
+  # Profundidade (heading Y) negativa gira o braço para a FRENTE (+Z): a
+  # abertura frontal sai de ~0 para ~+45°.
+  rig.set_rotation("right-arm", y=0.0)
   reto = rd.estado_rig(rig.pose(), model).membros["right-arm"]
 
-  rig.set_rotation("right-arm", z=-45.0)
+  rig.set_rotation("right-arm", y=-45.0)
   frente = rd.estado_rig(rig.pose(), model).membros["right-arm"]
 
   assert frente.abertura_frontal_graus > reto.abertura_frontal_graus + 20.0
@@ -234,12 +234,12 @@ def test_abertura_frontal_cresce_ao_projetar_eixo_longo_a_frente(rig, model) -> 
 # POSIÇÃO DA MÃO — ponta da cadeia braço->antebraço->mão relativa ao corpo
 # --------------------------------------------------------------------------- #
 def test_posicao_mao_afasta_lateralmente_conforme_pose(rig, model) -> None:
-  # Pós-IK: com o braço LATERAL (elevação Y=0) a mão fica BEM afastada no eixo
-  # X; baixando o braço (Y=-80) a mão recolhe para perto da linha do corpo.
-  rig.set_rotation("right-arm", y=0.0)
+  # Provado: com o braço LATERAL (elevação Z=0) a mão fica BEM afastada no eixo
+  # X; baixando o braço (Z=+80) a mão recolhe para perto da linha do corpo.
+  rig.set_rotation("right-arm", z=0.0)
   espalhado = rd.estado_rig(rig.pose(), model).mao_direita
 
-  rig.set_rotation("right-arm", y=-80.0)
+  rig.set_rotation("right-arm", z=80.0)
   recolhido = rd.estado_rig(rig.pose(), model).mao_direita
 
   assert abs(espalhado.posicao_offset[0]) > abs(recolhido.posicao_offset[0])
@@ -253,7 +253,7 @@ def test_posicao_mao_offset_bate_com_cadeia_propagada(rig, model) -> None:
   # corpo. Confere a consistência interna do override de braços do rig_debug.
   from sejoga.animacao import arm_ik
 
-  rig.set_rotation("right-arm", y=-40.0)
+  rig.set_rotation("right-arm", z=40.0)
   pose = rig.pose()
   estado = rd.estado_rig(pose, model)
 
@@ -268,9 +268,9 @@ def test_posicao_mao_offset_bate_com_cadeia_propagada(rig, model) -> None:
 
 
 def test_posicao_mao_a_frente_quando_braco_projeta_para_frente(rig, model) -> None:
-  # Braço elevado (Y=80) e com azimute para a frente (Z=-70) leva a PONTA da
-  # mão para +Z — a posição 3D real da mão, não só o eixo longo abstrato.
-  rig.set_rotation("right-arm", y=80.0, z=-70.0)
+  # Braço elevado (Z=-80) e com profundidade para a frente (Y=-70) leva a PONTA
+  # da mão para +Z — a posição 3D real da mão, não só o eixo longo abstrato.
+  rig.set_rotation("right-arm", z=-80.0, y=-70.0)
   estado = rd.estado_rig(rig.pose(), model).mao_direita
 
   assert estado.posicao_offset[2] > 0.0
