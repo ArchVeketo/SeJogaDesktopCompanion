@@ -651,7 +651,7 @@ def salvar_grafico(am: AmostragemClipe, destino: Path) -> bool:
 # --------------------------------------------------------------------------- #
 
 def _carregar_producao() -> dict[str, ClipeAnalisavel]:
-    """Clipes de produção (walk, run) de ``sejoga.anim_clips``."""
+    """Clipes de produção (walk, run) de ``sejoga.animacao.anim_clips``."""
     from sejoga.animacao import anim_clips
 
     clipes: dict[str, ClipeAnalisavel] = {}

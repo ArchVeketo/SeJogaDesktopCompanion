@@ -1,7 +1,7 @@
 """Casos que PROVAM a medição de articulações da Fase 3 (seção 6).
 
 Monta poses conhecidas num ``Rig`` em repouso com ``rig.ALL_GROUPS``, carrega o
-``Model`` real via ``sejoga.assets.resolve_model`` e confere que as articulações
+``Model`` real via ``sejoga.nucleo.assets.resolve_model`` e confere que as articulações
 são medidas e classificadas como deveriam: cotovelo esticado em repouso, flexão
 crescendo ao girar o antebraço, fronteiras exatas do estado e ``fora_do_limite``.
 

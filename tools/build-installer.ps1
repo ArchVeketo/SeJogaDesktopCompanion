@@ -79,7 +79,7 @@ $buildId = [int64]((Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss'))
 $gerarInfo = @"
 import json, sys
 sys.path.insert(0, r'$($workspace -replace '\\','\\')\src')
-from sejoga.updater import ReleaseInfo, version_order
+from sejoga.distribuicao.updater import ReleaseInfo, version_order
 info = ReleaseInfo('$Version', 'release', $buildId)
 json.dump({'schema_version': 1, 'architecture': 'windows-x64', 'channel': info.channel,
            'version': info.version, 'build_id': info.build_id,

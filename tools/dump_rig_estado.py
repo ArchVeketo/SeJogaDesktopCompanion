@@ -2,7 +2,7 @@
 
 Aplica uma pose de produção (idle, wave, dance, sleep, drag, thrown e algumas
 interações) a um ``Rig`` em repouso e imprime, em linguagem natural, para onde
-cada parte do corpo está apontando segundo ``sejoga.rig_debug.estado_rig``:
+cada parte do corpo está apontando segundo ``sejoga.rig_mapa.rig_debug.estado_rig``:
 mãos, cabeça, corpo, porta, braços/antebraços/ombros, pernas, pés e orientação
 GLOBAL — com as flags discretas e os valores contínuos em graus.
 

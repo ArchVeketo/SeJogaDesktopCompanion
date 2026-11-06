@@ -2,7 +2,7 @@
 
 Montamos poses conhecidas instanciando um ``Rig`` em repouso com
 ``rig.ALL_GROUPS`` (como ``tools/verificar_gesto.py:_carregar_wave_producao``),
-carregamos o ``Model`` real via ``sejoga.assets.resolve_model`` e conferimos que
+carregamos o ``Model`` real via ``sejoga.nucleo.assets.resolve_model`` e conferimos que
 ``rig_debug.estado_rig`` classifica cada parte do corpo como deveria.
 
 Cobre o caso do usuário: palma para baixo vs. para cima (roll 180° no eixo do

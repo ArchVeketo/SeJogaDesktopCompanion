@@ -351,7 +351,7 @@ class OverlayApp(ShowBase):
 
         A correção amortecida no ``AnimationController`` mede as partes do rig a
         partir deste modelo. É o mesmo glTF/GLB do render, lido pelo leitor puro
-        (``sejoga.model``), independente do Panda3D. Falha de carga NÃO derruba
+        (``sejoga.nucleo.model``), independente do Panda3D. Falha de carga NÃO derruba
         o companion: devolve ``None`` e a correção fica inerte.
         """
         try:

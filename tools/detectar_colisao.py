@@ -1,7 +1,7 @@
 """Varredura de INTERPENETRAÇÃO entre membros nas poses reais (sem engine aqui).
 
 Aplica TODAS as poses de produção a um ``Rig`` em repouso, mede cada parte com
-``sejoga.rig_medidas`` e roda ``sejoga.colisao_membros.detectar_colisoes`` em
+``sejoga.rig_mapa.rig_medidas`` e roda ``sejoga.rig_mapa.colisao_membros.detectar_colisoes`` em
 vários instantes de cada pose. Agrega por par/pose a profundidade máxima, média
 e o instante do pico, imprime um laudo em português e, com ``--md CAMINHO``,
 grava o mesmo conteúdo em markdown (a EVIDÊNCIA que guia o FEAT-002).

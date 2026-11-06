@@ -46,7 +46,7 @@ class TipoExpectativa(StrEnum):
     FASE = "FASE"
 
     #: No instante final do gesto, uma PARTE do corpo (lida por
-    #: ``sejoga.rig_debug.estado_rig``) deve estar numa FLAG esperada — ex.:
+    #: ``sejoga.rig_mapa.rig_debug.estado_rig``) deve estar numa FLAG esperada — ex.:
     #: "ao fim do aceno a palma direita aponta para FORA". Complementa os eixos
     #: crus: em vez de medir oscilação, afirma a ORIENTAÇÃO final legível.
     FLAG = "FLAG"

@@ -1,4 +1,4 @@
-"""Testes do pipeline de medição por parte (``sejoga.rig_medidas``).
+"""Testes do pipeline de medição por parte (``sejoga.rig_mapa.rig_medidas``).
 
 Cobre: (a) medições analíticas de ângulo e classificação de direção; (b)
 invariante de corpo rígido (vetores perpendiculares seguem perpendiculares sob

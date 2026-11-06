@@ -2,7 +2,7 @@
 
 Problema que resolve
 --------------------
-``sejoga.rig_debug`` classifica flags como "palma PARA_CIMA" girando VETORES DE
+``sejoga.rig_mapa.rig_debug`` classifica flags como "palma PARA_CIMA" girando VETORES DE
 REFERÊNCIA (normal da palma, dorso, direção dos dedos, olhar/topo da cabeça,
 normal da porta, eixo longo dos pés...). Vários desses vetores estão marcados
 com ``# A VALIDAR`` em ``VETORES_REFERENCIA`` porque foram deduzidos sem
@@ -20,7 +20,7 @@ Fronteira
 ---------
 Este arquivo é FERRAMENTA (``tools/``): pode importar o engine (Panda3D) porque
 é código de render offscreen. Ele NÃO altera módulos de produção — apenas LÊ
-``sejoga.rig_debug.VETORES_REFERENCIA`` / ``estado_rig`` e ``sejoga.rig``.
+``sejoga.rig_mapa.rig_debug.VETORES_REFERENCIA`` / ``estado_rig`` e ``sejoga.nucleo.rig``.
 
 Convenção de rotação (idêntica a ``renderer.apply_rig_pose`` e ``rig_debug``):
 de ``Rotation3(x, y, z)`` em radianos derivamos ``H = y`` (heading), ``P = x``

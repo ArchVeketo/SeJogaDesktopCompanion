@@ -1,4 +1,4 @@
-"""Testes do módulo de detecção de colisão (``sejoga.colisao_membros``).
+"""Testes do módulo de detecção de colisão (``sejoga.rig_mapa.colisao_membros``).
 
 Cobre: (a) a MATEMÁTICA sintética (cápsula-cápsula, cápsula-caixa, distância
 segmento-segmento em casos conhecidos, tangência); (b) uma VARREDURA que roda a

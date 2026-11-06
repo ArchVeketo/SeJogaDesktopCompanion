@@ -1,4 +1,4 @@
-"""Testes da fundação de limiares e classificadores (``sejoga.rig_limiares``).
+"""Testes da fundação de limiares e classificadores (``sejoga.rig_mapa.rig_limiares``).
 
 Cobre: defaults da seção 10.1, classificação por faixas e classificação de
 direção em casos analíticos conhecidos. Fronteira Python puro, sem engine.
