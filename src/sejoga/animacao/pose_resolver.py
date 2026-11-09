@@ -1,8 +1,8 @@
 """Aplica proteções finais à pose composta: crossfade, colisão e clamps.
 
 Extraído de ``AnimationController`` para unificar todas as correções em um único
-ponto — crossfade com molas (continuidade de velocidade), correção pontual de
-colisão e clamps anatômicos finais. A pose que sai daqui está pronta para o
+ponto — crossfade com molas (continuidade de velocidade), anti-atravessamento
+dos braços e clamps anatômicos finais. A pose que sai daqui está pronta para o
 renderer, que não precisa aplicar mais nenhuma correção.
 """
 
@@ -15,8 +15,6 @@ from sejoga.animacao.colisao_bracos import ResolvedorBracos
 from sejoga.animacao.joint_springs import SpringPose
 from sejoga.nucleo.model import Model
 from sejoga.nucleo.rig import Rotation3
-from sejoga.rig_mapa import colisao_membros as colisao
-from sejoga.rig_mapa import rig_medidas as medidas
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                       Limites anatômicos (clamps)                         ║
@@ -38,14 +36,13 @@ _CLAMP_COTOVELO_MAX = radians(tun.COTOVELO_MAX_GRAUS)
 
 
 class PoseResolver:
-    """Aplica crossfade, colisões e clamps à pose composta.
+    """Aplica crossfade, anti-atravessamento dos braços e clamps à pose composta.
 
     O controller de animação chama :meth:`resolver` a cada frame, passando a
     pose alvo (saída do LayerStack/compositor). O PoseResolver:
 
     1. Faz crossfade com molas (continuidade de velocidade entre estados).
-    2. Corrige colisões, empurrando só o excedente de forma suave.
-    3. Aplica clamps anatômicos finais.
+    2. Aplica clamps anatômicos e impede os braços de atravessar o corpo.
 
     A saída é a pose pronta para o renderer, sem correções adicionais.
     """
@@ -80,13 +77,6 @@ class PoseResolver:
             for grupo, tensao in (tensoes_crossfade or {}).items()
         }
         self._frequencia_default = frequencia_crossfade
-
-        # Correção pontual suave de colisão (FEAT-B): só ativa quando Model é
-        # injetado. A mola persegue o alvo corrigido por colisao.resolver_colisoes.
-        self._correcao_colisao = SpringPose(
-            frequencia=colisao.CORRECAO_FREQUENCIA_HZ,
-            amortecimento=colisao.CORRECAO_AMORTECIMENTO,
-        )
 
         self._resolvedor_bracos: ResolvedorBracos | None = None
 
@@ -125,7 +115,7 @@ class PoseResolver:
         model: Model | None = None,
         state_time: float | None = None,
     ) -> dict[str, Rotation3]:
-        """Resolve a pose final: crossfade → colisão → clamps.
+        """Resolve a pose final: crossfade → clamps → braços.
 
         Parameters
         ----------
@@ -134,7 +124,7 @@ class PoseResolver:
         pose_alvo:
             Pose composta do LayerStack/compositor.
         model:
-            Modelo para detecção de colisão. Se None, a correção de colisão fica
+            Modelo para o anti-atravessamento dos braços. Se None, ele fica
             inerte.
         state_time:
             Tempo no estado atual (para acelerar crossfade no início). Se None,
@@ -152,14 +142,11 @@ class PoseResolver:
         # 1. Crossfade (molas por junta)
         pose = self._aplicar_crossfade(dt, pose_alvo)
 
-        # 2. Correção de colisão (se houver model)
-        pose = self._resolver_colisoes_suave(pose, dt, model)
-
-        # 3. Clamps anatômicos (antes do anti-atravessamento, que parte de uma
+        # 2. Clamps anatômicos (antes do anti-atravessamento, que parte de uma
         #    pose anatômica) e de novo depois (a correção não pode violá-los).
         pose = self._aplicar_clamps(pose)
 
-        # 4. Braços não atravessam o corpo (FK real, se houver model)
+        # 3. Braços não atravessam o corpo (FK real, se houver model)
         if model is not None:
             if self._resolvedor_bracos is None or self._resolvedor_bracos.model is not model:
                 self._resolvedor_bracos = ResolvedorBracos(model)
@@ -227,88 +214,6 @@ class PoseResolver:
             mola.x.frequency = mola.y.frequency = mola.z.frequency = frequencia
 
         return self._crossfade.atualizar(dt, pose_alvo)
-
-    def _resolver_colisoes_suave(
-        self,
-        pose: dict[str, Rotation3],
-        dt: float,
-        model: Model | None,
-    ) -> dict[str, Rotation3]:
-        """Correção pontual suave (FEAT-B): empurra só o EXCEDENTE, amortecido.
-
-        Mede as partes da pose exibida, pede a ``colisao.resolver_colisoes`` o
-        alvo com o PISO ESTRUTURAL já descontado (só o excedente dirigido pela
-        pose) e persegue esse alvo por molas por junta, de modo que a correção
-        entre GRADUAL, sem tranco.
-        """
-        if model is None:
-            return pose
-
-        partes = medidas.medir_todas_as_partes(pose, model)
-        # Só pares de pernas/pés: rig_medidas usa um modelo Y-up com osso em -Y
-        # que não bate com o grafo de cena (braço em ±X). Os braços são
-        # corrigidos com a FK real em colisao_bracos (passo 4 de resolver).
-        # PENDÊNCIA (recalibracao-gpu.md, C8): pernas/pés ainda medem no modelo
-        # antigo; test_colisao_pernas_pes prova que a correção é inerte na faixa
-        # de pose que o app produz.
-        alvo = colisao.resolver_colisoes(pose, partes, pares=colisao.PARES_PERNAS_PES)
-
-        # Juntas que o resolvedor empurrou (diferem da pose crua neste frame).
-        corrigidas = {
-            grupo: alvo[grupo]
-            for grupo in alvo
-            if grupo in pose and alvo[grupo] != pose[grupo]
-        }
-
-        molas = self._correcao_colisao.molas
-        # Conjunto ativo = juntas com excedente agora + juntas com mola viva de
-        # uma correção recente (ainda relaxando). As demais nem entram no laço.
-        ativas = set(corrigidas) | set(molas)
-
-        resultado = dict(pose)
-        for grupo in ativas:
-            if grupo not in pose:
-                molas.pop(grupo, None)
-                continue
-
-            if grupo in corrigidas:
-                # Primeira correção desta junta: semeia a mola na pose crua do
-                # frame para a correção entrar gradual, sem salto.
-                if grupo not in molas:
-                    self._correcao_colisao._mola(grupo).definir(pose[grupo])
-                alvo_mola = corrigidas[grupo]
-            else:
-                # Sem excedente: relaxa de volta à pose autoral (sem tranco).
-                alvo_mola = pose[grupo]
-
-            suavizado = self._correcao_colisao._mola(grupo).atualizar(dt, alvo_mola)
-
-            if grupo not in corrigidas and self._mola_assentou(grupo, pose[grupo]):
-                # Relaxou até a pose crua: descarta a mola e deixa a junta
-                # passar intacta, para não filtrar o movimento autoral depois.
-                molas.pop(grupo, None)
-                continue
-
-            resultado[grupo] = suavizado
-
-        return resultado
-
-    def _mola_assentou(self, grupo: str, alvo: Rotation3) -> bool:
-        """Diz se a mola da junta já relaxou até ``alvo`` (posição e velocidade)."""
-        mola = self._correcao_colisao.molas.get(grupo)
-        if mola is None:
-            return True
-
-        tol_pos = colisao.CORRECAO_ASSENTA_POS
-        tol_vel = colisao.CORRECAO_ASSENTA_VEL
-        return (
-            abs(mola.x.value - alvo.x) < tol_pos
-            and abs(mola.y.value - alvo.y) < tol_pos
-            and abs(mola.z.value - alvo.z) < tol_pos
-            and abs(mola.x.velocity) < tol_vel
-            and abs(mola.y.velocity) < tol_vel
-            and abs(mola.z.velocity) < tol_vel
-        )
 
     def _aplicar_clamps(self, pose: dict[str, Rotation3]) -> dict[str, Rotation3]:
         """Limites rígidos anatômicos. Aplicados UMA vez, no final.

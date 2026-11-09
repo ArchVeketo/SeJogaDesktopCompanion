@@ -4,7 +4,7 @@ Os braços são cápsulas (braço, antebraço, mão+dedos) medidas por
 ``nucleo.cinematica`` (mesma FK do Panda3D). O corpo são caixas do referencial de
 AUTORIA (``+X`` direita, ``+Y`` frente, ``+Z`` cima) medidas no grafo de cena
 do asset em repouso (``tools/oraculo_cena.py``). As primitivas de interseção são
-as de ``rig_mapa.colisao_membros`` (cápsula-caixa e cápsula-cápsula).
+as de ``primitivas_colisao`` (cápsula-caixa e cápsula-cápsula).
 
 A correção é MÍNIMA e determinística: busca em subida de encosta, sobre os
 quatro graus de liberdade do lado (P, H, R do ombro e a flexão do cotovelo), o
@@ -30,15 +30,15 @@ from sejoga.animacao.braco_tuning import (
     FRACAO_NUCLEO_BRACO,
     PASSOS_BUSCA_GRAUS,
 )
-from sejoga.nucleo import cinematica as cin
-from sejoga.nucleo.model import Model
-from sejoga.nucleo.rig import Rotation3
-from sejoga.rig_mapa.colisao_membros import (
+from sejoga.animacao.primitivas_colisao import (
     CaixaOrientada,
     Capsula,
     penetracao_capsula_caixa,
     penetracao_capsula_capsula,
 )
+from sejoga.nucleo import cinematica as cin
+from sejoga.nucleo.model import Model
+from sejoga.nucleo.rig import Rotation3
 
 Vec3 = cin.Vec3
 
