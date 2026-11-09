@@ -78,6 +78,13 @@ class UpdateSettings(BaseModel):
     """Canal que o updater consulta; ``release`` é o padrão estável."""
 
 
+class LoggingSettings(BaseModel):
+    """Preferências de log (nível de verbosidade)."""
+
+    level: Literal["DEBUG", "INFO", "WARNING"] = "INFO"
+    """Nível mínimo de log; ``INFO`` é o padrão."""
+
+
 class WindowSettings(BaseModel):
     """Comportamento da janela que hospeda o personagem."""
 
@@ -101,6 +108,15 @@ class WindowSettings(BaseModel):
     fps: int = Field(default=60, ge=15, le=240)
     start_position: tuple[int, int] | None = None
     """Canto superior esquerdo em coordenadas de tela; ``None`` = canto inferior direito."""
+
+    autostart: bool = False
+    """Estado desejado de iniciar com o Windows; a fonte real é o atalho .lnk."""
+
+    diagnostic_colorkey: bool = False
+    """Liga o fundo rosa de diagnóstico do color key (desligado no uso normal)."""
+
+    preferred_monitor: int | None = None
+    """Índice do monitor na ordem de ``EnumDisplayMonitors``; ``None`` = automático."""
 
 
 class PhysicsSettings(BaseModel):
@@ -189,6 +205,7 @@ class Settings(BaseSettings):
     audio: AudioSettings = Field(default_factory=AudioSettings)
     hotkeys: HotkeySettings = Field(default_factory=HotkeySettings)
     update: UpdateSettings = Field(default_factory=UpdateSettings)
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
     first_run_done: bool = False
 
 
