@@ -198,3 +198,15 @@ Investigação de ghosting/halo: resize agora força processamento das proprieda
 Etapa 05/11: tentáculos/porta usam timer independente e não substituem dança; acenos são suprimidos enquanto dança ativa, que persiste até parar a música. Novas poses head bob lateral/braços cruzados, rock e sequência de chão com inclinação/giro; caixa de som low-poly sai do armário e permanece no cenário durante a sessão. Escolha manual de estilo em configurações; classificação automática é heurística de BPM/energia/graves, não reconhecimento de gênero. Pivôs extras de coluna/pescoço/ombros com molas no runtime, mantendo asset original. Chroma resolve no shader tonemap usa alpha de cobertura para remover mistura magenta antes do color key; captura fonte e smoke nativo passaram, validação em bundle ainda pendente. 89 testes passaram; coreografia de chão ainda não tem IK de apoio de mão.
 
 Validação visual expandida: verify_render_resize.py cria fundo de teste, compara pixels nas áreas abandonadas após redimensionar (sem repaint forçado) e detecta franja por cor próxima do key. Três ciclos passaram com 0 pixels residuais, tamanhos 864/544/544 px; 28 pixels próximos do key no modelo completo, sem franja contínua visível na captura. Redução do canvas agora espera 1s após crescimento e reduz em passos espaçados por 0,15s. Smoke_mouse corrigido para canvas variável e cooldown de inicialização, passou com e sem física. Controles de estilo persistem ao salvar/reabrir. Build.ps1 passa a descobrir Panda3D pelo Python selecionado; instalador local solicita saída normal antes de copiar. 89 testes passaram.
+
+## Limpeza ponytail (branch frente3-animacao)
+
+Remoções sem mudança de comportamento em runtime, um commit por lote:
+
+- Lote 2: ferramentas órfãs e de captura (calibrar_eixos, capturar_poses, verificar_eixos, preview_anim).
+- Lote 3: preview, smoke e verify repetidos em tools/ e entrada no pyproject.
+- Lote 4: análise de gesto, rig_debug, rig_articulacoes e docs de calibração associados.
+- Lote 1: limb_ik, pose_wave e pose_dance sem chamador.
+- Lote 6: correção legada de colisão de pernas e pés (rig_mapa) e seus testes.
+
+Detalhes e verificação em .agents/tasks/ponytail-audit/aplicado.md. Pendente: conferência visual no app com GPU real.
