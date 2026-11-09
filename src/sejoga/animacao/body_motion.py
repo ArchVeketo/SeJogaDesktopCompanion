@@ -6,6 +6,8 @@ does not change the weight or stability of the character.
 from dataclasses import dataclass
 from math import cos, exp, isfinite, pi, sin, sqrt
 
+from sejoga.animacao import body_motion_tuning as tune
+
 
 def clamp(value, low, high):
     return max(low, min(high, value))
@@ -128,63 +130,71 @@ class BodyPose:
 
 class BodyMotion:
     def __init__(self):
-        self.roll = Spring(1.15, .58)
-        self.pitch = Spring(1.25, .60)
-        self.yaw = Spring(1.2, .78)
-        self.neck_roll = Spring(1.65, .58)
-        self.neck_pitch = Spring(1.75, .60)
-        self.compression = Spring(1.6, .52)
-        self.suspension = Spring(2.1, .9)
-        self.limbs = Spring(1.1, .30)
+        self.roll = Spring(tune.MOLA_ROLL.frequencia, tune.MOLA_ROLL.amortecimento)
+        self.pitch = Spring(tune.MOLA_PITCH.frequencia, tune.MOLA_PITCH.amortecimento)
+        self.yaw = Spring(tune.MOLA_YAW.frequencia, tune.MOLA_YAW.amortecimento)
+        self.neck_roll = Spring(tune.MOLA_NECK_ROLL.frequencia, tune.MOLA_NECK_ROLL.amortecimento)
+        self.neck_pitch = Spring(tune.MOLA_NECK_PITCH.frequencia, tune.MOLA_NECK_PITCH.amortecimento)
+        self.compression = Spring(tune.MOLA_COMPRESSION.frequencia, tune.MOLA_COMPRESSION.amortecimento)
+        self.suspension = Spring(tune.MOLA_SUSPENSION.frequencia, tune.MOLA_SUSPENSION.amortecimento)
+        self.limbs = Spring(tune.MOLA_LIMBS.frequencia, tune.MOLA_LIMBS.amortecimento)
         self.snapshot = BodyPose()
         self.pointer_velocity = (0.0, 0.0)
         self._pointer = None
         self._engaged = False
 
     def impulse(self, kind, direction=0.0, strength=1.0):
-        direction = clamp(direction, -1, 1)
-        strength = clamp(strength, 0, 2)
+        direction = clamp(direction, tune.IMPULSO_DIRECAO_MIN, tune.IMPULSO_DIRECAO_MAX)
+        strength = clamp(strength, tune.IMPULSO_FORCA_MIN, tune.IMPULSO_FORCA_MAX)
         if kind in ("click", "poke", "double_click"):
-            self.roll.velocity += (direction or .35) * 38 * strength
-            self.pitch.velocity -= 25 * strength
+            self.roll.velocity += (direction or tune.IMPULSO_DIRECAO_PADRAO) * tune.IMPULSO_CLIQUE_ROLL * strength
+            self.pitch.velocity -= tune.IMPULSO_CLIQUE_PITCH * strength
         elif kind == "pet":
-            self.roll.velocity += direction * 16 * strength
+            self.roll.velocity += direction * tune.IMPULSO_PET_ROLL * strength
         elif kind in ("hit", "land"):
-            self.roll.velocity += direction * 48 * strength
-            self.pitch.velocity += 28 * strength
-            self.compression.velocity += 4.5 * strength
+            self.roll.velocity += direction * tune.IMPULSO_IMPACTO_ROLL * strength
+            self.pitch.velocity += tune.IMPULSO_IMPACTO_PITCH * strength
+            self.compression.velocity += tune.IMPULSO_IMPACTO_COMPRESSION * strength
 
     def update(self, dt, *, pointer=None, dragging=False, hovered=False,
                look=(0.0, 0.0), grounded=True, velocity=(0.0, 0.0), grab_part='body'):
-        dt = clamp(dt, 0.0, .1) if isfinite(dt) else 0.0
+        dt = clamp(dt, 0.0, tune.DT_MAXIMO) if isfinite(dt) else 0.0
         if dt == 0:
             return self.snapshot
         engaged = dragging or hovered
         raw = (0.0, 0.0)
         valid_pointer = pointer is not None and all(isfinite(v) for v in pointer)
         if valid_pointer and self._pointer is not None and engaged and self._engaged:
-            raw = tuple(clamp((pointer[k] - self._pointer[k]) / dt, -2500, 2500) for k in range(2))
+            raw = tuple(clamp((pointer[k] - self._pointer[k]) / dt,
+                              tune.VELOCIDADE_PONTEIRO.minimo, tune.VELOCIDADE_PONTEIRO.maximo)
+                        for k in range(2))
         self._pointer = tuple(pointer) if valid_pointer else None
         self._engaged = engaged
-        response = 1 - exp(-18 * dt)
+        response = 1 - exp(-tune.PONTEIRO_SUAVIZACAO * dt)
         self.pointer_velocity = tuple(old + (new - old) * response
                                       for old, new in zip(self.pointer_velocity, raw, strict=True))
         vx, vy = self.pointer_velocity
         if dragging:
-            roll_target = clamp(vx * .012, -23, 23)
+            roll_target = clamp(vx * tune.DRAG_ROLL_GANHO, tune.DRAG_ROLL.minimo, tune.DRAG_ROLL.maximo)
             if grab_part in ('left-feet', 'right-feet', 'legs'):
-                roll_target += 155 if grab_part != 'left-feet' else -155
+                roll_target += tune.DRAG_ROLL_PES if grab_part != 'left-feet' else -tune.DRAG_ROLL_PES
             elif grab_part in ('right-arm', 'left-arm'):
-                roll_target += 45 if grab_part == 'right-arm' else -45
-            pitch_target = clamp((-26 if grab_part == 'body' else -9)-vy * .009, -36, 4)
-            yaw_target = clamp(-vx * .003, -5, 5)
+                roll_target += tune.DRAG_ROLL_BRACO if grab_part == 'right-arm' else -tune.DRAG_ROLL_BRACO
+            pitch_base = tune.DRAG_PITCH_BASE_CORPO if grab_part == 'body' else tune.DRAG_PITCH_BASE_OUTRO
+            pitch_target = clamp(pitch_base - vy * tune.DRAG_PITCH_GANHO,
+                                 tune.DRAG_PITCH.minimo, tune.DRAG_PITCH.maximo)
+            yaw_target = clamp(-vx * tune.DRAG_YAW_GANHO, tune.DRAG_YAW.minimo, tune.DRAG_YAW.maximo)
         elif hovered:
-            roll_target = clamp(vx * .003 - look[0] * 3.8, -8, 8)
-            pitch_target = clamp(-vy * .002 - look[1] * 3.2, -6, 6)
-            yaw_target = -look[0] * 3.0
+            roll_target = clamp(vx * tune.HOVER_ROLL_GANHO_PONTEIRO - look[0] * tune.HOVER_ROLL_GANHO_OLHAR,
+                                tune.HOVER_ROLL.minimo, tune.HOVER_ROLL.maximo)
+            pitch_target = clamp(-vy * tune.HOVER_PITCH_GANHO_PONTEIRO - look[1] * tune.HOVER_PITCH_GANHO_OLHAR,
+                                 tune.HOVER_PITCH.minimo, tune.HOVER_PITCH.maximo)
+            yaw_target = -look[0] * tune.HOVER_YAW_GANHO_OLHAR
         elif not grounded:
-            roll_target = clamp(velocity[0] * .004, -9, 9)
-            pitch_target = clamp(-velocity[1] * .002, -4, 4)
+            roll_target = clamp(velocity[0] * tune.QUEDA_ROLL_GANHO,
+                                tune.QUEDA_ROLL.minimo, tune.QUEDA_ROLL.maximo)
+            pitch_target = clamp(-velocity[1] * tune.QUEDA_PITCH_GANHO,
+                                 tune.QUEDA_PITCH.minimo, tune.QUEDA_PITCH.maximo)
             yaw_target = 0
         else:
             roll_target = pitch_target = yaw_target = 0
@@ -195,18 +205,25 @@ class BodyMotion:
         self.neck_pitch.update(dt, self.pitch.value)
         self.compression.update(dt, 0)
         self.suspension.update(dt, 1.0 if dragging or not grounded else 0.0)
-        self.limbs.update(dt, clamp(-vx*.021, -30, 30) if dragging else 0)
+        self.limbs.update(dt, clamp(-vx * tune.DRAG_LIMBS_GANHO,
+                                    tune.DRAG_LIMBS.minimo, tune.DRAG_LIMBS.maximo) if dragging else 0)
         # Bound the visual response without modifying desktop physics or cursor.
         self.snapshot = BodyPose(
-            roll=clamp(self.roll.value, -178, 178),
-            pitch=clamp(self.pitch.value, -38, 16),
-            yaw=clamp(self.yaw.value, -7, 7),
-            head_roll=clamp((self.neck_roll.value - self.roll.value) * .65, -8, 8),
-            head_pitch=clamp((self.neck_pitch.value - self.pitch.value) * .6 - 5*self.suspension.value, -12, 6),
-            arm_lag=clamp(-self.roll.velocity * .035, -6, 6),
-            compression=clamp(self.compression.value, -.12, .20),
-            hanging=clamp(self.suspension.value, 0, 1),
-            limb_swing=clamp(self.limbs.value, -30, 30),
-            stretch=(.08 if grab_part != 'body' else .025)*clamp(self.suspension.value,0,1) if dragging else 0,
+            roll=clamp(self.roll.value, tune.SNAP_ROLL.minimo, tune.SNAP_ROLL.maximo),
+            pitch=clamp(self.pitch.value, tune.SNAP_PITCH.minimo, tune.SNAP_PITCH.maximo),
+            yaw=clamp(self.yaw.value, tune.SNAP_YAW.minimo, tune.SNAP_YAW.maximo),
+            head_roll=clamp((self.neck_roll.value - self.roll.value) * tune.SNAP_HEAD_ROLL_GANHO,
+                            tune.SNAP_HEAD_ROLL.minimo, tune.SNAP_HEAD_ROLL.maximo),
+            head_pitch=clamp((self.neck_pitch.value - self.pitch.value) * tune.SNAP_HEAD_PITCH_GANHO
+                             - tune.SNAP_HEAD_PITCH_SUSPENSAO * self.suspension.value,
+                             tune.SNAP_HEAD_PITCH.minimo, tune.SNAP_HEAD_PITCH.maximo),
+            arm_lag=clamp(-self.roll.velocity * tune.SNAP_ARM_LAG_GANHO,
+                          tune.SNAP_ARM_LAG.minimo, tune.SNAP_ARM_LAG.maximo),
+            compression=clamp(self.compression.value, tune.SNAP_COMPRESSION.minimo, tune.SNAP_COMPRESSION.maximo),
+            hanging=clamp(self.suspension.value, tune.SNAP_HANGING.minimo, tune.SNAP_HANGING.maximo),
+            limb_swing=clamp(self.limbs.value, tune.SNAP_LIMB_SWING.minimo, tune.SNAP_LIMB_SWING.maximo),
+            stretch=(tune.SNAP_STRETCH_PONTA if grab_part != 'body' else tune.SNAP_STRETCH_CORPO)
+                    * clamp(self.suspension.value, tune.SNAP_SUSPENSAO.minimo, tune.SNAP_SUSPENSAO.maximo)
+                    if dragging else 0,
         )
         return self.snapshot

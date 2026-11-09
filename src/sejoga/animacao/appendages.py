@@ -1,6 +1,24 @@
 """Movimento volumétrico e articulação da porta, sem dependência do engine."""
 import math
 
+# --------------------------------------------------------------------------- #
+# Calibração do movimento volumétrico da extensão dos apêndices pela porta.
+# Valores IDÊNTICOS aos de antes, extraídos da lógica (destino 2: const. módulo).
+# --------------------------------------------------------------------------- #
+#: dt máximo por quadro (clamp anti-salto).
+EXT_DT_MAXIMO = 0.1
+#: Faixa de abertura da porta (graus) que mapeia para extensão 0..1.
+EXT_PORTA_INICIO = 55.0
+EXT_PORTA_FAIXA = 25.0
+#: Limite pela porta real medida (graus) quando disponível.
+EXT_PORTA_REAL_INICIO = 35.0
+EXT_PORTA_REAL_FAIXA = 40.0
+#: Taxa de suavização ao abrir e ao fechar.
+EXT_TAXA_ABRINDO = 2.4
+EXT_TAXA_FECHANDO = 2.0
+#: Abaixo deste erro, assenta no alvo exato.
+EXT_EPSILON = 0.001
+
 
 class AppendageMotion:
     def __init__(self):
@@ -9,12 +27,13 @@ class AppendageMotion:
 
     def update(self, dt, door_degrees, actual_door=None):
         self.previous_extension = self.extension
-        target = max(0.0, min(1.0, (door_degrees - 55.0) / 25.0))
+        target = max(0.0, min(1.0, (door_degrees - EXT_PORTA_INICIO) / EXT_PORTA_FAIXA))
         if actual_door is not None and target > self.extension:
-            target = min(target, max(0.0, min(1.0, (actual_door - 35) / 40)))
-        rate = 2.4 if target > self.extension else 2.0
-        self.extension += (target-self.extension) * (1-math.exp(-rate*max(0, min(.1, dt))))
-        if abs(target-self.extension) < .001:
+            target = min(target, max(0.0, min(1.0,
+                         (actual_door - EXT_PORTA_REAL_INICIO) / EXT_PORTA_REAL_FAIXA)))
+        rate = EXT_TAXA_ABRINDO if target > self.extension else EXT_TAXA_FECHANDO
+        self.extension += (target-self.extension) * (1-math.exp(-rate*max(0, min(EXT_DT_MAXIMO, dt))))
+        if abs(target-self.extension) < EXT_EPSILON:
             self.extension = target
         return self.extension
 
@@ -41,6 +60,21 @@ class DoorJoint:
     LOW = (.003, -.040, -.2344)
     HIGH = (.2482, 0.0, .1368)
     MAX_ANGLE = 135.0
+    # Mola da dobradiça: rigidez, atrito e teto de velocidade angular.
+    RIGIDEZ = 12.0
+    ATRITO = 7.0
+    VELOCIDADE_MAXIMA = 38.0
+    # Substep fixo da integração (independe do framerate) e dt máximo.
+    SUBSTEP = 1 / 120
+    DT_MAXIMO = 0.1
+    # Folga de contato das cápsulas contra a caixa da porta.
+    FOLGA_CONTATO = 0.002
+    # Varredura de desvio por contato: passo e teto do ângulo candidato.
+    VARREDURA_PASSO = 5
+    VARREDURA_TETO = 121
+    # Assentamento: abaixo destes limiares, trava em repouso.
+    ASSENTA_ANGULO = 0.15
+    ASSENTA_VELOCIDADE = 1.0
 
     def __init__(self):
         self.angle = 0.0
@@ -62,23 +96,25 @@ class DoorJoint:
         return -min(min(p[k]-cls.LOW[k], cls.HIGH[k]-p[k]) for k in range(3))
 
     def update(self, dt, requested, spheres):
-        remaining = max(0.0, min(.1, dt))
+        remaining = max(0.0, min(self.DT_MAXIMO, dt))
         target = max(0.0, min(self.MAX_ANGLE, requested))
-        self.contacts = sum(self.distance(p, self.angle) < radius+.002 for p, radius in spheres)
+        self.contacts = sum(self.distance(p, self.angle) < radius+self.FOLGA_CONTATO
+                            for p, radius in spheres)
         if self.contacts:
             # Contact changes the spring target, never teleports the leaf. Mesh
             # projection supplies clearance while the door catches up.
-            for candidate in range(math.ceil(self.angle), 121, 5):
-                if all(self.distance(p, candidate) >= radius+.002 for p, radius in spheres):
+            for candidate in range(math.ceil(self.angle), self.VARREDURA_TETO, self.VARREDURA_PASSO):
+                if all(self.distance(p, candidate) >= radius+self.FOLGA_CONTATO
+                       for p, radius in spheres):
                     target = max(target, candidate)
                     break
         while remaining > 1e-8:
-            step = min(remaining, 1/120)
-            self.velocity += ((target-self.angle)*12 - self.velocity*7)*step
-            self.velocity = max(-38, min(38, self.velocity))
+            step = min(remaining, self.SUBSTEP)
+            self.velocity += ((target-self.angle)*self.RIGIDEZ - self.velocity*self.ATRITO)*step
+            self.velocity = max(-self.VELOCIDADE_MAXIMA, min(self.VELOCIDADE_MAXIMA, self.velocity))
             self.angle = max(0.0, min(self.MAX_ANGLE, self.angle+self.velocity*step))
             remaining -= step
-        if self.angle < .15 and abs(self.velocity) < 1 and target == 0:
+        if self.angle < self.ASSENTA_ANGULO and abs(self.velocity) < self.ASSENTA_VELOCIDADE and target == 0:
             self.angle = self.velocity = 0.0
         return self.angle
 
@@ -88,16 +124,16 @@ class DoorJoint:
         nearest = [max(self.LOW[k], min(self.HIGH[k], p[k])) for k in range(3)]
         delta = [p[k]-nearest[k] for k in range(3)]
         distance = math.sqrt(sum(v*v for v in delta))
-        if distance >= radius+.002:
+        if distance >= radius+self.FOLGA_CONTATO:
             return point
         if distance > 1e-8:
-            p = [nearest[k]+delta[k]/distance*(radius+.002) for k in range(3)]
+            p = [nearest[k]+delta[k]/distance*(radius+self.FOLGA_CONTATO) for k in range(3)]
         else:
             choices = [(p[k]-self.LOW[k], k, -1) for k in range(3)]
             choices += [(self.HIGH[k]-p[k], k, 1) for k in range(3)]
             _, axis, sign = min(choices)
             p = list(p)
-            p[axis] = (self.LOW[axis] if sign < 0 else self.HIGH[axis]) + sign*(radius+.002)
+            p[axis] = (self.LOW[axis] if sign < 0 else self.HIGH[axis]) + sign*(radius+self.FOLGA_CONTATO)
         c, s = math.cos(math.radians(self.angle)), math.sin(math.radians(self.angle))
         return (self.HINGE[0]+c*p[0]-s*p[1], self.HINGE[1]+s*p[0]+c*p[1], self.HINGE[2]+p[2])
 
