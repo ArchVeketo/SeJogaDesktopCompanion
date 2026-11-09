@@ -232,8 +232,9 @@ def capturar(
         )
         renderer.update_appendages(1 / 60, animation.appendage_remaining > 0)
 
-    # setattr evita o erro method-assign do mypy ao trocar o tick de animação.
-    setattr(app, "_animation_tick", tick)
+    # Troca o tick de animação (mesmo padrão de verificar_eixos.py). O
+    # ignore cobre o method-assign do mypy sem recorrer a setattr (ruff B010).
+    app._animation_tick = tick  # type: ignore[method-assign]
 
     PASTA_CAPTURAS.mkdir(parents=True, exist_ok=True)
     lista = casos(juntas)
