@@ -50,3 +50,56 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
     assert reopened.dance_style_input.currentData() == 'rock'
     reopened.close()
     dialog.close()
+
+
+def test_novos_campos_persistem_e_reabrem(tmp_path, monkeypatch):
+    """FPS, monitor preferido, color key de diagnóstico e nível de log."""
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    from sejoga import config
+    from sejoga.desktop import autostart, ui
+    from sejoga.desktop.ui import SettingsDialog
+    app = QApplication.instance() or QApplication([])  # noqa: F841  # intencional: mantem a QApplication viva durante o teste (evita GC)
+    destino = tmp_path / "config.toml"
+    monkeypatch.setenv("SEJOGA_CONFIG_PATH", str(destino))
+    monkeypatch.setattr(config, "default_config_path", lambda: destino)
+    monkeypatch.setattr(ui, "default_config_path", lambda: destino)
+    # Autostart mockado para não tocar a pasta Startup real do usuário.
+    ativacoes: list[bool] = []
+    monkeypatch.setattr(autostart, "esta_ativo", lambda: False)
+    monkeypatch.setattr(autostart, "ativar", lambda: ativacoes.append(True) or True)
+    monkeypatch.setattr(autostart, "desativar", lambda: ativacoes.append(False) or True)
+
+    dialog = SettingsDialog(config.Settings())
+    updates = []
+    dialog.settings_applied.connect(updates.append)
+    dialog.fps_input.setValue(90)
+    dialog.diagnostic_input.setChecked(True)
+    dialog.log_level_input.setCurrentIndex(dialog.log_level_input.findData("DEBUG"))
+    dialog.autostart_input.setChecked(True)
+    # Monitor preferido: usa o último índice real disponível, se houver.
+    if dialog.monitor_input.count() > 1:
+        dialog.monitor_input.setCurrentIndex(dialog.monitor_input.count() - 1)
+    monitor_esperado = dialog.monitor_input.currentData()
+    dialog._save()
+
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    assert updates[0].window.fps == 90
+    assert updates[0].window.diagnostic_colorkey is True
+    assert updates[0].window.preferred_monitor == monitor_esperado
+    assert updates[0].logging.level == "DEBUG"
+    assert ativacoes == [True]
+
+    salvo = config.load_settings(destino)
+    assert salvo.window.fps == 90
+    assert salvo.window.diagnostic_colorkey is True
+    assert salvo.window.preferred_monitor == monitor_esperado
+    assert salvo.logging.level == "DEBUG"
+
+    reopened = SettingsDialog(salvo)
+    assert reopened.fps_input.value() == 90
+    assert reopened.diagnostic_input.isChecked()
+    assert reopened.log_level_input.currentData() == "DEBUG"
+    assert reopened.monitor_input.currentData() == monitor_esperado
+    reopened.close()
+    dialog.close()

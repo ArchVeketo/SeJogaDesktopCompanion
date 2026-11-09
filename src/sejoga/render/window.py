@@ -337,7 +337,11 @@ class OverlayApp(ShowBase):
         ex_style = win32gui.GetWindowLong(self.hwnd, GWL_EXSTYLE)
         if ex_style & WS_EX_TRANSPARENT:
             win32gui.SetWindowLong(self.hwnd, GWL_EXSTYLE, ex_style & ~WS_EX_TRANSPARENT)
-        if self.debug_tools and self.debug_tools.visible:
+        # LWA_ALPHA mostra o fundo (rosa) do color key: usado pelo HUD de
+        # diagnóstico e pelo toggle explícito diagnostic_colorkey da config.
+        mostrar_fundo = (self.debug_tools and self.debug_tools.visible) or \
+            self.settings.window.diagnostic_colorkey
+        if mostrar_fundo:
             win32gui.SetLayeredWindowAttributes(self.hwnd, self._background_key, 255, LWA_ALPHA)
         else:
             win32gui.SetLayeredWindowAttributes(self.hwnd, self._background_key, 255, LWA_COLORKEY)
@@ -367,15 +371,31 @@ class OverlayApp(ShowBase):
             self._update_z_order()
         return Task.done
 
+    def _retangulo_monitor_preferido(self) -> tuple[int, int, int, int]:
+        """Retângulo de trabalho do monitor preferido (left, top, right, bottom).
+
+        Resolve o índice de ``settings.window.preferred_monitor`` pela ordem de
+        ``EnumDisplayMonitors``; se ``None`` ou o índice não existir mais, recai
+        no monitor primário.
+        """
+        indice = self.settings.window.preferred_monitor
+        if indice is not None:
+            with contextlib.suppress(Exception):
+                monitores = win32api.EnumDisplayMonitors()
+                if 0 <= indice < len(monitores):
+                    handle = monitores[indice][0]
+                    return tuple(win32api.GetMonitorInfo(handle)["Work"])
+        # Fallback: monitor primário (origem 0,0 pela métrica de tela).
+        return (0, 0, win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1))
+
     def _apply_window_state(self) -> None:
         """Aplica tamanho, posição inicial e estilos definidos nas configurações."""
         size = self.settings.window.size
         start_position = self.settings.window.start_position
         if start_position is None:
-            screen_w = win32api.GetSystemMetrics(0)
-            screen_h = win32api.GetSystemMetrics(1)
-            x = max(0, screen_w - size - MARGEM_CANTO_HORIZONTAL)
-            y = max(0, screen_h - size - MARGEM_CANTO_VERTICAL)
+            left, top, right, bottom = self._retangulo_monitor_preferido()
+            x = max(left, right - size - MARGEM_CANTO_HORIZONTAL)
+            y = max(top, bottom - size - MARGEM_CANTO_VERTICAL)
         else:
             x, y = (int(start_position[0]), int(start_position[1]))
 
@@ -439,7 +459,14 @@ class OverlayApp(ShowBase):
         self._physics_local = (
             size / 2, size - self.settings.physics.mascot_radius - OFFSET_APOIO_FISICO
         )
-        origin = win32gui.ClientToScreen(self.hwnd, (0, 0))
+        if self.settings.window.start_position is None:
+            # Sem posição salva: ancora no canto do monitor preferido (mesmo
+            # cálculo de _apply_window_state), não dependendo da origem assíncrona.
+            left, top, right, bottom = self._retangulo_monitor_preferido()
+            origin = (max(left, right - size - MARGEM_CANTO_HORIZONTAL),
+                      max(top, bottom - size - MARGEM_CANTO_VERTICAL))
+        else:
+            origin = win32gui.ClientToScreen(self.hwnd, (0, 0))
         self._set_physics_monitor((origin[0] + self._physics_local[0], origin[1] + self._physics_local[1]))
         self.physics.set_position(
             origin[0] + self._physics_local[0],
@@ -1181,6 +1208,7 @@ class OverlayApp(ShowBase):
         updated.window.start_position = previous.window.start_position
         restart_required = (
             previous.window.size != updated.window.size
+            or previous.window.preferred_monitor != updated.window.preferred_monitor
             or previous.physics != updated.physics
         )
         music_changed = previous.music != updated.music
@@ -1223,6 +1251,13 @@ class OverlayApp(ShowBase):
                         QSystemTrayIcon.MessageIcon.Warning,
                         TRAY_NOTIFICACAO_ATALHO_MS,
                     )
+        # FPS ao vivo: ajusta a taxa do clock global do Panda3D sem reiniciar.
+        from panda3d.core import ClockObject
+        ClockObject.getGlobalClock().setFrameRate(updated.window.fps)
+        # Nível de log ao vivo (reconfigura o logger "sejoga").
+        configure_logging(updated.logging.level)
+        # Color key de diagnóstico: reusa o caminho de fundo existente.
+        self._refresh_background_mode()
         if self.renderer:
             self.renderer.set_visual_scale(updated.window.scale)
             self.renderer.set_outline_settings(updated.window)

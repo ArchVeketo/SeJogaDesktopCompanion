@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import ctypes
 import logging
+import os
 import threading
 from collections.abc import Callable
 from ctypes import wintypes
@@ -35,7 +36,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from sejoga.config import Settings, save_settings
+from sejoga.config import Settings, default_config_path, save_settings
+from sejoga.desktop import autostart
 from sejoga.desktop import desktop_const as C
 
 
@@ -155,6 +157,58 @@ class SettingsDialog(QDialog):
         update_row.addWidget(self.check_update_button)
         update_row.addWidget(self.update_status_label, 1)
 
+        # (1) Iniciar com o Windows: estado inicial lido do atalho real na Startup.
+        self.autostart_input = QCheckBox("Iniciar com o Windows")
+        with contextlib.suppress(Exception):
+            self.autostart_input.setChecked(autostart.esta_ativo())
+
+        # (7) FPS alvo do mascote (aplicado ao vivo pelo OverlayApp).
+        self.fps_input = QSpinBox()
+        self.fps_input.setRange(C.FPS_MINIMO, C.FPS_MAXIMO)
+        self.fps_input.setSingleStep(C.FPS_PASSO)
+        self.fps_input.setSuffix(C.FPS_SUFIXO)
+        self.fps_input.setValue(settings.window.fps)
+
+        # (6) Monitor preferido para a posição inicial (Automático = None).
+        self.monitor_input = QComboBox()
+        self.monitor_input.addItem("Automático", None)
+        with contextlib.suppress(Exception):
+            import win32api
+            for indice in range(len(win32api.EnumDisplayMonitors())):
+                self.monitor_input.addItem(f"Monitor {indice + 1}", indice)
+        alvo_monitor = self.monitor_input.findData(settings.window.preferred_monitor)
+        self.monitor_input.setCurrentIndex(alvo_monitor if alvo_monitor >= 0 else 0)
+
+        # (3) Diagnóstico: liga o fundo rosa do color key (desligado no uso normal).
+        self.diagnostic_input = QCheckBox("Diagnóstico (color key rosa)")
+        self.diagnostic_input.setChecked(settings.window.diagnostic_colorkey)
+
+        # (4) Nível de log + limpeza dos arquivos de log.
+        self.log_level_input = QComboBox()
+        for nivel in ("DEBUG", "INFO", "WARNING"):
+            self.log_level_input.addItem(nivel, nivel)
+        nivel_atual = self.log_level_input.findData(settings.logging.level)
+        self.log_level_input.setCurrentIndex(nivel_atual if nivel_atual >= 0 else 0)
+        self.clear_logs_button = QPushButton("Limpar logs")
+        self.clear_logs_button.clicked.connect(self._limpar_logs)
+        log_row = QHBoxLayout()
+        log_row.addWidget(self.log_level_input, 1)
+        log_row.addWidget(self.clear_logs_button)
+
+        # (2) Atalhos de pastas (logs, capturas) e (5) perfil do usuário.
+        self.open_logs_button = QPushButton("Abrir pasta de logs")
+        self.open_logs_button.clicked.connect(self._abrir_pasta_logs)
+        self.open_captures_button = QPushButton("Abrir pasta de capturas")
+        self.open_captures_button.clicked.connect(self._abrir_pasta_capturas)
+        pastas_row = QHBoxLayout()
+        pastas_row.addWidget(self.open_logs_button)
+        pastas_row.addWidget(self.open_captures_button)
+
+        self.profile_path_label = QLabel(str(default_config_path()))
+        self.profile_path_label.setWordWrap(True)
+        self.open_profile_button = QPushButton("Abrir perfil")
+        self.open_profile_button.clicked.connect(self._abrir_perfil)
+
         self.hotkey_inputs = {
             name: QLineEdit(getattr(settings.hotkeys, name))
             for name in settings.hotkeys.model_dump()
@@ -178,8 +232,16 @@ class SettingsDialog(QDialog):
         form.addRow("Sensibilidade da batida", self.sensitivity_input)
         form.addRow("Frequência de dança (0–1)", self.dance_chance_input)  # noqa: RUF001  # intencional: travessao de intervalo (en dash) no rotulo exibido
         form.addRow("Estilo de dança", self.dance_style_input)
+        form.addRow("FPS alvo", self.fps_input)
+        form.addRow("Monitor preferido", self.monitor_input)
+        form.addRow(self.autostart_input)
+        form.addRow(self.diagnostic_input)
         form.addRow("Canal de atualização", self.channel_input)
         form.addRow("Atualizações", update_row)
+        form.addRow("Nível de log", log_row)
+        form.addRow("Pastas", pastas_row)
+        form.addRow("Perfil", self.profile_path_label)
+        form.addRow("", self.open_profile_button)
         for name, label in (
             ("toggle_overlay", "Mostrar/ocultar"),
             ("open_settings", "Abrir configurações"),
@@ -226,6 +288,41 @@ class SettingsDialog(QDialog):
             self._outline_color = color.name().upper()
             self._show_outline_color()
 
+    def _abrir_pasta(self, pasta) -> None:
+        """Abre uma pasta no Explorer, criando-a se faltar (guard clause)."""
+        try:
+            pasta.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(pasta))  # abre pasta do próprio perfil no Explorer
+        except OSError as exc:
+            logging.getLogger("sejoga").warning("Não foi possível abrir %s: %s", pasta, exc)
+
+    def _abrir_pasta_logs(self) -> None:
+        self._abrir_pasta(default_config_path().parent / "logs")
+
+    def _abrir_pasta_capturas(self) -> None:
+        self._abrir_pasta(default_config_path().parent / "debug-captures")
+
+    def _abrir_perfil(self) -> None:
+        self._abrir_pasta(default_config_path().parent)
+
+    def _limpar_logs(self) -> None:
+        """Remove os logs após confirmação, sem derrubar o diálogo em erro."""
+        resposta = QMessageBox.question(
+            self, "Limpar logs",
+            "Remover todos os arquivos de log do perfil?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            from sejoga.render.debug import limpar_logs
+            removidos = limpar_logs()
+        except OSError as exc:
+            QMessageBox.warning(self, "Falha ao limpar logs", str(exc))
+            return
+        QMessageBox.information(self, "Logs", f"{removidos} arquivo(s) removido(s).")
+
     def _save(self) -> None:
         updated = self._settings.model_copy(deep=True)
         updated.window.size = self.size_input.value()
@@ -248,6 +345,11 @@ class SettingsDialog(QDialog):
         updated.music.dance_chance = self.dance_chance_input.value()
         updated.music.dance_style = self.dance_style_input.currentData()
         updated.update.channel = self.channel_input.currentData()
+        updated.window.fps = self.fps_input.value()
+        updated.window.preferred_monitor = self.monitor_input.currentData()
+        updated.window.diagnostic_colorkey = self.diagnostic_input.isChecked()
+        updated.window.autostart = self.autostart_input.isChecked()
+        updated.logging.level = self.log_level_input.currentData()
 
         normalized_hotkeys: dict[tuple[int, int], str] = {}
         try:
@@ -269,6 +371,14 @@ class SettingsDialog(QDialog):
         except Exception as exc:
             QMessageBox.critical(self, "Falha ao salvar", f"Não foi possível salvar as configurações:\n{exc}")
             return
+
+        # Autostart: a fonte de verdade é o atalho .lnk; a guard clause interna
+        # torna isto inerte em modo fonte/dev (sem launcher instalado).
+        with contextlib.suppress(Exception):
+            if updated.window.autostart:
+                autostart.ativar()
+            else:
+                autostart.desativar()
 
         self.settings_applied.emit(updated)
         self.accept()
