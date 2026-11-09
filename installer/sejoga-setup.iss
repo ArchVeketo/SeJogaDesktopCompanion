@@ -51,6 +51,7 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na area de trabalho"; GroupDescription: "Atalhos adicionais:"
+Name: "autostart"; Description: "Iniciar com o Windows"; GroupDescription: "Atalhos adicionais:"; Flags: unchecked
 
 [Files]
 ; Runtime completo embutido (bundle PyInstaller) -> {app}\runtime\current.
@@ -65,6 +66,9 @@ Source: "{#MeuChannelInfo}"; DestDir: "{app}"; DestName: "channel-info.json"; Fl
 Name: "{group}\{#MeuNome}"; Filename: "{app}\{#MeuExeLauncher}"; WorkingDir: "{app}"
 Name: "{group}\Desinstalar {#MeuNome}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MeuNome}"; Filename: "{app}\{#MeuExeLauncher}"; WorkingDir: "{app}"; Tasks: desktopicon
+; Atalho de autostart: mesmo .lnk (nome/alvo) que src/sejoga/desktop/autostart.py gerencia.
+; O Inno Setup remove este atalho automaticamente na desinstalacao (entrada [Icons]).
+Name: "{userstartup}\{#MeuNome}"; Filename: "{app}\{#MeuExeLauncher}"; WorkingDir: "{app}"; Tasks: autostart
 
 [Run]
 ; Oferece abrir o mascote ao final da instalacao.
