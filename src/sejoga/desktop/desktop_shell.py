@@ -5,6 +5,8 @@ from typing import ClassVar
 import win32con
 import win32gui
 
+from sejoga.desktop import desktop_const as C
+
 
 class DesktopIntegration:
     SETTINGS = 0x1F10
@@ -23,7 +25,8 @@ class DesktopIntegration:
         self.requests = []
         self._icons = []
         self.apply_style()
-        for size, kind in ((32, win32con.ICON_SMALL), (64, win32con.ICON_BIG)):
+        for size, kind in ((C.ICONE_PEQUENO_LADO, win32con.ICON_SMALL),
+                           (C.ICONE_GRANDE_LADO, win32con.ICON_BIG)):
             icon = win32gui.LoadImage(0, str(icon_path), win32con.IMAGE_ICON, size, size, win32con.LR_LOADFROMFILE)
             self._icons.append(icon)
             win32gui.SendMessage(hwnd, win32con.WM_SETICON, kind, icon)
@@ -59,7 +62,7 @@ class DesktopIntegration:
             self.requests.append("quit")
             return 0
         if message == win32con.WM_SYSCOMMAND:
-            command = wparam & 0xFFF0
+            command = wparam & C.SYSCOMMAND_MASCARA
             if command in self.DANCE_COMMANDS:
                 self.requests.append('dance:'+self.DANCE_COMMANDS[command])
                 return 0

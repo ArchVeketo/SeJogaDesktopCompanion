@@ -33,6 +33,7 @@ import win32gui
 import win32process
 
 from sejoga.config import Settings, load_settings
+from sejoga.desktop.fisica_tuning import FISICA
 
 # Project imports
 
@@ -57,9 +58,28 @@ WALL_THICKNESS = 2  # pixels
 SHELF_CACHE_TTL = 0.3  # segundos - cache de prateleiras
 SHELF_REFRESH_DISTANCE = 200  # px - só refresh se mascote a < 200px de janela
 
+# Prateleira mínima: janelas menores que isto não viram shelf (ícones, splashes).
+SHELF_AREA_MINIMA_LARGURA = 50  # px
+SHELF_AREA_MINIMA_ALTURA = 30  # px
+# Trecho exposto mínimo (px) do topo de uma janela para virar apoio: fatias
+# menores que isto são descartadas ao recortar sob janelas da frente.
+SHELF_SPAN_MINIMO = 2  # px
+
+# Dimensões padrão da tela quando o chamador não informa (fallback 1080p).
+DEFAULT_SCREEN_WIDTH = 1920  # px
+DEFAULT_SCREEN_HEIGHT = 1080  # px
+
+# Offset (px) acima da borda inferior onde o mascote nasce no estado inicial.
+SPAWN_OFFSET_INFERIOR = 10  # px
+
+# DPI awareness: PER_MONITOR_AWARE_V2 é o contexto -4 (ctypes espera o ponteiro).
+DPI_AWARENESS_PER_MONITOR_V2 = -4
+
 # DPI
 with contextlib.suppress(Exception):
-    ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # PER_MONITOR_AWARE_V2
+    ctypes.windll.user32.SetProcessDpiAwarenessContext(
+        ctypes.c_void_p(DPI_AWARENESS_PER_MONITOR_V2)
+    )
 
 # ============================================================
 # Estruturas de Dados
@@ -101,6 +121,10 @@ class PhysicsState:
 # DwmGetWindowAttribute constants
 DWMWA_EXTENDED_FRAME_BOUNDS = 9
 DWMWA_CLOAKED = 14
+
+# GetWindowLong: índice do estilo estendido e flag de toolwindow (Win32).
+GWL_EXSTYLE = -20
+WS_EX_TOOLWINDOW = 0x00000080
 
 dwmapi = ctypes.windll.dwmapi
 dwmapi.DwmGetWindowAttribute.argtypes = [
@@ -146,8 +170,8 @@ def is_valid_shelf(hwnd: int, own_pid: int) -> bool:
         return False
 
     # Filtra toolwindows e janelas sem título
-    ex_style = win32gui.GetWindowLong(hwnd, -20)  # GWL_EXSTYLE
-    if ex_style & 0x00000080:  # WS_EX_TOOLWINDOW
+    ex_style = win32gui.GetWindowLong(hwnd, GWL_EXSTYLE)
+    if ex_style & WS_EX_TOOLWINDOW:
         return False
 
     # Filtra própria janela
@@ -157,7 +181,8 @@ def is_valid_shelf(hwnd: int, own_pid: int) -> bool:
 
     # Área mínima
     rect = frame_bounds(hwnd)
-    return not ((rect[2] - rect[0]) < 50 or (rect[3] - rect[1]) < 30)
+    return not ((rect[2] - rect[0]) < SHELF_AREA_MINIMA_LARGURA
+                or (rect[3] - rect[1]) < SHELF_AREA_MINIMA_ALTURA)
 
 
 def get_all_shelves(own_hwnd: int, own_pid: int) -> list[Shelf]:
@@ -184,7 +209,7 @@ def get_all_shelves(own_hwnd: int, own_pid: int) -> list[Shelf]:
             if front.rect[1] <= shelf.top_y < front.rect[3]:
                 spans = [(a, b) for left, right in spans
                          for a, b in ((left, min(right, front.left)), (max(left, front.right), right))
-                         if b - a > 2]
+                         if b - a > SHELF_SPAN_MINIMO]
         for left, right in spans:
             visible.append(Shelf(shelf.hwnd, shelf.rect, shelf.top_y, left, right))
     return visible
@@ -208,8 +233,8 @@ class ScreenSpacePhysics:
     def __init__(
         self,
         mascot_radius: float = 40.0,
-        screen_width: int = 1920,
-        screen_height: int = 1080,
+        screen_width: int = DEFAULT_SCREEN_WIDTH,
+        screen_height: int = DEFAULT_SCREEN_HEIGHT,
         own_hwnd: int = 0,
         own_pid: int = 0,
         settings: Settings | None = None
@@ -244,7 +269,7 @@ class ScreenSpacePhysics:
 
         # State
         self.state = PhysicsState(
-            position=(screen_width / 2, screen_height - mascot_radius - 10),
+            position=(screen_width / 2, screen_height - mascot_radius - SPAWN_OFFSET_INFERIOR),
             velocity=(0, 0),
             grounded=False
         )
@@ -263,7 +288,9 @@ class ScreenSpacePhysics:
 
         # Drag/throw state
         self._drag_active = False
-        self._drag_samples: deque[tuple[float, float, float]] = deque(maxlen=10)  # (t, x, y)
+        self._drag_samples: deque[tuple[float, float, float]] = deque(
+            maxlen=FISICA.ARREMESSO_MAX_AMOSTRAS
+        )  # (t, x, y)
         self._drag_body_type = pymunk.Body.DYNAMIC
 
         # Physics step accumulator
@@ -313,8 +340,8 @@ class ScreenSpacePhysics:
                      ((left, top), (left, bottom)), ((right, top), (right, bottom))):
             shape = pymunk.Segment(self.space.static_body, a, b, WALL_THICKNESS)
             shape.collision_type = CAT_SCREEN_EDGE
-            shape.elasticity = 0.25
-            shape.friction = 1.0
+            shape.elasticity = FISICA.BORDA_ELASTICIDADE
+            shape.friction = FISICA.BORDA_ATRITO
             shape.filter = pymunk.ShapeFilter(categories=CAT_SCREEN_EDGE, mask=CAT_MASCOT)
             self._edges.append(shape)
         self.space.add(*self._edges)
@@ -323,8 +350,9 @@ class ScreenSpacePhysics:
     def _shelf_pre_solve(self, arbiter, space, data) -> bool:
         shelf = next(shape for shape in arbiter.shapes if shape.collision_type == CAT_SHELF)
         # A rising body and a body approaching from underneath pass through.
-        allowed = (self.body.velocity.y >= -1.0
-                   and self.body.position.y + self.mascot_radius <= shelf.a.y + 6.0)
+        allowed = (self.body.velocity.y >= FISICA.PASSAGEM_VY_SUBINDO
+                   and self.body.position.y + self.mascot_radius
+                   <= shelf.a.y + FISICA.PASSAGEM_FOLGA_TOPO)
         if hasattr(arbiter, "process_collision"):
             arbiter.process_collision = allowed
         if allowed:
@@ -337,10 +365,11 @@ class ScreenSpacePhysics:
 
     def _contact_response(self, arbiter) -> None:
         speed = self.body.velocity.length
-        if speed < 160:
+        if speed < FISICA.IMPACTO_VELOCIDADE_SEM_QUIQUE:
             arbiter.restitution = 0.0
         now = time.monotonic()
-        if speed > 200 and now - getattr(self, "_last_impact", 0.0) > 0.2:
+        if (speed > FISICA.IMPACTO_VELOCIDADE_EVENTO
+                and now - getattr(self, "_last_impact", 0.0) > FISICA.IMPACTO_COOLDOWN):
             self._last_impact = now
             if self.on_collision:
                 self.on_collision("impact", tuple(self.body.velocity))
@@ -365,8 +394,8 @@ class ScreenSpacePhysics:
             shape = pymunk.Segment(self.space.static_body,
                                    (shelf.left, shelf.top_y), (shelf.right, shelf.top_y), WALL_THICKNESS)
             shape.collision_type = CAT_SHELF
-            shape.elasticity = 0.25
-            shape.friction = 1.0
+            shape.elasticity = FISICA.BORDA_ELASTICIDADE
+            shape.friction = FISICA.BORDA_ATRITO
             shape.filter = pymunk.ShapeFilter(categories=CAT_SHELF, mask=CAT_MASCOT)
             self.space.add(shape)
             key = shelf.hwnd if shelf.hwnd not in self.shelf_shapes else (shelf.hwnd, index)
@@ -462,7 +491,8 @@ class ScreenSpacePhysics:
 
         now = time.monotonic()
         # Usa samples dos últimos ~60ms
-        recent = [(t, x, y) for t, x, y in self._drag_samples if now - t < 0.06]
+        recent = [(t, x, y) for t, x, y in self._drag_samples
+                  if now - t < FISICA.ARREMESSO_JANELA_AMOSTRAS]
         # No stale fallback: holding still before release must stop the throw.
 
         if len(recent) < 2:
@@ -504,7 +534,7 @@ class ScreenSpacePhysics:
         was_grounded = self.state.grounded
         self.state.grounded = False
         self.state.on_shelf = None
-        if not self._drag_active and abs(self.body.velocity.y) < 60:
+        if not self._drag_active and abs(self.body.velocity.y) < FISICA.APOIO_VY_MAXIMA:
             def contact(arbiter):
                 if hasattr(arbiter, "process_collision") and not arbiter.process_collision:
                     return
@@ -512,7 +542,8 @@ class ScreenSpacePhysics:
                 other = shapes[1] if shapes[0] == self.shape else shapes[0]
                 normal = arbiter.contact_point_set.normal
                 toward_floor = normal.y if shapes[0] == self.shape else -normal.y
-                if toward_floor < 0.65 or not arbiter.contact_point_set.points:
+                if (toward_floor < FISICA.APOIO_NORMAL_MINIMA
+                        or not arbiter.contact_point_set.points):
                     return
                 if other == self._bottom_shape:
                     self.state.grounded = True
@@ -532,7 +563,7 @@ class ScreenSpacePhysics:
         if self.settings.physics.collide_with_windows:
             self.refresh_shelves()
         # Accumulator para step fixo
-        self._accumulator += max(0.0, min(dt, 0.05))  # clamp dt
+        self._accumulator += max(0.0, min(dt, FISICA.DT_MAXIMO))  # clamp dt
         while self._accumulator >= FIXED_DT:
             self.space.step(FIXED_DT)
             self._accumulator -= FIXED_DT
@@ -543,8 +574,12 @@ class ScreenSpacePhysics:
 
         # Settle without Body.sleep(), which requires sleeping to be enabled.
         if self.state.grounded:
-            vx = self.body.velocity.x * math.exp(-self.settings.physics.friction * 8 * dt)
-            self.body.velocity = (0 if abs(vx) < 5 else vx, self.body.velocity.y)
+            atenuacao = self.settings.physics.friction * FISICA.ASSENTAMENTO_FATOR_ATRITO * dt
+            vx = self.body.velocity.x * math.exp(-atenuacao)
+            self.body.velocity = (
+                0 if abs(vx) < FISICA.ASSENTAMENTO_VX_MINIMA else vx,
+                self.body.velocity.y,
+            )
 
         # Sync state
         self.state.position = (self.body.position.x, self.body.position.y)
@@ -587,8 +622,8 @@ class ScreenSpacePhysics:
 
 def create_physics(
     mascot_radius: float = 40.0,
-    screen_width: int = 1920,
-    screen_height: int = 1080,
+    screen_width: int = DEFAULT_SCREEN_WIDTH,
+    screen_height: int = DEFAULT_SCREEN_HEIGHT,
     own_hwnd: int = 0,
     own_pid: int = 0,
     settings: Settings | None = None

@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from sejoga.config import Settings, save_settings
+from sejoga.desktop import desktop_const as C
 
 
 class SettingsDialog(QDialog):
@@ -52,34 +53,34 @@ class SettingsDialog(QDialog):
         super().__init__()
         self._settings = settings.model_copy(deep=True)
         self.setWindowTitle("Configurações do SeJoga Companion")
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(C.DIALOGO_LARGURA_MINIMA)
         self._buscando_atualizacao = False
         self._atualizacao_disponivel: object | None = None
 
         self.size_input = QSpinBox()
-        self.size_input.setRange(240, 960)
-        self.size_input.setSingleStep(40)
+        self.size_input.setRange(C.TAMANHO_JANELA_MINIMO, C.TAMANHO_JANELA_MAXIMO)
+        self.size_input.setSingleStep(C.TAMANHO_JANELA_PASSO)
         self.size_input.setSuffix(" px")
         self.size_input.setValue(settings.window.size)
 
         self.scale_input = QDoubleSpinBox()
-        self.scale_input.setRange(0.5, 2.5)
-        self.scale_input.setSingleStep(0.1)
-        self.scale_input.setDecimals(1)
+        self.scale_input.setRange(C.ESCALA_MINIMA, C.ESCALA_MAXIMA)
+        self.scale_input.setSingleStep(C.ESCALA_PASSO)
+        self.scale_input.setDecimals(C.ESCALA_CASAS)
         self.scale_input.setValue(settings.window.scale)
 
         self.outline_input = QCheckBox("Mostrar contorno")
         self.outline_input.setChecked(settings.window.outline_enabled)
         self.outline_width_input = QDoubleSpinBox()
-        self.outline_width_input.setRange(0.5, 8.0)
-        self.outline_width_input.setSingleStep(0.5)
-        self.outline_width_input.setDecimals(1)
+        self.outline_width_input.setRange(C.CONTORNO_LARGURA_MINIMA, C.CONTORNO_LARGURA_MAXIMA)
+        self.outline_width_input.setSingleStep(C.CONTORNO_LARGURA_PASSO)
+        self.outline_width_input.setDecimals(C.CONTORNO_LARGURA_CASAS)
         self.outline_width_input.setSuffix(" px")
         self.outline_width_input.setValue(settings.window.outline_width)
         self.outline_breath_input = QDoubleSpinBox()
-        self.outline_breath_input.setRange(0.0, 1.0)
-        self.outline_breath_input.setSingleStep(0.1)
-        self.outline_breath_input.setDecimals(1)
+        self.outline_breath_input.setRange(C.CONTORNO_RESPIRACAO_MINIMA, C.CONTORNO_RESPIRACAO_MAXIMA)
+        self.outline_breath_input.setSingleStep(C.CONTORNO_RESPIRACAO_PASSO)
+        self.outline_breath_input.setDecimals(C.CONTORNO_RESPIRACAO_CASAS)
         self.outline_breath_input.setValue(settings.window.outline_breath)
         self._outline_color = settings.window.outline_color.upper()
         self.outline_color_button = QPushButton()
@@ -124,12 +125,12 @@ class SettingsDialog(QDialog):
         self.beat_input = QCheckBox("Reagir à batida")
         self.beat_input.setChecked(settings.music.react_to_beat)
         self.sensitivity_input = QDoubleSpinBox()
-        self.sensitivity_input.setRange(0, 1)
-        self.sensitivity_input.setSingleStep(.05)
+        self.sensitivity_input.setRange(C.FRACAO_MINIMA, C.FRACAO_MAXIMA)
+        self.sensitivity_input.setSingleStep(C.FRACAO_PASSO)
         self.sensitivity_input.setValue(settings.music.sensitivity)
         self.dance_chance_input = QDoubleSpinBox()
-        self.dance_chance_input.setRange(0, 1)
-        self.dance_chance_input.setSingleStep(.05)
+        self.dance_chance_input.setRange(C.FRACAO_MINIMA, C.FRACAO_MAXIMA)
+        self.dance_chance_input.setSingleStep(C.FRACAO_PASSO)
         self.dance_chance_input.setValue(settings.music.dance_chance)
         self.dance_style_input = QComboBox()
         for key, label in (('auto','Automático pelo áudio'), ('head_bob','Head bob tranquilo'),
@@ -353,6 +354,9 @@ class SettingsDialog(QDialog):
 
 
 _WM_HOTKEY = 0x0312
+_WM_QUIT = 0x0012
+# Base dos ids de atalho global ("SJ" em ASCII); cada atalho soma seu índice.
+_HOTKEY_ID_BASE = 0x534A
 _MOD_ALT = 0x0001
 _MOD_CONTROL = 0x0002
 _MOD_SHIFT = 0x0004
@@ -429,13 +433,13 @@ class HotkeyManager:
             except ValueError as exc:
                 print(f"[hotkeys] {exc}")
                 continue
-            hotkey_id = 0x534A + index
+            hotkey_id = _HOTKEY_ID_BASE + index
             self._shortcuts.append((hotkey_id, shortcut, modifiers | _MOD_NOREPEAT, key))
             self._callbacks[hotkey_id] = callback
 
         self._thread = threading.Thread(target=self._message_loop, name="global-hotkeys", daemon=True)
         self._thread.start()
-        self._ready.wait(timeout=2.0)
+        self._ready.wait(timeout=C.THREAD_TIMEOUT)
 
     @classmethod
     def _parse_shortcut(cls, shortcut: str) -> tuple[int, int]:
@@ -497,6 +501,6 @@ class HotkeyManager:
 
     def close(self) -> None:
         if self._thread_id:
-            ctypes.windll.user32.PostThreadMessageW(self._thread_id, 0x0012, 0, 0)
+            ctypes.windll.user32.PostThreadMessageW(self._thread_id, _WM_QUIT, 0, 0)
         if self._thread.is_alive():
-            self._thread.join(timeout=2.0)
+            self._thread.join(timeout=C.THREAD_TIMEOUT)

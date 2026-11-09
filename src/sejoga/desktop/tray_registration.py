@@ -12,6 +12,8 @@ import win32con
 import win32gui
 import win32process
 
+from sejoga.desktop import desktop_const as C
+
 
 class GUID(ctypes.Structure):
     _fields_ = [("data1", wintypes.DWORD), ("data2", wintypes.WORD),
@@ -83,21 +85,22 @@ class TrayRegistration:
             return result
         if not self._icon:
             self._icon = win32gui.LoadImage(0, str(self.icon_path), win32con.IMAGE_ICON,
-                                           16, 16, win32con.LR_LOADFROMFILE)
+                                           C.TRAY_ICONE_LADO, C.TRAY_ICONE_LADO,
+                                           win32con.LR_LOADFROMFILE)
         data = IconData()
         data.cbSize = ctypes.sizeof(data)
         data.hWnd = result["hwnd"]
-        data.uID = 0
-        data.uFlags = 1 | 2 | 4 | 0x80  # MESSAGE | ICON | TIP | SHOWTIP
-        data.uCallbackMessage = win32con.WM_APP + 101
+        data.uID = C.TRAY_UID
+        data.uFlags = C.TRAY_FLAGS  # MESSAGE | ICON | TIP | SHOWTIP
+        data.uCallbackMessage = win32con.WM_APP + C.TRAY_CALLBACK_MESSAGE_OFFSET
         data.hIcon = self._icon
-        data.szTip = self.tooltip[:127]
+        data.szTip = self.tooltip[:C.TRAY_TOOLTIP_MAX]
         ctypes.set_last_error(0)
-        added = bool(self._notify(0, ctypes.byref(data)))  # NIM_ADD
+        added = bool(self._notify(C.NIM_ADD, ctypes.byref(data)))
         error = ctypes.get_last_error()
         if added:
-            data.uVersion = 4
-            self._notify(4, ctypes.byref(data))  # NIM_SETVERSION
+            data.uVersion = C.NOTIFYICON_VERSION_4
+            self._notify(C.NIM_SETVERSION, ctypes.byref(data))
         result = self.status()
         result.update(add_succeeded=added, add_error=error)
         return result
