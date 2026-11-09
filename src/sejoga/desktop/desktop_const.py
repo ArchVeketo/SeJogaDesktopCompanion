@@ -27,6 +27,12 @@ TAMANHO_JANELA_MINIMO = 240
 TAMANHO_JANELA_MAXIMO = 960
 TAMANHO_JANELA_PASSO = 40
 
+#: FPS alvo do mascote: faixa (quadros/s), passo e sufixo (espelha config.py).
+FPS_MINIMO = 15
+FPS_MAXIMO = 240
+FPS_PASSO = 5
+FPS_SUFIXO = " FPS"
+
 #: Escala do mascote: faixa, passo e casas decimais do spin box.
 ESCALA_MINIMA = 0.5
 ESCALA_MAXIMA = 2.5

@@ -28,12 +28,29 @@ EIXO_COR_Z = (0.25, 0.55, 1.0, 1.0)
 EIXO_ESCALA_JUNTA = 0.12
 
 
-def configure_logging() -> logging.Logger:
-    """Configura log rotativo no perfil do usuário sem bloquear a inicialização."""
+# Nível de log padrão quando a config não informa outro.
+NIVEL_LOG_PADRAO = "INFO"
+# Mapeia o nível textual da config para a constante do módulo logging.
+NIVEIS_LOG = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+}
+
+
+def configure_logging(level: str = NIVEL_LOG_PADRAO) -> logging.Logger:
+    """Configura log rotativo no perfil do usuário sem bloquear a inicialização.
+
+    ``level`` é o nível textual vindo da config (``DEBUG``/``INFO``/``WARNING``);
+    valores desconhecidos recaem no padrão. Chamadas sem argumento preservam o
+    comportamento anterior.
+    """
+    nivel = NIVEIS_LOG.get((level or NIVEL_LOG_PADRAO).upper(), logging.INFO)
     logger = logging.getLogger("sejoga")
     if logger.handlers:
+        logger.setLevel(nivel)
         return logger
-    logger.setLevel(logging.INFO)
+    logger.setLevel(nivel)
     try:
         log_dir = default_config_path().parent / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -67,6 +84,27 @@ def configure_logging() -> logging.Logger:
             exc_info=(args.exc_type, args.exc_value, args.exc_traceback),  # type: ignore[arg-type]
         )
     return logger
+
+
+def limpar_logs(diretorio: Path | None = None) -> int:
+    """Remove os arquivos ``companion.log*`` da pasta de logs e retorna a contagem.
+
+    ``diretorio`` default é ``<perfil>/logs``. Pasta inexistente retorna 0 sem
+    erro; falha ao remover um arquivo é logada e não interrompe os demais.
+    """
+    pasta = diretorio or (default_config_path().parent / "logs")
+    if not pasta.is_dir():
+        return 0
+
+    removidos = 0
+    for arquivo in pasta.glob("companion.log*"):
+        try:
+            arquivo.unlink()
+        except OSError as exc:
+            logging.getLogger("sejoga").warning("Could not remove log file %s: %s", arquivo, exc)
+            continue
+        removidos += 1
+    return removidos
 
 
 class DebugTools:
