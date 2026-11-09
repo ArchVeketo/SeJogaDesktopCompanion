@@ -118,7 +118,6 @@ from sejoga.render.window_const import (
     MARGEM_CANTO_VERTICAL,
     MILISSEGUNDOS_POR_SEGUNDO,
     OFFSET_APOIO_FISICO,
-    PARTES_ARRASTE_ENVELOPE_FIXO,
     TILT_DIVISOR_VELOCIDADE,
     TILT_GRAUS_MAXIMO,
     TILT_VELOCIDADE_MINIMA,
@@ -820,13 +819,13 @@ class OverlayApp(ShowBase):
                 return
             necessario = extensao_necessaria(projected)
             self._fit_pose_cache = (snapshot, necessario)
-        # Arraste pelo PÉ ou BRAÇO: o torso rola ~155° por uma mola subamortecida e o
+        # Arraste pelo PÉ: o torso rola ~155° por uma mola subamortecida e o
         # bbox projetado oscila frame a frame, podendo pular degraus e piscar.
         # Nesse caso fixamos o degrau (não reavalia por frame) garantindo pelo
         # menos 2*base para comportar a pose rolada com membros estendidos.
         arraste_por_pe = self._drag_active and getattr(
             self, '_body_grab_part', 'body'
-        ) in PARTES_ARRASTE_ENVELOPE_FIXO
+        ) in ('legs', 'left-feet', 'right-feet')
         if arraste_por_pe:
             necessario = max(necessario, base * 2)
         size = escolher_tamanho(

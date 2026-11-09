@@ -63,7 +63,18 @@ POLO_COTOVELO_ANATOMICO = (0.3, -0.6, -0.75)
 #: cheia (fração 1) só o T-pose fica livre: braço+mão (≈0.61) são do tamanho do
 #: corpo e qualquer mão à frente encosta no tronco. Menor = braços mais baixos e
 #: gestos mais soltos, porém mais casca dentro do corpo. A_CONFIRMAR (C4/C6).
-FRACAO_NUCLEO_BRACO = 0.35
+#: Medido (oraculo_cena --sugerir): baixar só esta fração quase não solta o braço,
+#: porque o limite é a caixa do tronco/quadril; a folga por caixa abaixo é a
+#: alavanca que relaxa o braço. Por isso fica no valor original.
+FRACAO_NUCLEO_BRACO = 0.5
+#: Penetração EXTRA tolerada (u, além de ``FOLGA_PENETRACAO_U``) do núcleo do braço
+#: em cada caixa do corpo. Só as caixas "moles" (camiseta e short, AABBs mais
+#: largas que o tecido) têm folga; cabeça, fone, pés e o outro braço seguem
+#: estritos (folga 0). Medido com núcleo 0.5: sem folga 133 alvos livres e punho
+#: no máximo 0.06 u abaixo do ombro; com tronco 0.03 / quadril 0.03, 733 alvos e
+#: 0.18 u abaixo (braço pendente). Maior = braço mais solto e mais braço dentro
+#: do tecido. A_CONFIRMAR na GPU (recalibracao-gpu.md, C13).
+FOLGA_EXTRA_CAIXA_U = {"tronco": 0.03, "quadril": 0.03}
 #: Passos (graus) da busca em cada grau de liberdade: o fino ajusta, os grossos
 #: saltam mínimos locais (ex.: antebraço dobrado contra o peito). Cada passo é o
 #: triplo do anterior, o bastante para sair de um mínimo local em 3 tentativas.

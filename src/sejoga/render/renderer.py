@@ -572,7 +572,7 @@ void main() {{
             moved = self.model_np.getTightBounds(self.model_anchor)[0].z
             self._suspension_pivot.setZ(ground-moved)
             return
-        if dragging or motion.hanging > _tune.PENDURADO_LIMIAR:
+        if motion.hanging > _tune.PENDURADO_LIMIAR:
             point = Vec3(grab_point) if grab_point is not None else Vec3(0,0,.6)
             pivot = self._suspension_pivot.getRelativePoint(self.model_np, point)
             rotation = self._rotacao_no_quadro_de_autoria(motion.yaw, motion.pitch, motion.roll)

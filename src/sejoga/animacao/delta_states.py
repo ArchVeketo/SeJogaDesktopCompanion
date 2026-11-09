@@ -406,16 +406,19 @@ def delta_fisica(motion: BodyPose) -> dict[str, Rotation3]:
     """
     # Pendurado/arrastado, o renderer já gira o mascote INTEIRO (pivô rígido no
     # ponto de pega). Somar a mesma rotação só no peito o giraria em dobro,
-    # dessincronizado de braços e pernas: nesse regime o delta do peito é reduzido.
+    # dessincronizado de braços e pernas: nesse regime o peito recebe só um
+    # balanço pequeno e limitado (a condição é a mesma do renderer).
     pendurado = motion.hanging > tune.PENDURADO_LIMIAR
     fator_peito = tune.PEITO_FATOR_PENDURADO if pendurado else 1.0
+    limite = tune.PEITO_PENDURADO_MAX_GRAUS if pendurado else None
+
+    def _peito(graus: float) -> float:
+        graus *= fator_peito
+
+        return radians(graus if limite is None else max(-limite, min(limite, graus)))
 
     return {
-        "body": Rotation3(
-            radians(motion.pitch * fator_peito),
-            radians(motion.yaw * fator_peito),
-            radians(motion.roll * fator_peito),
-        ),
+        "body": Rotation3(_peito(motion.pitch), _peito(motion.yaw), _peito(motion.roll)),
         "head": Rotation3(
             radians(motion.head_pitch),
             0,

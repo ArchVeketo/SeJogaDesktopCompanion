@@ -25,7 +25,11 @@ from dataclasses import dataclass
 from itertools import pairwise
 from math import radians
 
-from sejoga.animacao.braco_tuning import FRACAO_NUCLEO_BRACO, PASSOS_BUSCA_GRAUS
+from sejoga.animacao.braco_tuning import (
+    FOLGA_EXTRA_CAIXA_U,
+    FRACAO_NUCLEO_BRACO,
+    PASSOS_BUSCA_GRAUS,
+)
 from sejoga.nucleo import cinematica as cin
 from sejoga.nucleo.model import Model
 from sejoga.nucleo.rig import Rotation3
@@ -178,11 +182,12 @@ def penetracao_do_lado(
     maior = 0.0
 
     for capsula in minhas:
-        for caixa in CAIXAS_CORPO.values():
+        for nome, caixa in CAIXAS_CORPO.items():
             if _longe(capsula, caixa):
                 continue
 
-            maior = max(maior, penetracao_capsula_caixa(capsula, caixa))
+            folga_extra = FOLGA_EXTRA_CAIXA_U.get(nome, 0.0)
+            maior = max(maior, penetracao_capsula_caixa(capsula, caixa) - folga_extra)
 
         for alheia in do_outro:
             maior = max(maior, penetracao_capsula_capsula(capsula, alheia))

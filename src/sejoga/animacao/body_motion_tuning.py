@@ -209,9 +209,19 @@ TRONCO_COMPRESSAO_DESCIDA = 0.06  # A_CONFIRMAR (C5)
 # --------------------------------------------------------------------------- #
 # Peito durante arrasto/pendurado (Parte 4).
 # --------------------------------------------------------------------------- #
-#: Acima desta suspensão o renderer gira o mascote INTEIRO no ponto de pega.
+#: Acima desta suspensão o renderer gira o mascote INTEIRO no ponto de pega. É a
+#: ÚNICA condição do regime: o renderer e ``delta_fisica`` usam a mesma (sem
+#: ``dragging`` à parte), senão o peito gira em dobro no começo da pega.
 PENDURADO_LIMIAR = 0.05
-#: Fração do delta de física que o PEITO ainda recebe nesse regime. 0 = o peito
-#: só acompanha o giro rígido do corpo (em fase com braços e pernas); >0 dá um
-#: balanço extra do peito. A_CONFIRMAR na GPU (recalibracao-gpu.md, C7).
-PEITO_FATOR_PENDURADO = 0.0
+#: Fração do delta de física que o PEITO ainda recebe nesse regime. 1.0 = o
+#: comportamento antigo (peito gira em dobro, DEFEITO); 0.0 = peito rígido, só
+#: acompanha o corpo (o usuário achou duro). 0.3 dá um balanço próprio pequeno, em
+#: fase com braços e pernas. Subir se o peito parecer duro; descer se passar por
+#: cima dos braços ou dessincronizar. A_CONFIRMAR na GPU (recalibracao-gpu.md, C11).
+PEITO_FATOR_PENDURADO = 0.3
+#: Amplitude máxima (graus, por eixo) desse balanço extra do peito. Sem o limite,
+#: pegar pela perna (roll ~155°) somaria dezenas de graus. Com ~0.28 u de peito
+#: acima do pivô da coluna, 8° desloca o topo ~0.04 u, dentro da folga dos braços
+#: no tronco (``FOLGA_EXTRA_CAIXA_U``): o peito não sobe por cima dos braços.
+#: A_CONFIRMAR na GPU (C11).
+PEITO_PENDURADO_MAX_GRAUS = 8.0

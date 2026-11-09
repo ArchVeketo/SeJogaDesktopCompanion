@@ -35,13 +35,13 @@ class RepousoAnatomico:
     """
 
     # Ombro (osso base da cadeia): IK do alvo idle.
-    BRACO_X: float = 29.05     # torção: põe a dobradiça do cotovelo à frente
-    BRACO_Y: float = -7.52     # azimute: leve recuo (cotovelo para trás)
-    BRACO_Z: float = 24.77     # elevação: braço aberto e levemente baixado
+    BRACO_X: float = 27.05     # torção: põe a dobradiça do cotovelo à frente
+    BRACO_Y: float = 0.81     # azimute: braço para o lado, sem recuo
+    BRACO_Z: float = 33.49     # elevação: braço caído, afastado do tronco
 
     # Antebraço (cotovelo): flexão para a frente (IK do alvo idle).
     ANTEBRACO_X: float = 0.0
-    ANTEBRACO_Z: float = 15.94
+    ANTEBRACO_Z: float = 1.63
 
     # Mão
     MAO_X: float = 0.0

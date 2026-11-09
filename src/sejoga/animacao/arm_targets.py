@@ -12,7 +12,7 @@ de atravessamento (``animacao.colisao_bracos``) mais próximo do alvo autoral
 anterior, numa grade de 0.02 u (``python tools/oraculo_cena.py --sugerir``). A
 tabela antes/depois está em ``.agents/tasks/frente3-animacao/recalibracao-gpu.md``.
 
-Limite medido do asset: nenhuma pose com o punho mais de 0.08 u abaixo do ombro é
+Limite medido do asset SEM folga: nenhuma pose com o punho mais de 0.08 u abaixo do ombro é
 livre. O antebraço pendurado entra no short (malha ``legs``, meia-largura 0.312,
 mais larga que a camiseta) e a mão (0.33 u) chega aos pés. Por isso o repouso é
 com os braços abertos e levemente baixados, e não colados ao corpo. Se o usuário
@@ -50,14 +50,14 @@ class AlvoBraco:
 
 #: REPOUSO/idle: braços abertos e levemente baixados, mão um pouco à frente. É o
 #: ponto livre mais baixo perto do repouso autoral (0.075, -0.265, 0.02).
-ALVO_IDLE = AlvoBraco(alvo=(0.26, -0.08, 0.06))
+ALVO_IDLE = AlvoBraco(alvo=(0.24, -0.14, 0.08))
 
 #: WAVE/aceno: punho na altura do ombro, por fora da orelha, antebraço para cima.
 #: O balanço e o giro do pulso entram como termos aditivos em ``rig.pose_flourish``.
 ALVO_WAVE = AlvoBraco(alvo=(0.23, 0.075, 0.03))
 
 #: DRAG/arraste: mão à frente e para fora, como quem se equilibra ao ser puxado.
-ALVO_DRAG = AlvoBraco(alvo=(0.18, 0.0, 0.15))
+ALVO_DRAG = AlvoBraco(alvo=(0.18, -0.04, 0.15))
 
 #: STRETCH/alongamento: mão alta e à frente (ajuste de jaqueta).
 ALVO_STRETCH = AlvoBraco(alvo=(0.12, 0.08, 0.18))
@@ -66,19 +66,19 @@ ALVO_STRETCH = AlvoBraco(alvo=(0.12, 0.08, 0.18))
 ALVO_DANCE = AlvoBraco(alvo=(0.15, 0.08, 0.17))
 
 #: SLEEP/sono: braços relaxados, mãos recolhidas à frente.
-ALVO_SLEEP = AlvoBraco(alvo=(0.24, -0.04, 0.10))
+ALVO_SLEEP = AlvoBraco(alvo=(0.22, -0.10, 0.10))
 
 #: THROWN/arremesso: mãos à frente e para fora, silhueta aérea legível.
 ALVO_THROWN = AlvoBraco(alvo=(0.16, 0.02, 0.16))
 
 #: INTERACTION/interação (base): mãos à frente, como quem reage ao cursor.
-ALVO_INTERACTION = AlvoBraco(alvo=(0.15, 0.02, 0.16))
+ALVO_INTERACTION = AlvoBraco(alvo=(0.15, -0.01, 0.16))
 
 #: DRAG_PERNA: pego pela perna, os braços pendem o máximo que o corpo permite.
-ALVO_DRAG_PERNA = AlvoBraco(alvo=(0.26, -0.08, 0.06))
+ALVO_DRAG_PERNA = AlvoBraco(alvo=(0.23, -0.14, 0.06))
 
 #: FALL/queda: mãos abertas para fora (o flailing entra aditivo).
-ALVO_FALL = AlvoBraco(alvo=(0.21, 0.03, 0.07))
+ALVO_FALL = AlvoBraco(alvo=(0.21, -0.02, 0.08))
 
 
 #: Registro por nome (facilita consumo e documentação).

@@ -165,13 +165,26 @@ def test_delta_idle_respiracao_afeta_corpo():
     if "body" in sem_respiracao and "body" in com_respiracao:
         assert sem_respiracao["body"].x != com_respiracao["body"].x
 
-def test_delta_fisica_peito_nao_gira_em_dobro_pendurado():
-    """Pendurado/arrastado o renderer já gira o corpo inteiro: o peito não soma de novo."""
-    pose = BodyPose(roll=155.0, pitch=-26.0, yaw=3.0, hanging=1.0)
+def test_delta_fisica_peito_pendurado_tem_balanco_limitado():
+    """Pendurado o renderer já gira o corpo: o peito só soma fração do giro e limitada."""
+    from math import degrees
 
-    peito = delta_fisica(pose)["body"]
+    from sejoga.animacao import body_motion_tuning as tune
 
-    assert (peito.x, peito.y, peito.z) == (0.0, 0.0, 0.0)
+    pequeno = delta_fisica(BodyPose(roll=10.0, hanging=1.0))["body"]
+    assert degrees(pequeno.z) == pytest.approx(10.0 * tune.PEITO_FATOR_PENDURADO)
+    grande = delta_fisica(BodyPose(roll=155.0, pitch=-26.0, hanging=1.0))["body"]
+    assert abs(degrees(grande.z)) == pytest.approx(tune.PEITO_PENDURADO_MAX_GRAUS)
+    assert abs(degrees(grande.x)) <= tune.PEITO_PENDURADO_MAX_GRAUS + 1e-9
+
+
+def test_delta_fisica_peito_limiar_igual_ao_do_renderer():
+    """Logo acima do limiar já vale o regime pendurado; logo abaixo, o em pé."""
+    from sejoga.animacao import body_motion_tuning as tune
+
+    abaixo = delta_fisica(BodyPose(roll=10.0, hanging=tune.PENDURADO_LIMIAR))["body"]
+    acima = delta_fisica(BodyPose(roll=10.0, hanging=tune.PENDURADO_LIMIAR + 0.01))["body"]
+    assert abaixo.z > acima.z
 
 
 def test_delta_fisica_peito_mantem_rotacao_em_pe():
