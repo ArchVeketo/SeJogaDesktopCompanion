@@ -20,6 +20,7 @@ from sejoga.animacao.anim_layers import (
     Prioridade,
 )
 from sejoga.animacao.body_motion import BodyMotion
+from sejoga.animacao.dance_motion import DanceMotion
 from sejoga.animacao.delta_states import (
     delta_drag,
     delta_fall,
@@ -28,8 +29,6 @@ from sejoga.animacao.delta_states import (
     delta_sleep,
     delta_walk,
 )
-from sejoga.animacao.rig_base import REPOUSO
-from sejoga.animacao.dance_motion import DanceMotion
 from sejoga.animacao.hand_motion import HandMotion
 from sejoga.animacao.joint_springs import (
     CADEIA_DIREITA,
@@ -40,6 +39,7 @@ from sejoga.animacao.leg_motion import LegMotion
 from sejoga.animacao.pose_resolver import PoseResolver
 from sejoga.animacao.respiracao import Respiracao
 from sejoga.animacao.respiracao_tuning import parametros_de
+from sejoga.animacao.rig_base import REPOUSO
 from sejoga.animacao.spring_tuning import amortecimento_de, frequencia_de
 from sejoga.nucleo.model import Model
 from sejoga.nucleo.rig import (

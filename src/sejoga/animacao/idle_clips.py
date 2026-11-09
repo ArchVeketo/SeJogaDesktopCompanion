@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from itertools import pairwise
 from math import cos, sin, tau
 
+from sejoga.animacao.rig_base import REPOUSO
+
 
 @dataclass(frozen=True)
 class IdleClip:
@@ -44,8 +46,7 @@ def phrase(*keys):
 #
 # Convenção de espelho: o lado esquerdo usa o sinal oposto no eixo Z (roll),
 # então left-arm = -REPOUSO.BRACO_Z e ant-arm2 = -REPOUSO.ANTEBRACO_Z.
-# Constantes migradas para rig_base.py — importar de lá.
-from sejoga.animacao.rig_base import REPOUSO
+# Constantes migradas para rig_base.py — importadas no topo do módulo.
 
 # Aliases para retrocompatibilidade de código que ainda usa os nomes antigos.
 REPOUSO_BRACO_Z = REPOUSO.BRACO_Z

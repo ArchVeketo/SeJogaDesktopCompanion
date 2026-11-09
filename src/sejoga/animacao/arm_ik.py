@@ -104,7 +104,7 @@ def comprimentos_braco(model: Model, lado: str = "right") -> tuple[float, float]
     (ombro); ``forearm`` é a translação de ``hand`` em relação a ``ant-arm``. As
     translations locais do modelo são ao longo de +X, então usamos a norma.
     """
-    braco, antebraco = _GRUPOS_BRACO[lado]
+    _braco, antebraco = _GRUPOS_BRACO[lado]
     mao = "hand" if lado == "right" else "hand2"
 
     upper = _norma_translacao(model, antebraco) or _UPPER_FALLBACK
@@ -165,7 +165,7 @@ def posicao_mao_para_hpr(
     lado: str,
     hpr_braco: Rotation3,
     hpr_antebraco: Rotation3,
-    pose_base: dict[str, Rotation3] | None = None,  # noqa: ARG001  # compat de assinatura
+    pose_base: dict[str, Rotation3] | None = None,  # compat de assinatura
 ) -> Vec3:
     """FK do renderer: ponta da mão RELATIVA ao ombro para um candidato de HPR.
 
@@ -218,7 +218,7 @@ def _semente(
     # azimute negativo. Semeamos pelo arco-tangente do alvo no plano XZ.
     azimute = degrees(atan2(-az, max(1e-6, horizontal)))
 
-    px, py, pz = polo  # noqa: F841  # polo fica como preferência; refino ajusta
+    _px, _py, pz = polo  # polo fica como preferência; refino ajusta
 
     if pz < 0 and cotovelo > 0:
         cotovelo = -cotovelo

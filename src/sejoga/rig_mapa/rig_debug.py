@@ -456,10 +456,7 @@ def _flag_posicao_mao(offset: Vec3, meia_largura: float) -> str:
   limiar_lateral = MAO_AFASTAMENTO_LATERAL_FRAC * meia_largura
   limiar_frontal = MAO_AVANCO_FRONTAL_FRAC * meia_largura
 
-  if abs(offset[0]) >= limiar_lateral:
-    flag = "MAO_AFASTADA"
-  else:
-    flag = "MAO_JUNTO_AO_CORPO"
+  flag = "MAO_AFASTADA" if abs(offset[0]) >= limiar_lateral else "MAO_JUNTO_AO_CORPO"
 
   if offset[2] >= limiar_frontal:
     flag = f"{flag}+MAO_A_FRENTE"

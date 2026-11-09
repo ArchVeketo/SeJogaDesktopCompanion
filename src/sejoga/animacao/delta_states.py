@@ -18,7 +18,7 @@ from sejoga.nucleo.rig import IdlePersonality, Rotation3, braco_hpr_graus
 
 
 def _delta_braco_ik(nome_alvo: str) -> dict[str, Rotation3]:
-    """Delta (radianos) dos quatro grupos de braço: alvo IK − repouso de idle.
+    """Delta (radianos) dos quatro grupos de braço: alvo IK - repouso de idle.
 
     As poses de braço passaram a declarar ALVOS DE MÃO (ver ``arm_targets``). O
     delta aditivo sobre a pose de repouso é a diferença entre o HPR do alvo do

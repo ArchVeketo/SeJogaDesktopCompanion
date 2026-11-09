@@ -23,7 +23,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
-from verificar_eixos import RenderIndisponivel, capturar  # noqa: E402
+from verificar_eixos import RenderIndisponivel, capturar
 
 #: Elevação mínima (px) que a mão do wave precisa subir em relação ao idle.
 MIN_SUBIDA_WAVE_PX = 80.0

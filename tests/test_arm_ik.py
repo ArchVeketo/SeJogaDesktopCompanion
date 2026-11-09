@@ -110,10 +110,10 @@ def test_modulo_e_python_puro():
     src = str(Path(__file__).resolve().parent.parent / "src")
     codigo = (
         "import sys; "
-        "sys.path.insert(0, %r); "
+        f"sys.path.insert(0, {src!r}); "
         "import sejoga.animacao.arm_ik; "
         "assert 'panda3d' not in sys.modules, 'panda3d vazou'; "
-        "assert 'PySide6' not in sys.modules, 'PySide6 vazou'" % src
+        "assert 'PySide6' not in sys.modules, 'PySide6 vazou'"
     )
     resultado = subprocess.run(
         [sys.executable, "-c", codigo], capture_output=True, text=True

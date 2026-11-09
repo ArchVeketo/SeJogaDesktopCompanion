@@ -30,7 +30,7 @@ from sejoga.nucleo.model import Model
 # resolver a IK a cada frame custaria caro, cacheamos o HPR por (alvo, lado): os
 # alvos dos gestos são fixos, então a cadeia FK roda uma vez por alvo.
 _MODELO_IK_CACHE: Model | None = None
-_HPR_ALVO_CACHE: dict[tuple, dict[str, "Rotation3"]] = {}
+_HPR_ALVO_CACHE: dict[tuple, dict[str, Rotation3]] = {}
 
 
 def _modelo_ik() -> Model:

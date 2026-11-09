@@ -16,7 +16,6 @@ from sejoga.nucleo.rig import Rotation3
 from sejoga.rig_mapa import colisao_membros as colisao
 from sejoga.rig_mapa import rig_medidas as medidas
 
-
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                       Limites anatômicos (clamps)                         ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
