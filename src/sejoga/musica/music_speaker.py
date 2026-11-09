@@ -14,6 +14,25 @@ from panda3d.core import (
     Vec3,
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Orientação "de frente" do mascote (rota B / Frente 3).
+# ─────────────────────────────────────────────────────────────────────────────
+# Antes da rota B, o modelo era girado 180° por model_np.setH(180) e toda a
+# geometria/posição da caixa musical foi autorada NESSE referencial já girado:
+# o ponto da caixa era transformado por ``model_np.getMat()`` (que incluía o
+# flip) e o rótulo encarava a câmera por heading 180.
+#
+# Na rota B o flip saiu do código e foi assado no nó-raiz do .gltf — então
+# ``model_np`` NÃO carrega mais o 180°; ele vive num filho (node60). Para a
+# caixa nascer no MESMO lugar/orientação de antes (sem regressão), recompomos
+# aqui o referencial visível do mascote: a matriz de ``model_np`` composta com
+# este heading. É o único ponto da caixa que dependia do flip morar no código.
+# A_VALIDAR (GPU): lado/altura/orientação da caixa na nova montagem.
+FACING_MASCOTE_GRAUS = 180.0
+# Inclinação extra da caixa em relação ao mascote (leve giro de palco). Somada
+# ao facing para o heading final do corpo da caixa.
+FACING_CAIXA_EXTRA_GRAUS = 8.0
+
 
 def box(parent, name, size, color):
     data = GeomVertexData(name, GeomVertexFormat.getV3c4(), Geom.UHStatic)
@@ -117,6 +136,24 @@ class MusicSpeaker:
         label.setH(180)
         label.setTexture(texture,1);label.setTwoSided(True)
 
+    def _matriz_visivel(self):
+        """Matriz do referencial VISÍVEL do mascote (model_np + facing da rota B).
+
+        Reproduz o que ``model_np.getMat()`` entregava antes da rota B, quando o
+        flip de 180° ainda morava no código (``model_np.setH(180)``). Agora o
+        flip está assado no asset e ``model_np`` não o carrega mais; recompomos
+        o MESMO referencial reaplicando o heading de facing sobre a posição e a
+        escala atuais de ``model_np``, sem depender de onde o 180° é aplicado.
+        """
+        from panda3d.core import TransformState
+        model_np = self.renderer.model_np
+        transform = TransformState.makePosHprScale(
+            model_np.getPos(),
+            (FACING_MASCOTE_GRAUS, 0.0, 0.0),
+            model_np.getScale(),
+        )
+        return transform.getMat()
+
     @property
     def settle(self):
         value=max(0,min(1,(self.age-2.2)/.8))
@@ -157,8 +194,8 @@ class MusicSpeaker:
         if self.age > 2.3:
             position.x += self.width*.0025*sin(phase*9)*strength
             position.y += self.depth*.008*sin(phase*7)*strength
-        self.root.setPos(self.renderer.model_np.getMat().xformPoint(position))
-        self.root.setH(self.renderer.MODEL_FACING_HEADING+8)
+        self.root.setPos(self._matriz_visivel().xformPoint(position))
+        self.root.setH(FACING_MASCOTE_GRAUS+FACING_CAIXA_EXTRA_GRAUS)
         self.root.setScale(self.renderer.model_np.getScale().x*max(.005,self.visibility*(.08+.92*ease)))
         self.root.setR((1-ease)*-100+(sin(phase*6)*.6*strength if self.age > 2.3 else 0))
         for cone in self.cones:

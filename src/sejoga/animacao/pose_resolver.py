@@ -27,8 +27,9 @@ from sejoga.rig_mapa import rig_medidas as medidas
 #   Z=+74 → repouso natural de idle
 #   Z=0   → LATERAL/T-pose (braço na horizontal)
 #   Z=-90 → ERGUIDO (reto para CIMA; wave fica em ~-66)
-# A convenção MUDOU: a medição por FRAME mostrou que a elevação é o ROLL (Z) e
-# a profundidade o HEADING (Y) — o oposto do que o código assumia. Clampamos a
+# A medição por FRAME mostrou que a elevação é o ROLL (Z) e a profundidade o
+# HEADING (Y) — consequência do eixo longo do bone ser ±X, não do antigo
+# setH(180) (a rota B moveu o facing para o asset sem mudar isto). Clampamos a
 # ELEVAÇÃO (Z) de reto p/ cima (negativo) até um pouco além de reto p/ baixo
 # (positivo), com folga para overshoot de crossfade; a profundidade (Y) fica
 # numa faixa ampla só para conter deriva. Em radianos.

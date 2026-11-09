@@ -61,7 +61,12 @@ class Panda3DRenderer:
     """Encapsula Panda3D render e modelo."""
 
     FRAME_FILL = 0.66
-    MODEL_FACING_HEADING = 180
+    # DEPRECIADO (Frente 3 / rota B): a orientação "de frente" agora é assada no
+    # nó-raiz do mario.gltf (rotation=[0,1,0,0] = 180° em torno de +Y). O flip
+    # NÃO é mais aplicado em código. Mantido em 0 por compatibilidade de quem
+    # ainda referencia a constante (ex.: music_speaker). NÃO reintroduzir o flip
+    # aqui: isso giraria o modelo 360° e o colocaria de costas de novo.
+    MODEL_FACING_HEADING = 0
 
     def __init__(self, showbase: ShowBase, hwnd: int, width: int, height: int):
         self.showbase = showbase
@@ -223,9 +228,14 @@ class Panda3DRenderer:
                 # show dotted triangular scaffolding in the desktop projection.
                 plane.stash()
                 self._hidden_export_planes.append(name)
-        # O glTF foi exportado com a frente apontando para +Y. Como a câmera
-        # observa o mascote pelo lado -Y, giramos a malha para mostrar o rosto.
-        model_np.setH(self.MODEL_FACING_HEADING)
+        # Rota B (Frente 3): a orientação "de frente" agora mora no ASSET —
+        # o nó-raiz do mario.gltf carrega rotation=[0,1,0,0] (180° em torno de
+        # +Y). O antigo model_np.setH(180) foi REMOVIDO; a malha já nasce com o
+        # rosto para a câmera (-Y). A orientação de mundo de cada nó do rig é
+        # idêntica à de antes (o flip só trocou de lugar: código -> asset), por
+        # isso a convenção de braço (eixo longo ±X, elevação=roll) e a câmera
+        # continuam válidas sem recalibrar. Ver .agents/tasks/frente3-animacao/
+        # mapa-eixos.md.
         bounds = model_np.getTightBounds()
         if not bounds:
             raise ValueError(f"não foi possível calcular os limites do modelo: {model_path}")
@@ -565,9 +575,18 @@ void main() {{
             return
         # Grounded reaction now uses the shared spine and neck joints rather
         # than independently transforming disconnected top-level body parts.
+        # Ganhos e SINAIS do tronco vêm de body_motion_tuning (req 4): o tronco
+        # deve inclinar/girar no MESMO sentido do resto do corpo. Os sinais são
+        # calibráveis na GPU (default +1 preserva o comportamento atual).
+        from sejoga.animacao import body_motion_tuning as _tune
         for spine, neck, _shoulders in self.flexible_rig.chains:
-            spine.setHpr(motion.yaw, motion.pitch*.6+(10*settle if head_nod else 0),
-                         motion.roll*.55+self.flexible_rig.spine.value)
+            spine.setHpr(
+                _tune.TRONCO_YAW_SINAL * motion.yaw,
+                _tune.TRONCO_PITCH_SINAL * motion.pitch * _tune.TRONCO_PITCH_GANHO
+                + (10 * settle if head_nod else 0),
+                _tune.TRONCO_ROLL_SINAL * motion.roll * _tune.TRONCO_ROLL_GANHO
+                + self.flexible_rig.spine.value,
+            )
             spine.setZ(.44-motion.compression*.06)
             neck.setP(motion.head_pitch)
             neck.setR(neck.getR()+motion.head_roll)

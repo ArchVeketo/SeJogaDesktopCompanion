@@ -24,10 +24,13 @@ class RepousoAnatomico:
       Z (roll) do ``right-arm``: z NEGATIVO ERGUE (mão acima do ombro); z
         POSITIVO BAIXA. "braço baixado" (idle) ≈ Z=+74.
       Y (heading) do ``right-arm``: AZIMUTE/profundidade (dentro/fora da tela).
-    Estes valores vêm do solver de IK para o ALVO DE MÃO de idle (mãos ao lado
-    do quadril), em ``arm_targets.ALVO_IDLE`` — não são mais ângulos chutados.
-    Mantidos aqui como fallback/const para quem não injeta o ``Model``
-    (``pose_repouso()`` sem modelo e os deltas de ``delta_states``).
+    Isso é geometria do bone (eixo longo ±X), não artefato do antigo
+    ``setH(180)``: a rota B assou o facing no asset sem mudar a orientação de
+    mundo, então a convenção e o espelho (x,-y,-z) seguem válidos. Estes valores
+    vêm do solver de IK para o ALVO DE MÃO de idle (mãos ao lado do quadril), em
+    ``arm_targets.ALVO_IDLE`` — não são ângulos chutados. Mantidos aqui como
+    fallback/const para quem não injeta o ``Model`` (``pose_repouso()`` sem
+    modelo e os deltas de ``delta_states``).
     """
 
     # Braço (ombro): baixado ao lado do quadril (IK do alvo idle, render-exato).

@@ -284,7 +284,15 @@ def resolver_rot_mundo(parte: Parte, pose: dict[str, Rotation3], model: Model) -
       return cache[indice]
 
     node = por_indice[indice]
-    local_repouso = matriz_rotacao_quat(node.rotation)
+    # O nó-raiz da cena carrega o heading de FACING assado no asset (rota B).
+    # É um giro de presentação (rosto para a câmera), não uma junta: o rig_mapa
+    # mede a orientação RELATIVA das partes no referencial de autoria e deve ser
+    # agnóstico a onde o flip mora. Trata-se o repouso da raiz (sem pai e sem
+    # pose) como identidade. Como o flip é uniforme para todas as partes, a
+    # geometria RELATIVA (e logo a colisão) não muda; isto só evita girar o
+    # referencial de medição. Ver mapa-eixos.md.
+    e_raiz_de_cena = node.parent is None and node.name not in pose
+    local_repouso = _identidade3() if e_raiz_de_cena else matriz_rotacao_quat(node.rotation)
     animada = _identidade3()
 
     if node.name in pose:
@@ -349,7 +357,10 @@ def _origem_mundo(parte: Parte, model: Model) -> Vetor3:
     node = por_indice[idx]
     deslocado = _aplicar3(rot_acum, node.translation)
     origem = (origem[0] + deslocado[0], origem[1] + deslocado[1], origem[2] + deslocado[2])
-    rot_acum = _mul3(rot_acum, matriz_rotacao_quat(node.rotation))
+    # Ignora o heading de FACING do nó-raiz (rota B): giro de presentação, não
+    # junta. Mantém as origens no referencial de autoria (ver resolver_rot_mundo).
+    repouso = _identidade3() if node.parent is None else matriz_rotacao_quat(node.rotation)
+    rot_acum = _mul3(rot_acum, repouso)
 
   return origem
 

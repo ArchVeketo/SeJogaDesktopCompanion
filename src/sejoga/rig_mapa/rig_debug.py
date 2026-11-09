@@ -300,7 +300,16 @@ def estado_acumulado(pose: dict[str, Rotation3], model: Model) -> dict[str, Mat3
       return cache[indice]
 
     node = por_indice[indice]
-    local_repouso = matriz_rotacao_quat(node.rotation)
+    # ORIENTAÇÃO DE FRENTE (rota B): o nó-raiz da cena carrega o heading de
+    # facing assado no asset (rotation=[0,1,0,0]). Esse giro é de PRESENTAÇÃO
+    # (põe o rosto para a câmera), não uma junta do rig. O rig_debug lê a
+    # orientação RELATIVA das partes no referencial de autoria (rosto = +Z), e
+    # deve ser agnóstico a onde o flip mora (código antes, asset agora). Por
+    # isso o repouso do nó-raiz (sem pai e sem pose própria) é tratado como
+    # identidade: do contrário o olhar de repouso viraria OLHAR_TRAS só porque
+    # o flip mudou de lugar. Ver .agents/tasks/frente3-animacao/mapa-eixos.md.
+    e_raiz_de_cena = node.parent is None and node.name not in pose
+    local_repouso = _identidade3() if e_raiz_de_cena else matriz_rotacao_quat(node.rotation)
     animada = _identidade3()
 
     if node.name in pose:

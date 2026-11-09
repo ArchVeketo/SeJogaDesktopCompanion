@@ -163,3 +163,32 @@ SNAP_LIMB_SWING = FaixaClamp(minimo=-30.0, maximo=30.0)
 SNAP_STRETCH_PONTA = 0.08
 SNAP_STRETCH_CORPO = 0.025
 SNAP_SUSPENSAO = FaixaClamp(minimo=0.0, maximo=1.0)
+
+
+# --------------------------------------------------------------------------- #
+# Aplicação do movimento ao TRONCO na cena (req 4, Frente 3).
+# --------------------------------------------------------------------------- #
+# O movimento inercial (BodyMotion/GiroCorpo) é PURO; quem o aplica ao nó da
+# coluna (``flexible_rig.spine``) é o renderer. Antes, os ganhos do tronco
+# (0.6 no pitch, 0.55 no roll) e os SINAIS ficavam embutidos no renderer como
+# literais. Foram extraídos para cá, nomeados, para o usuário calibrar o tronco
+# sem mexer na lógica.
+#
+# DIREÇÃO DO TRONCO (A_VALIDAR na GPU): o relato do usuário é que o tronco ia
+# para o lado TROCADO em relação ao resto do corpo. A orientação de mundo não
+# mudou com a rota B (o flip só trocou de lugar), então o sentido do tronco é
+# um ajuste independente e NÃO pode ser acertado no escuro (headless). Os
+# SINAIS abaixo são o ponto de calibração: o default +1 preserva o
+# comportamento atual bit a bit; se na GPU o tronco girar/tombar ao contrário
+# do corpo, inverter o sinal correspondente para -1 (ver recalibracao-gpu.md).
+#: Ganho do pitch do tronco (inclina à frente/trás com o ponteiro).
+TRONCO_PITCH_GANHO = 0.6
+#: Ganho do roll do tronco (tomba de lado com o ponteiro).
+TRONCO_ROLL_GANHO = 0.55
+#: Sinal do giro (yaw/heading) do tronco. +1 preserva o atual; -1 inverte o
+#: lado para onde o tronco gira. CALIBRÁVEL na GPU.
+TRONCO_YAW_SINAL = 1.0
+#: Sinal do pitch do tronco. +1 preserva o atual; -1 inverte frente/trás.
+TRONCO_PITCH_SINAL = 1.0
+#: Sinal do roll do tronco. +1 preserva o atual; -1 inverte o lado do tombo.
+TRONCO_ROLL_SINAL = 1.0

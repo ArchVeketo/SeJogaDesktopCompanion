@@ -23,12 +23,27 @@ de tela, a geometria do braço NO RENDERER é:
     braço, composto DEPOIS da rotação do ombro (``R_arm · R_elbow``).
 
 Esta é a convenção que o renderer de fato aplica (``renderer.apply_rig_pose``:
-``setHpr(base_h+deg(y), base_p+deg(x), base_r+deg(z))`` sobre os nós do Panda)
-MAIS o ``model_np.setH(180)`` que mostra o rosto e ESPELHA o eixo lateral — por
-isso o lado esquerdo usa o sinal espelhado (``espelhar_braco`` inverte Y e Z).
-A FK abaixo é um modelo invertível e monotônico: a elevação (vertical na tela)
-é produzida pelo ROLL e a profundidade pelo HEADING, coerente com a medição em
-pixels (ver ``tools/verificar_eixos.py`` e ``tests/test_eixos_bracos_tela.py``).
+``setHpr(base_h+deg(y), base_p+deg(x), base_r+deg(z))`` sobre os nós do Panda).
+
+OSSO BASE DA CADEIA (req 2): a cadeia do braço é ``OMBRO -> ANTEBRAÇO -> MÃO ->
+DEDOS`` (``right-arm``/``shoulder`` à direita; ``left-arm``/``shoulder2`` à
+esquerda). O OMBRO (nó ``right-arm``/``left-arm``) é o OSSO BASE: é ele que o IK
+rotaciona para posicionar a mão no espaço; o cotovelo (``ant-arm``/``ant-arm2``)
+dobra DEPOIS, no plano local, composto como ``R_ombro · R_cotovelo``. Mão e
+dedos são termos aditivos de gesto por cima. Nada acima do ombro move a mão.
+
+POR QUE elevação = ROLL e o espelho é (x,-y,-z) — e por que isso NÃO é artefato
+de flip (rota B / Frente 3): o eixo LONGO do bone do braço é ``+X`` (direito) /
+``-X`` (esquerdo) — lido das translations do glTF, não escolhido. Com o
+mapeamento FIXO do renderer (H=y, P=x, R=z) sobre um bone que aponta em ±X, a
+ELEVAÇÃO vertical na tela sai no ROLL (Z) e a PROFUNDIDADE no HEADING (Y). Isso
+é consequência geométrica do eixo do bone, NÃO do antigo ``setH(180)``: a rota B
+tirou o flip do código e o assou no asset, preservando a orientação de mundo bit
+a bit — a medição em pixels (``tools/verificar_eixos.py``,
+``tests/test_eixos_bracos_tela.py``) continua idêntica. Pelo mesmo motivo, o
+lado esquerdo é o espelho geométrico real do bone ``-X``, que em HPR equivale a
+inverter Y e Z (``espelhar_braco``); medir provou que (x,-y,-z) é o espelho
+simétrico correto, não uma compensação a desfazer.
 
 Eixos do mundo no espaço do corpo (medidos): +X=direita, +Y=cima, +Z=frente.
 
@@ -171,8 +186,9 @@ def posicao_mao_para_hpr(
 
     Recebe os ``Rotation3`` do braço/antebraço (como o renderer consome) e
     devolve a ponta da mão no espaço do corpo (+X dir, +Y cima, +Z frente). Para
-    o lado esquerdo, desfaz o espelho (``espelhar_braco`` inverte Y e Z) antes
-    de medir no referencial do braço direito, e espelha o X do resultado.
+    o lado esquerdo, desfaz o espelho geométrico do bone ``-X``
+    (``espelhar_braco`` inverte Y e Z) antes de medir no referencial do braço
+    direito, e espelha o X do resultado.
     """
     upper, forearm = comprimentos_braco(model, lado)
 
@@ -285,7 +301,8 @@ def _hpr_dos_angulos(
     com z NEGATIVO erguendo — logo ``.z = -elevacao`` (o solver mede elevação
     positiva-para-cima). O AZIMUTE/profundidade é o HEADING (``Rotation3.y``);
     o cotovelo é o ROLL (``Rotation3.z``) do antebraço. O lado esquerdo é o
-    espelho (``espelhar_braco`` inverte Y e Z, por causa do ``setH(180)``).
+    espelho geométrico do bone ``-X`` (``espelhar_braco`` inverte Y e Z) — isso
+    é a simetria real do bone, não compensação do antigo ``setH(180)`` (rota B).
     """
     braco_dir = Rotation3(0.0, radians(azimute), radians(-elevacao))
     antebraco_dir = Rotation3(0.0, 0.0, radians(cotovelo))
