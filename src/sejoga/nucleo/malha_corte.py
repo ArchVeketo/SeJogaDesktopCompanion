@@ -39,6 +39,11 @@ ITERACOES_EIXO_PRINCIPAL = 60
 #: Tangente padrão das tampas quando a malha original não traz tangente.
 TANGENTE_PADRAO = (1.0, 0.0, 0.0, 1.0)
 
+#: Casas decimais para tratar posições como iguais ao deduplicar.
+CASAS_POSICAO_UNICA = 6
+#: Se |direcao.z| passar disto, o vetor ajudante da tampa deixa de ser Z.
+LIMITE_PARALELO_AJUDANTE = 0.9
+
 
 def _distancia(v: Vertice, origem: Vec3, direcao: Vec3) -> float:
     return (
@@ -117,7 +122,7 @@ def pontos_no_plano(
         for v in triangulo:
             if abs(_distancia(v, origem, direcao) - s) <= TOLERANCIA_PLANO:
                 p = (v[0], v[1], v[2])
-                vistos[(round(p[0], 6), round(p[1], 6), round(p[2], 6))] = p
+                vistos[(round(p[0], CASAS_POSICAO_UNICA), round(p[1], CASAS_POSICAO_UNICA), round(p[2], CASAS_POSICAO_UNICA))] = p
 
     return list(vistos.values())
 
@@ -195,7 +200,7 @@ def tampa_no_plano(
         return []
 
     c = centro(pontos)
-    ajudante = (0.0, 0.0, 1.0) if abs(direcao[2]) < 0.9 else (1.0, 0.0, 0.0)
+    ajudante = (0.0, 0.0, 1.0) if abs(direcao[2]) < LIMITE_PARALELO_AJUDANTE else (1.0, 0.0, 0.0)
     u1 = _normalizar(_vetorial(ajudante, direcao))
     u2 = _vetorial(direcao, u1)
     pontos.sort(key=lambda p: atan2(_escalar(_sub(p, c), u2), _escalar(_sub(p, c), u1)))
@@ -233,7 +238,7 @@ def eixo_principal(pontos: list[Vec3]) -> Vec3:
     Serve para o eixo longo de dedos retos, inclusive o polegar (estendido em Z).
     """
     # Posições únicas: vértices repetidos por triângulo enviesariam a covariância.
-    unicos = list({(round(p[0], 6), round(p[1], 6), round(p[2], 6)): p for p in pontos}.values())
+    unicos = list({(round(p[0], CASAS_POSICAO_UNICA), round(p[1], CASAS_POSICAO_UNICA), round(p[2], CASAS_POSICAO_UNICA)): p for p in pontos}.values())
     c = centro(unicos)
     d = [_sub(p, c) for p in unicos]
     cov = [[sum(v[i] * v[j] for v in d) for j in range(3)] for i in range(3)]

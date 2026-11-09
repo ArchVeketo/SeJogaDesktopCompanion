@@ -84,5 +84,5 @@ class FingerGestures:
                 self.angulos[chave] = cascata.suavizar(self.angulos[chave], alvo, passo)
 
                 for pivos in self.cadeias[chave]:
-                    for (pivo, eixo), angulo in zip(pivos, self.angulos[chave], strict=False):
+                    for (pivo, eixo), angulo in zip(pivos, self.angulos[chave], strict=True):
                         girar_pivo(pivo, eixo, angulo)
