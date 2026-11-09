@@ -25,8 +25,16 @@ class FlexibleRig:
                 shoulders.append(pivot)
             self.chains.append((spine, neck, shoulders))
         # Authored pose offsets remain relative to their immediate parent.
+        # O wrtReparentTo embute no HPR local a orientação do pai antigo (ex.: o
+        # giro de frente do node60 no asset). A base precisa ser recapturada
+        # depois do re-parent, senão apply_rig_pose sobrescreve esse HPR a cada
+        # frame e os nós re-parentados perdem a orientação (ficam de costas).
         for name, node in renderer._rig_nodes.items():
             renderer._rig_base_pos[name] = node.getPos()
+            hpr = node.getHpr()
+            renderer._rig_base_hpr[name] = (float(hpr.x), float(hpr.y), float(hpr.z))
+            renderer._rig_base_scale[name] = node.getScale()
+            renderer._rig_base_mat[name] = node.getMat()
         self.spine = Spring(1.4, .55)
         self.neck = Spring(1.8, .48)
         self.shoulder = Spring(1.3, .42)
