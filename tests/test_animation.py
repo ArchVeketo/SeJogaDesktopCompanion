@@ -89,24 +89,16 @@ def test_wave_turns_palm_out_and_keeps_elbow_bent():
     assert abs(degrees(pose["hand"].x)) < 45
 
 
-def test_walk_dance_and_drag_poses_have_counterbalanced_arms():
-    from math import degrees, pi
+def test_walk_and_drag_poses_have_counterbalanced_arms():
+    from math import degrees
 
-    from sejoga.nucleo.rig import pose_dance, pose_drag, pose_walk
+    from sejoga.nucleo.rig import pose_drag, pose_walk
     animation = controller()
     pose_walk(animation.rig, 1 / 6)
     walk_left = degrees(animation.rig.current["left-arm"].z)
     pose_walk(animation.rig, .5)
     walk_other = degrees(animation.rig.current["left-arm"].z)
     assert abs(walk_left - walk_other) > 10
-    pose_dance(animation.rig, pi / 18)
-    dance = animation.rig.pose()
-    # No beat o braço condutor ERGUE enquanto o outro fica baixo — braços
-    # contrabalançados, não escancarados em espelho. Convenção medida no grafo de cena (não confirmada na GPU) em
-    # pixels: erguer = elevação ROLL (Z) mais NEGATIVA. Aqui t=pi/18 →
-    # right_lift=1 (direito conduz): o direito ERGUE (z fica mais negativo) e o
-    # esquerdo permanece — logo right-arm.z < left-arm.z com folga.
-    assert degrees(dance["right-arm"].z) < degrees(dance["left-arm"].z) - 15
     # Convenção medida no grafo de cena (não confirmada na GPU): o arraste estende o braço para a FRENTE pela
     # PROFUNDIDADE (Y/heading), não pela elevação (Z): cada direção avança um
     # lado diferente.

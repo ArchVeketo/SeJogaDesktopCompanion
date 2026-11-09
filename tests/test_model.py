@@ -10,7 +10,7 @@ import pytest
 
 from sejoga.nucleo.assets import resolve_model
 from sejoga.nucleo.model import load_model
-from sejoga.nucleo.rig import ALL_GROUPS, Rig, pose_dance, pose_idle, pose_thrown, pose_walk
+from sejoga.nucleo.rig import ALL_GROUPS, Rig, pose_idle, pose_thrown, pose_walk
 
 
 @pytest.fixture(scope="module")
@@ -69,6 +69,6 @@ def test_rig_from_model_and_pose(model):
 
 def test_pose_presets_do_not_raise(model):
     rig = Rig.from_model(model)
-    for fn, args in ((pose_idle, (0.5,)), (pose_dance, (1.0, 0.8)), (pose_walk, (0.2,))):
+    for fn, args in ((pose_idle, (0.5,)), (pose_walk, (0.2,))):
         fn(rig, *args)
     pose_thrown(rig)

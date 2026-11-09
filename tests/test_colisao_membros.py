@@ -149,7 +149,6 @@ def _poses_de_producao() -> dict[str, object]:
   poses["run"] = lambda rig, t: rig_mod.pose_walk(rig, t, run=True)
   poses["drag"] = lambda rig, t: rig_mod.pose_drag(rig, t, direction=1.0, drag_intensity=1.0)
   poses["fall"] = lambda rig, t: rig_mod.pose_thrown(rig, t)
-  poses["dance"] = lambda rig, t: rig_mod.pose_dance(rig, t)
   poses["sleep"] = lambda rig, t: rig_mod.pose_sleep(rig, t)
 
   for kind in ("wave", "stretch", "peek"):

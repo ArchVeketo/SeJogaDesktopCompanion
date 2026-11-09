@@ -388,55 +388,6 @@ def pose_walk(rig: Rig, t: float, *, run: bool = False) -> None:
     rig.set_rotation("shoulder2", x=-shoulder_comp)
 
 
-def pose_wave(rig: Rig, t: float) -> None:
-    """Aceno: braço direito sobe e o antebraço oscila.
-
-    Braço e cotovelo vêm do IK (``braco_hpr_graus('right', 'wave')``); o balanço
-    é a torção do antebraço somada por cima.
-    """
-    aceno = braco_hpr_graus("right", "wave")
-    rb, re = aceno["right-arm"], aceno["ant-arm"]
-    rig.set_rotation("right-arm", x=rb[0], y=rb[1], z=rb[2])
-    rig.set_rotation("ant-arm", x=re[0] + sin(t * 8.0) * 25.0, y=re[1], z=re[2])
-    rig.set_rotation("head", z=6.0)
-
-
-def pose_dance(rig: Rig, t: float, intensity: float = 0.6) -> None:
-    """Dança reativa a batida; ``intensity`` 0..1 amortece a amplitude."""
-    amp = 6.0 + 18.0 * max(0.0, min(1.0, intensity))
-    beat = sin(t * 9.0)
-    rig.set_rotation("body", y=beat * amp * 0.5, z=sin(t * 4.5) * amp * 0.4)
-    rig.set_rotation("head", y=sin(t * 4.5) * amp * 0.6, z=beat * amp * 0.3)
-    # The door pulses on the beat while the arms take turns leading, with
-    # bent elbows to keep the movement readable without mirrored flapping.
-    door_open = max(0.0, sin(t * 4.5))
-    rig.set_rotation("door", y=door_open * 48.0)
-    right_lift = max(0.0, beat)
-    left_lift = max(0.0, -beat)
-    # IK: mãos à frente/em cima (alvo de dança); o braço condutor ERGUE mais no
-    # ritmo. Medido no grafo de cena (oraculo_cena --eixos): elevação = eixo do nó ROLL; z mais NEGATIVO =
-    # mão mais alta. O lift soma na elevação Z (negativo), não no azimute Y.
-    dance_r = braco_hpr_graus("right", "dance")
-    dance_l = braco_hpr_graus("left", "dance")
-    rb, re = dance_r["right-arm"], dance_r["ant-arm"]
-    lb, le = dance_l["left-arm"], dance_l["ant-arm2"]
-    # Torção alternada (os braços se revezam): assimetria intencional da dança.
-    rig.set_rotation("right-arm", x=rb[0] + beat * amp * .75, y=rb[1], z=rb[2] - 45.0 * right_lift)
-    rig.set_rotation("left-arm", x=lb[0] - beat * amp * .75, y=lb[1], z=lb[2] + 45.0 * left_lift)
-    rig.set_rotation("ant-arm", y=re[1], z=re[2] + 20.0 * right_lift)
-    rig.set_rotation("ant-arm2", y=le[1], z=le[2] - 20.0 * left_lift)
-    rig.set_rotation("hand", z=-5.0 + beat * 9.0)
-    rig.set_rotation("hand2", z=5.0 - beat * 9.0)
-    rig.set_rotation("fingers", z=sin(t * 9.0 + .4) * 8.0)
-    rig.set_rotation("fingers2", z=sin(t * 9.0 - .4) * 8.0)
-    rig.set_rotation("legs", x=sin(t * 9.0) * amp * 0.25)
-
-    # Shoulder compensation for ant-arm z rotation (minimal since x is ~0)
-    # But add subtle shoulder movement for visual appeal
-    rig.set_rotation("shoulder", x=sin(t * 9.0) * amp * 0.1)
-    rig.set_rotation("shoulder2", x=-sin(t * 9.0) * amp * 0.1)
-
-
 def pose_drag(rig: Rig, t: float, direction: float = 0.0, drag_intensity: float = 0.0) -> None:
     """Inclina-se na direção do arraste e estende os braços para se equilibrar."""
     grip = max(0, min(1, drag_intensity))
