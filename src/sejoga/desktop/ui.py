@@ -89,6 +89,11 @@ class SettingsDialog(QDialog):
         self._show_outline_color()
         self.outline_color_button.clicked.connect(self._choose_outline_color)
 
+        self._colorkey_color = settings.window.colorkey_color.upper()
+        self.colorkey_color_button = QPushButton()
+        self._show_colorkey_color()
+        self.colorkey_color_button.clicked.connect(self._choose_colorkey_color)
+
         self.physics_input = QCheckBox("Ativar física de tela")
         self.physics_input.setChecked(settings.physics.enabled)
 
@@ -221,6 +226,7 @@ class SettingsDialog(QDialog):
         form.addRow("Cor do contorno", self.outline_color_button)
         form.addRow("Espessura do contorno", self.outline_width_input)
         form.addRow("Respiração do contorno", self.outline_breath_input)
+        form.addRow("Cor do color key", self.colorkey_color_button)
         form.addRow(self.physics_input)
         form.addRow(self.idle_input)
         form.addRow("Personalidade", self.personality_input)
@@ -288,6 +294,18 @@ class SettingsDialog(QDialog):
             self._outline_color = color.name().upper()
             self._show_outline_color()
 
+    def _show_colorkey_color(self) -> None:
+        self.colorkey_color_button.setText(self._colorkey_color)
+        self.colorkey_color_button.setStyleSheet(
+            f"background-color: {self._colorkey_color}; color: #202020;"
+        )
+
+    def _choose_colorkey_color(self) -> None:
+        color = QColorDialog.getColor(QColor(self._colorkey_color), self, "Cor do color key")
+        if color.isValid():
+            self._colorkey_color = color.name().upper()
+            self._show_colorkey_color()
+
     def _abrir_pasta(self, pasta) -> None:
         """Abre uma pasta no Explorer, criando-a se faltar (guard clause)."""
         try:
@@ -329,6 +347,7 @@ class SettingsDialog(QDialog):
         updated.window.scale = self.scale_input.value()
         updated.window.outline_enabled = self.outline_input.isChecked()
         updated.window.outline_color = self._outline_color
+        updated.window.colorkey_color = self._colorkey_color
         updated.window.outline_width = self.outline_width_input.value()
         updated.window.outline_breath = self.outline_breath_input.value()
         updated.physics.enabled = self.physics_input.isChecked()

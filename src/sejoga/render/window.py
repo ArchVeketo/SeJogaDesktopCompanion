@@ -81,12 +81,7 @@ from sejoga.render.canvas_envelope import (
     escolher_tamanho,
     extensao_necessaria,
 )
-from sejoga.render.chroma_tuning import (
-    CALIBRACAO_AZUL_MIN,
-    CALIBRACAO_VERDE_MAX,
-    CALIBRACAO_VERMELHO_MIN,
-    CHROMA_CLEAR_MAGENTA,
-)
+from sejoga.render.chroma_tuning import derivar_chroma, pixel_e_chroma
 from sejoga.render.debug import DebugTools, configure_logging
 from sejoga.render.renderer import Panda3DRenderer
 from sejoga.render.win32_overlay import (
@@ -293,7 +288,10 @@ class OverlayApp(ShowBase):
 
         self.openDefaultWindow(props=wp, fbprops=fbprops)
 
-        self.win.setClearColor(CHROMA_CLEAR_MAGENTA)  # Zero alpha preserves MSAA coverage for chroma resolve.
+        # Clear com a cor do color key configurada (alpha zero preserva a
+        # cobertura MSAA que o chroma resolve usa).
+        self._chroma = derivar_chroma(self.settings.window.colorkey_color)
+        self.win.setClearColor(self._chroma.clear_rgba)
         self.win.setClearColorActive(True)
 
         self.disableMouse()
@@ -352,9 +350,8 @@ class OverlayApp(ShowBase):
         image = self.win.getScreenshot()
         if image:
             red, green, blue = bytes(image.getRamImageAs("RGB"))[:3]
-            # Calibrate only the known magenta clear pixel after PBR tone mapping.
-            if (red > CALIBRACAO_VERMELHO_MIN and green < CALIBRACAO_VERDE_MAX
-                    and blue > CALIBRACAO_AZUL_MIN):
+            # Calibrate only the known chroma clear pixel after PBR tone mapping.
+            if pixel_e_chroma((red, green, blue), self._chroma):
                 self._background_key = red | (green << 8) | (blue << 16)
                 self._refresh_background_mode()
         return Task.done

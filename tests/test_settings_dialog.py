@@ -29,6 +29,9 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
     dialog.settings_applied.connect(updates.append)
     dialog.outline_width_input.setValue(4.5)
     dialog.outline_breath_input.setValue(.7)
+    # Botão de cor do color key existe e a cor escolhida é persistida.
+    assert dialog.colorkey_color_button.text() == "#FF00FF"
+    dialog._colorkey_color = "#00FF00"
     dialog.sensitivity_input.setValue(.8)
     dialog.dance_chance_input.setValue(.65)
     dialog.beat_input.setChecked(False)
@@ -38,10 +41,13 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
     assert dialog.result() == QDialog.DialogCode.Accepted
     assert updates[0].window.outline_width == 4.5
     assert updates[0].window.outline_breath == .7
+    assert updates[0].window.colorkey_color == "#00FF00"
+    assert config.load_settings(fallback).window.colorkey_color == "#00FF00"
     assert config.load_settings(fallback).window.outline_width == 4.5
     assert config.load_settings(fallback).window.outline_breath == .7
     assert config.load_settings(fallback).behavior.idle_personality == "fighter"
     reopened = SettingsDialog(config.load_settings(fallback))
+    assert reopened.colorkey_color_button.text() == "#00FF00"
     assert reopened.personality_input.currentData() == "fighter"
     assert reopened.outline_breath_input.value() == .7
     assert reopened.sensitivity_input.value() == .8

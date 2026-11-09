@@ -102,6 +102,8 @@ class WindowSettings(BaseModel):
     """Multiplicador do enquadramento automático (1.0 ocupa até 70% do overlay)."""
     outline_enabled: bool = True
     outline_color: str = Field(default="#FF65CC", pattern=r"^#[0-9A-Fa-f]{6}$")
+    colorkey_color: str = Field(default="#FF00FF", pattern=r"^#[0-9A-Fa-f]{6}$")
+    """Cor do color key (chroma do fundo). Default = magenta histórico do clear."""
     outline_width: float = Field(default=2.5, ge=0.5, le=8.0)
     outline_breath: float = Field(default=0.4, ge=0.0, le=1.0)
     """Intensidade da respiração do contorno (0 = linha estática)."""

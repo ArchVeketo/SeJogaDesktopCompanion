@@ -201,7 +201,7 @@ class Panda3DRenderer:
             pipeline = simplepbr.init(use_normal_maps=False, use_emission_maps=False,
                                       max_lights=MAX_LUZES_PBR, msaa_samples=MSAA_AMOSTRAS)
             from sejoga.render.chroma_resolve import install_chroma_resolve
-            install_chroma_resolve(pipeline)
+            install_chroma_resolve(pipeline, self.showbase.settings.window.colorkey_color)
         except ImportError:
             pass
         except Exception as e:

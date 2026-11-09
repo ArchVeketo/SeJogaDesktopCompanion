@@ -22,6 +22,7 @@ def test_roundtrip(tmp_path):
     s = Settings()
     s.window.scale = 1.75
     s.window.outline_color = "#23B7E9"
+    s.window.colorkey_color = "#00FF00"
     s.window.outline_width = 4.0
     s.window.outline_enabled = False
     s.window.mode = "desktop"
@@ -35,6 +36,7 @@ def test_roundtrip(tmp_path):
     loaded = load_settings(path)
     assert loaded.window.scale == pytest.approx(1.75)
     assert loaded.window.outline_color == "#23B7E9"
+    assert loaded.window.colorkey_color == "#00FF00"
     assert loaded.window.outline_width == 4.0
     assert loaded.window.outline_enabled is False
     assert loaded.window.mode == "desktop"
@@ -63,6 +65,27 @@ def test_validation_rejects_bad_values():
 
     with pytest.raises(ValidationError):
         Settings(window={"scale": -1.0})
+
+
+def test_colorkey_default_e_magenta():
+    assert Settings().window.colorkey_color == "#FF00FF"
+
+
+def test_colorkey_rejects_invalid_hex():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Settings(window={"colorkey_color": "verde"})
+    with pytest.raises(ValidationError):
+        Settings(window={"colorkey_color": "#FFF"})
+
+
+def test_colorkey_ausente_carrega_sem_erro(tmp_path):
+    """Config antigo sem o campo carrega com o default (migração tolerante)."""
+    path = tmp_path / "config.toml"
+    path.write_text("[window]\nscale = 1.5\n", encoding="utf-8")
+    loaded = load_settings(path)
+    assert loaded.window.colorkey_color == "#FF00FF"
 
 
 def test_permission_denied_uses_persistent_fallback(tmp_path, monkeypatch):
