@@ -43,6 +43,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sejoga import config
 from sejoga.nucleo.rig import Rotation3
+from sejoga.rig_mapa.calibrador_estado import JUNTAS
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constantes nomeadas (sem magic numbers soltos)
@@ -69,31 +70,8 @@ EIXOS = (
 #: Sinais varridos por eixo.
 SINAIS = ((+1.0, "+"), (-1.0, "-"))
 
-#: Articulações do rig a calibrar: nome legível -> grupo real do rig.
-#: Inclui as duas cadeias de braço completas (ombro base -> cotovelo ->
-#: antebraço/mão -> dedos), tronco, cabeça, pernas e pés. O OMBRO BASE da cadeia
-#: é ``right-arm``/``left-arm`` (nó que o IK rotaciona); ``shoulder``/
-#: ``shoulder2`` são os sub-nós de compensação do ombro.
-JUNTAS: dict[str, str] = {
-    "tronco": "body",
-    "cabeca": "head",
-    "porta": "door",
-    "pernas": "legs",
-    "pe_esq": "left-feet",
-    "pe_dir": "right-feet",
-    # Braço direito (cadeia: ombro base -> cotovelo -> mão -> dedos).
-    "ombro_dir": "right-arm",
-    "ombro_sub_dir": "shoulder",
-    "cotovelo_dir": "ant-arm",
-    "mao_dir": "hand",
-    "dedos_dir": "fingers",
-    # Braço esquerdo (espelho).
-    "ombro_esq": "left-arm",
-    "ombro_sub_esq": "shoulder2",
-    "cotovelo_esq": "ant-arm2",
-    "mao_esq": "hand2",
-    "dedos_esq": "fingers2",
-}
+# Juntas calibráveis: fonte única em calibrador_estado (usada também pelo
+# calibrador interativo).
 
 #: Efeito ESPERADO (anatômico/intuitivo) por junta+eixo+sinal, em linguagem
 #: natural — o que o usuário gostaria de ver quando aplica aquela rotação. É só
