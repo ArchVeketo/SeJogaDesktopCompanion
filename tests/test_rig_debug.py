@@ -161,7 +161,7 @@ def test_porta_classifica_por_faixa(rig, model, angulo, esperado) -> None:
 # --------------------------------------------------------------------------- #
 # MEMBROS — braço erguido vs. baixado; elevação
 # --------------------------------------------------------------------------- #
-# NOTA DE CONVENÇÃO (PROVADA em pixels de tela — ver arm_ik): o eixo longo do
+# NOTA DE CONVENÇÃO (MEDIDA no grafo de cena, não em pixels de tela — ver arm_ik): o eixo longo do
 # braço é +X (não -Y) e a ELEVAÇÃO na tela é o ROLL (Z), não o heading. Com a
 # pose zero o braço fica LATERAL (T-pose, elevação 0); erguer = Z NEGATIVO,
 # baixar = Z positivo; a profundidade (avanço/recuo) é o heading (Y). rig_debug
@@ -192,7 +192,7 @@ def test_membro_lateral_pela_rotacao_em_z(rig, model) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# ABERTURA/ELEVAÇÃO DO BRAÇO — provado: elevação é o roll Z (z negativo ergue)
+# ABERTURA/ELEVAÇÃO DO BRAÇO — medido no grafo de cena: elevação é o roll Z (z negativo ergue)
 # --------------------------------------------------------------------------- #
 def test_abertura_lateral_cresce_com_z(rig, model) -> None:
   # Elevação Z=+55 vs Z=+85: ambos BAIXADOS, mas Z=+85 está mais reto p/ baixo.
@@ -236,7 +236,7 @@ def test_abertura_frontal_cresce_ao_projetar_eixo_longo_a_frente(rig, model) -> 
 # POSIÇÃO DA MÃO — ponta da cadeia braço->antebraço->mão relativa ao corpo
 # --------------------------------------------------------------------------- #
 def test_posicao_mao_afasta_lateralmente_conforme_pose(rig, model) -> None:
-  # Provado: com o braço LATERAL (elevação Z=0) a mão fica BEM afastada no eixo
+  # Medido no grafo de cena: com o braço LATERAL (elevação Z=0) a mão fica BEM afastada no eixo
   # X; baixando o braço (Z=+80) a mão recolhe para perto da linha do corpo.
   rig.set_rotation("right-arm", z=0.0)
   espalhado = rd.estado_rig(rig.pose(), model).mao_direita

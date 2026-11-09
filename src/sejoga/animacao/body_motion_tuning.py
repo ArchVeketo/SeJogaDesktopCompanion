@@ -202,6 +202,16 @@ TRONCO_ROLL_SINAL = 1.0
 #: cabeça. -1 preserva o comportamento existente. Decisão de produto: C5(c).
 TRONCO_OLHAR_YAW_SINAL = -1.0
 #: Altura (u, referencial de autoria) do pivô da coluna: cintura do mascote.
-TRONCO_PIVO_Z = 0.44
+TRONCO_PIVO_Z = 0.44  # A_CONFIRMAR (C5)
 #: Quanto o pivô da coluna desce por unidade de compressão (agachar no impacto).
-TRONCO_COMPRESSAO_DESCIDA = 0.06
+TRONCO_COMPRESSAO_DESCIDA = 0.06  # A_CONFIRMAR (C5)
+
+# --------------------------------------------------------------------------- #
+# Peito durante arrasto/pendurado (Parte 4).
+# --------------------------------------------------------------------------- #
+#: Acima desta suspensão o renderer gira o mascote INTEIRO no ponto de pega.
+PENDURADO_LIMIAR = 0.05
+#: Fração do delta de física que o PEITO ainda recebe nesse regime. 0 = o peito
+#: só acompanha o giro rígido do corpo (em fase com braços e pernas); >0 dá um
+#: balanço extra do peito. A_CONFIRMAR na GPU (recalibracao-gpu.md, C7).
+PEITO_FATOR_PENDURADO = 0.0

@@ -212,12 +212,12 @@ def test_fase_braco_antes_da_mao_passa() -> None:
 # --------------------------------------------------------------------------- #
 
 def test_spec_piloto_inteira_passa_com_clipe_valido() -> None:
-    # Provado em pixels: um aceno válido ERGUE o braço no eixo Z (de ~+74°
+    # Medido no grafo de cena: um aceno válido ERGUE o braço no eixo Z (de ~+74°
     # baixado até ~-66° acima do ombro; z NEGATIVO ergue), a mão oscila no eixo
     # X em torno do neutro (palma para FORA com o pulso neutro) e os pés ficam
     # parados. Estes valores vêm da geometria real do rig (ver arm_ik).
     def amostrar(t: float) -> Pose:
-        # Convenção PROVADA (renderer): a ELEVAÇÃO do braço é o ROLL (Z) e z
+        # Convenção medida no grafo de cena (não confirmada na GPU) (renderer): a ELEVAÇÃO do braço é o ROLL (Z) e z
         # NEGATIVO ergue. Um aceno válido move Z de ~+74° (baixado) até ~-66°
         # (acima do ombro), dobra o cotovelo (ant-arm roll Z) e balança a mão no
         # eixo X em torno do neutro. Rotation3 = (x, y, z); a elevação é z e a
@@ -244,7 +244,7 @@ def test_spec_piloto_inteira_passa_com_clipe_valido() -> None:
 
 def test_spec_piloto_falha_quando_mao_fica_parada() -> None:
     # Igual ao válido (braço ergue na elevação Z), mas a mão NÃO acena (fica
-    # parada) → reprova a spec. Provado: a elevação é o roll Z (z negativo ergue).
+    # parada) → reprova a spec. Medido no grafo de cena: a elevação é o roll Z (z negativo ergue).
     def amostrar(t: float) -> Pose:
         fase = math.pi * (t / 2.2)
         z_braco = 74.0 + (-66.0 - 74.0) * math.sin(fase)

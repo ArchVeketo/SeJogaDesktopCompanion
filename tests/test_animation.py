@@ -47,7 +47,7 @@ def test_hover_keeps_personality_phrase_and_arm_motion():
     assert animation.state == AnimationState.HOVER
     assert animation._idle_clock > 2.9
     assert len(set(samples)) > 50
-    # Convenção provada: a ELEVAÇÃO é o ROLL (Z) e a base é BAIXADA (z≈+74°). A
+    # Convenção medida no grafo de cena (não confirmada na GPU): a ELEVAÇÃO é o ROLL (Z) e a base é BAIXADA (z≈+74°). A
     # frase 'fighter' segue viva por cima (o set acima garante movimento); o
     # braço permanece na região baixada sob o cursor, não erguido (z<0).
     assert samples[-1].z > 0.0
@@ -61,7 +61,7 @@ def test_fall_pose_uses_velocity_not_application_uptime():
     pose_thrown(animation.rig, .7, (0, 600))
     descending = animation.rig.pose()
     assert ascending["head"].x < descending["head"].x
-    # Convenção provada: a elevação é o ROLL (Z); o balanço aéreo (air_sway) a
+    # Convenção medida no grafo de cena (não confirmada na GPU): a elevação é o ROLL (Z); o balanço aéreo (air_sway) a
     # torna ASSIMÉTRICA entre os braços (uma ombro pega o ar, o outro arrasta).
     # Na subida o descent é pequeno, mas o air_sway ainda quebra a simetria em Z.
     assert abs(ascending["right-arm"].z - ascending["left-arm"].z) > 0.05
@@ -102,12 +102,12 @@ def test_walk_dance_and_drag_poses_have_counterbalanced_arms():
     pose_dance(animation.rig, pi / 18)
     dance = animation.rig.pose()
     # No beat o braço condutor ERGUE enquanto o outro fica baixo — braços
-    # contrabalançados, não escancarados em espelho. Convenção PROVADA em
+    # contrabalançados, não escancarados em espelho. Convenção medida no grafo de cena (não confirmada na GPU) em
     # pixels: erguer = elevação ROLL (Z) mais NEGATIVA. Aqui t=pi/18 →
     # right_lift=1 (direito conduz): o direito ERGUE (z fica mais negativo) e o
     # esquerdo permanece — logo right-arm.z < left-arm.z com folga.
     assert degrees(dance["right-arm"].z) < degrees(dance["left-arm"].z) - 15
-    # Convenção provada: o arraste estende o braço para a FRENTE pela
+    # Convenção medida no grafo de cena (não confirmada na GPU): o arraste estende o braço para a FRENTE pela
     # PROFUNDIDADE (Y/heading), não pela elevação (Z): cada direção avança um
     # lado diferente.
     pose_drag(animation.rig, 0, direction=1, drag_intensity=.8)
@@ -131,7 +131,7 @@ def test_raised_arm_survives_the_resolver_clamp_in_the_live_pipeline():
     animation = controller()
     animation.pose_resolver.definir_pose({g: Rotation3() for g in ALL_GROUPS})
     alvo = {g: Rotation3() for g in ALL_GROUPS}
-    # Convenção provada: braço reto para CIMA = ELEVAÇÃO ROLL Z≈-90° (z negativo
+    # Convenção medida no grafo de cena (não confirmada na GPU): braço reto para CIMA = ELEVAÇÃO ROLL Z≈-90° (z negativo
     # ergue), não o heading. O clamp de elevação deve deixar passar a pose
     # erguida sem rebaixá-la (o espelho usa Z simétrico).
     alvo["right-arm"] = Rotation3(z=math.radians(-90.0))   # reto para cima

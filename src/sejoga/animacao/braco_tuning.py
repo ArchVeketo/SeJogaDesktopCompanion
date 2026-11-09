@@ -63,7 +63,7 @@ POLO_COTOVELO_ANATOMICO = (0.3, -0.6, -0.75)
 #: cheia (fração 1) só o T-pose fica livre: braço+mão (≈0.61) são do tamanho do
 #: corpo e qualquer mão à frente encosta no tronco. Menor = braços mais baixos e
 #: gestos mais soltos, porém mais casca dentro do corpo. A_CONFIRMAR (C4/C6).
-FRACAO_NUCLEO_BRACO = 0.5
+FRACAO_NUCLEO_BRACO = 0.35
 #: Passos (graus) da busca em cada grau de liberdade: o fino ajusta, os grossos
 #: saltam mínimos locais (ex.: antebraço dobrado contra o peito). Cada passo é o
 #: triplo do anterior, o bastante para sair de um mínimo local em 3 tentativas.

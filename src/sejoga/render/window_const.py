@@ -79,3 +79,7 @@ MILISSEGUNDOS_POR_SEGUNDO = 1000.0
 # pela distância percorrida (px).
 DRAG_DIVISOR_DIRECAO = 80.0
 DRAG_DIVISOR_INTENSIDADE = 160.0
+
+#: Partes pegas no arraste cujo corpo rola/gira muito (pés e braços): o degrau do
+#: envelope da janela fica travado para o bbox oscilante não redimensionar (piscar).
+PARTES_ARRASTE_ENVELOPE_FIXO = ('legs', 'left-feet', 'right-feet', 'right-arm', 'left-arm')

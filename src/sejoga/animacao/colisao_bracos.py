@@ -156,8 +156,8 @@ def capsulas_do_braco(model: Model, lado: str, pose: dict[str, Rotation3]) -> li
 
 def _longe(capsula: Capsula, caixa: CaixaOrientada) -> bool:
     """Descarte barato: esfera da cápsula e esfera circunscrita da caixa não se tocam."""
-    meio = cin.escalar(cin.somar(capsula.a, capsula.b), 0.5)
-    meio_comprimento = cin.norma(cin.subtrair(capsula.b, capsula.a)) * 0.5
+    meio = cin.escalar(cin.somar(capsula.a, capsula.b), 1 / 2)
+    meio_comprimento = cin.norma(cin.subtrair(capsula.b, capsula.a)) / 2
     distancia = cin.norma(cin.subtrair(meio, caixa.centro))
 
     return distancia > meio_comprimento + cin.norma(caixa.meias_dim) + capsula.raio

@@ -414,7 +414,7 @@ def pose_dance(rig: Rig, t: float, intensity: float = 0.6) -> None:
     right_lift = max(0.0, beat)
     left_lift = max(0.0, -beat)
     # IK: mãos à frente/em cima (alvo de dança); o braço condutor ERGUE mais no
-    # ritmo. Medido no grafo de cena (oraculo_cena --eixos): elevação = Z (roll); z mais NEGATIVO =
+    # ritmo. Medido no grafo de cena (oraculo_cena --eixos): elevação = eixo do nó ROLL (anatomia não confirmada na GPU, C3); z mais NEGATIVO =
     # mão mais alta. O lift soma na elevação Z (negativo), não no azimute Y.
     dance_r = braco_hpr_graus("right", "dance")
     dance_l = braco_hpr_graus("left", "dance")
@@ -619,7 +619,7 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
         rig.set_rotation("head", x=-10.0 * pulse, y=sin(t * 12.0) * 5.0 * pulse)
         rig.set_rotation("door", y=75.0 * pulse)
         # Acorda: parte dos braços baixados (idle) e os ergue ao espreguiçar.
-        # Medido no grafo de cena: elevação = ROLL (Z); z NEGATIVO ergue.
+        # Medido no grafo de cena: elevação = eixo do nó ROLL (anatomia não confirmada na GPU, C3) (Z); z NEGATIVO ergue.
         _wake_r = braco_hpr_graus("right", "idle")["right-arm"]
         _wake_l = braco_hpr_graus("left", "idle")["left-arm"]
         rig.set_rotation("right-arm", x=_wake_r[0], y=_wake_r[1], z=_wake_r[2] - 70.0 * pulse)
@@ -645,7 +645,7 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
             y=direction * 40.0,
         )
         # Guarda: os braços sobem um pouco a partir do repouso baixado (IK).
-        # Elevação = ROLL (Z); z NEGATIVO ergue.
+        # elevação = eixo do nó ROLL (anatomia não confirmada na GPU, C3) (Z); z NEGATIVO ergue.
         _surp_r = braco_hpr_graus("right", "idle")["right-arm"]
         _surp_l = braco_hpr_graus("left", "idle")["left-arm"]
         rig.set_rotation("right-arm", x=_surp_r[0], y=_surp_r[1], z=_surp_r[2] - _SURPRESA_BRACO * pulse)
@@ -711,7 +711,7 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
             right = value((0, 0), (.28, -.15), (.82, 1), (1.25, .68), (1.95, 0), (2.8, 0))
             left = value((0, 0), (.72, 0), (1.35, 1), (1.78, .62), (2.58, 0), (2.8, 0))
             # Ajuste de jaqueta: ERGUE cada braço em sequência, a partir do
-            # repouso baixado (IK). Medido no grafo de cena (oraculo_cena --eixos): elevação = ROLL
+            # repouso baixado (IK). Medido no grafo de cena (oraculo_cena --eixos): elevação = eixo do nó ROLL (anatomia não confirmada na GPU, C3)
             # (Z); z NEGATIVO ergue a mão.
             rig.set_rotation("right-arm", x=_fl_r[0] - 16 * right, y=_fl_r[1], z=_fl_r[2] - 70 * right)
             rig.set_rotation("left-arm", x=_fl_l[0] - 16 * left, y=_fl_l[1], z=_fl_l[2] + 70 * left)
@@ -755,7 +755,7 @@ def pose_sneeze(rig: Rig, t: float) -> None:
     rig.set_rotation('head', x=-10*inhale-42*hit-5*settle, z=-3*inhale)
     rig.set_rotation('body', x=-5*inhale-22*hit-3*settle)
     # Braços partem do repouso baixado (IK); o espirro os ergue um pouco à
-    # frente (inhale/hit modulam por cima). Medido no grafo de cena: elevação = ROLL
+    # frente (inhale/hit modulam por cima). Medido no grafo de cena: elevação = eixo do nó ROLL (anatomia não confirmada na GPU, C3)
     # (Z); z NEGATIVO ergue.
     _sz_r = braco_hpr_graus("right", "idle")["right-arm"]
     _sz_l = braco_hpr_graus("left", "idle")["left-arm"]

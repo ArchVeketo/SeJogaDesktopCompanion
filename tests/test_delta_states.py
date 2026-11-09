@@ -164,3 +164,19 @@ def test_delta_idle_respiracao_afeta_corpo():
     # Com respiração, o body deve ter delta x diferente (peito inflado)
     if "body" in sem_respiracao and "body" in com_respiracao:
         assert sem_respiracao["body"].x != com_respiracao["body"].x
+
+def test_delta_fisica_peito_nao_gira_em_dobro_pendurado():
+    """Pendurado/arrastado o renderer já gira o corpo inteiro: o peito não soma de novo."""
+    pose = BodyPose(roll=155.0, pitch=-26.0, yaw=3.0, hanging=1.0)
+
+    peito = delta_fisica(pose)["body"]
+
+    assert (peito.x, peito.y, peito.z) == (0.0, 0.0, 0.0)
+
+
+def test_delta_fisica_peito_mantem_rotacao_em_pe():
+    """Em pé (sem suspensão) o peito segue recebendo a resposta física."""
+    peito = delta_fisica(BodyPose(roll=10.0, pitch=-5.0, hanging=0.0))["body"]
+
+    assert peito.x != 0.0
+    assert peito.z != 0.0

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from math import cos, radians, sin, tau
 
+from sejoga.animacao import body_motion_tuning as tune
 from sejoga.animacao.body_motion import BodyPose
 from sejoga.animacao.rig_base import REPOUSO
 from sejoga.nucleo.rig import IdlePersonality, Rotation3, braco_hpr_graus
@@ -403,11 +404,17 @@ def delta_fisica(motion: BodyPose) -> dict[str, Rotation3]:
     -------
     Delta em radianos a ser aplicado sobre a pose composta.
     """
+    # Pendurado/arrastado, o renderer já gira o mascote INTEIRO (pivô rígido no
+    # ponto de pega). Somar a mesma rotação só no peito o giraria em dobro,
+    # dessincronizado de braços e pernas: nesse regime o delta do peito é reduzido.
+    pendurado = motion.hanging > tune.PENDURADO_LIMIAR
+    fator_peito = tune.PEITO_FATOR_PENDURADO if pendurado else 1.0
+
     return {
         "body": Rotation3(
-            radians(motion.pitch),
-            radians(motion.yaw),
-            radians(motion.roll),
+            radians(motion.pitch * fator_peito),
+            radians(motion.yaw * fator_peito),
+            radians(motion.roll * fator_peito),
         ),
         "head": Rotation3(
             radians(motion.head_pitch),

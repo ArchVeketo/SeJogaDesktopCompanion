@@ -546,6 +546,8 @@ void main() {{
         queiram, deliberadamente, acoplar giro ao olhar.
         """
         from panda3d.core import Mat4, TransformState
+
+        from sejoga.animacao import body_motion_tuning as _tune
         dt = getattr(self.showbase.animation_controller, 'delta_time', 1/60)
         self._update_outline_breath(dt, motion)
         self.flexible_rig.update(dt, motion)
@@ -570,7 +572,7 @@ void main() {{
             moved = self.model_np.getTightBounds(self.model_anchor)[0].z
             self._suspension_pivot.setZ(ground-moved)
             return
-        if dragging or motion.hanging > .05:
+        if dragging or motion.hanging > _tune.PENDURADO_LIMIAR:
             point = Vec3(grab_point) if grab_point is not None else Vec3(0,0,.6)
             pivot = self._suspension_pivot.getRelativePoint(self.model_np, point)
             rotation = self._rotacao_no_quadro_de_autoria(motion.yaw, motion.pitch, motion.roll)
@@ -581,7 +583,6 @@ void main() {{
         # Ganhos e SINAIS do tronco vêm de body_motion_tuning (req 4): o tronco
         # deve inclinar/girar no MESMO sentido do resto do corpo. Os sinais são
         # calibráveis na GPU (default +1 preserva o comportamento atual).
-        from sejoga.animacao import body_motion_tuning as _tune
         for spine, neck, _shoulders in self.flexible_rig.chains:
             spine.setHpr(
                 _tune.TRONCO_YAW_SINAL * motion.yaw,

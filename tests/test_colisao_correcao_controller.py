@@ -86,7 +86,7 @@ def test_correcao_reduz_excedente_no_pico_da_pose_colisora(model) -> None:
   # a meta cheia de resolver_colisoes empurra os membros e reduz o excedente do
   # pior par. É a meta que a mola do controller persegue; prova que a geometria
   # da correção de fato remove o excedente dirigido pela pose.
-  # Convenção PROVADA: elevação = ROLL (Z), z NEGATIVO ergue; z=-60 nos dois
+  # Convenção medida no grafo de cena (não confirmada na GPU): elevação = ROLL (Z), z NEGATIVO ergue; z=-60 nos dois
   # braços os leva para cima e eles colidem (o `wake`, já corrigido, NÃO cruza
   # mais — por isso montamos aqui uma pose explicitamente colisora).
   from math import radians
