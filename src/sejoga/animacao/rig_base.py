@@ -29,8 +29,9 @@ class RepousoAnatomico:
     torção-base de ``braco_tuning.TORCAO_BASE_ANTEBRACO_GRAUS`` somada pelo
     renderer, então ``ANTEBRACO_Z`` positivo dobra para a frente.
 
-    Lado esquerdo = ``espelhar_rotacao`` do direito: ``(x, -y, -z)``. Provado por
-    posição de punho em ``test_cinematica_oraculo`` (imagem no plano sagital).
+    Lado esquerdo = ``espelhar_rotacao`` do direito: ``(x, -y, -z)``. Verificado
+    SÓ a nível de nó (posição de punho no grafo de cena, ``test_cinematica_oraculo``).
+    NÃO provado visualmente: a simetria na tela depende do usuário (C3).
     """
 
     # Ombro (osso base da cadeia): IK do alvo idle.

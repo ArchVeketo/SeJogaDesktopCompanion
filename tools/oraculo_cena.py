@@ -1,7 +1,7 @@
 """Oráculo de cena: mapa de eixos, AABBs e alvos de braço medidos no grafo do Panda.
 
 Carrega ``assets/model/mario.gltf`` com ``gltf.load_model`` + ``NodePath`` (sem
-janela/GPU). A FK pura (``nucleo.cinematica``) é provada igual a este grafo em
+janela/GPU). A FK pura (``nucleo.cinematica``) é conferida (posição) contra este grafo em
 ``tests/test_cinematica_oraculo.py``; aqui o Panda é usado para as malhas.
 
 Saídas (Markdown no stdout ou em ``--saida``):

@@ -139,68 +139,40 @@ def _pior_jerk_total(trilha, duracao, analisar) -> float:
 
 
 def _trilhas_wake_correcao(model, analisar):
-  """Amostra a reação wake COM correção, devolvendo duas trilhas em graus.
-
-  Como a correção agora toca SÓ as juntas colisoras (e não mais filtra a pose
-  inteira), o teste de tranco não pode comparar contra a pose globalmente
-  amaciada de antes — isso só passava por causa do bug que o review apontou.
-  A medida correta de "sem tranco" é a mola CUMPRINDO seu papel: a saída
-  suavizada tem de ter jerk MUITO menor que o ALVO CORRIGIDO aplicado CRU (sem
-  mola). Esta função produz as duas trilhas do MESMO gesto:
-
-  - ``sprung``: a saída real do controller (alvo corrigido perseguido pela mola);
-  - ``crua``: o alvo corrigido do frame aplicado direto, sem mola (o que a
-    correção faria SEM amortecimento — cheio de tranco).
-  """
+  """Amostra a reação wake do controller, em graus por junta e quadro."""
   ctrl = AnimationController(_rig(), model=model)
   ctrl.interact("wake")
   dt = 1.0 / analisar.FPS
 
   sprung: list[dict[str, tuple[float, float, float]]] = []
-  crua: list[dict[str, tuple[float, float, float]]] = []
 
-  original = col.resolver_colisoes
-  capturado: dict[str, dict] = {}
+  for _ in range(int(analisar.FPS * 2.5)):
+    pose = ctrl.update(dt)
+    sprung.append({
+      g: (degrees(r.x), degrees(r.y), degrees(r.z)) for g, r in pose.items()
+    })
 
-  def _capturar(pose, partes, parametros=None):
-    alvo = original(pose, partes, parametros)
-    capturado["pose"] = dict(pose)
-    capturado["alvo"] = {g: alvo[g] for g in alvo}
-    return alvo
+  return sprung
 
-  col.resolver_colisoes = _capturar
-  try:
-    for _ in range(int(analisar.FPS * 2.5)):
-      pose = ctrl.update(dt)
-      sprung.append({
-        g: (degrees(r.x), degrees(r.y), degrees(r.z)) for g, r in pose.items()
-      })
-      # Alvo corrigido do frame, sem mola: pose crua com as juntas empurradas.
-      alvo_cru = dict(capturado.get("pose", {}))
-      alvo_cru.update(capturado.get("alvo", {}))
-      crua.append({
-        g: (degrees(r.x), degrees(r.y), degrees(r.z)) for g, r in alvo_cru.items()
-      })
-  finally:
-    col.resolver_colisoes = original
 
-  return sprung, crua
+#: Folga relativa do jerk com correção sobre o jerk sem correção. A correção de
+#: braços (colisao_bracos) só pode somar tranco desprezível ao autoral.
+FOLGA_JERK_CORRECAO = 0.05
 
 
 def test_correcao_nao_introduz_tranco(model) -> None:
-  # A correção toca SÓ as juntas colisoras; a suavidade tem de vir da mola.
-  # "Sem tranco" = a saída amortecida tem jerk MUITO menor que o alvo corrigido
-  # aplicado cru (sem mola), que é o que introduziria tranco. A mola de 0,6 Hz
-  # age como passa-baixa: não persegue o pico de penetração sub-segundo da
-  # reação de acordar, então corrige o overlap SUSTENTADO sem somar tranco.
+  # Os braços são corrigidos por colisao_bracos (FK real) e pernas/pés pela
+  # correção legada, inerte na faixa do app. "Sem tranco" = o jerk da reação de
+  # acordar COM model (correções ligadas) não excede o jerk SEM model (autoral).
   analisar = _carregar_analisar_anim()
 
-  sprung, crua = _trilhas_wake_correcao(model, analisar)
-  jerk_sprung = _pior_jerk_total(sprung, 2.5, analisar)
-  jerk_cru = _pior_jerk_total(crua, 2.5, analisar)
+  com = _trilhas_wake_correcao(model, analisar)
+  sem = _trilhas_wake_correcao(None, analisar)
+  jerk_com = _pior_jerk_total(com, 2.5, analisar)
+  jerk_sem = _pior_jerk_total(sem, 2.5, analisar)
 
-  assert jerk_sprung < jerk_cru * 0.5, (
-    f"mola não amorteceu a correção: cru={jerk_cru:.0f} sprung={jerk_sprung:.0f}"
+  assert jerk_com <= jerk_sem * (1.0 + FOLGA_JERK_CORRECAO), (
+    f"correção somou tranco: com={jerk_com:.0f} sem={jerk_sem:.0f}"
   )
 
 

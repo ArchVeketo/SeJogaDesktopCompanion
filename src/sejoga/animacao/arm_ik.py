@@ -17,7 +17,7 @@ torção-base é somada pelo renderer e por ``cinematica`` (não está nos
 ``Rotation3`` do IK): os gestos escrevem DELTAS em ``ant-arm`` em torno dela.
 
 FK ÚNICA: a verdade é ``nucleo.cinematica`` (igual ao grafo de cena do Panda3D,
-provada em ``tests/test_cinematica_oraculo.py``). Este IK é analítico e usa essa
+conferida em posição por ``tests/test_cinematica_oraculo.py``). Este IK é analítico e usa essa
 mesma convenção ``Rz(h)·Rx(p)·Ry(r)``:
 
   1. cotovelo: lei dos cossenos fixa a flexão ``c`` (0 = reto) a partir da
@@ -31,7 +31,7 @@ O lado esquerdo é a imagem no plano sagital (lei única ``espelhar_rotacao``):
 resolve-se o direito para o alvo espelhado e espelham-se as rotações.
 
 O QUE NÃO ESTÁ PROVADO AQUI: que a pose "pareça" anatômica na GPU (palma da mão,
-conforto do cotovelo). Isso depende do usuário (ver ``recalibracao-gpu.md``).
+conforto do cotovelo, simetria na tela, polo ``POLO_COTOVELO_ANATOMICO``). Isso depende do usuário (ver ``recalibracao-gpu.md``).
 
 FRONTEIRA: Python puro. NÃO importa Panda3D, Qt nem Win32.
 """

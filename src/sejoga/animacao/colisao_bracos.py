@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from math import radians
 
+from sejoga.animacao.braco_tuning import FRACAO_NUCLEO_BRACO, PASSOS_BUSCA_GRAUS
 from sejoga.nucleo import cinematica as cin
 from sejoga.nucleo.model import Model
 from sejoga.nucleo.rig import Rotation3
@@ -42,11 +43,6 @@ Vec3 = cin.Vec3
 # --------------------------------------------------------------------------- #
 #: Menor meia-aresta medida do cubo do braço (seção 0.273 x 0.227).
 MEIA_ESPESSURA_BRACO_U = 0.1135
-#: Fração da meia-espessura que conta como NÚCLEO do membro. "Atravessar" = o
-#: núcleo entrar num volume do corpo; encostar a casca não conta. Com a espessura
-#: cheia (fração 1) só o T-pose fica livre: braço+mão (≈0.61) são do tamanho do
-#: corpo e qualquer mão à frente encosta no tronco. A_CONFIRMAR (C4/C6).
-FRACAO_NUCLEO_BRACO = 0.5
 RAIO_BRACO_U = MEIA_ESPESSURA_BRACO_U * FRACAO_NUCLEO_BRACO
 #: Comprimento da mão + dedos além do punho (``hand`` → ponta de ``fingers``).
 COMPRIMENTO_MAO_U = 0.33
@@ -99,9 +95,6 @@ CAIXAS_CORPO: dict[str, CaixaOrientada] = {
 # --------------------------------------------------------------------------- #
 #: Penetração (unidades do modelo) tolerada: abaixo disto a pose passa intacta.
 FOLGA_PENETRACAO_U = 0.01
-#: Passos (graus) da busca em cada grau de liberdade: o fino ajusta, os grossos
-#: saltam mínimos locais (ex.: antebraço dobrado contra o peito).
-PASSOS_BUSCA_GRAUS = (3.0, 9.0, 27.0)
 #: Passos de melhoria por quadro. Um passo por quadro (≥3°, ~180°/s a 60 fps)
 #: já corrige rápido e espalha o custo; o resto continua no quadro seguinte
 #: (partida a quente). Custo medido (CPython, esta máquina): ~2 ms/quadro com os

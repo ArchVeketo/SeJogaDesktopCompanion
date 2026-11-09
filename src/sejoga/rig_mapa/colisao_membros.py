@@ -454,6 +454,16 @@ PARES_A_CHECAR: tuple[tuple[Parte, Parte], ...] = (
   (Parte.ANTEBRACO_ESQUERDO, Parte.PE_ESQUERDO),
 )
 
+#: Pares só de PERNAS/PÉS: únicos que a correção legada do ``PoseResolver`` ainda
+#: avalia. Os pares com braço usam o modelo Y-up de ``rig_medidas`` (eixo longo
+#: -Y), que NÃO bate com o grafo de cena (braço em ±X): eles ficam só para
+#: relatório/diagnóstico, e a correção de braço é ``animacao.colisao_bracos``.
+PARES_PERNAS_PES: tuple[tuple[Parte, Parte], ...] = tuple(
+  par
+  for par in PARES_A_CHECAR
+  if all(parte in (Parte.PERNAS, Parte.PE_ESQUERDO, Parte.PE_DIREITO) for parte in par)
+)
+
 #: Mãos cuja cápsula é ESTENDIDA até a ponta dos dedos (ver ``EXTENSAO_DEDOS_U``).
 #: Os nós ``fingers``/``fingers2`` não viram cápsula própria por falta de
 #: comprimento medível; a mão os absorve estendendo o próprio tubo.
@@ -717,6 +727,7 @@ def resolver_colisoes(
   pose: dict[str, Rotation3],
   partes: dict[Parte, EstadoParte],
   parametros: dict[str, float] | None = None,
+  pares: tuple[tuple[Parte, Parte], ...] = PARES_A_CHECAR,
 ) -> dict[str, Rotation3]:
   """CORREÇÃO PONTUAL SUAVE (FEAT-B): devolve a pose com os ALVOS empurrados.
 
@@ -758,7 +769,7 @@ def resolver_colisoes(
   # Acumula o empurrão de ponta por membro (um membro pode colidir com vários).
   empurrao: dict[Parte, Vetor3] = {}
 
-  for parte_a, parte_b in PARES_A_CHECAR:
+  for parte_a, parte_b in pares:
     vol_a = volumes.get(parte_a)
     vol_b = volumes.get(parte_b)
 
@@ -867,6 +878,7 @@ __all__ = [
   "MEIA_DIM_PORTA",
   "MEIA_DIM_TRONCO",
   "PARES_A_CHECAR",
+  "PARES_PERNAS_PES",
   "PARTES_CAIXA",
   "PARTES_MAO",
   "PISO_ESTRUTURAL_POR_PAR",

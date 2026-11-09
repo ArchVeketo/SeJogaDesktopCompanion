@@ -4,7 +4,7 @@ Cada gesto declara ONDE o punho (origem do nó ``hand``) deve ficar, relativo ao
 ombro, em eixos do mascote: ``x`` = direita, ``y`` = cima, ``z`` = frente (o
 rosto). O solver (``arm_ik.braco_para``) converte isso nos ``Rotation3`` do
 ombro e do cotovelo. Os eixos são os da FK do grafo de cena
-(``nucleo.cinematica``, provada contra o Panda em ``test_cinematica_oraculo``);
+(``nucleo.cinematica``, igual ao Panda em posição, ``test_cinematica_oraculo``);
 ``z > 0`` é de fato à frente do corpo no render.
 
 COMO OS VALORES FORAM ESCOLHIDOS (medido, não chutado): cada alvo é o ponto livre

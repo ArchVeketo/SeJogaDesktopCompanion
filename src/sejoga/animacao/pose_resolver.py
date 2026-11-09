@@ -36,13 +36,6 @@ _CLAMP_ARM_Y_MAX = radians(tun.OMBRO_AZIMUTE_MAX_GRAUS)
 _CLAMP_COTOVELO_MIN = radians(tun.COTOVELO_MIN_GRAUS)
 _CLAMP_COTOVELO_MAX = radians(tun.COTOVELO_MAX_GRAUS)
 
-#: Grupos de braço fora da correção LEGADA (rig_medidas, modelo Y-up que não
-#: bate com o renderer). Os braços têm correção própria com a FK real:
-#: ``colisao_bracos.ResolvedorBracos`` (passo 3 de ``resolver``).
-_GRUPOS_BRACO_SEM_COLISAO = frozenset(
-    {"right-arm", "left-arm", "ant-arm", "ant-arm2", "hand", "hand2"}
-)
-
 
 class PoseResolver:
     """Aplica crossfade, colisões e clamps à pose composta.
@@ -252,19 +245,19 @@ class PoseResolver:
             return pose
 
         partes = medidas.medir_todas_as_partes(pose, model)
-        alvo = colisao.resolver_colisoes(pose, partes)
+        # Só pares de pernas/pés: rig_medidas usa um modelo Y-up com osso em -Y
+        # que não bate com o grafo de cena (braço em ±X). Os braços são
+        # corrigidos com a FK real em colisao_bracos (passo 4 de resolver).
+        # PENDÊNCIA (recalibracao-gpu.md, C8): pernas/pés ainda medem no modelo
+        # antigo; test_colisao_pernas_pes prova que a correção é inerte na faixa
+        # de pose que o app produz.
+        alvo = colisao.resolver_colisoes(pose, partes, pares=colisao.PARES_PERNAS_PES)
 
         # Juntas que o resolvedor empurrou (diferem da pose crua neste frame).
-        # Os GRUPOS DE BRAÇO ficam fora desta correção LEGADA: rig_medidas usa um
-        # modelo Y-up com osso em -Y que não bate com o grafo de cena (eixo longo
-        # ±X). Os braços são corrigidos com a FK real em colisao_bracos (passo 4
-        # de resolver). Esta continua ativa para pernas/pés/porta.
         corrigidas = {
             grupo: alvo[grupo]
             for grupo in alvo
-            if grupo in pose
-            and alvo[grupo] != pose[grupo]
-            and grupo not in _GRUPOS_BRACO_SEM_COLISAO
+            if grupo in pose and alvo[grupo] != pose[grupo]
         }
 
         molas = self._correcao_colisao.molas
