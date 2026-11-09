@@ -65,6 +65,43 @@ LIMIARES_PADRAO = Limiares()
 
 
 # --------------------------------------------------------------------------- #
+# Limites de amplitude das articulações (seção 6.6)
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class LimiteJunta:
+  """Amplitude calibrável de uma articulação, em graus de flexão assinada.
+
+  ``minimo`` negativo admite hiperextensão; ``maximo`` é a dobra máxima natural.
+  São os valores que o usuário calibra por junta (o quanto cada articulação do
+  rig pode fletir antes de ``fora_do_limite``); ficam aqui, fora do catálogo de
+  ``rig_articulacoes``, para serem ajustados sem mexer na lógica.
+  """
+
+  minimo: float
+  maximo: float
+
+
+#: Cotovelo (dobradiça braço->antebraço): quase esticado para trás (-10) até bem
+#: dobrado para a frente (150). Igual nos dois lados.
+LIMITE_COTOVELO = LimiteJunta(minimo=-10.0, maximo=150.0)
+
+#: Ombro (esférica corpo->braço): recua um pouco atrás do tronco (-60) e sobe
+#: até acima da cabeça (180). Igual nos dois lados.
+LIMITE_OMBRO = LimiteJunta(minimo=-60.0, maximo=180.0)
+
+#: Punho (esférica antebraço->mão): flexão/extensão do pulso (-70 a 80). Igual
+#: nos dois lados.
+LIMITE_PUNHO = LimiteJunta(minimo=-70.0, maximo=80.0)
+
+#: Pescoço (pivô corpo->cabeça): giro simétrico para os dois lados (-80 a 80).
+LIMITE_PESCOCO = LimiteJunta(minimo=-80.0, maximo=80.0)
+
+#: Dobradiça da porta (cabeça->porta): só abre para a frente, de fechada (0) a
+#: escancarada (120). O limite de velocidade de abertura é tratado na animação.
+LIMITE_PORTA = LimiteJunta(minimo=0.0, maximo=120.0)
+
+
+# --------------------------------------------------------------------------- #
 # Classificadores genéricos (seção 10.3)
 # --------------------------------------------------------------------------- #
 def classificar_por_faixas(
