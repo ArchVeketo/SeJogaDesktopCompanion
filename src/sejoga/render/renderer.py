@@ -28,6 +28,7 @@ from sejoga.nucleo.assets import resolve_model
 from sejoga.nucleo.cinematica import BASE_ADICIONAL_GRAUS
 from sejoga.nucleo.model import load_model
 from sejoga.nucleo.rig import Rig
+from sejoga.render.dedos_malha import fatiar_dedos
 from sejoga.tentaculos.tentacle_constraints import ObstacleBox, TentacleContacts
 from sejoga.tentaculos.tentacle_system import (
     TentacleDirector,
@@ -229,6 +230,8 @@ class Panda3DRenderer:
                 # show dotted triangular scaffolding in the desktop projection.
                 plane.stash()
                 self._hidden_export_planes.append(name)
+        # Dedos viram cadeia de pivôs ANTES do copyTo do contorno (herda a cadeia).
+        fatiar_dedos(model_np)
         # Rota B (Frente 3): a orientação "de frente" agora mora no ASSET —
         # o nó-raiz do mario.gltf carrega rotation=[0,1,0,0] (180° em torno de
         # +Y). O antigo model_np.setH(180) foi REMOVIDO; a malha já nasce com o

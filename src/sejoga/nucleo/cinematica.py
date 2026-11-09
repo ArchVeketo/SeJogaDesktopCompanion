@@ -280,6 +280,51 @@ def posicao_no(model: Model, grupo: str, pose: dict[str, Rotation3] | None = Non
     return transformacao_no(model, grupo, pose)[1]
 
 
+def rot_eixo(eixo: Vec3, angulo: float) -> Mat3:
+    """Rotação de ``angulo`` (rad) em torno de ``eixo`` unitário (Rodrigues)."""
+    x, y, z = eixo
+    c, s = cos(angulo), sin(angulo)
+    k = 1.0 - c
+
+    return (
+        c + x * x * k, x * y * k - z * s, x * z * k + y * s,
+        y * x * k + z * s, c + y * y * k, y * z * k - x * s,
+        z * x * k - y * s, z * y * k + x * s, c + z * z * k,
+    )  # fmt: skip
+
+
+def pontos_cadeia_dedo(
+    rot_no: Mat3,
+    origem_no: Vec3,
+    pivos: list[Vec3],
+    eixos: list[Vec3],
+    angulos_graus: tuple[float, ...],
+    ponta: Vec3,
+) -> list[Vec3]:
+    """FK da cadeia de juntas de um dedo: posição de cada pivô e da ``ponta``.
+
+    ``pivos``, ``eixos`` e ``ponta`` estão no referencial do grupo ``fingers``
+    em repouso; ``rot_no``/``origem_no`` vêm de ``transformacao_no`` desse grupo.
+    A junta k gira em torno de ``eixos[k]`` por ``pivos[k]`` e leva as seguintes.
+    """
+    rot = rot_no
+    resultado: list[Vec3] = []
+    anterior = pivos[0]
+    posicao = somar(origem_no, aplicar(rot_no, pivos[0]))
+
+    for k, pivo in enumerate(pivos):
+        if k > 0:
+            posicao = somar(posicao, aplicar(rot, subtrair(pivo, anterior)))
+
+        resultado.append(posicao)
+        anterior = pivo
+        rot = mul(rot, rot_eixo(eixos[k], radians(angulos_graus[k])))
+
+    resultado.append(somar(posicao, aplicar(rot, subtrair(ponta, anterior))))
+
+    return resultado
+
+
 def graus(rotacao: Rotation3) -> tuple[float, float, float]:
     """``(h, p, r)`` em graus de um ``Rotation3`` (ordem do ``setHpr``)."""
     return degrees(rotacao.y), degrees(rotacao.x), degrees(rotacao.z)

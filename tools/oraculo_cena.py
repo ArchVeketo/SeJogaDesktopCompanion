@@ -12,6 +12,8 @@ Saídas (Markdown no stdout ou em ``--saida``):
   --alvos     tabela alvo x punho (FK) x penetração do braço para ``arm_targets``.
   --sugerir   para cada alvo em colisão, o ponto livre mais próximo (grade).
   --tronco    pitch/roll/yaw do pivô do tronco → direção do topo da cabeça.
+  --dedos     cadeia de juntas dos dedos: para onde a ponta vai com flexão positiva
+              (FK pura) e o erro contra os pivôs reais do Panda.
 """
 
 from __future__ import annotations
@@ -224,17 +226,104 @@ def tronco() -> str:
     return "\n".join(linhas)
 
 
+#: Flexão de teste (graus) de cada junta ao provar o eixo de dobra dos dedos.
+FLEXAO_TESTE_DEDO_GRAUS = 30.0
+#: Rótulos das mãos e do dedo na tabela (índice 0 = polegar).
+NOMES_DEDOS = ("polegar", "indicador", "médio", "anelar", "mindinho")
+
+
+def medir_dedos(modelo) -> list[dict]:
+    """Por dedo: eixo no referencial do mascote, deslocamento da ponta (FK) e erro contra o Panda.
+
+    A FK usa o grupo ``fingers``/``fingers2`` (``cinematica.transformacao_no``) e a
+    cadeia de pivôs fatiada pelo renderer; o Panda move os mesmos pivôs de verdade.
+    """
+    from panda3d.core import NodePath, loadPrcFileData
+
+    loadPrcFileData("", "window-type none\naudio-library-name null")
+    import gltf
+
+    from sejoga.animacao import dedos_tuning as T
+    from sejoga.render import dedos_malha as dm
+
+    raiz = NodePath(gltf.load_model(str(resolve_model())))
+    dm.fatiar_dedos(raiz)
+    referencia = raiz.find("**/body").getParent()
+
+    # Mesma pose-base do renderer e da FK: soma a torção base do antebraço.
+    for grupo_braco, (eh, ep, er) in cin.BASE_ADICIONAL_GRAUS.items():
+        braco = raiz.find(f"**/{grupo_braco}")
+        h, p, r = braco.getHpr()
+        braco.setHpr(h + eh, p + ep, r + er)
+
+    linhas = []
+
+    for grupo, meshes in (("fingers", T.MESH_DEDOS_DIREITA), ("fingers2", T.MESH_DEDOS_ESQUERDA)):
+        no_grupo = raiz.find(f"**/{grupo}")
+        rot, origem = cin.transformacao_no(modelo, grupo)
+
+        for dedo, mesh in enumerate(meshes):
+            cadeia = dm.pivos_da_cadeia(raiz, mesh)
+            pivos = [_tupla(p.getPos(no_grupo)) for p, _ in cadeia]
+            eixos = [_tupla(no_grupo.getRelativeVector(p, e)) for p, e in cadeia]
+            ultimo = raiz.find(f"**/mesh{mesh}-seg{len(cadeia) - 1}")
+            baixo, alto = ultimo.getTightBounds(no_grupo)
+            ponta = _tupla((baixo + alto) * 0.5)
+            # Ponto rígido do último segmento (a AABB muda ao girar; o ponto não).
+            ponta_no_segmento = ultimo.getRelativePoint(no_grupo, (baixo + alto) * 0.5)
+            angulos = (FLEXAO_TESTE_DEDO_GRAUS,) * len(cadeia)
+            repouso = cin.pontos_cadeia_dedo(rot, origem, pivos, eixos, (0.0,) * len(cadeia), ponta)
+            fk = cin.pontos_cadeia_dedo(rot, origem, pivos, eixos, angulos, ponta)
+
+            for pivo, eixo in cadeia:
+                dm.girar_pivo(pivo, eixo, FLEXAO_TESTE_DEDO_GRAUS)
+
+            # Pivôs (juntas) e ponta reais do Panda contra a FK pura.
+            panda = [_tupla(p.getPos(referencia)) for p, _ in cadeia]
+            panda.append(_tupla(referencia.getRelativePoint(ultimo, ponta_no_segmento)))
+            erro = max(math.dist(a, b) for a, b in zip(panda, fk, strict=True))
+            linhas.append({
+                "grupo": grupo, "dedo": dedo, "fk": fk, "repouso": repouso, "erro": erro,
+                "deslocamento": cin.subtrair(fk[-1], repouso[-1]),
+            })
+
+            for pivo, eixo in cadeia:
+                dm.girar_pivo(pivo, eixo, 0.0)
+
+    return linhas
+
+
+def _tupla(v) -> cin.Vec3:
+    return (float(v[0]), float(v[1]), float(v[2]))
+
+
+def tabela_dedos(modelo) -> str:
+    linhas = [
+        f"| mão | dedo | +{FLEXAO_TESTE_DEDO_GRAUS:.0f}° por junta move a ponta para | erro FK x Panda (u) |",
+        "|---|---|---|---|",
+    ]
+
+    for medida in medir_dedos(modelo):
+        mao = "direita" if medida["grupo"] == "fingers" else "esquerda"
+        linhas.append(
+            f"| {mao} | {NOMES_DEDOS[medida['dedo']]} | {_direcao(medida['deslocamento'])} "
+            f"| {medida['erro']:.5f} |"
+        )
+
+    return "\n".join(linhas)
+
+
 def _fmt(v) -> str:
     return "(" + ", ".join(f"{c:+.3f}" for c in v) + ")"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Oráculo de cena do rig.")
-    for flag in ("eixos", "aabbs", "alvos", "sugerir", "tronco"):
+    for flag in ("eixos", "aabbs", "alvos", "sugerir", "tronco", "dedos"):
         parser.add_argument(f"--{flag}", action="store_true")
     parser.add_argument("--saida", type=Path, default=None)
     args = parser.parse_args()
-    todos = not any((args.eixos, args.aabbs, args.alvos, args.sugerir, args.tronco))
+    todos = not any((args.eixos, args.aabbs, args.alvos, args.sugerir, args.tronco, args.dedos))
     modelo = load_model(resolve_model())
     blocos = []
 
@@ -248,6 +337,9 @@ def main() -> int:
         blocos.append("## Alvos livres sugeridos\n\n" + sugerir(modelo))
     if args.tronco or todos:
         blocos.append("## Tronco (pivô no referencial do asset)\n\n" + tronco())
+
+    if args.dedos or todos:
+        blocos.append("## Cadeia dos dedos (FK x pivôs do Panda)\n\n" + tabela_dedos(modelo))
 
     texto = "# Oráculo de cena (gerado por tools/oraculo_cena.py)\n\n" + "\n\n".join(blocos) + "\n"
 

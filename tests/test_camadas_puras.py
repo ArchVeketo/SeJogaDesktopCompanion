@@ -11,7 +11,10 @@ _SRC = Path(__file__).resolve().parent.parent / "src" / "sejoga"
 _PROIBIDOS = {"panda3d", "direct", "pyside6", "pyqt5", "pyqt6", "shiboken6", "win32", "pywin32"}
 
 
-@pytest.mark.parametrize("relativo", ["nucleo/model.py", "nucleo/rig.py", "nucleo/assets.py", "config.py"])
+@pytest.mark.parametrize("relativo", [
+    "nucleo/model.py", "nucleo/rig.py", "nucleo/assets.py", "config.py",
+    "nucleo/malha_corte.py", "nucleo/cinematica.py", "animacao/dedos_cascata.py", "animacao/dedos_tuning.py",
+])
 def test_modulo_nao_importa_engine(relativo: str) -> None:
     arvore = ast.parse((_SRC / relativo).read_text(encoding="utf-8"))
     importados: list[str] = []
