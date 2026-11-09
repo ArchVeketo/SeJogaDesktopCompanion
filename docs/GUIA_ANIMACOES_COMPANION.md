@@ -44,7 +44,7 @@ As pistas usam interpolação quíntica (velocidade e aceleração nulas nas
 pausas). Antebraço, punho e dedos têm tempos diferentes. O movimento
 secundário soma à pose autorada, preservando suas rotações. A escolha manual
 reinicia a frase, faz crossfade e permanece salva; automático inclui os nove
-estilos. `tools/preview_idle_styles.py` gera ciclos completos em GIF e
+estilos. `tools/preview_body_actions.py` gera
 capturas do início, gesto e retorno, com perfil temporário.
 
 Os tentáculos agora aguardam a porta abrir, mantêm a raiz fixa, saem em
@@ -62,7 +62,7 @@ que seguem as peças animadas. Há quarenta volumes neste asset: cinco painéis
 do armário oco, porta, fones e peças sólidas do tronco/braços/pernas. Planos
 decorativos transparentes e eixos de diagnóstico não bloqueiam a cadeia.
 As raízes acompanham a cabeça; a porta espera recolhimento e limita sua
-velocidade. `tools/verify_tentacle_contacts.py` verifica vértices renderizados,
+velocidade. (a verificação `verify_tentacle_contacts.py` foi removida) verifica vértices renderizados,
 eixos ortogonais e fechamento durante um ciclo completo. São restrições
 geométricas aproximadas; não constituem física de tecido nem colisão por
 triângulo contra todos os pixels transparentes do GLTF.
