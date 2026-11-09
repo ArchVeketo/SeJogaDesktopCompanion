@@ -457,7 +457,7 @@ class TentacleDirector:
                 # The cross section keeps its volume instead of growing from zero.
                 seg_progress = t_param
                 delta = tentacle.target - tentacle.anchor
-                forward = tentacle.reference_front
+                lateral, forward, up = _base_frente(tentacle)
                 a = tentacle.anchor + forward * .22 + Vec3(0, 0, .02)
                 b = tentacle.anchor + delta * 1.15 + forward * .08 + Vec3(0, 0, .06 + target_curl * .04)
                 u = seg_progress
@@ -469,12 +469,12 @@ class TentacleDirector:
                 if self.burst:
                     # A travelling bend with delayed tips, rather than rigid spokes.
                     wave = math.sin(math.pi * t_param) * math.sin(phase)
-                    target_pos += Vec3(.065 * wave, .045 * math.cos(phase) * arch,
-                                       .075 * math.sin(phase - .7) * arch)
-                target_pos += Vec3(
-                    math.sin(phase) * 4.0 * tentacle.unit_scale * arch,
-                    8.0 * tentacle.unit_scale * arch,
-                    12.0 * tentacle.unit_scale * arch,
+                    target_pos += (lateral * (.065 * wave) + forward * (.045 * math.cos(phase) * arch)
+                                   + up * (.075 * math.sin(phase - .7) * arch))
+                target_pos += (
+                    lateral * (math.sin(phase) * 4.0 * tentacle.unit_scale * arch)
+                    + forward * (8.0 * tentacle.unit_scale * arch)
+                    + up * (12.0 * tentacle.unit_scale * arch)
                 )
             else:
                 target_pos = tentacle.anchor
@@ -696,10 +696,21 @@ class TentacleDirector:
             # Targets have independent depth so the limbs do not form a flat fan.
             offsets = ((-48, 55, 46), (58, 38, -32), (-64, 32, 8),
                        (32, 68, -48), (42, 44, 50), (-30, 76, -40))
-            offset = Vec3(*offsets[index % len(offsets)]) * self.pool.unit_scale * t.length_scale
+            # Offsets autorais (x lateral, y frente, z cima) seguem a frente da cabeça,
+            # não o espaço do modelo, que já vem com o giro assado no asset.
+            lateral, frente, cima = _base_frente(t)
+            x, y, z = offsets[index % len(offsets)]
+            offset = (lateral * x + frente * y + cima * z) * self.pool.unit_scale * t.length_scale
             t.target = t.anchor + offset
         self._door_requested = max(self._door_requested, 85.0)
         return active
+
+
+def _base_frente(tentacle: Tentacle) -> tuple[Vec3, Vec3, Vec3]:
+    """Base (lateral, frente, cima) da cabeça no espaço do modelo."""
+    frente = Vec3(tentacle.reference_front)
+    cima = Vec3(0, 0, 1)
+    return frente.cross(cima), frente, cima
 
 
 # ============================================================
