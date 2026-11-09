@@ -75,6 +75,13 @@ DT_ANIMACAO = 1 / 60
 #: Quantos segundos o idle espera antes de dormir (desligado na prática).
 SEGUNDOS_ATE_DORMIR = 600
 
+#: Estilos de dança e gestos disparáveis pelo modo confirmar.
+ESTILOS_DANCA = ("head_bob", "hip_hop", "rock", "breakdance")
+GESTOS = (
+    "wave", "stretch", "peek", "sneeze", "click", "double_click",
+    "pet", "poke", "hang_loose", "thumbs_up", "finger_gun", "land", "hit",
+)
+
 #: Passos de giro alternáveis pela tecla ``p``.
 PASSOS_GRAUS = (PASSO_FINO_GRAUS, PASSO_PADRAO_GRAUS, PASSO_GROSSO_GRAUS)
 
@@ -373,6 +380,41 @@ class Calibrador:
         app.destroy()
 
 
+def _pilotar(animation, estado: str):
+    """Entrada de animation.update apropriada ao estado."""
+    velocidade = (0.0, 0.0)
+    arrastando = gravidade = musica = False
+    aterrado = True
+    if estado == "walk":
+        velocidade = (120.0, 0.0)
+    elif estado == "run":
+        velocidade = (520.0, 0.0)
+    elif estado == "drag":
+        arrastando = True
+    elif estado == "fall":
+        aterrado = False
+        gravidade = True
+        velocidade = (0.0, 600.0)
+    elif estado == "dance" or estado in ESTILOS_DANCA:
+        musica = True
+    return animation.update(
+        DT_ANIMACAO,
+        velocity=velocidade,
+        grounded=aterrado,
+        gravity_active=gravidade,
+        dragging=arrastando,
+        music_playing=musica,
+        music_intensity=1.0 if musica else 0.0,
+        music_bass=0.8 if musica else 0.0,
+        music_bpm=120 if musica else None,
+        dance_chance=1.0 if musica else 0.0,
+        react_to_beat=musica,
+        beat_detected=musica,
+        idle_enabled=True,
+        sleep_after_idle_seconds=0 if estado == "sleep" else SEGUNDOS_ATE_DORMIR,
+    )
+
+
 class Confirmador(Calibrador):
     """Modo confirmar: mostra as poses reais do app e registra 1/2/3."""
 
@@ -391,24 +433,20 @@ class Confirmador(Calibrador):
         return task.cont
 
     def _disparar(self, estado: str) -> None:
-        import verificar_eixos as ve
-
-        if estado in ve.ESTILOS_DANCA:
+        if estado in ESTILOS_DANCA:
             self.animation.preview_dance(estado)
-        elif estado in ve.GESTOS:
+        elif estado in GESTOS:
             self.animation.interact(estado)
         self._estado_disparado = estado
 
     def _tick(self) -> None:
-        import verificar_eixos as ve
-
         estado = self.confirmacao.atual.estado
         # O estado pode ser None antes do primeiro update do controller.
         atual = getattr(self.animation.state, "value", None)
-        gesto_acabou = estado in ve.GESTOS and atual is not None and atual != estado
+        gesto_acabou = estado in GESTOS and atual is not None and atual != estado
         if estado != self._estado_disparado or gesto_acabou:
             self._disparar(estado)
-        pose = ve._pilotar(self.animation, estado)
+        pose = _pilotar(self.animation, estado)
         self.renderer.apply_rig_pose(pose)
         self.renderer.apply_body_motion(
             self.animation.body_motion.snapshot, None, grounded=True, dragging=estado == "drag"

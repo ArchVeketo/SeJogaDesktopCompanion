@@ -29,7 +29,7 @@ class PoseDeConfirmacao:
     """Uma pose do app a confirmar: estado/gesto que a ferramenta dispara."""
 
     nome: str
-    #: Estado/gesto aceito por ``tools/verificar_eixos._pilotar``/``interact``.
+    #: Estado/gesto aceito por ``tools/calibrar_interativo._pilotar``/``interact``.
     estado: str
     #: Item do recalibracao-gpu.md que a resposta decide (C1..C6).
     item: str
