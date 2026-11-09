@@ -40,6 +40,20 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
+# Parâmetros estruturais do render (SimplePBR, antialias, contorno).
+# ============================================================
+
+# Amostras de MSAA do pipeline SimplePBR; a cobertura parcial alimenta o
+# chroma resolve (ver chroma_resolve/chroma_tuning).
+MSAA_AMOSTRAS = 4
+# Teto de luzes dinâmicas do SimplePBR.
+MAX_LUZES_PBR = 8
+# Alpha mínimo da textura para o fragmento do contorno não ser descartado:
+# abaixo disso a borda "vaza" por faces transparentes do modelo.
+CONTORNO_ALPHA_DISCARD = 0.05
+
+
+# ============================================================
 # Panda3D Renderer
 # ============================================================
 
@@ -179,8 +193,8 @@ class Panda3DRenderer:
         try:
             import simplepbr
 
-            pipeline = simplepbr.init(use_normal_maps=False, use_emission_maps=False, max_lights=8,
-                                      msaa_samples=4)
+            pipeline = simplepbr.init(use_normal_maps=False, use_emission_maps=False,
+                                      max_lights=MAX_LUZES_PBR, msaa_samples=MSAA_AMOSTRAS)
             from sejoga.render.chroma_resolve import install_chroma_resolve
             install_chroma_resolve(pipeline)
         except ImportError:
@@ -325,16 +339,16 @@ void main() {
         (p3d_Vertex + vec4(normalize(p3d_Normal) * thickness * orientacao, 0.0));
 }
 """
-        fragment = """#version 130
+        fragment = f"""#version 130
 uniform vec4 outline_color;
 uniform bool outline_enabled;
 uniform sampler2D p3d_Texture0;
 in vec2 outline_uv;
 out vec4 fragColor;
-void main() {
-    if (!outline_enabled || texture(p3d_Texture0, outline_uv).a < 0.05) discard;
+void main() {{
+    if (!outline_enabled || texture(p3d_Texture0, outline_uv).a < {CONTORNO_ALPHA_DISCARD}) discard;
     fragColor = outline_color;
-}
+}}
 """
         self.outline_np = self.model_np.copyTo(self.model_anchor)
         self.outline_np.setName("mascot-outline")
@@ -781,9 +795,9 @@ in vec4 p3d_Vertex; in vec2 p3d_MultiTexCoord0;
 uniform mat4 p3d_ModelViewProjectionMatrix; out vec2 uv;
 void main() { uv = p3d_MultiTexCoord0; gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex; }
 """
-        fragment = """#version 130
+        fragment = f"""#version 130
 uniform sampler2D p3d_Texture0; in vec2 uv; out vec4 fragColor;
-void main() { if (texture(p3d_Texture0, uv).a < 0.05) discard; fragColor = vec4(100.0, 100.0, 100.0, 1.0); }
+void main() {{ if (texture(p3d_Texture0, uv).a < {CONTORNO_ALPHA_DISCARD}) discard; fragColor = vec4(100.0, 100.0, 100.0, 1.0); }}
 """
         self.model_np.setShader(Shader.make(Shader.SL_GLSL, vertex, fragment), 1001)
         self.outline_np.hide()

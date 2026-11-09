@@ -18,6 +18,15 @@ from panda3d.core import LineSegs, TextNode
 
 from sejoga.config import default_config_path
 
+# Estilo dos eixos de referência do diagnóstico (gizmo X/Y/Z).
+EIXO_ESPESSURA = 2.5
+EIXO_COMPRIMENTO = 0.42
+EIXO_COR_X = (1.0, 0.18, 0.2, 1.0)
+EIXO_COR_Y = (0.2, 1.0, 0.35, 1.0)
+EIXO_COR_Z = (0.25, 0.55, 1.0, 1.0)
+# Escala dos gizmos presos às juntas (menores que os eixos world/local).
+EIXO_ESCALA_JUNTA = 0.12
+
 
 def configure_logging() -> logging.Logger:
     """Configura log rotativo no perfil do usuário sem bloquear a inicialização."""
@@ -108,22 +117,22 @@ class DebugTools:
                                                    for node in (chain[0],chain[1],*chain[2])]
         self._joint_axes = [self._make_axes(joint) for joint in joints]
         for axis in self._joint_axes:
-            axis.setScale(.12)
+            axis.setScale(EIXO_ESCALA_JUNTA)
             axis.hide()
 
     @staticmethod
     def _make_axes(root):
         lines = LineSegs("debug-axes")
-        lines.setThickness(2.5)
-        lines.setColor(1.0, 0.18, 0.2, 1.0)
+        lines.setThickness(EIXO_ESPESSURA)
+        lines.setColor(*EIXO_COR_X)
         lines.moveTo(0, 0, 0)
-        lines.drawTo(0.42, 0, 0)
-        lines.setColor(0.2, 1.0, 0.35, 1.0)
+        lines.drawTo(EIXO_COMPRIMENTO, 0, 0)
+        lines.setColor(*EIXO_COR_Y)
         lines.moveTo(0, 0, 0)
-        lines.drawTo(0, 0.42, 0)
-        lines.setColor(0.25, 0.55, 1.0, 1.0)
+        lines.drawTo(0, EIXO_COMPRIMENTO, 0)
+        lines.setColor(*EIXO_COR_Z)
         lines.moveTo(0, 0, 0)
-        lines.drawTo(0, 0, 0.42)
+        lines.drawTo(0, 0, EIXO_COMPRIMENTO)
         return root.attachNewNode(lines.create())
 
     def set_visible(self, visible: bool) -> None:

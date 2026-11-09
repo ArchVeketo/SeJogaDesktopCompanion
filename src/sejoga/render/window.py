@@ -81,6 +81,12 @@ from sejoga.render.canvas_envelope import (
     escolher_tamanho,
     extensao_necessaria,
 )
+from sejoga.render.chroma_tuning import (
+    CALIBRACAO_AZUL_MIN,
+    CALIBRACAO_VERDE_MAX,
+    CALIBRACAO_VERMELHO_MIN,
+    CHROMA_CLEAR_MAGENTA,
+)
 from sejoga.render.debug import DebugTools, configure_logging
 from sejoga.render.renderer import Panda3DRenderer
 from sejoga.render.win32_overlay import (
@@ -99,6 +105,30 @@ from sejoga.render.win32_overlay import (
     WS_EX_NOACTIVATE,
     WS_EX_TOPMOST,
     WS_EX_TRANSPARENT,
+)
+from sejoga.render.window_const import (
+    COLISAO_DIVISOR_DIRECAO,
+    COLISAO_DIVISOR_FORCA,
+    DELAY_CALIBRAR_COLOR_KEY,
+    DELAY_RESTAURAR_Z_ORDER,
+    DOUBLE_CLICK_DISTANCIA_MINIMA,
+    DOUBLE_CLICK_DIVISOR_METRICA,
+    DRAG_DIVISOR_DIRECAO,
+    DRAG_DIVISOR_INTENSIDADE,
+    FRAMEBUFFER_ALPHA_BITS,
+    FRAMEBUFFER_DEPTH_BITS,
+    FRAMEBUFFER_MULTISAMPLES,
+    FRAMEBUFFER_STENCIL_BITS,
+    MARGEM_CANTO_HORIZONTAL,
+    MARGEM_CANTO_VERTICAL,
+    MILISSEGUNDOS_POR_SEGUNDO,
+    OFFSET_APOIO_FISICO,
+    TILT_DIVISOR_VELOCIDADE,
+    TILT_GRAUS_MAXIMO,
+    TILT_VELOCIDADE_MINIMA,
+    TRAY_NOTIFICACAO_ATALHO_MS,
+    TRAY_NOTIFICACAO_MS,
+    TRAY_NOTIFICACAO_REINICIO_MS,
 )
 
 user32 = ctypes.windll.user32
@@ -156,8 +186,11 @@ class OverlayApp(ShowBase):
                                win32con.IDC_SIZENS, win32con.IDC_SIZEWE)}
         self.mouse_interaction = MouseInteraction(
             buttons=self._mouse_buttons(),
-            double_click_seconds=user32.GetDoubleClickTime() / 1000,
-            double_click_distance=max(4, win32api.GetSystemMetrics(win32con.SM_CXDOUBLECLK) / 2),
+            double_click_seconds=user32.GetDoubleClickTime() / MILISSEGUNDOS_POR_SEGUNDO,
+            double_click_distance=max(
+                DOUBLE_CLICK_DISTANCIA_MINIMA,
+                win32api.GetSystemMetrics(win32con.SM_CXDOUBLECLK) / DOUBLE_CLICK_DIVISOR_METRICA,
+            ),
         )
         self.animation_controller: AnimationController | None = None
 
@@ -176,7 +209,9 @@ class OverlayApp(ShowBase):
         self._window_start_pos = (0, 0)
         # Estado do hot path pré-inicializado (evita hasattr/getattr por frame).
         size = self.settings.window.size
-        self._physics_local = (size / 2, size - self.settings.physics.mascot_radius - 35)
+        self._physics_local = (
+            size / 2, size - self.settings.physics.mascot_radius - OFFSET_APOIO_FISICO
+        )
         # Dimensionamento por envelope de pior caso (ver canvas_envelope): a
         # janela assume poucos tamanhos discretos estáveis em vez de seguir os
         # limites vivos do rig, eliminando o resize por frame que causava o
@@ -221,8 +256,10 @@ class OverlayApp(ShowBase):
                 ", ".join(self.hotkey_manager.unavailable_shortcuts),
             )
         self._apply_window_state()
-        self.taskMgr.doMethodLater(0.15, self._restore_z_order, "restore-z-order")
-        self.taskMgr.doMethodLater(0.2, self._calibrate_background_key, "background-key")
+        self.taskMgr.doMethodLater(DELAY_RESTAURAR_Z_ORDER, self._restore_z_order, "restore-z-order")
+        self.taskMgr.doMethodLater(
+            DELAY_CALIBRAR_COLOR_KEY, self._calibrate_background_key, "background-key"
+        )
         self._init_physics()
         icon = brand_dir() / "companion.ico"
         # _init_pyside() (chamado acima) ja definiu qt_app.
@@ -249,14 +286,14 @@ class OverlayApp(ShowBase):
 
         fbprops = FrameBufferProperties()
         fbprops.setRgbColor(True)
-        fbprops.setAlphaBits(8)
-        fbprops.setDepthBits(24)
-        fbprops.setStencilBits(8)
-        fbprops.setMultisamples(4)
+        fbprops.setAlphaBits(FRAMEBUFFER_ALPHA_BITS)
+        fbprops.setDepthBits(FRAMEBUFFER_DEPTH_BITS)
+        fbprops.setStencilBits(FRAMEBUFFER_STENCIL_BITS)
+        fbprops.setMultisamples(FRAMEBUFFER_MULTISAMPLES)
 
         self.openDefaultWindow(props=wp, fbprops=fbprops)
 
-        self.win.setClearColor((1.0, 0.0, 1.0, 0.0))  # Zero alpha preserves MSAA coverage for chroma resolve.
+        self.win.setClearColor(CHROMA_CLEAR_MAGENTA)  # Zero alpha preserves MSAA coverage for chroma resolve.
         self.win.setClearColorActive(True)
 
         self.disableMouse()
@@ -312,7 +349,8 @@ class OverlayApp(ShowBase):
         if image:
             red, green, blue = bytes(image.getRamImageAs("RGB"))[:3]
             # Calibrate only the known magenta clear pixel after PBR tone mapping.
-            if red > 128 and green < 20 and blue > 128:
+            if (red > CALIBRACAO_VERMELHO_MIN and green < CALIBRACAO_VERDE_MAX
+                    and blue > CALIBRACAO_AZUL_MIN):
                 self._background_key = red | (green << 8) | (blue << 16)
                 self._refresh_background_mode()
         return Task.done
@@ -336,8 +374,8 @@ class OverlayApp(ShowBase):
         if start_position is None:
             screen_w = win32api.GetSystemMetrics(0)
             screen_h = win32api.GetSystemMetrics(1)
-            x = max(0, screen_w - size - 32)
-            y = max(0, screen_h - size - 72)
+            x = max(0, screen_w - size - MARGEM_CANTO_HORIZONTAL)
+            y = max(0, screen_h - size - MARGEM_CANTO_VERTICAL)
         else:
             x, y = (int(start_position[0]), int(start_position[1]))
 
@@ -398,7 +436,9 @@ class OverlayApp(ShowBase):
 
         # Posiciona o mascote no centro inferior da janela
         size = self.settings.window.size
-        self._physics_local = (size / 2, size - self.settings.physics.mascot_radius - 35)
+        self._physics_local = (
+            size / 2, size - self.settings.physics.mascot_radius - OFFSET_APOIO_FISICO
+        )
         origin = win32gui.ClientToScreen(self.hwnd, (0, 0))
         self._set_physics_monitor((origin[0] + self._physics_local[0], origin[1] + self._physics_local[1]))
         self.physics.set_position(
@@ -443,8 +483,11 @@ class OverlayApp(ShowBase):
     def _on_physics_collision(self, kind, velocity) -> None:
         self.logger.info("Physics %s velocity=%s", kind, velocity)
         if self.animation_controller:
-            self.animation_controller.interact("hit", direction=max(-1, min(1, velocity[0] / 1000)),
-                                               strength=min(2, math.hypot(*velocity) / 1200))
+            self.animation_controller.interact(
+                "hit",
+                direction=max(-1, min(1, velocity[0] / COLISAO_DIVISOR_DIRECAO)),
+                strength=min(2, math.hypot(*velocity) / COLISAO_DIVISOR_FORCA),
+            )
 
     def _physics_tick(self, task: Task) -> int:
         """Task de física - roda a 120 Hz."""
@@ -470,8 +513,10 @@ class OverlayApp(ShowBase):
         self.renderer.set_model_screen_position(*self._physics_local)
 
         vx, vy = state.velocity
-        if not state.grounded and math.hypot(vx, vy) > 80:
-            self.renderer.set_model_rotation(z=max(-20.0, min(20.0, -vx / 80)))
+        if not state.grounded and math.hypot(vx, vy) > TILT_VELOCIDADE_MINIMA:
+            self.renderer.set_model_rotation(
+                z=max(-TILT_GRAUS_MAXIMO, min(TILT_GRAUS_MAXIMO, -vx / TILT_DIVISOR_VELOCIDADE))
+            )
         else:
             self.renderer.set_model_rotation()
 
@@ -673,14 +718,14 @@ class OverlayApp(ShowBase):
                     "Frame capturado",
                     str(path),
                     QSystemTrayIcon.MessageIcon.Information,
-                    4000,
+                    TRAY_NOTIFICACAO_MS,
                 )
             else:
                 self.tray_icon.showMessage(
                     "Captura falhou",
                     "Veja o log para detalhes.",
                     QSystemTrayIcon.MessageIcon.Warning,
-                    4000,
+                    TRAY_NOTIFICACAO_MS,
                 )
 
     def set_frame_recording(self, enabled: bool) -> None:
@@ -695,12 +740,16 @@ class OverlayApp(ShowBase):
         self._refresh_background_mode()
         self._set_action_checked(self._recording_action, recording)
         if self.tray_icon:
-            message = "Gravação iniciada (máximo 300 frames)." if recording else "Gravação encerrada."
+            limite = DebugTools.MAX_RECORDING_FRAMES
+            message = (
+                f"Gravação iniciada (máximo {limite} frames)." if recording
+                else "Gravação encerrada."
+            )
             self.tray_icon.showMessage(
                 "Diagnóstico",
                 message,
                 QSystemTrayIcon.MessageIcon.Information,
-                4000,
+                TRAY_NOTIFICACAO_MS,
             )
 
     def _fit_pose_window(self, dt):
@@ -1059,8 +1108,8 @@ class OverlayApp(ShowBase):
             elif event.kind in ("drag_move", "drag_end"):
                 dx = position[0] - self._drag_start_pos[0]
                 dy = position[1] - self._drag_start_pos[1]
-                self._drag_direction = max(-1.0, min(1.0, dx / 80.0))
-                self._drag_intensity = min(1.0, math.hypot(dx, dy)/160)
+                self._drag_direction = max(-1.0, min(1.0, dx / DRAG_DIVISOR_DIRECAO))
+                self._drag_intensity = min(1.0, math.hypot(dx, dy) / DRAG_DIVISOR_INTENSIDADE)
                 win32gui.SetWindowPos(
                     self.hwnd, 0,
                     self._window_start_pos[0] + dx, self._window_start_pos[1] + dy,
@@ -1172,7 +1221,7 @@ class OverlayApp(ShowBase):
                         "Atalho indisponível",
                         "Já está sendo usado por outro programa: " + ", ".join(unavailable),
                         QSystemTrayIcon.MessageIcon.Warning,
-                        6000,
+                        TRAY_NOTIFICACAO_ATALHO_MS,
                     )
         if self.renderer:
             self.renderer.set_visual_scale(updated.window.scale)
@@ -1193,7 +1242,7 @@ class OverlayApp(ShowBase):
                 "Configurações salvas",
                 "Tamanho da janela e física serão aplicados ao reiniciar o companion.",
                 QSystemTrayIcon.MessageIcon.Information,
-                5000,
+                TRAY_NOTIFICACAO_REINICIO_MS,
             )
 
     @staticmethod
