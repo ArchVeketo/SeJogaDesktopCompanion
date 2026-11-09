@@ -1,8 +1,8 @@
 """Oráculo VISUAL dos eixos de braço: projeta a ponta da mão em PIXELS de tela.
 
-A convenção de eixo de braço foi provada capturando frames do renderer REAL
-(não números): a ELEVAÇÃO na tela (sobe/desce) é o ``Rotation3.z`` (roll); o
-``Rotation3.y`` (heading) vai para PROFUNDIDADE. Este utilitário sobe o renderer
+A câmera frontal só enxerga X/Y da tela, NUNCA a profundidade: isto é
+regressão de pixel, não prova de eixo. A prova de eixo é a FK do grafo de cena
+(``tests/test_cinematica_oraculo.py``, ``tools/oraculo_cena.py --eixos``). Este utilitário sobe o renderer
 real offscreen, dispara um estado/gesto, roda N frames e, para cada frame,
 PROJETA a ponta das mãos (``hand``/``hand2``) e o ombro (``right-arm``) na
 câmera, devolvendo PIXELS de tela. Também salva PNG/GIF para revisão humana.

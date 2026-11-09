@@ -52,15 +52,22 @@ def test_delta_drag_varia_por_grab_part():
 
 
 def test_delta_drag_perna_recolhe_bracos():
-    """Arraste pela perna deve fechar os braços (delta negativo em z)."""
+    """Arraste pela perna não ergue os braços acima do repouso (FK real)."""
+    from fk_bracos import punho
+
     motion = BodyPose(limb_swing=0)
     delta = delta_drag(motion, "legs")
+    base = pose_repouso()
+    composta = {
+        g: Rotation3(r.x + delta.get(g, Rotation3()).x, r.y + delta.get(g, Rotation3()).y,
+                     r.z + delta.get(g, Rotation3()).z)
+        for g, r in base.items()
+    }
 
-    # Convenção provada: a ELEVAÇÃO é o ROLL (Z); z positivo baixa. Pego pela
-    # perna, os braços BAIXAM mais que o repouso: delta de elevação POSITIVO no
-    # direito; no espelho esquerdo o Z fica mais negativo — ambos pendem p/ baixo.
-    assert delta["right-arm"].z > 0, "Arraste por perna deveria baixar o braço direito"
-    assert delta["left-arm"].z < 0, "Arraste por perna deveria baixar o braço esquerdo"
+    # O alvo drag_perna é o ponto livre mais baixo (ver arm_targets): os punhos
+    # ficam no máximo na altura do repouso, nunca acima.
+    for lado in ("right", "left"):
+        assert punho(composta, lado)[1] <= punho(base, lado)[1] + 1e-6, lado
 
 
 def test_delta_walk_alterna_bracos():
@@ -140,12 +147,13 @@ def test_composicao_delta_com_base_de_repouso():
             base_rot.z + delta_rot.z,
         )
 
-    # O resultado deve ter valores razoáveis para uma pose.
-    # Convenção provada em pixels: a ELEVAÇÃO do braço é o ROLL (Z), não o
-    # heading: a base de repouso tem right-arm.z ≈ +74° (braço quase reto para
-    # BAIXO, mão ao lado do quadril). Z=+90 baixo, Z=0 lateral, Z=-90 cima. O
-    # idle só soma pequena oscilação por cima, então Z fica em torno de +74°.
-    assert 55 < degrees(resultado["right-arm"].z) < 95
+    # FK do grafo de cena: o idle composto mantém o punho abaixo do ombro e à
+    # frente (o idle só soma pequena oscilação sobre o repouso do IK).
+    from fk_bracos import punho
+
+    del degrees
+    assert punho(resultado, "right")[1] < 0.0
+    assert punho(resultado, "right")[2] > 0.0
 
 
 def test_delta_idle_respiracao_afeta_corpo():

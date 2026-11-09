@@ -1,24 +1,22 @@
-"""Testes do solver de IK 3D de braço (``sejoga.animacao.arm_ik``).
+"""IK do braço contra a FK do grafo de cena (``cinematica`` == Panda, provado em
+``test_cinematica_oraculo``). Nada aqui compara o IK com uma FK própria dele."""
 
-Verificam, contra a geometria REAL do modelo (FK pura de ``rig_debug``), que:
-- para alvos conhecidos dentro do alcance, a ponta da mão resultante bate com o
-  alvo pedido dentro de tolerância;
-- alvo inatingível é clampado sem gerar NaN;
-- o lado esquerdo é o espelho do direito;
-- o módulo é Python puro (não puxa Panda3D/Qt).
-"""
+from __future__ import annotations
 
-from math import isfinite
+from math import degrees, isfinite
 
 import pytest
 
 from sejoga.animacao import arm_ik
+from sejoga.animacao import braco_tuning as tun
 from sejoga.animacao.arm_targets import ALVOS
+from sejoga.animacao.rig_base import REPOUSO
+from sejoga.nucleo import cinematica as cin
 from sejoga.nucleo.assets import resolve_model
 from sejoga.nucleo.model import load_model
 
-#: Tolerância de posição (unidades do modelo). O alcance do braço é ≈ 0.281.
-TOLERANCIA = 0.02
+#: Tolerância (graus) entre ``REPOUSO`` e a saída do IK para ``ALVO_IDLE``.
+TOLERANCIA_REPOUSO_GRAUS = 0.01
 
 
 @pytest.fixture(scope="module")
@@ -26,97 +24,86 @@ def modelo():
     return load_model(resolve_model())
 
 
-def _dist(a, b):
-    return sum((a[i] - b[i]) ** 2 for i in range(3)) ** 0.5
+def _pose_do_lado(modelo, lado, alvo):
+    alvo_lado = alvo.alvo if lado == "right" else alvo.alvo_espelhado()
+
+    return alvo_lado, arm_ik.braco_para(modelo, lado, alvo_lado, alvo.polo)
 
 
-@pytest.mark.parametrize(
-    "alvo",
-    [
-        (0.075, -0.265, 0.02),   # mão ao lado do quadril (idle)
-        (0.11, 0.235, 0.03),     # mão acima do ombro, à direita (wave)
-        (0.16, 0.0, 0.16),       # mão à frente, na horizontal
-        (0.05, -0.2, 0.1),       # mão baixa e um pouco à frente
-    ],
-)
-def test_braco_para_coloca_a_mao_no_alvo(modelo, alvo):
-    """Para alvos dentro do alcance, a ponta da mão bate com o alvo pedido."""
-    hpr = arm_ik.braco_para(modelo, "right", alvo)
-    pos = arm_ik.posicao_mao_para_hpr(modelo, "right", hpr["right-arm"], hpr["ant-arm"])
+@pytest.mark.parametrize("lado", ["right", "left"])
+@pytest.mark.parametrize("nome", sorted(ALVOS))
+def test_punho_renderizado_chega_ao_alvo(modelo, lado, nome):
+    alvo_lado, pose = _pose_do_lado(modelo, lado, ALVOS[nome])
+    braco, antebraco = list(pose)
+    punho = arm_ik.posicao_mao_para_hpr(modelo, lado, pose[braco], pose[antebraco])
 
-    assert _dist(pos, alvo) <= TOLERANCIA
+    assert punho == pytest.approx(alvo_lado, abs=arm_ik.TOLERANCIA_PADRAO)
 
 
-def test_alvos_dos_gestos_sao_atingiveis(modelo):
-    """Todos os alvos de gesto de ``arm_targets`` são atingidos dentro da tolerância."""
-    for nome, alvo in ALVOS.items():
-        hpr = arm_ik.braco_para(modelo, "right", alvo.alvo, alvo.polo)
-        pos = arm_ik.posicao_mao_para_hpr(
-            modelo, "right", hpr["right-arm"], hpr["ant-arm"]
-        )
+@pytest.mark.parametrize("nome", sorted(ALVOS))
+def test_cotovelo_dentro_da_faixa_e_sem_hiperextensao(modelo, nome):
+    _alvo, pose = _pose_do_lado(modelo, "right", ALVOS[nome])
+    flexao = degrees(pose["ant-arm"].z)
 
-        assert _dist(pos, alvo.alvo) <= TOLERANCIA, nome
+    assert tun.COTOVELO_MIN_GRAUS <= flexao <= tun.COTOVELO_MAX_GRAUS
+
+
+@pytest.mark.parametrize("nome", sorted(ALVOS))
+def test_cotovelo_aponta_para_tras_do_punho(modelo, nome):
+    """Polo anatômico: o cotovelo fica ATRÁS da linha ombro-punho (dobra à frente)."""
+    alvo, pose = _pose_do_lado(modelo, "right", ALVOS[nome])
+    ombro = cin.posicao_no(modelo, "right-arm", pose)
+    cotovelo = cin.autoria_para_alvo(cin.subtrair(cin.posicao_no(modelo, "ant-arm", pose), ombro))
+    distancia = cin.norma(alvo)
+    fracao = cin.produto_escalar(cotovelo, alvo) / (distancia * distancia)
+    na_linha = cin.escalar(alvo, fracao)
+
+    # Componente "frente" do cotovelo em relação à linha ombro-punho.
+    assert cotovelo[2] - na_linha[2] < 0.0
+
+
+def test_dobra_do_cotovelo_leva_a_mao_para_a_frente(modelo):
+    """Torção-base do antebraço: flexão positiva move o punho para a FRENTE."""
+    from math import radians
+
+    from sejoga.nucleo.rig import Rotation3
+
+    reto = cin.posicao_no(modelo, "hand", {})
+    dobrado = cin.posicao_no(modelo, "hand", {"ant-arm": Rotation3(0.0, 0.0, radians(45.0))})
+
+    assert dobrado[1] - reto[1] > 0.0  # +Y de autoria = frente
+
+
+def test_lado_esquerdo_e_espelho_exato(modelo):
+    for alvo in ALVOS.values():
+        _a, dir_ = _pose_do_lado(modelo, "right", alvo)
+        _b, esq = _pose_do_lado(modelo, "left", alvo)
+
+        for grupo_esq, grupo_dir in (("left-arm", "right-arm"), ("ant-arm2", "ant-arm")):
+            espelho = cin.espelhar_rotacao(dir_[grupo_dir])
+            obtido = esq[grupo_esq]
+            assert (obtido.x, obtido.y, obtido.z) == pytest.approx((espelho.x, espelho.y, espelho.z))
 
 
 def test_alvo_inatingivel_e_clampado_sem_nan(modelo):
-    """Alvo muito além do alcance é clampado (sem NaN) pelo solver planar."""
-    hpr = arm_ik.braco_para(modelo, "right", (5.0, 5.0, 5.0))
+    pose = arm_ik.braco_para(modelo, "right", (5.0, 5.0, 5.0))
 
-    for rot in hpr.values():
-        assert isfinite(rot.x) and isfinite(rot.y) and isfinite(rot.z)
+    for rot in pose.values():
+        assert all(isfinite(v) for v in (rot.x, rot.y, rot.z))
 
 
-def test_lado_esquerdo_e_espelho_do_direito(modelo):
-    """Alvo espelhado em X no lado esquerdo coloca a mão na posição espelhada."""
-    alvo_dir = (0.1, 0.2, 0.03)
-    alvo_esq = (-0.1, 0.2, 0.03)
+def test_repouso_e_a_saida_do_ik_do_alvo_idle(modelo):
+    pose = arm_ik.pose_repouso_bracos(modelo)
+    braco, antebraco = pose["right-arm"], pose["ant-arm"]
 
-    hpr_dir = arm_ik.braco_para(modelo, "right", alvo_dir)
-    hpr_esq = arm_ik.braco_para(modelo, "left", alvo_esq)
-
-    pos_dir = arm_ik.posicao_mao_para_hpr(
-        modelo, "right", hpr_dir["right-arm"], hpr_dir["ant-arm"]
-    )
-    pos_esq = arm_ik.posicao_mao_para_hpr(
-        modelo, "left", hpr_esq["left-arm"], hpr_esq["ant-arm2"]
-    )
-
-    assert _dist(pos_dir, alvo_dir) <= TOLERANCIA
-    assert _dist(pos_esq, alvo_esq) <= TOLERANCIA
-    # O X tem sinal trocado; Y e Z coincidem (espelho no plano sagital).
-    assert pos_dir[0] == pytest.approx(-pos_esq[0], abs=TOLERANCIA)
-    assert pos_dir[1] == pytest.approx(pos_esq[1], abs=TOLERANCIA)
+    assert degrees(braco.x) == pytest.approx(REPOUSO.BRACO_X, abs=TOLERANCIA_REPOUSO_GRAUS)
+    assert degrees(braco.y) == pytest.approx(REPOUSO.BRACO_Y, abs=TOLERANCIA_REPOUSO_GRAUS)
+    assert degrees(braco.z) == pytest.approx(REPOUSO.BRACO_Z, abs=TOLERANCIA_REPOUSO_GRAUS)
+    assert degrees(antebraco.z) == pytest.approx(REPOUSO.ANTEBRACO_Z, abs=TOLERANCIA_REPOUSO_GRAUS)
 
 
 def test_comprimentos_lidos_do_modelo(modelo):
-    """Os comprimentos vêm da cadeia real (upper 0.125, forearm 0.15625)."""
     upper, forearm = arm_ik.comprimentos_braco(modelo, "right")
 
     assert upper == pytest.approx(0.125, abs=1e-4)
     assert forearm == pytest.approx(0.15625, abs=1e-4)
-
-
-def test_modulo_e_python_puro():
-    """O solver não pode depender de engine (Panda3D/Qt).
-
-    Verifica num interpretador LIMPO (subprocesso) que importar ``arm_ik`` não
-    puxa Panda3D nem PySide6 — no processo compartilhado do pytest outros
-    testes já carregam a engine, então a checagem precisa de um processo novo.
-    """
-    import subprocess
-    import sys
-    from pathlib import Path
-
-    src = str(Path(__file__).resolve().parent.parent / "src")
-    codigo = (
-        "import sys; "
-        f"sys.path.insert(0, {src!r}); "
-        "import sejoga.animacao.arm_ik; "
-        "assert 'panda3d' not in sys.modules, 'panda3d vazou'; "
-        "assert 'PySide6' not in sys.modules, 'PySide6 vazou'"
-    )
-    resultado = subprocess.run(
-        [sys.executable, "-c", codigo], capture_output=True, text=True
-    )
-
-    assert resultado.returncode == 0, resultado.stderr

@@ -18,6 +18,13 @@ Uso (a partir da raiz do worktree):
 
 ``--capturar`` é o modo sem interação: aplica ``junta:eixo:graus``, renderiza e
 salva um PNG (com HUD) para checagem programática; não abre loop de teclado.
+
+MODO CONFIRMAR (Parte 3, recomendado): o mapa de eixos já sai do grafo de cena
+(``tools/oraculo_cena.py``). Aqui o usuário só confirma as poses REAIS do app:
+    python tools/calibrar_interativo.py --confirmar
+    python tools/calibrar_interativo.py --confirmar --capturar x.png --pose aceno
+Teclas: 1 correto, 2 errado, 3 pular, v frente/lado, setas navegam, esc salva e
+sai. Respostas em ``confirmacao-parte3.json`` (ver recalibracao-gpu.md).
 """
 # Pilota atributos Optional do OverlayApp e troca _animation_tick, igual aos
 # demais tools.
@@ -33,6 +40,7 @@ import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sejoga import config
 from sejoga.nucleo.rig import Rotation3
 from sejoga.rig_mapa.calibrador_estado import (
@@ -44,12 +52,16 @@ from sejoga.rig_mapa.calibrador_estado import (
     Eixo,
     EstadoCalibrador,
 )
+from sejoga.rig_mapa.confirmacao_poses import ConfirmacaoPoses, Resposta
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constantes nomeadas
 # ─────────────────────────────────────────────────────────────────────────────
 PASTA_RAIZ = Path(__file__).resolve().parents[1] / ".agents" / "tasks" / "frente3-animacao"
 ARQUIVO_JSON_PADRAO = PASTA_RAIZ / "mapa-eixos-CALIBRADO.json"
+ARQUIVO_CONFIRMACAO_PADRAO = PASTA_RAIZ / "confirmacao-parte3.json"
+#: Tecla -> resposta do modo confirmar.
+TECLAS_RESPOSTA: dict[str, Resposta] = {"1": Resposta.CORRETO, "2": Resposta.ERRADO, "3": Resposta.PULADO}
 
 #: Lado (px) da janela do calibrador: maior que o overlay para ver bem o membro.
 TAMANHO_JANELA = 720
@@ -361,6 +373,94 @@ class Calibrador:
         app.destroy()
 
 
+class Confirmador(Calibrador):
+    """Modo confirmar: mostra as poses reais do app e registra 1/2/3."""
+
+    def __init__(self, confirmacao: ConfirmacaoPoses, saida_json: Path) -> None:
+        self.confirmacao = confirmacao
+        self._estado_disparado: str | None = None
+        super().__init__(EstadoCalibrador(), saida_json)
+        self.guiado = False
+
+    def _linhas_status(self) -> list[str]:
+        return [*self.confirmacao.linhas_hud(), f"visao {VISOES[self.visao_indice][0]}"]
+
+    def _tarefa_hud(self, task):
+        self._hud.setText(self._texto(self._linhas_status()))
+        self._ajuda.setText("")
+        return task.cont
+
+    def _disparar(self, estado: str) -> None:
+        import verificar_eixos as ve
+
+        if estado in ve.ESTILOS_DANCA:
+            self.animation.preview_dance(estado)
+        elif estado in ve.GESTOS:
+            self.animation.interact(estado)
+        self._estado_disparado = estado
+
+    def _tick(self) -> None:
+        import verificar_eixos as ve
+
+        estado = self.confirmacao.atual.estado
+        # O estado pode ser None antes do primeiro update do controller.
+        atual = getattr(self.animation.state, "value", None)
+        gesto_acabou = estado in ve.GESTOS and atual is not None and atual != estado
+        if estado != self._estado_disparado or gesto_acabou:
+            self._disparar(estado)
+        pose = ve._pilotar(self.animation, estado)
+        self.renderer.apply_rig_pose(pose)
+        self.renderer.apply_body_motion(
+            self.animation.body_motion.snapshot, None, grounded=True, dragging=estado == "drag"
+        )
+        self.renderer.update_appendages(DT_ANIMACAO, self.animation.appendage_remaining > 0)
+
+    def _ligar_teclas(self) -> None:
+        a = self.app.accept
+        for tecla, resposta in TECLAS_RESPOSTA.items():
+            a(tecla, self.responder, [resposta])
+        a("arrow_right", self.confirmacao.avancar, [1])
+        a("arrow_left", self.confirmacao.avancar, [-1])
+        a("v", self.alternar_visao)
+        a("enter", self.salvar)
+        a("escape", self.encerrar)
+
+    def responder(self, resposta: Resposta) -> None:
+        self.confirmacao.responder(resposta)
+        self.salvar()
+
+    def salvar(self) -> None:
+        self.confirmacao.salvar(self.saida_json)
+        self.confirmacao.mensagem = f"Salvo em {self.saida_json.name}"
+
+    def executar(self) -> None:
+        try:
+            while not self.sair:
+                self.app.taskMgr.step()
+        finally:
+            self.fechar()
+
+
+def _main_confirmar(args) -> int:
+    confirmacao = ConfirmacaoPoses()
+    if args.saida_confirmacao.is_file() and not args.novo:
+        print(f"{confirmacao.carregar(args.saida_confirmacao)} respostas carregadas", flush=True)
+    if args.pose:
+        confirmacao.selecionar(args.pose)
+    try:
+        confirmador = Confirmador(confirmacao, args.saida_confirmacao)
+    except RenderIndisponivel as exc:
+        print(f"RENDER INDISPONÍVEL: {exc}", file=sys.stderr, flush=True)
+        return 1
+    if args.capturar:
+        confirmador.capturar(args.capturar)
+        print(f"captura: {args.capturar}", flush=True)
+        return 0
+    confirmador.executar()
+    print(f"respostas salvas em {args.saida_confirmacao}", flush=True)
+    return 0
+
+
 def _aplicar_teste(estado: EstadoCalibrador, texto: str) -> None:
     """Interpreta ``junta:eixo:graus`` e aplica no estado."""
     try:
@@ -382,7 +482,14 @@ def main() -> int:
                         help="modo sem interação: salva um PNG do estado e sai")
     parser.add_argument("--teste", default=None,
                         help="com --capturar: junta:eixo:graus (ex.: ombro_dir:z:-45)")
+    parser.add_argument("--confirmar", action="store_true",
+                        help="modo confirmar: poses reais do app, teclas 1/2/3")
+    parser.add_argument("--pose", default=None, help="com --confirmar: pose inicial (ex.: aceno)")
+    parser.add_argument("--saida-confirmacao", type=Path, default=ARQUIVO_CONFIRMACAO_PADRAO)
     args = parser.parse_args()
+
+    if args.confirmar:
+        return _main_confirmar(args)
 
     estado = EstadoCalibrador()
     if args.saida.is_file() and not args.novo:

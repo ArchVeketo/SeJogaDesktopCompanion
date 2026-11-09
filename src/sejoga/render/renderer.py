@@ -25,6 +25,7 @@ from panda3d.core import (
 
 from sejoga.animacao.animation import AnimationState
 from sejoga.nucleo.assets import resolve_model
+from sejoga.nucleo.cinematica import BASE_ADICIONAL_GRAUS
 from sejoga.nucleo.model import load_model
 from sejoga.nucleo.rig import Rig
 from sejoga.tentaculos.tentacle_constraints import ObstacleBox, TentacleContacts
@@ -479,9 +480,12 @@ void main() {{
                 x, y, z = rotation.x, rotation.y, rotation.z
             else:
                 x, y, z = rotation
-            # Clamps de braço removidos: agora são aplicados pelo PoseResolver
-            # antes de chegar aqui. O renderer só aplica a pose que recebe.
+            # Clamps e anti-atravessamento vêm do PoseResolver: o renderer só
+            # aplica a pose. A base adicional (torção-base do cotovelo) é a mesma
+            # que a FK pura usa (cinematica.BASE_ADICIONAL_GRAUS).
             base_h, base_p, base_r = self._rig_base_hpr.get(group_name, (0.0, 0.0, 0.0))
+            extra_h, extra_p, extra_r = BASE_ADICIONAL_GRAUS.get(group_name, (0.0, 0.0, 0.0))
+            base_h, base_p, base_r = base_h + extra_h, base_p + extra_p, base_r + extra_r
             if group_name == "door":
                 self._door_requested = max(0.0, math.degrees(y))
                 if self.tentacles:
@@ -494,7 +498,6 @@ void main() {{
             outline_node = self._outline_nodes.get(group_name)
             if outline_node:
                 outline_node.setHpr(node.getHpr())
-        self._resolve_arm_clearance()
         self._aplicar_respiracao()
 
     # Amplitudes da respiração aplicada ao nó 'body' (modelo low poly sem skin:
@@ -570,7 +573,7 @@ void main() {{
         if dragging or motion.hanging > .05:
             point = Vec3(grab_point) if grab_point is not None else Vec3(0,0,.6)
             pivot = self._suspension_pivot.getRelativePoint(self.model_np, point)
-            rotation = TransformState.makeHpr(Vec3(motion.yaw, motion.pitch, motion.roll)).getMat()
+            rotation = self._rotacao_no_quadro_de_autoria(motion.yaw, motion.pitch, motion.roll)
             self._suspension_pivot.setMat(Mat4.translateMat(-pivot)*rotation*Mat4.translateMat(pivot))
             return
         # Grounded reaction now uses the shared spine and neck joints rather
@@ -587,7 +590,7 @@ void main() {{
                 _tune.TRONCO_ROLL_SINAL * motion.roll * _tune.TRONCO_ROLL_GANHO
                 + self.flexible_rig.spine.value,
             )
-            spine.setZ(.44-motion.compression*.06)
+            spine.setZ(_tune.TRONCO_PIVO_Z-motion.compression*_tune.TRONCO_COMPRESSAO_DESCIDA)
             neck.setP(motion.head_pitch)
             neck.setR(neck.getR()+motion.head_roll)
         if abs(self._dance_stage_yaw.value) > .01:
@@ -605,6 +608,25 @@ void main() {{
             limit=self.model_np.getScale().x*.60
             correction=max(-limit,min(limit,-distance))*settle
             self._suspension_pivot.setPos(self._suspension_pivot.getPos()+normal*correction)
+
+    def _rotacao_no_quadro_de_autoria(self, yaw, pitch, roll):
+        """Matriz de ``Vec3(yaw, pitch, roll)`` interpretado no referencial de AUTORIA.
+
+        O ``_suspension_pivot`` vive no quadro do mundo, girado em relação ao
+        mascote pelo nó raiz do asset (giro de frente). Conjugar pela rotação
+        desse nó (``F⁻¹ · R · F``, vetor-linha do Panda) faz o arraste usar o
+        MESMO sentido de pitch/roll do tronco em pé (``flexible_rig``).
+        """
+        from panda3d.core import Mat4, TransformState
+
+        from sejoga.nucleo.flexible_rig import no_de_facing
+
+        facing = no_de_facing(self.model_np).getMat(self.model_np).getUpper3()
+        quadro = Mat4(facing)
+        inversa = Mat4(quadro)
+        inversa.invertInPlace()
+        rotacao = TransformState.makeHpr(Vec3(yaw, pitch, roll)).getMat()
+        return inversa * rotacao * quadro
 
     def _aplicar_giro_corpo(self, dt, direcao_olhar, angulo_pedido, dragging):
         """Aplica o GIRO DE CORPO LIMITADO ao nó dedicado ``body_facing``.
@@ -641,23 +663,6 @@ void main() {{
         self._body_facing.setMat(
             Mat4.translateMat(-pivot) * rotacao * Mat4.translateMat(pivot)
         )
-
-    def _resolve_arm_clearance(self):
-        controller = getattr(self.showbase, 'animation_controller', None)
-        if controller and controller.state == AnimationState.DANCE and controller.dance_motion.style == 'head_bob':
-            return  # Authored crossed arms sit forward of the torso.
-        # Hands inherit the forearm transform. Keep a continuous outward elbow
-        # bend instead of solving bounding boxes in discrete five-degree jumps.
-        for arm, forearm, direction in (("right-arm", "ant-arm", 1),
-                                         ("left-arm", "ant-arm2", -1)):
-            upper = self._rig_nodes[arm]
-            node = self._rig_nodes[forearm]
-            base = self._rig_base_hpr[forearm][2]
-            bend = direction * (node.getR()-base)
-            inward = max(0.0, direction*(upper.getR()-self._rig_base_hpr[arm][2]))
-            bend = min(bend, -max(0.0, inward-42)*.32)
-            node.setR(base + direction*bend)
-            self._outline_nodes[forearm].setHpr(node.getHpr())
 
     def _setup_tentacle_contacts(self):
         self.tentacle_contacts = TentacleContacts()

@@ -470,9 +470,11 @@ class AnimationController:
             pose_idle(self.rig, self.clock, self.idle_personality)
             # Gesto de mão (hang loose/joinha/rock/finger gun): ergue o braço à
             # frente a partir do alvo de interação (IK) para a mão ficar visível.
-            _g = braco_hpr_graus("right", "interaction")["right-arm"]
-            self.rig.set_rotation('right-arm', x=-20, y=_g[1], z=_g[2])
-            self.rig.set_rotation('ant-arm', x=-8, z=-60)
+            _ik = braco_hpr_graus("right", "interaction")
+            _g, _ge = _ik["right-arm"], _ik["ant-arm"]
+            self.rig.set_rotation('right-arm', x=_g[0] - 20, y=_g[1], z=_g[2])
+            # Cotovelo do IK (o -60 antigo era hiperextensão na FK real).
+            self.rig.set_rotation('ant-arm', x=_ge[0] - 8, z=_ge[2])
             self.rig.set_rotation('hand', x=180, y=0, z=0)
             self.rig.set_rotation('fingers', z=0)
         elif self.state == AnimationState.SNEEZE:
@@ -493,27 +495,30 @@ class AnimationController:
             # Hanging limbs counter-rotate the torso and trail pointer motion.
             # O z=62 original era REPOUSO.BRACO_Z - 6 (arraste afasta um pouco os braços).
             _DRAG_OFFSET_Z = REPOUSO.BRACO_Z - 6  # 62 original
-            self.rig.set_rotation('right-arm', x=-motion.pitch*.55,
+            # Base completa do repouso (torção/azimute do IK); a física soma por
+            # cima. Cotovelo no repouso (os -8/+8 antigos eram hiperextensão).
+            _bx, _by, _az = REPOUSO.BRACO_X, REPOUSO.BRACO_Y, REPOUSO.ANTEBRACO_Z
+            self.rig.set_rotation('right-arm', x=_bx-motion.pitch*.55, y=_by,
                                   z=_DRAG_OFFSET_Z-motion.roll*.55+motion.limb_swing*.45)
-            self.rig.set_rotation('left-arm', x=-motion.pitch*.55,
+            self.rig.set_rotation('left-arm', x=_bx-motion.pitch*.55, y=-_by,
                                   z=-_DRAG_OFFSET_Z-motion.roll*.55+motion.limb_swing*.4)
-            self.rig.set_rotation('ant-arm', x=motion.limb_swing*.3, z=-8)
-            self.rig.set_rotation('ant-arm2', x=motion.limb_swing*.25, z=8)
+            self.rig.set_rotation('ant-arm', x=motion.limb_swing*.3, z=_az)
+            self.rig.set_rotation('ant-arm2', x=motion.limb_swing*.25, z=-_az)
             if grab_part == 'right-arm':
-                self.rig.set_rotation('right-arm', x=-8, z=-55)
-                self.rig.set_rotation('ant-arm', x=0, z=-8)
+                self.rig.set_rotation('right-arm', x=_bx-8, y=_by, z=-55)
+                self.rig.set_rotation('ant-arm', x=0, z=_az)
             elif grab_part == 'left-arm':
-                self.rig.set_rotation('left-arm', x=-8, z=55)
-                self.rig.set_rotation('ant-arm2', x=0, z=8)
+                self.rig.set_rotation('left-arm', x=_bx-8, y=-_by, z=55)
+                self.rig.set_rotation('ant-arm2', x=0, z=-_az)
             elif grab_part == 'body':
                 # Loose arms and a drooping neck when lifted by the back.
                 # O z=65 original era REPOUSO.BRACO_Z - 3 (braços um pouco mais soltos).
                 _BODY_GRAB_Z = REPOUSO.BRACO_Z - 3  # 65 original
                 self.rig.set_rotation('head', x=-12, z=motion.limb_swing*.08)
-                self.rig.set_rotation('right-arm', x=-motion.pitch*.9, z=_BODY_GRAB_Z+motion.limb_swing*.25)
-                self.rig.set_rotation('left-arm', x=-motion.pitch*.9, z=-_BODY_GRAB_Z+motion.limb_swing*.25)
-                self.rig.set_rotation('ant-arm', x=3+motion.limb_swing*.2, z=-4)
-                self.rig.set_rotation('ant-arm2', x=3+motion.limb_swing*.18, z=4)
+                self.rig.set_rotation('right-arm', x=_bx-motion.pitch*.9, y=_by, z=_BODY_GRAB_Z+motion.limb_swing*.25)
+                self.rig.set_rotation('left-arm', x=_bx-motion.pitch*.9, y=-_by, z=-_BODY_GRAB_Z+motion.limb_swing*.25)
+                self.rig.set_rotation('ant-arm', x=3+motion.limb_swing*.2, z=_az)
+                self.rig.set_rotation('ant-arm2', x=3+motion.limb_swing*.18, z=-_az)
             elif grab_part in ('legs', 'left-feet', 'right-feet'):
                 # Pego pela perna/pé: o tronco está rolado ~155° (quase de
                 # cabeça para baixo). Os braços e a cabeça devem PENDER a favor
@@ -532,13 +537,13 @@ class AnimationController:
                     'head', x=_CABECA_PENDENTE_X,
                     z=motion.limb_swing*_OSCILACAO_PENDENTE*.4)
                 self.rig.set_rotation(
-                    'right-arm', x=_BRACO_PENDENTE_X,
+                    'right-arm', x=_bx+_BRACO_PENDENTE_X, y=_by,
                     z=_BRACO_PENDENTE_Z+motion.limb_swing*_OSCILACAO_PENDENTE)
                 self.rig.set_rotation(
-                    'left-arm', x=_BRACO_PENDENTE_X,
+                    'left-arm', x=_bx+_BRACO_PENDENTE_X, y=-_by,
                     z=-_BRACO_PENDENTE_Z+motion.limb_swing*_OSCILACAO_PENDENTE)
-                self.rig.set_rotation('ant-arm', x=_BRACO_PENDENTE_X*.4, z=-4)
-                self.rig.set_rotation('ant-arm2', x=_BRACO_PENDENTE_X*.4, z=4)
+                self.rig.set_rotation('ant-arm', x=_BRACO_PENDENTE_X*.4, z=_az)
+                self.rig.set_rotation('ant-arm2', x=_BRACO_PENDENTE_X*.4, z=-_az)
         if self.appendage_remaining > 0:
             self.rig.set_rotation('door', y=85)
         target = self.rig.pose()

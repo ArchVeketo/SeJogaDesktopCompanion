@@ -116,7 +116,7 @@ class SpecGesto:
 #
 #   right-arm: x=-12*lift; elevação por IK no eixo Z → ERGUE (z vai de ~+74
 #     baixado para ~-66 acima do ombro, amp ~140°).
-#     (Convenção PROVADA em pixels: a elevação é o ROLL (Z) e z NEGATIVO ergue;
+#     (Medido no grafo de cena (oraculo_cena --eixos): R (Z) NEGATIVO ergue;
 #      o código antigo erguia por Y/heading, mandando o braço p/ profundidade.)
 #   ant-arm:   z=-26*lift + 7*wave.
 #   hand:      x=180*lift + 12*wave, z=2*wave
@@ -141,7 +141,7 @@ SPEC_WAVE = SpecGesto(
             eixo="z",
             amplitude_min=40.0,
             sentido=SENTIDO_NEGATIVO,
-            # Convenção PROVADA em pixels: a ELEVAÇÃO do braço é o ROLL
+            # Medido no grafo de cena (oraculo_cena --eixos): a ELEVAÇÃO lateral é o ROLL
             # (Z = ``Rotation3.z``), não o heading, e z NEGATIVO ergue. No aceno
             # o braço ergue de ~+74° (baixado) até ~-66° (acima do ombro), então
             # a amplitude em Z é grande e o SENTIDO é NEGATIVO (z diminui). O
@@ -178,7 +178,12 @@ SPEC_WAVE = SpecGesto(
             grupo="hand",
             tipo=TipoExpectativa.FLAG,
             parte="mao_direita",
-            flag_esperada="PALMA_PARA_FORA",
+            flag_esperada="PALMA_PARA_FRENTE",
+            # Parte 3: com a dobradiça do cotovelo à FRENTE (torção-base do
+            # antebraço, braco_tuning), no pico do aceno a palma fica virada para
+            # a FRENTE do mascote, isto é, para quem olha: a palma de um aceno.
+            # "FORA" (lateral) vinha da convenção antiga. A_CONFIRMAR na GPU
+            # (recalibracao-gpu.md; as normais de palma do rig_debug são estimadas).
             # Migração para IK (alvo de mão): o braço agora ergue por IK e
             # RETORNA ao repouso ao fim do gesto (lift→0 em t=2.2), com a mão
             # baixada — ao contrário da pose antiga, que deixava o braço preso
@@ -188,7 +193,7 @@ SPEC_WAVE = SpecGesto(
             # geometria diagonal inverteu o sentido do roll do pulso: a palma
             # vira para FORA com o pulso NEUTRO (não mais com o roll de 180°).
             instante=1.0,
-            descricao="no pico do aceno a palma direita fica virada para FORA",
+            descricao="no pico do aceno a palma direita fica virada para a FRENTE",
         ),
     ),
 )

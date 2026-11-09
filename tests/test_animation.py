@@ -1,6 +1,7 @@
 import math
 from itertools import pairwise
 
+from fk_bracos import punho
 from sejoga.animacao.animation import AnimationController, AnimationState
 from sejoga.nucleo.rig import ALL_GROUPS, Rig, Rotation3
 
@@ -13,13 +14,14 @@ def test_controller_starts_in_composed_idle_pose_not_t_pose():
     from math import degrees
     animation = controller()
     pose = animation.update(1 / 60)
-    # Convenção PROVADA em pixels: a ELEVAÇÃO do braço é o ROLL (Z); z positivo
-    # BAIXA, z negativo ERGUE. O repouso tem os braços BAIXADOS (mãos ao lado do
-    # quadril): right-arm.z ≈ +74° e o espelho ≈ -74° (Z=+90 reto p/ baixo, Z=0
-    # lateral/T-pose, Z=-90 cima). A INTENÇÃO permanece: não iniciar em T-pose
-    # (Z≈0) nem com o braço aberto — e sim baixado.
-    assert degrees(pose["right-arm"].z) > 50
-    assert degrees(pose["left-arm"].z) < -50
+    # Medido pela FK do grafo de cena: não é T-pose (punho abaixo do ombro e à
+    # frente do plano do ombro) e o esquerdo é o espelho do direito.
+    del degrees
+    direito, esquerdo = punho(pose, "right"), punho(pose, "left")
+    assert direito[1] < -0.05 and esquerdo[1] < -0.05
+    assert direito[2] > 0.0 and esquerdo[2] > 0.0
+    assert direito[0] > 0.0 > esquerdo[0]
+    assert abs(direito[0] + esquerdo[0]) < 0.05
 
 
 def test_hover_reaches_toward_the_cursor_without_flapping_both_arms():
@@ -79,13 +81,10 @@ def test_wave_turns_palm_out_and_keeps_elbow_bent():
     pose_flourish(animation.rig, "wave", .95)
     pose = animation.rig.pose()
 
-    # Convenção provada em pixels: no pico do aceno a MÃO sobe acima do ombro —
-    # a ELEVAÇÃO é o ROLL (Z), que fica bem acima da horizontal (Z<-45°, z
-    # negativo ergue), e o cotovelo (ant-arm roll Z) fica DOBRADO. A palma vira
-    # para FORA com o pulso NEUTRO (verificado pelo gate semântico
-    # verificar_gesto; aqui conferimos a geometria crua que o renderer aplica).
-    assert degrees(pose["right-arm"].z) < -45
-    assert abs(degrees(pose["ant-arm"].z)) > 20
+    # FK do grafo de cena: no pico do aceno o punho fica acima do ombro e o
+    # cotovelo DOBRA para a frente (R do antebraço positivo no direito).
+    assert punho(pose, "right")[1] > 0.0
+    assert degrees(pose["ant-arm"].z) > 10
     # O pulso fica praticamente neutro (sem o roll de 180° da pose antiga).
     assert abs(degrees(pose["hand"].x)) < 45
 
@@ -153,17 +152,18 @@ def test_wave_reaches_renderer_raised_end_to_end():
 
     animation = controller()
     animation.interact("wave")
-    pico_elevacao = 180.0
+    del degrees
+    pico_altura = -1.0
     viu_wave = False
     for _ in range(140):
         pose = animation.update(1 / 60)
         if animation.state == AnimationState.WAVE:
             viu_wave = True
-        pico_elevacao = min(pico_elevacao, degrees(pose["right-arm"].z))
+        pico_altura = max(pico_altura, punho(pose, "right")[1])
     assert viu_wave
-    # Convenção provada: "erguido" é a ELEVAÇÃO (roll Z) mais NEGATIVA. No pico o
-    # braço passa bem da horizontal (Z<0) rumo ao alto, e o clamp não o rebaixa.
-    assert pico_elevacao < -45
+    # FK do grafo de cena: no pico o punho passa acima do ombro e nem o clamp
+    # nem o anti-atravessamento o rebaixam.
+    assert pico_altura > 0.0
 
 
 def test_leg_steps_alternate_and_airborne_pose_settles():
@@ -198,17 +198,13 @@ def _arraste_por(part):
 def test_arraste_por_perna_pendura_bracos_e_cabeca():
     from math import degrees
 
-    # Pego pela perna/pé: braços e cabeça pendem a favor da gravidade. Convenção
-    # provada: "pendente/recolhido junto ao tronco" = braço BAIXADO (elevação
-    # ROLL Z próxima de +90°; z positivo baixa).
+    # Pego pela perna/pé: braços e cabeça pendem. FK do grafo de cena: punhos
+    # abaixo do ombro nos dois lados (o mais baixo que o corpo permite, ver
+    # arm_targets: o short impede baixar mais sem atravessar).
     for part in ('legs', 'left-feet', 'right-feet'):
         pose = _arraste_por(part)
-        braco_dir = degrees(pose["right-arm"].z)
-        braco_esq = degrees(pose["left-arm"].z)
-        # A ELEVAÇÃO é o ROLL (Z). Braços baixados/recolhidos junto ao tronco:
-        # direito bem positivo (p/ baixo), esquerdo bem negativo (espelho).
-        assert braco_dir > 70, part
-        assert braco_esq < -70, part
+        assert punho(pose, "right")[1] < 0.0, part
+        assert punho(pose, "left")[1] < 0.0, part
         # Cabeça pende (olhar para baixo no mundo com o tronco invertido).
         assert degrees(pose["head"].x) > 10, part
 
@@ -219,11 +215,10 @@ def test_arraste_por_perna_difere_de_corpo_e_braco():
     perna = _arraste_por('legs')
     corpo = _arraste_por('body')
     braco = _arraste_por('right-arm')
-    # Convenção provada: a pose de perna BAIXA mais os braços (elevação ROLL Z
-    # mais POSITIVA, recolhidos junto ao tronco) do que o arraste pelo corpo,
-    # que mantém a mão mais à frente/erguida.
-    assert degrees(perna["right-arm"].z) > degrees(corpo["right-arm"].z)
-    assert degrees(perna["left-arm"].z) < degrees(corpo["left-arm"].z)
+    # FK do grafo de cena: pego pela perna os punhos ficam mais BAIXOS que no
+    # arraste pelo corpo (que leva as mãos à frente para se equilibrar).
+    assert punho(perna, "right")[1] < punho(corpo, "right")[1]
+    assert punho(perna, "left")[1] < punho(corpo, "left")[1]
     # As três poses de arraste diferem entre si na posição do braço.
     assert degrees(perna["right-arm"].z) != degrees(braco["right-arm"].z)
 

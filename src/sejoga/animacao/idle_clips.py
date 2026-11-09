@@ -44,8 +44,8 @@ def phrase(*keys):
 # "relaxado mas com osso". NOMEADOS/comentados para calibração fina: as 9
 # personalidades partem daqui e só somam a oscilação própria por cima.
 #
-# Convenção de espelho: o lado esquerdo usa o sinal oposto no eixo Z (roll),
-# então left-arm = -REPOUSO.BRACO_Z e ant-arm2 = -REPOUSO.ANTEBRACO_Z.
+# Convenção de espelho (lei única cinematica.espelhar_rotacao): o lado esquerdo
+# inverte Y e Z e mantém X: left-arm = (X, -Y, -Z) do direito.
 # Constantes migradas para rig_base.py — importadas no topo do módulo.
 
 # Aliases para retrocompatibilidade de código que ainda usa os nomes antigos.
@@ -174,8 +174,8 @@ def sample_idle(
         # Guarda alta e fechada: ombros mais recolhidos e cotovelos bem dobrados,
         # como offset sobre a base natural (não uma pose inventada do zero).
         pose.update({"body": (3, 5, -2), "head": (1, -5, 2),
-        "right-arm": (REPOUSO_BRACO_X - 12, 0, REPOUSO_BRACO_Z - 4),
-        "left-arm": (REPOUSO_BRACO_X - 8, 0, -(REPOUSO_BRACO_Z - 4)),
+        "right-arm": (REPOUSO_BRACO_X - 12, REPOUSO_BRACO_Y, REPOUSO_BRACO_Z - 4),
+        "left-arm": (REPOUSO_BRACO_X - 8, -REPOUSO_BRACO_Y, -(REPOUSO_BRACO_Z - 4)),
         "ant-arm": (REPOUSO_ANTEBRACO_X - 14, 0, REPOUSO_ANTEBRACO_Z - 4),
         "ant-arm2": (REPOUSO_ANTEBRACO_X - 10, 0, -(REPOUSO_ANTEBRACO_Z - 4)),
                      "fingers": (0, 0, 22), "fingers2": (0, 0, -20)})
@@ -183,8 +183,8 @@ def sample_idle(
         # Um braço mais solto/aberto (assimetria intencional do estilo), partindo
         # da base natural para o lado direito e mantendo o espelho à esquerda.
         pose.update({"body": (-2, 3, -2), "head": (-3, -4, 3),
-                     "right-arm": (REPOUSO_BRACO_X - 6, 0, REPOUSO_BRACO_Z - 16),
-                     "left-arm": (REPOUSO_BRACO_X + 2, 0, -REPOUSO_BRACO_Z),
+                     "right-arm": (REPOUSO_BRACO_X - 6, REPOUSO_BRACO_Y, REPOUSO_BRACO_Z - 16),
+                     "left-arm": (REPOUSO_BRACO_X + 2, -REPOUSO_BRACO_Y, -REPOUSO_BRACO_Z),
                      "ant-arm": (REPOUSO_ANTEBRACO_X - 8, 0, REPOUSO_ANTEBRACO_Z),
                      "ant-arm2": (REPOUSO_ANTEBRACO_X - 2, 0, -(REPOUSO_ANTEBRACO_Z - 2)),
                      "hand": (0, 12, -8)})
@@ -194,9 +194,9 @@ def sample_idle(
         pulse = (1 - cos(beat)) * .5
         pose["body"] = (pulse * 2.0, 0, sin(beat * .25) * 2.0)
         pose["head"] = (-1 + (1 - cos(beat - .28)), 0, 0)
-        pose["right-arm"] = (REPOUSO_BRACO_X - 4 + sin(beat - .45) * 5, 0,
+        pose["right-arm"] = (REPOUSO_BRACO_X - 4 + sin(beat - .45) * 5, REPOUSO_BRACO_Y,
                              REPOUSO_BRACO_Z - 8 - pulse * 23)
-        pose["left-arm"] = (REPOUSO_BRACO_X - 2 - sin(beat - .45) * 5, 0,
+        pose["left-arm"] = (REPOUSO_BRACO_X - 2 + sin(beat - .45) * 5, -REPOUSO_BRACO_Y,
                             -REPOUSO_BRACO_Z + 4 + pulse * 20)
     for group, keys in clip.tracks.items():
         delta = sample_track(keys, local)

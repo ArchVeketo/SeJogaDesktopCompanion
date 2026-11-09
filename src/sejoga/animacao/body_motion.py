@@ -189,7 +189,7 @@ class BodyMotion:
                                 tune.HOVER_ROLL.minimo, tune.HOVER_ROLL.maximo)
             pitch_target = clamp(-vy * tune.HOVER_PITCH_GANHO_PONTEIRO - look[1] * tune.HOVER_PITCH_GANHO_OLHAR,
                                  tune.HOVER_PITCH.minimo, tune.HOVER_PITCH.maximo)
-            yaw_target = -look[0] * tune.HOVER_YAW_GANHO_OLHAR
+            yaw_target = tune.TRONCO_OLHAR_YAW_SINAL * look[0] * tune.HOVER_YAW_GANHO_OLHAR
         elif not grounded:
             roll_target = clamp(velocity[0] * tune.QUEDA_ROLL_GANHO,
                                 tune.QUEDA_ROLL.minimo, tune.QUEDA_ROLL.maximo)

@@ -174,21 +174,34 @@ SNAP_SUSPENSAO = FaixaClamp(minimo=0.0, maximo=1.0)
 # literais. Foram extraídos para cá, nomeados, para o usuário calibrar o tronco
 # sem mexer na lógica.
 #
-# DIREÇÃO DO TRONCO (A_VALIDAR na GPU): o relato do usuário é que o tronco ia
-# para o lado TROCADO em relação ao resto do corpo. A orientação de mundo não
-# mudou com a rota B (o flip só trocou de lugar), então o sentido do tronco é
-# um ajuste independente e NÃO pode ser acertado no escuro (headless). Os
-# SINAIS abaixo são o ponto de calibração: o default +1 preserva o
-# comportamento atual bit a bit; se na GPU o tronco girar/tombar ao contrário
-# do corpo, inverter o sinal correspondente para -1 (ver recalibracao-gpu.md).
+# DIREÇÃO DO TRONCO (Parte 3, MEDIDA): a causa do tronco ir para o lado trocado
+# era de QUADRO, não de sinal. Os pivôs da coluna moravam em ``model_np``, sem o
+# giro de frente do nó raiz do asset, e o arraste aplicava pitch/roll no quadro
+# do mundo: pitch e roll saíam invertidos em relação às juntas do rig. Agora os
+# dois caminhos (em pé: ``flexible_rig``; pendurado: ``renderer.apply_body_motion``)
+# usam o referencial de AUTORIA, onde (medido em tests/test_tronco_quadro.py):
+#   pitch NEGATIVO  -> topo do tronco/cabeça vai para a FRENTE do mascote;
+#   roll POSITIVO   -> topo tomba para a DIREITA do mascote;
+#   yaw             -> gira em torno da vertical (igual ao heading da cabeça).
+# É a semântica que body_motion já assume (clique: pitch -= ... "cede para a
+# frente"; segurar o braço direito: roll += DRAG_ROLL_BRACO, tomba para ele).
+# Os SINAIS abaixo ficam em +1 (convenção de autoria); só mudam se o usuário,
+# na GPU, pedir o sentido oposto como decisão de produto (C5 do recalibracao).
 #: Ganho do pitch do tronco (inclina à frente/trás com o ponteiro).
 TRONCO_PITCH_GANHO = 0.6
 #: Ganho do roll do tronco (tomba de lado com o ponteiro).
 TRONCO_ROLL_GANHO = 0.55
-#: Sinal do giro (yaw/heading) do tronco. +1 preserva o atual; -1 inverte o
-#: lado para onde o tronco gira. CALIBRÁVEL na GPU.
+#: Sinal do giro (yaw/heading) do tronco, no referencial de autoria.
 TRONCO_YAW_SINAL = 1.0
-#: Sinal do pitch do tronco. +1 preserva o atual; -1 inverte frente/trás.
+#: Sinal do pitch do tronco (+1: pitch negativo = frente, ver acima).
 TRONCO_PITCH_SINAL = 1.0
-#: Sinal do roll do tronco. +1 preserva o atual; -1 inverte o lado do tombo.
+#: Sinal do roll do tronco (+1: roll positivo = topo para a direita).
 TRONCO_ROLL_SINAL = 1.0
+#: Sinal do giro do tronco em relação ao OLHAR (hover). -1 = o tronco contra-gira
+#: (vai para o lado oposto da cabeça, que gira para o cursor); +1 = acompanha a
+#: cabeça. -1 preserva o comportamento existente. Decisão de produto: C5(c).
+TRONCO_OLHAR_YAW_SINAL = -1.0
+#: Altura (u, referencial de autoria) do pivô da coluna: cintura do mascote.
+TRONCO_PIVO_Z = 0.44
+#: Quanto o pivô da coluna desce por unidade de compressão (agachar no impacto).
+TRONCO_COMPRESSAO_DESCIDA = 0.06

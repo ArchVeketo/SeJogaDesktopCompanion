@@ -51,7 +51,7 @@ def delta_idle(
 ) -> dict[str, Rotation3]:
     """Delta aditivo do estado idle sobre a pose de repouso.
 
-    A base (pose_repouso) já tem right-arm em x=-4°, z=68°.
+    A base é ``rig_base.pose_repouso`` (IK do alvo de idle).
     Idle só adiciona a oscilação própria da personalidade.
 
     Parameters
@@ -131,13 +131,13 @@ def delta_idle(
                 radians(sin(t * 0.43) * 3.0), 0, radians(-20.0)
             )
             delta["left-arm"] = Rotation3(
-                radians(-sin(t * 0.43 + 0.4) * 2.5), 0, 0
+                radians(sin(t * 0.43 + 0.4) * 2.5), 0, 0
             )
             delta["ant-arm"] = Rotation3(
                 radians(sin(t * 0.48) * 4.5), 0, radians(tilt * 5.0)
             )
             delta["ant-arm2"] = Rotation3(
-                radians(-sin(t * 0.48 + 0.5) * 3.5), 0, radians(-tilt * 4.0)
+                radians(sin(t * 0.48 + 0.5) * 3.5), 0, radians(-tilt * 4.0)
             )
         elif personality == IdlePersonality.PLAYFUL:
             bounce = sin(t * 1.12)
@@ -158,7 +158,7 @@ def delta_idle(
                 radians(bounce * 6.0), 0, radians(-14.0 + bounce * 5.0)
             )
             delta["left-arm"] = Rotation3(
-                radians(-bounce * 6.0), 0, radians(2.0 - arm_bounce * 5.0)
+                radians(bounce * 6.0), 0, radians(2.0 - arm_bounce * 5.0)
             )
 
     # Respiração sob demanda (adicional sobre o delta de personalidade)
@@ -357,9 +357,10 @@ def delta_fall(t: float, velocity: tuple[float, float] = (0, 0)) -> dict[str, Ro
     delta = _delta_braco_ik("fall")
     delta["head"] = Rotation3(radians(head_tilt), 0, radians(flail * 0.3))
     delta["right-arm"] = _somar(delta["right-arm"], x=flail, z=-abs(flail) * 0.5)
-    delta["left-arm"] = _somar(delta["left-arm"], x=-flail, z=abs(flail) * 0.5)
+    # Espelho: a torção (x) tem o MESMO sinal nos dois lados; a elevação inverte.
+    delta["left-arm"] = _somar(delta["left-arm"], x=flail, z=abs(flail) * 0.5)
     delta["ant-arm"] = _somar(delta.get("ant-arm", Rotation3()), x=flail * 0.5)
-    delta["ant-arm2"] = _somar(delta.get("ant-arm2", Rotation3()), x=-flail * 0.5)
+    delta["ant-arm2"] = _somar(delta.get("ant-arm2", Rotation3()), x=flail * 0.5)
 
     return delta
 

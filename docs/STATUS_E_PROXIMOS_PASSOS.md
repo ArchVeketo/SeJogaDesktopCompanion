@@ -108,6 +108,7 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 - Refinar o controlador e integrar eventos de clique/colisão/beat às transições já implementadas.
 - Criar/exportar clipes `idle`, `walk`, `run`, `jump`, `throw`, `dance`, `hit`, `sleep`, `wake`, `cling` e `peek` no Blockbench.
 - Ligar os estados a eventos de física, mouse e música.
+- Frente 3, Parte 3 (movimento dos membros): FK única do grafo de cena (`nucleo/cinematica.py`), cadeia do braço com osso base e cotovelo dobrando à frente, IK analítico, anti-atravessamento dos braços com geometria medida (`animacao/colisao_bracos.py`), tronco num só quadro de referência e correção do follow-through que copiava ângulos entre juntas. Pendente de validação na GPU (C1–C7 em `.agents/tasks/frente3-animacao/recalibracao-gpu.md`, modo `tools/calibrar_interativo.py --confirmar`). Dança e caminhada ainda precisam de re-autoria visual.
 
 ### 4. Build portável e instalador
 

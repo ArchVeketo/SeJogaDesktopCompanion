@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from math import radians
 
+from sejoga.animacao import braco_tuning as tun
+from sejoga.animacao.colisao_bracos import ResolvedorBracos
 from sejoga.animacao.joint_springs import SpringPose
 from sejoga.nucleo.model import Model
 from sejoga.nucleo.rig import Rotation3
@@ -19,31 +21,24 @@ from sejoga.rig_mapa import rig_medidas as medidas
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                       Limites anatômicos (clamps)                         ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
-# Convenção de ELEVAÇÃO do braço PROVADA em pixels de tela (ver arm_ik): a
-# elevação na TELA (sobe/desce) é o ROLL (R = ``Rotation3.z``), com z NEGATIVO
-# erguendo. O HEADING (H = ``Rotation3.y``) é a PROFUNDIDADE/azimute. O eixo
-# longo do bone é +X; o renderer mapeia H=y, P=x, R=z.
-#   Z=+90 → BAIXADO (reto para baixo, ao lado do quadril)
-#   Z=+74 → repouso natural de idle
-#   Z=0   → LATERAL/T-pose (braço na horizontal)
-#   Z=-90 → ERGUIDO (reto para CIMA; wave fica em ~-66)
-# A medição por FRAME mostrou que a elevação é o ROLL (Z) e a profundidade o
-# HEADING (Y) — consequência do eixo longo do bone ser ±X, não do antigo
-# setH(180) (a rota B moveu o facing para o asset sem mudar isto). Clampamos a
-# ELEVAÇÃO (Z) de reto p/ cima (negativo) até um pouco além de reto p/ baixo
-# (positivo), com folga para overshoot de crossfade; a profundidade (Y) fica
-# numa faixa ampla só para conter deriva. Em radianos.
-_CLAMP_RIGHT_ARM_Z_MIN = radians(-120)
-_CLAMP_RIGHT_ARM_Z_MAX = radians(110)
-_CLAMP_LEFT_ARM_Z_MIN = radians(-110)
-_CLAMP_LEFT_ARM_Z_MAX = radians(120)
-# Profundidade (Y/heading): faixa ampla para conter apenas deriva extrema.
-_CLAMP_ARM_Y_MIN = radians(-120)
-_CLAMP_ARM_Y_MAX = radians(120)
+# Eixos medidos no grafo de cena (tools/oraculo_cena.py --eixos), braço direito
+# com eixo longo +X: R (``Rotation3.z``) positivo BAIXA a mão, H (``.y``)
+# positivo leva a mão para a FRENTE, P (``.x``) torce. Cotovelo = R do
+# antebraço sobre a torção-base: positivo dobra para a frente, negativo seria
+# hiperextensão (proibida). Lado esquerdo = espelho (x, -y, -z). Fonte única
+# dos limites: braco_tuning. Em radianos.
+_CLAMP_RIGHT_ARM_Z_MIN = radians(tun.OMBRO_ELEVACAO_MIN_GRAUS)
+_CLAMP_RIGHT_ARM_Z_MAX = radians(tun.OMBRO_ELEVACAO_MAX_GRAUS)
+_CLAMP_LEFT_ARM_Z_MIN = -_CLAMP_RIGHT_ARM_Z_MAX
+_CLAMP_LEFT_ARM_Z_MAX = -_CLAMP_RIGHT_ARM_Z_MIN
+_CLAMP_ARM_Y_MIN = radians(tun.OMBRO_AZIMUTE_MIN_GRAUS)
+_CLAMP_ARM_Y_MAX = radians(tun.OMBRO_AZIMUTE_MAX_GRAUS)
+_CLAMP_COTOVELO_MIN = radians(tun.COTOVELO_MIN_GRAUS)
+_CLAMP_COTOVELO_MAX = radians(tun.COTOVELO_MAX_GRAUS)
 
-#: Grupos de braço excluídos da correção de colisão (ver _resolver_colisoes_suave):
-#: a colisão usa rig_medidas, cujo modelo de braço não bate com o renderer; a
-#: pose de braço vem do IK 3D (arm_ik), já anatomicamente válida.
+#: Grupos de braço fora da correção LEGADA (rig_medidas, modelo Y-up que não
+#: bate com o renderer). Os braços têm correção própria com a FK real:
+#: ``colisao_bracos.ResolvedorBracos`` (passo 3 de ``resolver``).
 _GRUPOS_BRACO_SEM_COLISAO = frozenset(
     {"right-arm", "left-arm", "ant-arm", "ant-arm2", "hand", "hand2"}
 )
@@ -99,6 +94,8 @@ class PoseResolver:
             frequencia=colisao.CORRECAO_FREQUENCIA_HZ,
             amortecimento=colisao.CORRECAO_AMORTECIMENTO,
         )
+
+        self._resolvedor_bracos: ResolvedorBracos | None = None
 
         self._transitioning = False
         self._transition_from: dict[str, Rotation3] = {}
@@ -165,8 +162,16 @@ class PoseResolver:
         # 2. Correção de colisão (se houver model)
         pose = self._resolver_colisoes_suave(pose, dt, model)
 
-        # 3. Clamps anatômicos finais
+        # 3. Clamps anatômicos (antes do anti-atravessamento, que parte de uma
+        #    pose anatômica) e de novo depois (a correção não pode violá-los).
         pose = self._aplicar_clamps(pose)
+
+        # 4. Braços não atravessam o corpo (FK real, se houver model)
+        if model is not None:
+            if self._resolvedor_bracos is None or self._resolvedor_bracos.model is not model:
+                self._resolvedor_bracos = ResolvedorBracos(model)
+
+            pose = self._aplicar_clamps(self._resolvedor_bracos.resolver(pose))
 
         return pose
 
@@ -250,14 +255,10 @@ class PoseResolver:
         alvo = colisao.resolver_colisoes(pose, partes)
 
         # Juntas que o resolvedor empurrou (diferem da pose crua neste frame).
-        # IMPORTANTE: os GRUPOS DE BRAÇO são EXCLUÍDOS da correção de colisão.
-        # A correção mede via rig_medidas/colisao_membros, cujo modelo de braço
-        # (eixo longo -Y, elevação via roll) NÃO bate com o renderer real (eixo
-        # longo +X, elevação via heading — ver arm_ik). Aplicada aos braços, ela
-        # media penetração espúria e reorientava o braço do IK para longe do
-        # alvo (chegando a bater no clamp). Como a pose de braço agora vem do IK
-        # 3D (anatomicamente válida por construção), a correção de colisão não é
-        # necessária para os braços; mantém-se ativa para pernas/pés/porta.
+        # Os GRUPOS DE BRAÇO ficam fora desta correção LEGADA: rig_medidas usa um
+        # modelo Y-up com osso em -Y que não bate com o grafo de cena (eixo longo
+        # ±X). Os braços são corrigidos com a FK real em colisao_bracos (passo 4
+        # de resolver). Esta continua ativa para pernas/pés/porta.
         corrigidas = {
             grupo: alvo[grupo]
             for grupo in alvo
@@ -323,8 +324,8 @@ class PoseResolver:
         """
         resultado = dict(pose)
 
-        # Right arm: elevação Z em [-120°, 110°] (erguido → um pouco além de
-        # reto p/ baixo); profundidade Y em faixa ampla (contém só deriva).
+        # Right arm: elevação Z (erguido → um pouco além de reto p/ baixo);
+        # azimute Y em faixa ampla (contém só deriva). Limites em braco_tuning.
         if "right-arm" in resultado:
             r = resultado["right-arm"]
             y = max(_CLAMP_ARM_Y_MIN, min(_CLAMP_ARM_Y_MAX, r.y))
@@ -332,12 +333,20 @@ class PoseResolver:
             if y != r.y or z != r.z:
                 resultado["right-arm"] = Rotation3(r.x, y, z)
 
-        # Left arm: espelho (elevação Z em [-110°, 120°]).
+        # Left arm: espelho.
         if "left-arm" in resultado:
             r = resultado["left-arm"]
             y = max(_CLAMP_ARM_Y_MIN, min(_CLAMP_ARM_Y_MAX, r.y))
             z = max(_CLAMP_LEFT_ARM_Z_MIN, min(_CLAMP_LEFT_ARM_Z_MAX, r.z))
             if y != r.y or z != r.z:
                 resultado["left-arm"] = Rotation3(r.x, y, z)
+
+        # Cotovelo: dobradiça de um lado só (sem hiperextensão), espelhado.
+        for grupo, sinal in (("ant-arm", 1.0), ("ant-arm2", -1.0)):
+            if grupo in resultado:
+                r = resultado[grupo]
+                flexao = max(_CLAMP_COTOVELO_MIN, min(_CLAMP_COTOVELO_MAX, sinal * r.z))
+                if sinal * flexao != r.z:
+                    resultado[grupo] = Rotation3(r.x, r.y, sinal * flexao)
 
         return resultado

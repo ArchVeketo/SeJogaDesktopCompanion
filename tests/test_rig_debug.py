@@ -55,17 +55,19 @@ def test_classificar_direcao_eixos_do_mundo() -> None:
 # --------------------------------------------------------------------------- #
 # MÃO — palma para baixo vs. roll 180° -> palma para cima
 # --------------------------------------------------------------------------- #
-def test_palma_em_repouso_aponta_para_baixo(rig, model) -> None:
+def test_palma_em_repouso_aponta_para_frente(rig, model) -> None:
+  # Parte 3: a torção-base do antebraço (braco_tuning) põe a dobradiça do
+  # cotovelo à frente; no T-pose a palma fica virada para a FRENTE.
   estado = rd.estado_rig(rig.pose(), model)
 
-  assert estado.mao_direita.palma_flag == "PALMA_PARA_BAIXO"
+  assert estado.mao_direita.palma_flag == "PALMA_PARA_FRENTE"
 
 
-def test_roll_180_na_mao_vira_palma_para_cima(rig, model) -> None:
+def test_torcao_180_na_mao_vira_palma_para_tras(rig, model) -> None:
   rig.set_rotation("hand", x=180.0)
   estado = rd.estado_rig(rig.pose(), model)
 
-  assert estado.mao_direita.palma_flag == "PALMA_PARA_CIMA"
+  assert estado.mao_direita.palma_flag == "PALMA_PARA_TRAS"
 
 
 def test_punho_aberto_vs_fechado(rig, model) -> None:
@@ -82,7 +84,7 @@ def test_mao_esquerda_tambem_classifica(rig, model) -> None:
   estado = rd.estado_rig(rig.pose(), model)
 
   assert estado.mao_esquerda.punho_flag == "PUNHO_FECHADO"
-  assert estado.mao_esquerda.palma_flag == "PALMA_PARA_BAIXO"
+  assert estado.mao_esquerda.palma_flag == "PALMA_PARA_FRENTE"
 
 
 # --------------------------------------------------------------------------- #
@@ -219,12 +221,12 @@ def test_abertura_flag_colado_semiaberto_aberto(rig, model) -> None:
 
 
 def test_abertura_frontal_cresce_ao_projetar_eixo_longo_a_frente(rig, model) -> None:
-  # Profundidade (heading Y) negativa gira o braço para a FRENTE (+Z): a
-  # abertura frontal sai de ~0 para ~+45°.
+  # Medido no grafo de cena (tools/oraculo_cena.py --eixos): heading (Y)
+  # POSITIVO leva o braço direito para a FRENTE; a abertura frontal sobe ~45°.
   rig.set_rotation("right-arm", y=0.0)
   reto = rd.estado_rig(rig.pose(), model).membros["right-arm"]
 
-  rig.set_rotation("right-arm", y=-45.0)
+  rig.set_rotation("right-arm", y=45.0)
   frente = rd.estado_rig(rig.pose(), model).membros["right-arm"]
 
   assert frente.abertura_frontal_graus > reto.abertura_frontal_graus + 20.0
@@ -268,9 +270,10 @@ def test_posicao_mao_offset_bate_com_cadeia_propagada(rig, model) -> None:
 
 
 def test_posicao_mao_a_frente_quando_braco_projeta_para_frente(rig, model) -> None:
-  # Braço elevado (Z=-80) e com profundidade para a frente (Y=-70) leva a PONTA
-  # da mão para +Z — a posição 3D real da mão, não só o eixo longo abstrato.
-  rig.set_rotation("right-arm", z=-80.0, y=-70.0)
+  # Braço na horizontal girado para a frente (H=+70, medido no grafo de cena)
+  # leva a mão para +Z (frente) — a posição 3D real, não o eixo abstrato. (Com
+  # R=-80 o braço fica quase vertical e o H só o gira em torno de si.)
+  rig.set_rotation("right-arm", y=70.0)
   estado = rd.estado_rig(rig.pose(), model).mao_direita
 
   assert estado.posicao_offset[2] > 0.0

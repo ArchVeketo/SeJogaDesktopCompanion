@@ -1,20 +1,26 @@
 """Vocabulário de ALVOS DE MÃO por gesto/estado (dados puros, sem engine).
 
-Cada gesto de braço declara ONDE a mão deve ficar — a posição-alvo da ponta da
-mão RELATIVA ao ombro, no espaço do modelo (+X=direita, +Y=cima, +Z=frente) — e
-um ``polo`` (direção preferida do cotovelo). O solver 3D (``arm_ik.braco_para``)
-converte isso nos HPR reais dos bones, respeitando a geometria diagonal do
-modelo. Assim as poses deixam de ser ângulos diretos (inviáveis de calibrar) e
-passam a ser posições no espaço, legíveis e verificáveis por
-``tools/dump_rig_estado.py`` (offset x,y,z da mão).
+Cada gesto declara ONDE o punho (origem do nó ``hand``) deve ficar, relativo ao
+ombro, em eixos do mascote: ``x`` = direita, ``y`` = cima, ``z`` = frente (o
+rosto). O solver (``arm_ik.braco_para``) converte isso nos ``Rotation3`` do
+ombro e do cotovelo. Os eixos são os da FK do grafo de cena
+(``nucleo.cinematica``, provada contra o Panda em ``test_cinematica_oraculo``);
+``z > 0`` é de fato à frente do corpo no render.
 
-Alcance do braço ≈ 0.281 (upper 0.125 + forearm 0.15625). Os alvos ficam DENTRO
-do alcance; alvos fora são clampados por ``solve_arm`` sem gerar NaN.
+COMO OS VALORES FORAM ESCOLHIDOS (medido, não chutado): cada alvo é o ponto livre
+de atravessamento (``animacao.colisao_bracos``) mais próximo do alvo autoral
+anterior, numa grade de 0.02 u (``python tools/oraculo_cena.py --sugerir``). A
+tabela antes/depois está em ``.agents/tasks/frente3-animacao/recalibracao-gpu.md``.
 
-Os valores são CALIBRÁVEIS contra o dump: ajuste o alvo e releia o offset da mão
-em ``dump_rig_estado`` até a pose ficar como o gesto pede. Os alvos abaixo foram
-calibrados assim (idle: mão baixada junto ao quadril; wave: mão acima do ombro,
-à direita).
+Limite medido do asset: nenhuma pose com o punho mais de 0.08 u abaixo do ombro é
+livre. O antebraço pendurado entra no short (malha ``legs``, meia-largura 0.312,
+mais larga que a camiseta) e a mão (0.33 u) chega aos pés. Por isso o repouso é
+com os braços abertos e levemente baixados, e não colados ao corpo. Se o usuário
+preferir braços encostando no short, a alavanca é
+``colisao_bracos.FRACAO_NUCLEO_BRACO`` (C4/C6 do recalibracao-gpu.md).
+
+Alcance do braço ≈ 0.281 (upper 0.125 + forearm 0.15625). Alvos fora são
+clampados pelo solver sem gerar NaN.
 
 FRONTEIRA: Python puro. Só ``dataclass``; nenhum import de engine.
 """
@@ -23,63 +29,56 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sejoga.animacao.braco_tuning import POLO_COTOVELO_ANATOMICO
+
 Vec3 = tuple[float, float, float]
 
 
 @dataclass(frozen=True, slots=True)
 class AlvoBraco:
-    """Alvo de mão (relativo ao ombro) + polo (direção do cotovelo)."""
+    """Alvo do punho (relativo ao ombro) + polo (para onde o cotovelo aponta)."""
 
-    #: Posição-alvo da ponta da mão relativa ao ombro (espaço do modelo).
+    #: Posição-alvo do punho relativa ao ombro (x direita, y cima, z frente).
     alvo: Vec3
-    #: Direção preferida do cotovelo (desempata a dobra). Default +Z (frente).
-    polo: Vec3 = (0.0, 0.0, 1.0)
+    #: Direção para onde o COTOVELO aponta (padrão anatômico: trás, baixo, fora).
+    polo: Vec3 = POLO_COTOVELO_ANATOMICO
 
     def alvo_espelhado(self) -> Vec3:
         """Alvo com o X invertido (pose simétrica para o braço esquerdo)."""
         return (-self.alvo[0], self.alvo[1], self.alvo[2])
 
 
-# --------------------------------------------------------------------------- #
-# Alvos calibrados (ver docstring). O alcance total é ≈ 0.281.
-# --------------------------------------------------------------------------- #
+#: REPOUSO/idle: braços abertos e levemente baixados, mão um pouco à frente. É o
+#: ponto livre mais baixo perto do repouso autoral (0.075, -0.265, 0.02).
+ALVO_IDLE = AlvoBraco(alvo=(0.26, -0.08, 0.06))
 
-#: REPOUSO/idle: mão baixada ao lado do quadril, levemente afastada do corpo e
-#: um tiquinho à frente (postura natural relaxada). Braço quase reto para baixo.
-ALVO_IDLE = AlvoBraco(alvo=(0.075, -0.265, 0.02), polo=(0.0, 0.0, 1.0))
+#: WAVE/aceno: punho na altura do ombro, por fora da orelha, antebraço para cima.
+#: O balanço e o giro do pulso entram como termos aditivos em ``rig.pose_flourish``.
+ALVO_WAVE = AlvoBraco(alvo=(0.23, 0.075, 0.03))
 
-#: WAVE/aceno: mão ACIMA do ombro, à direita, antebraço apontando para cima. O
-#: balanço do aceno e o giro do pulso entram como termos aditivos por cima (em
-#: ``rig.pose_flourish``); aqui fica só o alvo do pico do lift.
-ALVO_WAVE = AlvoBraco(alvo=(0.11, 0.235, 0.03), polo=(0.0, 0.0, 1.0))
+#: DRAG/arraste: mão à frente e para fora, como quem se equilibra ao ser puxado.
+ALVO_DRAG = AlvoBraco(alvo=(0.18, 0.0, 0.15))
 
-#: DRAG/arraste: mão à frente e um pouco para fora, como quem se equilibra ao
-#: ser puxado. O deslocamento por direção/intensidade é somado em ``pose_drag``.
-ALVO_DRAG = AlvoBraco(alvo=(0.14, -0.08, 0.17), polo=(0.0, 0.0, 1.0))
+#: STRETCH/alongamento: mão alta e à frente (ajuste de jaqueta).
+ALVO_STRETCH = AlvoBraco(alvo=(0.12, 0.08, 0.18))
 
-#: STRETCH/alongamento: mão alta, à frente, como quem ajusta a jaqueta/espreguiça.
-ALVO_STRETCH = AlvoBraco(alvo=(0.12, 0.18, 0.12), polo=(0.0, 0.0, 1.0))
+#: DANCE/dança: mão à frente e um pouco acima do ombro; o ``beat`` modula por cima.
+ALVO_DANCE = AlvoBraco(alvo=(0.15, 0.08, 0.17))
 
-#: DANCE/dança: mão à frente e em cima, pronta para o balanço no ritmo (o
-#: ``beat`` modula por cima em ``pose_dance``).
-ALVO_DANCE = AlvoBraco(alvo=(0.15, 0.1, 0.15), polo=(0.0, 0.0, 1.0))
-
-#: SLEEP/sono: mãos recolhidas junto ao corpo, baixas (braços relaxados colados).
-ALVO_SLEEP = AlvoBraco(alvo=(0.05, -0.25, 0.08), polo=(0.0, 0.0, 1.0))
+#: SLEEP/sono: braços relaxados, mãos recolhidas à frente.
+ALVO_SLEEP = AlvoBraco(alvo=(0.24, -0.04, 0.10))
 
 #: THROWN/arremesso: mãos à frente e para fora, silhueta aérea legível.
-ALVO_THROWN = AlvoBraco(alvo=(0.16, 0.0, 0.16), polo=(0.0, 0.0, 1.0))
+ALVO_THROWN = AlvoBraco(alvo=(0.16, 0.02, 0.16))
 
-#: INTERACTION/interação (base): mãos à frente, levemente abertas, como quem
-#: reage ao cursor. Ramos específicos (hover/poke...) modulam por cima.
-ALVO_INTERACTION = AlvoBraco(alvo=(0.13, -0.02, 0.18), polo=(0.0, 0.0, 1.0))
+#: INTERACTION/interação (base): mãos à frente, como quem reage ao cursor.
+ALVO_INTERACTION = AlvoBraco(alvo=(0.15, 0.02, 0.16))
 
-#: DRAG_PERNA: pego pela perna, os braços pendem e se recolhem junto ao corpo —
-#: mais baixos e mais para dentro que o repouso (a gravidade os puxa ao tronco).
-ALVO_DRAG_PERNA = AlvoBraco(alvo=(0.035, -0.272, 0.0), polo=(0.0, 0.0, 1.0))
+#: DRAG_PERNA: pego pela perna, os braços pendem o máximo que o corpo permite.
+ALVO_DRAG_PERNA = AlvoBraco(alvo=(0.26, -0.08, 0.06))
 
-#: FALL/queda: mãos abertas para fora, silhueta aérea (flailing entra aditivo).
-ALVO_FALL = AlvoBraco(alvo=(0.19, 0.03, 0.05), polo=(0.0, 0.0, 1.0))
+#: FALL/queda: mãos abertas para fora (o flailing entra aditivo).
+ALVO_FALL = AlvoBraco(alvo=(0.21, 0.03, 0.07))
 
 
 #: Registro por nome (facilita consumo e documentação).
@@ -94,4 +93,18 @@ ALVOS: dict[str, AlvoBraco] = {
     "thrown": ALVO_THROWN,
     "fall": ALVO_FALL,
     "interaction": ALVO_INTERACTION,
+}
+
+#: Alvos autorais anteriores (antes da medição de colisão), para o relatório.
+ALVOS_AUTORAIS_ANTERIORES: dict[str, Vec3] = {
+    "idle": (0.075, -0.265, 0.02),
+    "wave": (0.11, 0.235, 0.03),
+    "drag": (0.14, -0.08, 0.17),
+    "drag_perna": (0.035, -0.272, 0.0),
+    "stretch": (0.12, 0.18, 0.12),
+    "dance": (0.15, 0.1, 0.15),
+    "sleep": (0.05, -0.25, 0.08),
+    "thrown": (0.16, 0.0, 0.16),
+    "fall": (0.19, 0.03, 0.05),
+    "interaction": (0.13, -0.02, 0.18),
 }

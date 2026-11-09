@@ -97,9 +97,13 @@ class SpringPose:
 class LagChain:
     """Propaga o movimento com atraso crescente ao longo de uma cadeia.
 
-    O elo base segue o alvo diretamente; cada elo seguinte persegue o elo
-    anterior com uma mola, acumulando atraso (braço -> antebraço -> mão ->
-    dedos). Como usa ``Spring``, o atraso é independente da taxa de quadros.
+    Cada elo persegue o PRÓPRIO alvo com uma mola progressivamente mais lenta
+    (``atenuacao``), acumulando atraso da base para a ponta (braço -> antebraço
+    -> mão -> dedos). Como usa ``Spring``, o atraso independe da taxa de quadros.
+
+    Antes cada elo perseguia o ÂNGULO LOCAL do elo anterior: o antebraço
+    exibido recebia os ângulos do ombro (juntas diferentes, eixos diferentes),
+    e o cotovelo apontava para direções sem relação com o gesto.
     """
 
     def __init__(
@@ -120,16 +124,11 @@ class LagChain:
 
     def atualizar(self, dt: float, alvos: dict[str, Rotation3]) -> dict[str, Rotation3]:
         """Avança a cadeia; só os grupos conhecidos recebem atraso."""
-        pose: dict[str, Rotation3] = {}
-        anterior: Rotation3 | None = None
-        for grupo in self.cadeia:
-            if grupo not in alvos:
-                anterior = None
-                continue
-            alvo = alvos[grupo] if anterior is None else anterior
-            pose[grupo] = self.elos[grupo].atualizar(dt, alvo)
-            anterior = pose[grupo]
-        return pose
+        return {
+            grupo: self.elos[grupo].atualizar(dt, alvos[grupo])
+            for grupo in self.cadeia
+            if grupo in alvos
+        }
 
     def definir(self, poses: dict[str, Rotation3]) -> None:
         for grupo in self.cadeia:

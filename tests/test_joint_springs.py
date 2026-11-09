@@ -25,14 +25,26 @@ def test_joint_spring_response_is_frame_rate_independent():
 
 def test_lag_chain_hand_trails_the_arm_on_a_step():
     cadeia = LagChain(CADEIA_DIREITA)
-    alvo = {grupo: Rotation3() for grupo in CADEIA_DIREITA}
-    # Degrau no braço; os elos seguintes devem acompanhar com atraso crescente.
-    alvo["right-arm"] = Rotation3(40, 0, 0)
+    # Degrau em TODA a cadeia: cada elo persegue o próprio alvo, com atraso
+    # crescente da base para a ponta.
+    alvo = {grupo: Rotation3(40, 0, 0) for grupo in CADEIA_DIREITA}
     poses = [cadeia.atualizar(1 / 60, alvo) for _ in range(6)]
     final = poses[-1]
     # Braço lidera, antebraço atrás dele, mão atrás do antebraço, dedos por último.
     assert final["right-arm"].x > final["ant-arm"].x > final["hand"].x > final["fingers"].x
     assert final["fingers"].x >= 0
+
+
+def test_lag_chain_nao_copia_o_angulo_do_ombro_para_o_antebraco():
+    # Ângulos são LOCAIS: girar o ombro já leva o antebraço pela hierarquia.
+    # Antes o antebraço perseguia o ângulo do ombro e herdava eixos errados.
+    cadeia = LagChain(CADEIA_DIREITA)
+    alvo = {grupo: Rotation3() for grupo in CADEIA_DIREITA}
+    alvo["right-arm"] = Rotation3(40, 0, 0)
+    for _ in range(30):
+        final = cadeia.atualizar(1 / 60, alvo)
+    assert final["right-arm"].x > 0
+    assert final["ant-arm"] == Rotation3()
 
 
 def test_lag_chain_converges_to_target_and_stays_finite():
