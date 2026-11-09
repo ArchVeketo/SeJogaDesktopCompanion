@@ -10,34 +10,23 @@ A base procedural do idle é INTENCIONALMENTE APERIÓDICA (frequências
 incomensuráveis + frases autorais de 4.8-14 s): em produção o clock só cresce e
 o idle roda aberto para sempre. Por isso NÃO se aplica teste de fechamento de
 loop ao idle inteiro — ele é analisado como ``loop=False`` em
-``tools/analisar_anim.py``.
+``tests/analise_curvas.py``.
 
 Sem GPU: tudo é medido sobre as curvas de ângulo em graus (reusa os detectores
-de ``tools/analisar_anim.py`` e amostra ``rig.pose_idle`` num Rig em repouso).
+de ``tests/analise_curvas.py`` e amostra ``rig.pose_idle`` num Rig em repouso).
 """
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from math import degrees
-from pathlib import Path
 
 import pytest
 
+import analise_curvas as aa
 from sejoga.animacao.idle_clips import camada_respiracao
 from sejoga.animacao.respiracao import Respiracao
 from sejoga.animacao.respiracao_tuning import RESPIRACAO_POR_PERSONALIDADE, parametros_de
 from sejoga.nucleo.rig import ALL_GROUPS, IdlePersonality, Rig, Rotation3, pose_idle
-
-RAIZ = Path(__file__).resolve().parent.parent
-_spec = importlib.util.spec_from_file_location(
-    "analisar_anim", RAIZ / "tools" / "analisar_anim.py"
-)
-assert _spec is not None and _spec.loader is not None
-aa = importlib.util.module_from_spec(_spec)
-sys.modules["analisar_anim"] = aa
-_spec.loader.exec_module(aa)
 
 FPS = 60.0
 DT = 1.0 / FPS
@@ -139,7 +128,7 @@ def test_loop_da_camada_de_respiracao_fecha_sem_pop(personality: IdlePersonality
         duracao=periodo,
         loop=True,
     )
-    _, achados = aa.analisar(clipe)
+    achados = aa.analisar(clipe)
 
     pops = [c for c in achados if c.categoria == "LOOP"]
 
@@ -166,8 +155,8 @@ def test_respiracao_nao_introduz_tranco(personality: IdlePersonality) -> None:
     com = aa.ClipeAnalisavel(nome="com", amostrar=amostrar_com, duracao=30.0, loop=False)
     sem = aa.ClipeAnalisavel(nome="sem", amostrar=amostrar_sem, duracao=30.0, loop=False)
 
-    _, achados_com = aa.analisar(com)
-    _, achados_sem = aa.analisar(sem)
+    achados_com = aa.analisar(com)
+    achados_sem = aa.analisar(sem)
 
     def chaves_tranco(achados: list[aa.Constatacao]) -> set[tuple[str, str | None]]:
         return {(c.grupo, c.eixo) for c in achados if c.categoria == "SUAVIDADE"}

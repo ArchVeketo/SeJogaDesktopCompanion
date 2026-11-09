@@ -6,7 +6,7 @@ Cobrem o que a FEAT-B promete, ao vivo no pipeline:
    em uma pose comprovadamente colisora (``interaction:wake``), reduzindo a
    penetração de POSE, enquanto o PISO ESTRUTURAL/repouso fica inalterado;
 2. a correção NÃO introduz TRANCO (jerk): a curva de ângulo do membro corrigido
-   fica abaixo de ``LIMIAR_JERK_TRANCO`` de ``tools/analisar_anim.py``;
+   fica abaixo de ``LIMIAR_JERK_TRANCO`` de ``tests/analise_curvas.py``;
 3. poses SEM excedente (idle calmo parado) não são alteradas pela correção;
 4. sem ``Model`` injetado, a correção é inerte (comportamento preservado).
 
@@ -16,13 +16,12 @@ testes carregam o modelo real do projeto, como ``tests/test_colisao_membros.py``
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from math import degrees
 from pathlib import Path
 
 import pytest
 
+import analise_curvas as analisar
 from sejoga.animacao.animation import AnimationController
 from sejoga.nucleo.assets import resolve_model
 from sejoga.nucleo.model import load_model
@@ -31,17 +30,6 @@ from sejoga.rig_mapa import colisao_membros as col
 from sejoga.rig_mapa import rig_medidas as med
 
 _RAIZ = Path(__file__).resolve().parent.parent
-
-
-def _carregar_analisar_anim():
-  """Importa ``tools/analisar_anim.py`` (fora do pythonpath de teste)."""
-  caminho = _RAIZ / "tools" / "analisar_anim.py"
-  spec = importlib.util.spec_from_file_location("analisar_anim", caminho)
-  assert spec is not None and spec.loader is not None
-  modulo = importlib.util.module_from_spec(spec)
-  sys.modules["analisar_anim"] = modulo
-  spec.loader.exec_module(modulo)
-  return modulo
 
 
 @pytest.fixture(scope="module")
@@ -120,25 +108,25 @@ def test_correcao_nao_mexe_no_piso_de_repouso(model) -> None:
     assert rot == pose_repouso.get(grupo, Rotation3())
 
 
-def _pior_jerk_total(trilha, duracao, analisar) -> float:
-  """Maior |jerk| entre juntas ativas de uma trilha amostrada (via analisar_anim)."""
+def _pior_jerk_total(trilha, duracao) -> float:
+  """Maior |jerk| entre juntas ativas de uma trilha amostrada (via analise_curvas)."""
   def amostrar(t: float) -> dict[str, tuple[float, float, float]]:
     indice = min(len(trilha) - 1, round(t * analisar.FPS))
     return trilha[indice]
 
-  amostragem = analisar.amostrar_clipe_analisavel(
+  series = analisar.amostrar_clipe(
     analisar.ClipeAnalisavel("x", amostrar, duracao, False)
   )
   pior = 0.0
-  for trio in amostragem.series.values():
+  for trio in series.values():
     for serie in trio:
-      if analisar._amplitude(serie) < analisar.AMPLITUDE_MINIMA_ATIVA:
+      if analisar.amplitude(serie) < analisar.AMPLITUDE_MINIMA_ATIVA:
         continue
       pior = max(pior, max((abs(v) for v in serie.jerk), default=0.0))
   return pior
 
 
-def _trilhas_wake_correcao(model, analisar):
+def _trilhas_wake_correcao(model):
   """Amostra a reação wake do controller, em graus por junta e quadro."""
   ctrl = AnimationController(_rig(), model=model)
   ctrl.interact("wake")
@@ -164,12 +152,10 @@ def test_correcao_nao_introduz_tranco(model) -> None:
   # Os braços são corrigidos por colisao_bracos (FK real) e pernas/pés pela
   # correção legada, inerte na faixa do app. "Sem tranco" = o jerk da reação de
   # acordar COM model (correções ligadas) não excede o jerk SEM model (autoral).
-  analisar = _carregar_analisar_anim()
-
-  com = _trilhas_wake_correcao(model, analisar)
-  sem = _trilhas_wake_correcao(None, analisar)
-  jerk_com = _pior_jerk_total(com, 2.5, analisar)
-  jerk_sem = _pior_jerk_total(sem, 2.5, analisar)
+  com = _trilhas_wake_correcao(model)
+  sem = _trilhas_wake_correcao(None)
+  jerk_com = _pior_jerk_total(com, 2.5)
+  jerk_sem = _pior_jerk_total(sem, 2.5)
 
   assert jerk_com <= jerk_sem * (1.0 + FOLGA_JERK_CORRECAO), (
     f"correção somou tranco: com={jerk_com:.0f} sem={jerk_sem:.0f}"

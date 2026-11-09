@@ -34,7 +34,7 @@ from sejoga.rig_mapa.rig_medidas import PARTES_MEMBRO, EstadoParte
 #
 # Todos em UNIDADES DO MODELO (``u``), a mesma escala de ``comprimento_u`` e
 # ``origem_mundo`` de ``rig_medidas``. São valores de PARTIDA, transparentes e
-# ajustáveis: o relatório (docs/RELATORIO_COLISAO_MEMBROS.md) mostra o efeito
+# ajustáveis: o relatório de colisão (removido, ver git) mostrava o efeito
 # deles nas poses reais e o FEAT-002 recalibra conforme a correção exigir.
 # --------------------------------------------------------------------------- #
 
@@ -97,7 +97,7 @@ EXTENSAO_DEDOS_U: float = 0.06
 # PARÂMETROS da CORREÇÃO PONTUAL SUAVE (FEAT-B) — usados por ``resolver_colisoes``
 # e pela mola amortecida que o ``AnimationController`` liga no fim do pipeline.
 #
-# A estratégia, guiada pelos números da FEAT-A (docs/RELATORIO_COLISAO_MEMBROS):
+# A estratégia, guiada pelos números da FEAT-A (relatório removido, ver git):
 # cada par tem um PISO ESTRUTURAL (penetração constante da raiz do membro
 # nascendo dentro do volume-bloco, presente ATÉ no repouso). A correção DESCONTA
 # esse piso por par e só empurra o EXCEDENTE dirigido pela pose acima de
@@ -110,7 +110,7 @@ EXTENSAO_DEDOS_U: float = 0.06
 #: PISO ESTRUTURAL por par: a penetração BRUTA medida na pose de REPOUSO (todos
 #: os ângulos zero), que NÃO deve ser corrigida (é a montagem dos volumes, não a
 #: pose atravessando o corpo). Medido uma vez por ``_tmp_piso`` a partir dos
-#: mesmos volumes do detector; ver a tabela em docs/RELATORIO_COLISAO_MEMBROS.md.
+#: mesmos volumes do detector; tabela no relatório removido (ver git).
 #: A correção subtrai este valor da penetração antes de comparar ao limiar e de
 #: empurrar o membro. Pares fora do mapa têm piso 0 (nascem fora dos blocos).
 #: Recalibrar junto com ``RAIOS_MEMBRO``/``MEIA_DIM_*`` (mexer num muda o outro).
@@ -157,7 +157,7 @@ FOLGA_U: float = 0.01
 #: (frequência em Hz, amortecimento 0..1). Entra via ``joint_springs`` para a
 #: correção chegar SUAVE, sem tranco: frequência BAIXA = resposta macia, agindo
 #: como filtro passa-baixa; amortecimento alto (perto de 1) = sem overshoot.
-#: Calibração (medida por ``tools/analisar_anim.py``, ver relatório): 0,6 Hz
+#: Calibração (medida pelo analisador de jerk, hoje em tests/analise_curvas.py): 0,6 Hz
 #: mantém o jerk da correção ABAIXO do jerk da própria animação autoral, mesmo
 #: num gesto rápido como o de acordar (``wake``) — a mola é lenta demais para
 #: perseguir um pico de penetração sub-segundo, então só corrige o overlap
