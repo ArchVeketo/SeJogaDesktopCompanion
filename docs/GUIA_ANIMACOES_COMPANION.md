@@ -25,7 +25,7 @@
 - A **espiada** dura 9 s: abertura gradual de 2,5 s, sustentação e recolhimento. Aparece após 60–100 s acumulados de idle disponível ou pela ação manual Mostrar tentáculos. Dois tentáculos low-poly grossos, com quatro ventosas cada, emergem em sequência; a malha segue a curva da mola e atualiza apenas enquanto está ativa.
 - Porta limitada a 38°/s; contatos mudam o alvo da mola sem saltar o ângulo. O recolhimento libera o fechamento.
 - Na dança, os braços longos ficam recolhidos para baixo, junto às laterais do corpo. Os demais estados ainda usam suas poses próprias.
-- Esses movimentos são poses procedurais em `src/sejoga/rig.py`; a tabela completa abaixo continua sendo a especificação para animações futuras.
+- Esses movimentos são poses procedurais em `src/sejoga/nucleo/rig.py`; a tabela completa abaixo continua sendo a especificação para animações futuras.
 
 ### Idles autorados no runtime (04/11/2026)
 
@@ -539,12 +539,12 @@ Blockbench 5.x
    pip install -e ".[panda3d,windows,tray,music-analysis]"
    ```
 
-2. **Criar `src/sejoga/animation.py`** com:
+2. **Criar `src/sejoga/animacao/animation.py`** com:
    - `AnimationState` enum
    - `AnimationController` class (state machine + blend tree)
    - `BeatSyncMixin` para sincronização musical
 
-3. **Criar `src/sejoga/window.py`** com:
+3. **Criar `src/sejoga/render/window.py`** com:
    - `OverlayWindow` (PySide6 QWidget + Panda3D GraphicsWindow embedding)
    - Win32 layered window setup (color key magenta)
    - Click-through toggle + hit-test

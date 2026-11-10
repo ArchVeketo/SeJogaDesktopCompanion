@@ -144,3 +144,87 @@ só delegam. Continuam no caminho legado (alvo bruto, sem LayerStack).
 - Não verificado (só GPU): leitura visual dos três gestos, palma para a frente
   no aceno (C7), sinal da queda de ombros do alongar (`shoulder`/`shoulder2`),
   o fechamento do punho no cutucar.
+
+## Danças
+
+Decisões da FEAT-004, tomadas sem consulta (fila noturna), pela opção mais simples
+que não toca no que já foi confirmado. Nada abaixo foi visto na GPU.
+
+- **Acento no onset.** O acento de cada passo cai em u = 0, a batida detectada.
+  O u vem da fase de `DanceMotion` (corrigida pelos onsets); o índice do passo vem de
+  `style_beats` (`round(style_beats - u)`), então a emenda entre batidas não depende
+  de qual das duas corre à frente. As molas (4,5 Hz) atrasam o acento visível em
+  alguns quadros.
+- **Quatro poses por passo.** `dance_poses.PassoDanca`: acento (u 0), sustentação
+  (0,35), recuperação (0,70) e preparação (0,82), depois o acento do passo seguinte.
+  A preparação ficou em 0,82 e não em 0,88 do plano: o salto de preparação para
+  acento em 0,12 de batida dava jerk de 330 mil no headbang do rock; em 0,18 caiu
+  para 206 mil (o código antigo tinha 227 mil). Cabeça e tronco são deltas sobre o
+  repouso (zero), escalados por energia (`GANHO_PASSO_*`); os braços vão a alvos de
+  mão resolvidos pela IK, sem torção-base manual (o hack `tx = REPOUSO.BRACO_X` saiu).
+- **Dados em `dance_frases_tuning.py`, não em `dance_tuning.py`.** Os passos são
+  `PassoDanca`, definidos em `dance_poses`; pôr os dados em `dance_tuning` criaria
+  import circular. `dance_tuning` ficou com limiares, tempos, lean/floor/spin e as
+  constantes novas (`U_POSES`, `GANHO_PASSO_*`, `ROCK_MEIO_TEMPO_BPM`,
+  `FLOOR_ROLL_GRAUS`, `PIVO_QUADRIL_Z`). Os ângulos absolutos antigos (`HEADBOB_*`,
+  `ROCK_*`, `GROOVE_*`, `BREAK_*`) foram removidos.
+- **Seleção, dwell, molas e fase compartilhada com as pernas** ficaram como estavam.
+- **Alvos novos de braço.** Medidos com a colisão do modelo real (grade de busca):
+  `cruzado_dir` (0,08; 0,06; 0,22), `cruzado_esq` (0,08; 0,06; 0,16), `chifre`
+  (0,24; 0,08; 0,04), `contrapeso` (0,22; 0; 0,17) e `apoio_chao` (0,22; -0,12; 0,12).
+  Coordenadas relativas ao ombro (x para fora, y cima, z frente).
+- **Braços cruzados: fallback.** Nenhum alvo com o punho passando do ombro em direção
+  ao centro fica livre (o tronco e o outro braço bloqueiam), e `FRACAO_NUCLEO_BRACO`
+  não foi mexida. O head bob usa antebraços à frente do peito, mãos próximas, o
+  direito um pouco mais à frente que o esquerdo. Se você quiser cruzar de verdade, a
+  alavanca é a folga do tronco em `braco_tuning.FOLGA_EXTRA_CAIXA_U`.
+- **Chifre não passa da cabeça.** O ombro fica 0,19 u abaixo do topo da cabeça e o
+  braço alcança 0,281 u; o ponto livre mais alto é (0,24; 0,08; 0,04), braço erguido
+  ao lado. A torção do punho de 180 graus do rock antigo foi mantida
+  (`ROCK_PUNHO_TORCAO`); os dedos continuam por `finger_gestures` (o renderer passa
+  `gesture='rock'` à mão direita).
+- **Head bob.** 4 batidas: nod curto no 1, inclinação lateral lenta no 2, segundo nod
+  no 3, pausa no 4. A inclinação para trás é `body.x` +8 graus (`HEADBOB_TRONCO_TRAS`);
+  o renderer já soma +10 de inclinação ao encostar na caixa, então o total pode ser
+  maior que o desejado. Sinal de `body.x` (positivo = para trás) A_CONFIRMAR.
+- **Rock.** 2 batidas, headbang com `head.x` -26 e `body.x` -7 no acento. Acima de
+  `ROCK_MEIO_TEMPO_BPM` (150) o passo dura duas batidas. A troca de regime em 150 BPM
+  muda o índice de uma vez (as molas suavizam).
+- **Hip hop.** 8 batidas: comprimir/transferir peso, estender o braço oposto, fechar,
+  pausa, depois o lado oposto com giro de cabeça e uma pose legível com os dois braços
+  fora. O lado do peso é o roll do tronco; a perna carregada vem de `leg_motion` pela
+  fase global, que não é a posição da frase de 8 batidas, então os dois lados podem
+  não coincidir (A_CONFIRMAR C50). Tentei usar `interaction` como pose intermediária
+  do braço e piorou: o cotovelo dobra 78 graus ali.
+- **Breakdance.** 16 batidas: toprock 0-3 (cabeça e tronco do hip hop com os braços no
+  repouso), descida 4-5, footwork 6-12 e freeze 13 com as mãos plantadas em
+  `apoio_chao`, subida 14-15. Trocar o alvo do braço a cada batida a 145 BPM passava
+  de 250 mil de jerk no ombro, então o footwork varia só cabeça e roll do tronco. O
+  roll e o giro do corpo seguem `floor_amount`/`floor_spin` (janelas inalteradas).
+- **Pernas.** Só magnitudes e um ramo por estilo, sem trocar sinais: rock com
+  `DANCA_ROCK_QUADRIL` (4) e joelhos flexionando no onset (`DANCA_ROCK_JOELHO`),
+  hip hop com `DANCA_HIPHOP_JOELHO` (6) somado à transferência de peso. Head bob e
+  breakdance ficaram como estavam. As molas das pernas absorvem os alvos (cosseno
+  contínuo, sem salto).
+- **Pivô do breakdance.** `apply_body_motion` usa `_giro_no_quadril`: a rotação de
+  autoria (`_rotacao_no_quadro_de_autoria`) em torno do quadril (0, 0, 0,44), mais o
+  ajuste de chão por `getTightBounds`. O roll é +65 graus (`FLOOR_ROLL_GRAUS`): o
+  antigo `setHpr(.., -65)` valia no quadro do mundo, girado 180 graus em relação ao
+  mascote, e a lei de autoria diz que roll positivo tomba o topo para a direita do
+  mascote (`tests/test_tronco_quadro.py` prova o sinal e o quadril fixo no Panda
+  sem janela). Ou seja, mesmo lado de antes; não foi visto na GPU.
+- **Atalho: mão não fica fixa no cenário durante o giro.** Marcado como `shortcut:`
+  no renderer; sobe de nível quando houver contatos de cena (guia 7.1).
+- **Jerk.** O limiar global de 8000 não vale para o acento no onset (golpe por
+  projeto; as molas só amortecem). `tests/test_dance_motion.py` usa um teto por estilo
+  abaixo do pior caso do código antigo e exige zero salto entre quadros. Medido a
+  60 fps com BPM fixo: head bob 77 mil -> 53 mil depois de mover a preparação, rock
+  206 mil, hip hop 170 mil, breakdance 94 mil.
+- **Caminhos antigos nos docs.** Os 6 docs do plano passaram ao layout
+  `src/sejoga/animacao`, `nucleo`, `musica`, `render`, `desktop` e `tentaculos`
+  (`limb_ik` virou `animacao/arm_ik.py`). `tools/profile_music_styles.py` e
+  `tools/capture_dance_animation.py` não existem mais e foram marcados como
+  removidos. Nenhum doc foi apagado.
+- **Não verificado:** tudo o que é visual (leitura dos passos, braços "cruzados", mão em
+  chifre, sinal do roll no chão, mão perto do chão), sinal de `body.x`, correlação
+  entre a perna carregada e o braço do hip hop, e a taxa real de quadros.

@@ -473,12 +473,12 @@ Blockbench 5.x
    pip install -e ".[panda3d,windows,tray,music-analysis]"
    ```
 
-2. **Criar `src/sejoga/animation.py`** com:
+2. **Criar `src/sejoga/animacao/animation.py`** com:
    - `AnimationState` enum
    - `AnimationController` class (state machine + blend tree)
    - `BeatSyncMixin` para sincronização musical
 
-3. **Criar `src/sejoga/window.py`** com:
+3. **Criar `src/sejoga/render/window.py`** com:
    - `OverlayWindow` (PySide6 QWidget + Panda3D GraphicsWindow embedding)
    - Win32 layered window setup (color key magenta)
    - Click-through toggle + hit-test

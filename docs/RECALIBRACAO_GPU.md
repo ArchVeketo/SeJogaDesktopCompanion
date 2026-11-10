@@ -85,6 +85,15 @@ quadros: os gestos aparecem no começo do movimento. Ao vivo o gesto roda inteir
 - [ ] O11 Braços naturais (C13): idle sem abraço rígido; confira o quanto afundam na
   camiseta/short (trade-off medido: núcleo até 0,023 u dentro, casca até 0,053 u).
 - [ ] O12 Flicker (C14): arraste pela perna e pelos braços sem piscar a janela.
+- [ ] O13 Idles e sono (C39 a C41): os 9 idles têm identidade e não tremem; uma só
+  respiração no espirro; sono com entrada lenta e cabeça caindo sem atravessar.
+- [ ] O14 Locomoção, arraste e queda (C42 a C44): contrafase de braço e perna certa,
+  dedos de grip, queda legível e pouso sem estalo.
+- [ ] O15 Gestos de reação (C45 a C47): aceno, cutucar e alongar legíveis e distintos
+  do repouso.
+- [ ] O16 Danças (C48 a C51): head bob, rock, hip hop e breakdance com o acento no
+  tempo da batida; braços sem atravessar; breakdance gira no quadril e não sai da janela.
+- [ ] O17 Regressão (C52): nada do que você já aprovou mudou.
 
 ## O que o usuário deve confirmar
 
@@ -131,6 +140,20 @@ reprovar. Nenhum valor abaixo foi chutado para "parecer certo".
 | C36 | **Fio do fone.** Estética pixelada | seção quadrada, faces planas, cor #0B0044 como o fio antigo, contorno igual ao do resto do mascote | grosso/fino demais → `RAIO_VISUAL_FIO_U` (0.014). Cor diferente do fio antigo → `COR_FIO`. Sem contorno → conferir `MalhaFioFone._criar_malha` (cópia sob `outline_np`) |
 | C37 | **Fio do fone.** Arrastar a janela rápido, trocar de monitor e acordar com o fio no meio do gesto | sem estalo, fio esticado nem explosão; após teleporte o fio reaparece caído | explode ou estica → descer `PASSO_FIO_S`/`TEMPO_MAXIMO_QUADRO_FIO_S` (0.05). Reinicia sem querer → subir `SALTO_REINICIO_FIO_U` (0.8) |
 | C38 | **Fio do fone.** Regressão do confirmado: modelo de frente, braços para a frente no idle, balanço de braços e pernas, dedos com 3 juntas, tentáculos/porta e espirro | tudo igual ao já aprovado; o fio é o único elemento novo | qualquer diferença além do fio → reportar: o fio só LÊ a pose (não escreve em nenhum nó do rig), então a causa mais provável é a ocultação do `mesh18` em `renderer._load_model` |
+| C39 | **Revisão das animações.** Idles: os 9 em sequência (`--pose` ou o app), 30 s cada | cada um tem identidade, nada treme, sem salto ao trocar de personalidade | tremor/salto → amplitudes dos tracks em `idle_clips.CLIPS`; rhythm → `RHYTHM_BRACO_DIR/ESQ` |
+| C40 | **Revisão das animações.** Respiração sob demanda (espirro) | uma só inflada, sem exagero | dobrada → conferir `delta_idle` |
+| C41 | **Revisão das animações.** Sono | entrada lenta, respiração visível, cabeça cai sem atravessar, ombro caído do lado certo (sinal A_CONFIRMAR) | `SONO_*` em `animacao/sono_tuning.py`; ombro invertido → sinal do `right-arm.z`/`left-arm.z` do sono |
+| C42 | **Revisão das animações.** Caminhada e corrida (arrastar a janela a mais de 120 px/s) | braço oposto à perna da frente; braços balançam para frente e para trás (não torcem); tronco gira com o braço da frente | trocar `SINAL_BRACO_COM_PERNA` em `locomocao_tuning`; amplitudes `CAMINHADA_*`/`CORRIDA_*`; a corrida pode ficar rápida demais para as molas |
+| C43 | **Revisão das animações.** Arraste: dedos fecham ao pegar e abrem ao soltar | grip legível, soltura sem estalo | `delta_drag` (curl por `drag_intensity`) e `delta_soltura` |
+| C44 | **Revisão das animações.** Queda e pouso | silhueta aérea legível, dedos abertos, sem estalo ao pousar (fall → land → idle) | `QUEDA_*` em `locomocao_tuning` |
+| C45 | **Revisão das animações.** Aceno | balanço visível, palma à frente, braço não atravessa o fone | `gestos_tuning.ACENO_*`, `ALVO_WAVE` |
+| C46 | **Revisão das animações.** Cutucar | estocada legível com antecipação, punho fechado | `gestos_tuning.CUTUCAR_*` |
+| C47 | **Revisão das animações.** Alongar | distinto do repouso (bloqueio C6), sinal da queda de ombros certo | `ALVO_STRETCH`, `gestos_tuning.ALONGAR_*` |
+| C48 | **Danças.** Head bob (caixa): costas apoiadas, braços "cruzados" (fallback: antebraços à frente do peito, sem cruzar), nod no acento da batida | pose de atitude, nod para baixo no tempo, sem atravessar; a inclinação para trás (`body.x` +8) soma com a do renderer (+10 na caixa) sem exagerar | `dance_frases_tuning.HEAD_BOB`, `HEADBOB_TRONCO_TRAS` (sinal A_CONFIRMAR), alvos `cruzado_dir`/`cruzado_esq` em `arm_targets` |
+| C49 | **Danças.** Rock: headbang para baixo, braço direito alto com mão em chifre, esquerdo baixo | silhueta legível, mão em chifre voltada para a câmera (torção do punho de 180 graus herdada do código antigo, A_CONFIRMAR); acima de 150 BPM um passo a cada duas batidas | `ROCK` e `ROCK_PUNHO_TORCAO`, alvo `chifre` (o ponto livre mais alto: acima da cabeça não alcança), `ROCK_MEIO_TEMPO_BPM`, `leg_motion.DANCA_ROCK_*` |
+| C50 | **Danças.** Hip hop: bounce, transferência de peso e braço de contrapeso alternando | não parece caminhada no lugar; o braço estendido fica do lado oposto ao peso (a perna carregada vem da fase global de `leg_motion`, pode não coincidir: A_CONFIRMAR) | `HIP_HOP`, alvo `contrapeso`, `leg_motion.DANCA_PASSO_*` e `DANCA_HIPHOP_JOELHO` |
+| C51 | **Danças.** Breakdance: toprock, descida, footwork de mãos plantadas, freeze, subida; giro conjugado no quadril | desce, gira e sobe sem flutuar nem sair da janela; o corpo tomba para a direita do mascote ao descer; mão perto do chão (não fica fixa no cenário durante o giro: atalho conhecido) | `dance_tuning.FLOOR_ROLL_GRAUS` (sinal: trocar para negativo inverte o lado), `PIVO_QUADRIL_Z`, `FLOOR_*`, `SPIN_*`; alvo `apoio_chao` |
+| C52 | **Revisão das animações.** Regressão do confirmado: modelo de frente, braços para a frente no idle, balanço de braços e pernas, dedos com 3 juntas, tentáculos/porta/espirro, fio do fone | igual ao já aprovado | reportar a diferença |
 
 ### C6: perda de gesto aceita sem sua confirmação
 
@@ -234,10 +257,11 @@ calibrador, fonte com acentos do HUD (`segoeui.ttf`), custo por quadro
   autoria (`flexible_rig.soft-spine-facing` e
   `renderer._rotacao_no_quadro_de_autoria`). Pitch/roll saíam invertidos em
   relação às juntas. Os ombros deixaram de girar em tesoura.
-- Ficou de fora: dança (`dance_tuning`) e caminhada (`anim_clips`) usam ângulos
-  absolutos da convenção antiga, agora com torção-base, clamp do cotovelo e
-  anti-atravessamento, mas precisam de re-autoria visual. O breakdance gira o
-  `_suspension_pivot` no quadro do mundo (não conjugado).
+- Re-autoradas depois (Frente 3, revisão das animações): a caminhada virou deltas
+  (`anim_clips`/`locomocao_tuning`) e as danças passaram a passos de quatro poses por
+  alvos de mão (`dance_poses`, `dance_frases_tuning`); o breakdance gira conjugado no
+  quadril (`Panda3DRenderer._giro_no_quadril`). Falta a confirmação visual (C39 a C52)
+  e a mão plantada fixa no cenário (atalho `shortcut:` em `apply_body_motion`).
 
 ## Parte 4: aprovações e trade-offs registrados
 

@@ -89,7 +89,7 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 - Refinar apoio que acompanhe janelas em movimento e testar mais casos de janelas parcialmente transparentes/recortadas; a oclusão atual usa retângulos DWM e ordem Z.
 - Testar hit-test com texturas transparentes, escalas extremas, janelas sobrepostas e DPI distintos. O teste atual usa geometria, não alpha por pixel.
 
-### 1. Música — validar e refinar `src/sejoga/music.py`
+### 1. Música — validar e refinar `src/sejoga/musica/music.py`
 
 - Validar título/artista/álbum e status com sessões GSMTC reais.
 - Instalar o extra `music-loopback` e validar captura WASAPI em diferentes saídas de áudio.
@@ -98,7 +98,7 @@ O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loop
 - Ajustar a intensidade de dança e os gatilhos de beat com base na captura real.
 - Validar `react_to_beat` e `dance_chance`, já ligados ao controlador, com dados reais do listener.
 
-### 2. Configurações e controles — `src/sejoga/ui.py`
+### 2. Configurações e controles — `src/sejoga/desktop/ui.py`
 
 - Aplicar tamanho e ativação de física sem reiniciar, se a integração de janela e limites ficar estável.
 - Avaliar hot-reload de TOML com `QFileSystemWatcher`.

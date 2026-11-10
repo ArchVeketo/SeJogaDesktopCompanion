@@ -65,8 +65,8 @@
 ## 📝 Mudanças Técnicas
 
 ### Arquivos Modificados:
-1. `src/sejoga/rig.py` - Todas as melhorias de animação
-2. `src/sejoga/animation.py` - Tempo de transição aumentado
+1. `src/sejoga/nucleo/rig.py` - Todas as melhorias de animação
+2. `src/sejoga/animacao/animation.py` - Tempo de transição aumentado
 
 ### Código Adicionado:
 - Movimento sutil de pernas nos idles (weight shifting)
