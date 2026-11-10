@@ -1,6 +1,6 @@
 """Constantes nomeadas da cadeia do braço (ombro → cotovelo → mão).
 
-Fonte única para o IK (``arm_ik``), a FK (``nucleo.cinematica``), o renderer e os
+Fonte única para o IK (``ik_bracos``), a FK (``nucleo.cinematica``), o renderer e os
 clamps do ``PoseResolver``. Valores marcados A_CONFIRMAR são pontos de partida
 anatômicos: só o usuário, vendo o mascote na GPU, confirma se estão confortáveis
 (ver ``.agents/tasks/frente3-animacao/recalibracao-gpu.md``).
@@ -50,7 +50,7 @@ TOLERANCIA_PADRAO = 0.01
 #: Sobra mínima (fração do alcance) para não esticar o braço até a singularidade.
 FOLGA_ALCANCE = 1e-4
 #: ``EPSILON_DEGENERADO`` também vem de ``nucleo/cinematica_const.py``.
-#: Direção para onde o COTOVELO aponta, em ``arm_targets`` (direita, cima,
+#: Direção para onde o COTOVELO aponta, em ``alvos_bracos`` (direita, cima,
 #: frente): para trás, para baixo e levemente para fora, como o cotovelo humano.
 #: O antebraço dobra para a frente em torno dessa direção. A_CONFIRMAR (C2).
 POLO_COTOVELO_ANATOMICO = (0.3, -0.6, -0.75)

@@ -3,14 +3,14 @@
 Os pivôs (coluna, pescoço, ombros) ficam sob ``soft-spine-facing``, um nó com a
 MESMA transformação do nó raiz do asset (que gira o mascote de frente). Assim o
 ``setHpr`` dos pivôs vale no referencial de AUTORIA (+X direita, +Y frente,
-+Z cima), o mesmo das juntas do rig e de ``body_motion``: pitch negativo inclina
++Z cima), o mesmo das juntas do rig e de ``movimento_corpo``: pitch negativo inclina
 o tronco para a FRENTE, roll positivo tomba o topo para a DIREITA do mascote
 (medido em ``tests/test_tronco_quadro.py``). Antes os pivôs moravam em
 ``model_np`` sem esse giro, e o pitch/roll saíam invertidos em relação ao resto.
 """
 
-from sejoga.animacao import body_motion_tuning as tune
-from sejoga.animacao.body_motion import Spring, clamp
+from sejoga.animacao import movimento_corpo_tuning as tune
+from sejoga.animacao.movimento_corpo import Spring, clamp
 
 
 def no_de_facing(root):

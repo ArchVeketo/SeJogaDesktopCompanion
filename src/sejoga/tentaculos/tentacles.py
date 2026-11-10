@@ -16,7 +16,7 @@ from panda3d.core import (
     Vec3,
 )
 
-from sejoga.animacao.appendages import AppendageMotion, DoorJoint, tentacle_center
+from sejoga.animacao.apendices import AppendageMotion, DoorJoint, tentacle_center
 from sejoga.tentaculos.tentacle_model import build_tentacle
 
 

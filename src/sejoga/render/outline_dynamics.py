@@ -9,7 +9,7 @@ Mantém a fronteira engine: nada de Panda3D/Qt/Win32 aqui.
 
 from __future__ import annotations
 
-from sejoga.animacao.body_motion import Spring, clamp
+from sejoga.animacao.movimento_corpo import Spring, clamp
 
 # Faixa conhecida de ``compression`` publicada por BodyMotion.snapshot.
 COMPRESSION_MIN = -0.12
@@ -46,7 +46,7 @@ def espessura_efetiva(base: float, compression: float, intensidade: float) -> fl
 class RespiracaoContorno:
     """Suaviza a espessura alvo do contorno ao longo do tempo.
 
-    Encapsula um ``Spring`` (reusado de ``body_motion``) para que a espessura não
+    Encapsula um ``Spring`` (reusado de ``movimento_corpo``) para que a espessura não
     salte entre frames. ``reset`` fixa o estado em repouso quando as settings são
     (re)aplicadas; ``update`` avança o alvo calculado por ``espessura_efetiva``.
     """

@@ -24,7 +24,7 @@ Como o envelope foi calculado (derivação defensável):
       padrão 480 px). O mascote ocupa ``renderer.FRAME_FILL`` (= 0,66) da
       vista nessa janela, logo seu lado projetado em pé é ~0,66·base.
     - Na pose de arraste o torso é rolado até ±178° (clamp em
-      ``body_motion``) com membros estendidos (``grab_part`` de braço/perna).
+      ``movimento_corpo``) com membros estendidos (``grab_part`` de braço/perna).
       Girar 45° um corpo de lado ``s`` projeta até ``s·√2`` (~1,41·s); com
       membros estendidos no grab a extensão plausível chega a ~2·base.
     - Por isso os degraus são múltiplos inteiros da base (base, 2·base,

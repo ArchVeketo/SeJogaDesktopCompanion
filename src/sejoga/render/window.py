@@ -56,9 +56,9 @@ from panda3d.core import (
 )
 
 # Project imports
-from sejoga.animacao.animation import AnimationController
-from sejoga.animacao.attention import HoverAttention
-from sejoga.animacao.exit_animation import ExitAnimation
+from sejoga.animacao.controlador_animacao import AnimationController
+from sejoga.animacao.atencao_hover import HoverAttention
+from sejoga.animacao.animacao_saida import ExitAnimation
 from sejoga.animacao.foco_atencao import (
     PRIORIDADE_BEAT,
     PRIORIDADE_BORDA,
@@ -67,7 +67,7 @@ from sejoga.animacao.foco_atencao import (
     GateAtencao,
     GatilhoAtencao,
 )
-from sejoga.animacao.interaction import MouseInteraction
+from sejoga.animacao.interacao_mouse import MouseInteraction
 from sejoga.configuracao import Settings, load_settings, save_settings
 from sejoga.desktop.desktop_shell import DesktopIntegration
 from sejoga.desktop.physics import create_physics

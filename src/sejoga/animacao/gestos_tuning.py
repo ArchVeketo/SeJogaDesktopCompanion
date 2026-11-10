@@ -1,7 +1,7 @@
 """Constantes calibráveis dos gestos de reação (aceno, cutucar e alongar).
 
 Tudo em graus e segundos. Os braços partem do repouso baixado e vão a alvos de
-mão resolvidos por IK (``arm_targets``); estas constantes só descrevem o tempo e
+mão resolvidos por IK (``alvos_bracos``); estas constantes só descrevem o tempo e
 os termos aditivos por cima. Valores marcados A_CONFIRMAR só a GPU valida.
 
 FRONTEIRA: Python puro, sem engine.

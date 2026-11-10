@@ -10,7 +10,7 @@ import pytest
 import analise_curvas as aa
 from sejoga.animacao import colisao_bracos as cb
 from sejoga.animacao import gestos_tuning as T
-from sejoga.animacao.animation import AnimationController, AnimationState
+from sejoga.animacao.controlador_animacao import AnimationController, AnimationState
 from sejoga.nucleo import cinematica as cin
 from sejoga.nucleo.recursos import resolve_model
 from sejoga.nucleo.modelo import load_model

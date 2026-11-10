@@ -114,7 +114,7 @@ reprovar. Nenhum valor abaixo foi chutado para "parecer certo".
 | C10 | Caixa musical | nasce no lado, altura e orientação de antes | → `music_speaker.FACING_MASCOTE_GRAUS`/`FACING_CAIXA_EXTRA_GRAUS` |
 | C11 | **Parte 4.** Peito ao ser ARRASTADO PELO CORPO, PELA PERNA e PENDURADO PELO TORSO (`python tools/capturar_arraste.py --saida <pasta>` gera as capturas; confirme ao vivo) | o peito segue o corpo, fica em fase com braços e pernas, tem um balanço próprio pequeno (não rígido) e NUNCA passa por cima dos braços | peito duro → subir `body_motion_tuning.PEITO_FATOR_PENDURADO` (0.3; 1.0 = defeito antigo, gira em dobro). Peito vai longe, dessincroniza ou cobre os braços → descer `PEITO_FATOR_PENDURADO` e/ou `PEITO_PENDURADO_MAX_GRAUS` (8). Gira em dobro só no começo da pega → `PENDURADO_LIMIAR` (0.05; é a condição única do renderer e do `delta_fisica`) |
 | C12 | **Parte 4.** Queda (efeito colateral aprovado do `delta_fisica`: `hanging` também é alto na queda) | o peito cai junto com o corpo, sem girar em dobro | mesmas constantes de C11 |
-| C13 | **Parte 4.** Braços em idle, sono, arraste, cutucar e queda | braços naturais, caídos e afastados do tronco (não em abraço rígido), sem atravessar cabeça, fone, pés nem o outro braço; tocar levemente camiseta/short é o trade-off aceito | braço ainda duro/abraçado → subir `braco_tuning.FOLGA_EXTRA_CAIXA_U` (tronco 0.03, quadril 0.03) e/ou baixar o `y` dos alvos em `arm_targets` (idle/sleep/drag/interaction/fall/drag_perna; lembrar de atualizar `rig_base.REPOUSO` = IK do idle). Braço afunda demais no tecido → descer `FOLGA_EXTRA_CAIXA_U`. `FRACAO_NUCLEO_BRACO` (0.5) quase não muda nada: medido |
+| C13 | **Parte 4.** Braços em idle, sono, arraste, cutucar e queda | braços naturais, caídos e afastados do tronco (não em abraço rígido), sem atravessar cabeça, fone, pés nem o outro braço; tocar levemente camiseta/short é o trade-off aceito | braço ainda duro/abraçado → subir `braco_tuning.FOLGA_EXTRA_CAIXA_U` (tronco 0.03, quadril 0.03) e/ou baixar o `y` dos alvos em `alvos_bracos` (idle/sleep/drag/interaction/fall/drag_perna; lembrar de atualizar `rig_base.REPOUSO` = IK do idle). Braço afunda demais no tecido → descer `FOLGA_EXTRA_CAIXA_U`. `FRACAO_NUCLEO_BRACO` (0.5) quase não muda nada: medido |
 | C14 | **Parte 4.** Flicker/piscar da janela ao arrastar PELA PERNA e PELOS BRAÇOS | a janela não redimensiona nem pisca durante o arraste | piscou pelo braço → incluir `'right-arm'`/`'left-arm'` na tupla de `arraste_por_pe` em `render/window.py::_fit_pose_window` (hipótese NÃO medida, por isso não está aplicada). Piscou pela perna → degrau mínimo `base * 2` na mesma função |
 | C15 | **Parte A.** Frações e sobreposição dos segmentos do dedo (dedos fechados, vista frontal e lateral, com e sem contorno) | cada dedo dobra em 3 juntas (polegar 2) sem buraco nem costura visível na junta, textura contínua e pixelada | costura/buraco no lado externo → subir `dedos_tuning.ANGULO_PROJETO_SOBREPOSICAO_GRAUS` (55). Aba grande no lado interno → descer o mesmo. Junta no lugar errado → `FRACOES_SEGMENTOS_DEDO` (0.40/0.33/0.27) / `FRACOES_SEGMENTOS_POLEGAR` (0.55/0.45). Captura headless de dedos fechados NÃO mostra as juntas: validar ao vivo |
 | C16 | **Parte A.** Flexão do bloco somada duas vezes (nó `fingers` gira E `GANHO_CASCATA_DO_BLOCO` soma a cascata); idle e gestos | a mão em idle e nos gestos confirmados não curva mais do que antes | dedo curva demais → descer `dedos_tuning.GANHO_CASCATA_DO_BLOCO` (1.0; 0 = só o giro duro do bloco) |
@@ -149,9 +149,9 @@ reprovar. Nenhum valor abaixo foi chutado para "parecer certo".
 | C45 | **Revisão das animações.** Aceno | balanço visível, palma à frente, braço não atravessa o fone | `gestos_tuning.ACENO_*`, `ALVO_WAVE` |
 | C46 | **Revisão das animações.** Cutucar | estocada legível com antecipação, punho fechado | `gestos_tuning.CUTUCAR_*` |
 | C47 | **Revisão das animações.** Alongar | distinto do repouso (bloqueio C6), sinal da queda de ombros certo | `ALVO_STRETCH`, `gestos_tuning.ALONGAR_*` |
-| C48 | **Danças.** Head bob (caixa): costas apoiadas, braços "cruzados" (fallback: antebraços à frente do peito, sem cruzar), nod no acento da batida | pose de atitude, nod para baixo no tempo, sem atravessar; a inclinação para trás (`body.x` +8) soma com a do renderer (+10 na caixa) sem exagerar | `dance_frases_tuning.HEAD_BOB`, `HEADBOB_TRONCO_TRAS` (sinal A_CONFIRMAR), alvos `cruzado_dir`/`cruzado_esq` em `arm_targets` |
+| C48 | **Danças.** Head bob (caixa): costas apoiadas, braços "cruzados" (fallback: antebraços à frente do peito, sem cruzar), nod no acento da batida | pose de atitude, nod para baixo no tempo, sem atravessar; a inclinação para trás (`body.x` +8) soma com a do renderer (+10 na caixa) sem exagerar | `dance_frases_tuning.HEAD_BOB`, `HEADBOB_TRONCO_TRAS` (sinal A_CONFIRMAR), alvos `cruzado_dir`/`cruzado_esq` em `alvos_bracos` |
 | C49 | **Danças.** Rock: headbang para baixo, braço direito alto com mão em chifre, esquerdo baixo | silhueta legível, mão em chifre voltada para a câmera (torção do punho de 180 graus herdada do código antigo, A_CONFIRMAR); acima de 150 BPM um passo a cada duas batidas | `ROCK` e `ROCK_PUNHO_TORCAO`, alvo `chifre` (o ponto livre mais alto: acima da cabeça não alcança), `ROCK_MEIO_TEMPO_BPM`, `leg_motion.DANCA_ROCK_*` |
-| C50 | **Danças.** Hip hop: bounce, transferência de peso e braço de contrapeso alternando | não parece caminhada no lugar; o braço estendido fica do lado oposto ao peso (a perna carregada vem da fase global de `leg_motion`, pode não coincidir: A_CONFIRMAR) | `HIP_HOP`, alvo `contrapeso`, `leg_motion.DANCA_PASSO_*` e `DANCA_HIPHOP_JOELHO` |
+| C50 | **Danças.** Hip hop: bounce, transferência de peso e braço de contrapeso alternando | não parece caminhada no lugar; o braço estendido fica do lado oposto ao peso (a perna carregada vem da fase global de `movimento_pernas`, pode não coincidir: A_CONFIRMAR) | `HIP_HOP`, alvo `contrapeso`, `leg_motion.DANCA_PASSO_*` e `DANCA_HIPHOP_JOELHO` |
 | C51 | **Danças.** Breakdance: toprock, descida, footwork de mãos plantadas, freeze, subida; giro conjugado no quadril | desce, gira e sobe sem flutuar nem sair da janela; o corpo tomba para a direita do mascote ao descer; mão perto do chão (não fica fixa no cenário durante o giro: atalho conhecido) | `dance_tuning.FLOOR_ROLL_GRAUS` (sinal: trocar para negativo inverte o lado), `PIVO_QUADRIL_Z`, `FLOOR_*`, `SPIN_*`; alvo `apoio_chao` |
 | C52 | **Revisão das animações.** Regressão do confirmado: modelo de frente, braços para a frente no idle, balanço de braços e pernas, dedos com 3 juntas, tentáculos/porta/espirro, fio do fone | igual ao já aprovado | reportar a diferença |
 
@@ -203,7 +203,7 @@ têm `colisao_bracos` com a FK real) e só avalia os pares de pernas/pés
 (`colisao_membros.PARES_PERNAS_PES`). `tests/test_colisao_pernas_pes.py` varre uma
 grade de poses de pernas/pés (±25°) e confirma que essa correção NÃO empurra
 nada. Ou seja: o modelo antigo não deforma as pernas. O que NÃO foi verificado:
-se as pernas, quando movidas pelo IK de `lower_body` (sobre a malha), se movem
+se as pernas, quando movidas pelo IK de `corpo_inferior` (sobre a malha), se movem
 para o lado certo na tela. Isso é o que C8 pede para olhar.
 
 Se C8 reprovar, a próxima rodada migra `rig_medidas` (ou só pernas/pés) para
@@ -245,21 +245,21 @@ calibrador, fonte com acentos do HUD (`segoeui.ttf`), custo por quadro
   torção-base de 90° em P, `TORCAO_BASE_ANTEBRACO_GRAUS`) → punho → dedos. Sem a
   torção, o R do antebraço abre o antebraço para os lados (para dentro do tronco).
   Efeito colateral: a textura do antebraço gira 90° no próprio eixo (C2).
-- `animacao/arm_ik.py`: IK analítico sobre a FK real, com polo do cotovelo
+- `animacao/ik_bracos.py`: IK analítico sobre a FK real, com polo do cotovelo
   (`POLO_COTOVELO_ANATOMICO`). Erro 0 em todos os alvos, dos dois lados
-  (`tests/test_arm_ik.py`).
+  (`tests/test_ik_bracos.py`).
 - `animacao/colisao_bracos.py`: braços não atravessam o corpo (cápsulas com a FK
   real, caixas medidas nas malhas, correção mínima suave). O
   `Panda3DRenderer._resolve_arm_clearance` foi removido.
-- Alvos de `arm_targets` regenerados por medição (o ponto livre mais próximo do
+- Alvos de `alvos_bracos` regenerados por medição (o ponto livre mais próximo do
   autoral anterior). `REPOUSO` é a saída do IK do novo idle (teste garante).
 - Tronco: os pivôs da coluna e o arraste agora usam o mesmo referencial de
   autoria (`flexible_rig.soft-spine-facing` e
   `renderer._rotacao_no_quadro_de_autoria`). Pitch/roll saíam invertidos em
   relação às juntas. Os ombros deixaram de girar em tesoura.
 - Re-autoradas depois (Frente 3, revisão das animações): a caminhada virou deltas
-  (`anim_clips`/`locomocao_tuning`) e as danças passaram a passos de quatro poses por
-  alvos de mão (`dance_poses`, `dance_frases_tuning`); o breakdance gira conjugado no
+  (`clipes_animacao`/`locomocao_tuning`) e as danças passaram a passos de quatro poses por
+  alvos de mão (`poses_danca`, `danca_frases_tuning`); o breakdance gira conjugado no
   quadril (`Panda3DRenderer._giro_no_quadril`). Falta a confirmação visual (C39 a C52)
   e a mão plantada fixa no cenário (atalho `shortcut:` em `apply_body_motion`).
 
@@ -269,7 +269,7 @@ calibrador, fonte com acentos do HUD (`segoeui.ttf`), custo por quadro
   girar em dobro) foi APROVADA, com `PEITO_FATOR_PENDURADO` acima de 0 (peito não
   deve ser rígido). A física do desktop não mudou; `hanging` já era entregue.
 - Braços: o anti-atravessamento ganhou folga por caixa (`FOLGA_EXTRA_CAIXA_U`,
-  só tronco e quadril) em vez de projeção rígida, e `arm_targets` foi ajustado
+  só tronco e quadril) em vez de projeção rígida, e `alvos_bracos` foi ajustado
   (alvos mais baixos, idle ainda à frente). Penetração antes → depois no
   `diagnostico-parte4.md`. É o fecho da família C6: nenhum gesto foi perdido, ao
   custo de braço tocando mais a camiseta/short. Reprovou → C13.

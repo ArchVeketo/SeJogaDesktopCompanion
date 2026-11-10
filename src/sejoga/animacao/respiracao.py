@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from math import sin, tau
 
-from sejoga.animacao.body_motion import Spring, clamp
+from sejoga.animacao.movimento_corpo import Spring, clamp
 
 # Frequência default do oscilador lento do idle (ciclos por segundo). ~0.25 Hz
 # dá uma inspiração/expiração a cada ~4 segundos, no ritmo de um corpo parado.

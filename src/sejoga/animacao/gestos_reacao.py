@@ -1,7 +1,7 @@
 """Gestos de reação procedurais: aceno, cutucar e alongar.
 
 Os braços partem do repouso (IK do alvo ``idle``) e vão aos alvos de mão de
-``arm_targets``; os termos aditivos (balanço, estocada, arco da coluna) vêm de
+``alvos_bracos``; os termos aditivos (balanço, estocada, arco da coluna) vêm de
 ``gestos_tuning``. ``rig.pose_flourish`` e ``rig.pose_interaction`` delegam aqui.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 from math import exp, sin, tau
 
 from sejoga.animacao import gestos_tuning as T
-from sejoga.animacao.idle_clips import sample_track
+from sejoga.animacao.clipes_ocioso import sample_track
 from sejoga.animacao.braco_hpr import braco_hpr_graus
 from sejoga.nucleo.esqueleto import Rig
 

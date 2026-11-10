@@ -12,7 +12,7 @@
 
 ## 1. Animações (procedurais, como dados)
 
-Entram como clipes/estados no motor novo (`anim_clips.py` para clipes cíclicos como dados; `esqueleto.py`/camadas para gestos). Gatilho = o que dispara. Juntas = grupos do rig que a animação controla.
+Entram como clipes/estados no motor novo (`clipes_animacao.py` para clipes cíclicos como dados; `esqueleto.py`/camadas para gestos). Gatilho = o que dispara. Juntas = grupos do rig que a animação controla.
 
 | # | Animação | Gatilho | Loop? | Juntas principais | Intenção / notas | Prioridade | Tipo |
 |---|----------|---------|-------|-------------------|------------------|------------|------|
@@ -21,7 +21,7 @@ Entram como clipes/estados no motor novo (`anim_clips.py` para clipes cíclicos 
 | A3 | **Dormir em pé** | idle longo (variação) | sim | corpo, cabeça, braços | Cochilo em pé, balanço mínimo, porta fecha. Já perto do SLEEP atual. | P2 | código |
 | A4 | **Dormir deitado no chão** | idle muito longo / manual | sim | corpo inteiro, pernas, braços | Deita no desktop, respiração ampla. Precisa interagir com a física de "chão" (physics.py). | P2 | misto |
 | A5 | **Reação a cutucada por parte do corpo** | duplo clique em parte específica (head/arm/body/legs/feet) | não (~0.4–1s) | localizada na parte cutucada | Já existe `double_click` genérico + picking de parte (grab_part). Expandir para reação DIFERENTE por parte (cabeça = treme porta; braço = recolhe; pernas = pula). | P1 | código |
-| A6 | **Cuspir/espirrar objeto do armário** | evento / manual | não (~1.5s) | porta, cabeça, corpo | Evolui o `pose_sneeze` + `exit_animation.py`. Porta abre forte e um PROP sai cuspido (ver A-prop). Depende de prop spawnável. | P2 | misto |
+| A6 | **Cuspir/espirrar objeto do armário** | evento / manual | não (~1.5s) | porta, cabeça, corpo | Evolui o `pose_sneeze` + `animacao_saida.py`. Porta abre forte e um PROP sai cuspido (ver A-prop). Depende de prop spawnável. | P2 | misto |
 | A7 | **Loading com a logo** | app iniciando / operação longa | sim | — (tela/overlay, não o rig) | Animação de carregamento usando a logo (assets/brand). Pode ser overlay 2D pixelado, não o mascote. | P1 | arte+código |
 | A8 | **Puxar objeto para dentro do armário** | evento / manual | não (~1.5s) | porta, cabeça, tentáculos | Inverso do A6: tentáculo sai, agarra prop, puxa pra dentro, porta fecha. Reusa `tentacle_system.py`. | P2 | misto |
 

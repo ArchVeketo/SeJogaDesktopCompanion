@@ -183,7 +183,7 @@ def espelhar_ponto(ponto: Vec3) -> Vec3:
 
 
 def alvo_para_autoria(alvo: Vec3) -> Vec3:
-    """``(direita, cima, frente)`` de ``arm_targets`` → ``(x, y=frente, z=cima)``."""
+    """``(direita, cima, frente)`` de ``alvos_bracos`` → ``(x, y=frente, z=cima)``."""
     return (alvo[0], alvo[2], alvo[1])
 
 

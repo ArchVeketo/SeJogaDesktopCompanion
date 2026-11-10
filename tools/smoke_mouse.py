@@ -23,7 +23,7 @@ def main():
     import win32gui
     from PIL import ImageGrab
 
-    from sejoga.animacao.animation import AnimationState
+    from sejoga.animacao.controlador_animacao import AnimationState
     from sejoga.render.window import WS_EX_TRANSPARENT, OverlayApp
 
     settings = configuracao.Settings()

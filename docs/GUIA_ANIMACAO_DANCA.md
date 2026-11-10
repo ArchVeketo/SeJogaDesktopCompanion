@@ -229,15 +229,15 @@ Snapshot do fonte em 05/11/2026. Consultar o relatório de build: o executável 
 | Área | Referência no código | Estado e diferença para o alvo |
 |---|---|---|
 | Análise | [`music.py`](../src/sejoga/musica/music.py), `_BeatTracker`, `_loopback_worker` | RMS/graves/onset/BPM estimado; sem reconhecimento confiável de gênero |
-| Coreografia | [`dance_motion.py`](../src/sejoga/animacao/dance_motion.py), `DanceMotion`; [`dance_poses.py`](../src/sejoga/animacao/dance_poses.py); [`dance_frases_tuning.py`](../src/sejoga/animacao/dance_frases_tuning.py) | Quatro estilos em passos de quatro poses por batida (acento no onset, u = 0), braços por alvos de mão (IK) e molas por junta; ainda sem contatos de cena |
-| Prioridades | [`animation.py`](../src/sejoga/animacao/animation.py), `update`, `interact` | Dança persiste e peek tem timer independente; preservar isso |
+| Coreografia | [`movimento_danca.py`](../src/sejoga/animacao/movimento_danca.py), `DanceMotion`; [`poses_danca.py`](../src/sejoga/animacao/poses_danca.py); [`danca_frases_tuning.py`](../src/sejoga/animacao/danca_frases_tuning.py) | Quatro estilos em passos de quatro poses por batida (acento no onset, u = 0), braços por alvos de mão (IK) e molas por junta; ainda sem contatos de cena |
+| Prioridades | [`controlador_animacao.py`](../src/sejoga/animacao/controlador_animacao.py), `update`, `interact` | Dança persiste e peek tem timer independente; preservar isso |
 | Caixa | [`music_speaker.py`](../src/sejoga/musica/music_speaker.py), `MusicSpeaker` | Gabinete dimensionado pela pose neutra: largura ×1,20 e altura ×1,15; graffiti aplicado |
 | Entrada | `MusicSpeaker.update` e [`window.py`](../src/sejoga/render/window.py), `update_appendages` | Preparação lateral, arco, pouso, três tentáculos empurrando e gosma rosa temporária; cones e ondas reagem à batida/graves |
 | Head nod | `DanceMotion.apply` e `Panda3DRenderer.update_appendages` | Frase de 4 batidas (nod no 1 e no 3, inclinação lateral no 2, pausa no 4), costas inclinadas por `body.x` e apoiadas na caixa pelo renderer; braços em fallback "cruzado" (antebraços à frente do peito, sem cruzar o corpo) |
-| IK | [`arm_ik.py`](../src/sejoga/animacao/arm_ik.py), `braco_para(modelo, lado, alvo, polo)` | Solver 3D de dois segmentos (alvo de mão para ombro e cotovelo); não resolve costas/pés ou apoio completo |
-| Pivôs | [`rig_flexivel.py`](../src/sejoga/animacao/rig_flexivel.py), [`lower_body.py`](../src/sejoga/animacao/lower_body.py) | Coluna/pescoço/ombros e quadril/joelho no runtime; preservar junções ao resolver apoio |
-| Pernas | [`leg_motion.py`](../src/sejoga/animacao/leg_motion.py) | Fase compartilhada; magnitudes `DANCA_*` por estilo (rock com base larga e joelho no acento, hip hop com quique); footwork/plantio ainda precisam de contatos de cena |
-| Mãos | [`finger_gestures.py`](../src/sejoga/animacao/finger_gestures.py) | Dedos direitos e rock existem; falta polimento do braço estendido e alternância bilateral |
+| IK | [`ik_bracos.py`](../src/sejoga/animacao/ik_bracos.py), `braco_para(modelo, lado, alvo, polo)` | Solver 3D de dois segmentos (alvo de mão para ombro e cotovelo); não resolve costas/pés ou apoio completo |
+| Pivôs | [`rig_flexivel.py`](../src/sejoga/animacao/rig_flexivel.py), [`corpo_inferior.py`](../src/sejoga/render/corpo_inferior.py) | Coluna/pescoço/ombros e quadril/joelho no runtime; preservar junções ao resolver apoio |
+| Pernas | [`movimento_pernas.py`](../src/sejoga/animacao/movimento_pernas.py) | Fase compartilhada; magnitudes `DANCA_*` por estilo (rock com base larga e joelho no acento, hip hop com quique); footwork/plantio ainda precisam de contatos de cena |
+| Mãos | [`gestos_dedos.py`](../src/sejoga/animacao/gestos_dedos.py) | Dedos direitos e rock existem; falta polimento do braço estendido e alternância bilateral |
 | Chão | `Panda3DRenderer.apply_body_motion`, `_giro_no_quadril` | Giro e roll conjugados no quadro de autoria, pivô no quadril, correção por bounds: **a mão ainda não fica fixa no cenário (atalho `shortcut:`), não é six-step completo** |
 | Gosma | [`tentacle_drips.py`](../src/sejoga/tentaculos/tentacle_drips.py) | Gotas/spray existem; ligar aos acentos sem esconder a pose |
 | Fones | Peças no GLTF | Material/textura reativa e atraso específico ainda pendentes |

@@ -13,7 +13,7 @@ que já funciona. Também NÃO importamos ``Panda3DRenderer`` (puxa simplepbr/GP
 reproduzimos a MESMA fiação e a MESMA transformação translate-rotate-translate
 de ``Panda3DRenderer._aplicar_giro_corpo``, mantendo o teste leve e estável.
 """
-from sejoga.animacao.body_motion import GiroCorpo
+from sejoga.animacao.movimento_corpo import GiroCorpo
 
 # Correção de export espelhada de ``Panda3DRenderer.MODEL_FACING_HEADING``: a
 # malha nasce apontando para +Y e o setH base mostra o rosto para a câmera.

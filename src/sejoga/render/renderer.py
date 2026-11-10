@@ -23,7 +23,7 @@ from panda3d.core import (
     Vec3,
 )
 
-from sejoga.animacao.animation import AnimationState
+from sejoga.animacao.controlador_animacao import AnimationState
 from sejoga.nucleo.recursos import resolve_model
 from sejoga.nucleo.cinematica import BASE_ADICIONAL_GRAUS
 from sejoga.nucleo.modelo import load_model
@@ -98,7 +98,7 @@ class Panda3DRenderer:
         # Criados sob demanda no primeiro frame de física; pré-inicializados
         # para evitar hasattr por frame em apply_body_motion.
         self._suspension_pivot = None
-        from sejoga.animacao.body_motion import GiroCorpo, Spring
+        from sejoga.animacao.movimento_corpo import GiroCorpo, Spring
         self._dance_stage_yaw = Spring(1.4, .85)
         # Nó dedicado do GIRO DE CORPO LIMITADO (virar de lado). Criado junto do
         # _suspension_pivot no primeiro frame de física. Mantém intactos o
@@ -115,7 +115,7 @@ class Panda3DRenderer:
 
         self._setup_scene()
         self._load_model()
-        from sejoga.animacao.lower_body import LowerBody
+        from sejoga.render.corpo_inferior import LowerBody
         self.lower_body = LowerBody(self)
         self._setup_picking()
 
@@ -289,7 +289,7 @@ class Panda3DRenderer:
         )
         from sejoga.tentaculos.tentacle_drips import TentacleDrips
         self.tentacle_drips = TentacleDrips(self.model_np)
-        from sejoga.animacao.finger_gestures import FingerGestures
+        from sejoga.animacao.gestos_dedos import FingerGestures
         self.finger_gestures = FingerGestures(self)
         from sejoga.musica.music_speaker import MusicSpeaker
         self.music_speaker = MusicSpeaker(self)
@@ -555,8 +555,8 @@ void main() {{
         """
         from panda3d.core import Mat4, TransformState
 
-        from sejoga.animacao import body_motion_tuning as _tune
-        from sejoga.animacao import dance_tuning as _danca
+        from sejoga.animacao import movimento_corpo_tuning as _tune
+        from sejoga.animacao import danca_tuning as _danca
         dt = getattr(self.showbase.animation_controller, 'delta_time', 1/60)
         self._update_outline_breath(dt, motion)
         self.flexible_rig.update(dt, motion)
@@ -630,7 +630,7 @@ void main() {{
         """
         from panda3d.core import Mat4
 
-        from sejoga.animacao import dance_tuning as _danca
+        from sejoga.animacao import danca_tuning as _danca
         pivot = self._suspension_pivot.getRelativePoint(
             self.model_np, Point3(0, 0, _danca.PIVO_QUADRIL_Z))
         rotation = self._rotacao_no_quadro_de_autoria(yaw, pitch, roll)

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from math import degrees, exp, pi, sin, tanh
 
-from sejoga.animacao.anim_clips import amostrar_clipe
+from sejoga.animacao.clipes_animacao import amostrar_clipe
 from sejoga.animacao.braco_hpr import braco_hpr_graus
 from sejoga.animacao.gestos_reacao import (
     aplicar_aceno,
@@ -24,9 +24,9 @@ from sejoga.animacao.gestos_tuning import (
     SURPRESA_RECUO,
     WAKE_BRACO_ELEVACAO,
 )
-from sejoga.animacao.idle_clips import sample_idle, sample_track
+from sejoga.animacao.clipes_ocioso import sample_idle, sample_track
 from sejoga.animacao.respiracao_tuning import parametros_de
-from sejoga.animacao.rig_base import pose_repouso
+from sejoga.animacao.pose_repouso import pose_repouso
 from sejoga.nucleo.esqueleto import IdlePersonality, Rig
 
 

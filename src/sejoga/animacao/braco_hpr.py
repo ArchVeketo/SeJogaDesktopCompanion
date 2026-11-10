@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from math import degrees
 
-from sejoga.animacao import arm_ik
-from sejoga.animacao.arm_targets import ALVOS
+from sejoga.animacao import ik_bracos
+from sejoga.animacao.alvos_bracos import ALVOS
 from sejoga.nucleo.esqueleto import Rotation3
 from sejoga.nucleo.modelo import Model, load_model
 from sejoga.nucleo.recursos import resolve_model
@@ -17,8 +17,8 @@ from sejoga.nucleo.recursos import resolve_model
 # --------------------------------------------------------------------------- #
 # IK de braço: resolução preguiçosa do Model + cache dos HPR por alvo de mão
 # --------------------------------------------------------------------------- #
-# Os gestos de braço declaram ALVOS DE MÃO (ver sejoga.animacao.arm_targets) e o
-# solver 3D (sejoga.animacao.arm_ik) os converte nos HPR reais dos bones. Como
+# Os gestos de braço declaram ALVOS DE MÃO (ver sejoga.animacao.alvos_bracos) e o
+# solver 3D (sejoga.animacao.ik_bracos) os converte nos HPR reais dos bones. Como
 # resolver a IK a cada frame custaria caro, cacheamos o HPR por (alvo, lado): os
 # alvos dos gestos são fixos, então a cadeia FK roda uma vez por alvo.
 _MODELO_IK_CACHE: Model | None = None
@@ -62,7 +62,7 @@ def braco_hpr_graus(
         alvo = ALVOS[nome_alvo]
         m = model if model is not None else _modelo_ik()
         alvo_lado = alvo.alvo if lado == "right" else alvo.alvo_espelhado()
-        cache = arm_ik.braco_para(m, lado, alvo_lado, alvo.polo)
+        cache = ik_bracos.braco_para(m, lado, alvo_lado, alvo.polo)
         _HPR_ALVO_CACHE[chave] = cache
 
     return {

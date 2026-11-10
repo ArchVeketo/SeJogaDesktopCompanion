@@ -9,7 +9,7 @@ Saídas (Markdown no stdout ou em ``--saida``):
               referencial do mascote (direita/esquerda, frente/trás, cima/baixo).
   --aabbs     caixas de cada malha no referencial de autoria (fonte de
               ``animacao/colisao_bracos.CAIXAS_CORPO``).
-  --alvos     tabela alvo x punho (FK) x penetração do braço para ``arm_targets``.
+  --alvos     tabela alvo x punho (FK) x penetração do braço para ``alvos_bracos``.
   --sugerir   para cada alvo em colisão, o ponto livre mais próximo (grade).
   --tronco    pitch/roll/yaw do pivô do tronco → direção do topo da cabeça.
   --dedos     cadeia de juntas dos dedos: para onde a ponta vai com flexão positiva
@@ -26,9 +26,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sejoga.animacao import arm_ik
+from sejoga.animacao import ik_bracos
 from sejoga.animacao import colisao_bracos as cb
-from sejoga.animacao.arm_targets import ALVOS
+from sejoga.animacao.alvos_bracos import ALVOS
 from sejoga.nucleo import cinematica as cin
 from sejoga.nucleo.recursos import resolve_model
 from sejoga.nucleo.modelo import load_model
@@ -137,8 +137,8 @@ def aabbs() -> str:
 
 def _pose_simetrica(modelo, alvo, polo) -> dict[str, Rotation3]:
     pose: dict[str, Rotation3] = {}
-    pose.update(arm_ik.braco_para(modelo, "right", alvo, polo))
-    pose.update(arm_ik.braco_para(modelo, "left", (-alvo[0], alvo[1], alvo[2]), polo))
+    pose.update(ik_bracos.braco_para(modelo, "right", alvo, polo))
+    pose.update(ik_bracos.braco_para(modelo, "left", (-alvo[0], alvo[1], alvo[2]), polo))
 
     return pose
 
@@ -151,7 +151,7 @@ def tabela_alvos(modelo) -> str:
 
     for nome, alvo in ALVOS.items():
         pose = _pose_simetrica(modelo, alvo.alvo, alvo.polo)
-        punho = arm_ik.posicao_mao_para_hpr(modelo, "right", pose["right-arm"], pose["ant-arm"])
+        punho = ik_bracos.posicao_mao_para_hpr(modelo, "right", pose["right-arm"], pose["ant-arm"])
         ombro = cin.posicao_no(modelo, "right-arm", pose)
         cotovelo = cin.autoria_para_alvo(cin.subtrair(cin.posicao_no(modelo, "ant-arm", pose), ombro))
         pen = cb.penetracao_do_lado(modelo, "right", pose)
@@ -163,7 +163,7 @@ def tabela_alvos(modelo) -> str:
 
 
 def sugerir(modelo) -> str:
-    upper, forearm = arm_ik.comprimentos_braco(modelo)
+    upper, forearm = ik_bracos.comprimentos_braco(modelo)
     alcance = (upper + forearm) * FRACAO_ALCANCE
     passos = int(alcance / PASSO_GRADE_U) + 1
     eixo = range(-passos, passos + 1)

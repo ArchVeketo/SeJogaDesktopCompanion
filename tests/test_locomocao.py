@@ -8,14 +8,14 @@ from math import degrees, tau
 import pytest
 
 import analise_curvas as aa
-from sejoga.animacao import animation as modulo_animacao
+from sejoga.animacao import controlador_animacao as modulo_animacao
 from sejoga.animacao import colisao_bracos as cb
-from sejoga.animacao.anim_clips import CLIPES
-from sejoga.animacao.animation import AnimationController, AnimationState
-from sejoga.animacao.body_motion import BodyPose
-from sejoga.animacao.delta_states import delta_drag, delta_fall, delta_walk
-from sejoga.animacao.leg_motion import FASE_CAMINHADA, FASE_CORRIDA
-from sejoga.animacao.rig_base import pose_repouso
+from sejoga.animacao.clipes_animacao import CLIPES
+from sejoga.animacao.controlador_animacao import AnimationController, AnimationState
+from sejoga.animacao.movimento_corpo import BodyPose
+from sejoga.animacao.estados_delta import delta_drag, delta_fall, delta_walk
+from sejoga.animacao.movimento_pernas import FASE_CAMINHADA, FASE_CORRIDA
+from sejoga.animacao.pose_repouso import pose_repouso
 from sejoga.nucleo.recursos import resolve_model
 from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig, Rotation3

@@ -45,7 +45,7 @@ Quem acrescentar uma animação nova deve incluir uma seção aqui.
 - **Porta e pés do idle legado foram descartados.** O `door` (até 3°) que as
   personalidades antigas moviam no idle e o deslocamento de peso dos pés
   (`left-feet`/`right-feet`) não existem mais em `pose_idle`: os quatro idles
-  autorais já não os tinham, e as pernas vivas vêm de `leg_motion`. Se a
+  autorais já não os tinham, e as pernas vivas vêm de `movimento_pernas`. Se a
   porta idle fizer falta na GPU, volta como track `door` em `CLIPS`.
 - **Limite de jerk de um quíntico:** `60*delta/T^3`. Regra prática usada nas
   frases: rampas >= 0,5 s e delta <= ~16° nessas rampas, ou rampas maiores.
@@ -78,7 +78,7 @@ Quem acrescentar uma animação nova deve incluir uma seção aqui.
   `SINAL_BRACO_COM_PERNA = +1`. Não provado: que o `model_np` do renderer
   coincide com o referencial de autoria de `cinematica`. Se na GPU o braço vier
   junto da perna, trocar o sinal (C42).
-- **`anim_clips.py` está vivo:** reescrito como deltas sobre `REPOUSO`, é a
+- **`clipes_animacao.py` está vivo:** reescrito como deltas sobre `REPOUSO`, é a
   única definição do balanço, amostrada por `delta_walk` via `ciclo_da_fase`.
   `rig.pose_walk` (caminho legado, descartado nos estados migrados) soma o mesmo
   clipe ao repouso. Sem ângulos absolutos da convenção antiga.
@@ -162,9 +162,9 @@ que não toca no que já foi confirmado. Nada abaixo foi visto na GPU.
   para 206 mil (o código antigo tinha 227 mil). Cabeça e tronco são deltas sobre o
   repouso (zero), escalados por energia (`GANHO_PASSO_*`); os braços vão a alvos de
   mão resolvidos pela IK, sem torção-base manual (o hack `tx = REPOUSO.BRACO_X` saiu).
-- **Dados em `dance_frases_tuning.py`, não em `dance_tuning.py`.** Os passos são
-  `PassoDanca`, definidos em `dance_poses`; pôr os dados em `dance_tuning` criaria
-  import circular. `dance_tuning` ficou com limiares, tempos, lean/floor/spin e as
+- **Dados em `danca_frases_tuning.py`, não em `danca_tuning.py`.** Os passos são
+  `PassoDanca`, definidos em `poses_danca`; pôr os dados em `danca_tuning` criaria
+  import circular. `danca_tuning` ficou com limiares, tempos, lean/floor/spin e as
   constantes novas (`U_POSES`, `GANHO_PASSO_*`, `ROCK_MEIO_TEMPO_BPM`,
   `FLOOR_ROLL_GRAUS`, `PIVO_QUADRIL_Z`). Os ângulos absolutos antigos (`HEADBOB_*`,
   `ROCK_*`, `GROOVE_*`, `BREAK_*`) foram removidos.
@@ -181,7 +181,7 @@ que não toca no que já foi confirmado. Nada abaixo foi visto na GPU.
 - **Chifre não passa da cabeça.** O ombro fica 0,19 u abaixo do topo da cabeça e o
   braço alcança 0,281 u; o ponto livre mais alto é (0,24; 0,08; 0,04), braço erguido
   ao lado. A torção do punho de 180 graus do rock antigo foi mantida
-  (`ROCK_PUNHO_TORCAO`); os dedos continuam por `finger_gestures` (o renderer passa
+  (`ROCK_PUNHO_TORCAO`); os dedos continuam por `gestos_dedos` (o renderer passa
   `gesture='rock'` à mão direita).
 - **Head bob.** 4 batidas: nod curto no 1, inclinação lateral lenta no 2, segundo nod
   no 3, pausa no 4. A inclinação para trás é `body.x` +8 graus (`HEADBOB_TRONCO_TRAS`);
@@ -192,7 +192,7 @@ que não toca no que já foi confirmado. Nada abaixo foi visto na GPU.
   muda o índice de uma vez (as molas suavizam).
 - **Hip hop.** 8 batidas: comprimir/transferir peso, estender o braço oposto, fechar,
   pausa, depois o lado oposto com giro de cabeça e uma pose legível com os dois braços
-  fora. O lado do peso é o roll do tronco; a perna carregada vem de `leg_motion` pela
+  fora. O lado do peso é o roll do tronco; a perna carregada vem de `movimento_pernas` pela
   fase global, que não é a posição da frase de 8 batidas, então os dois lados podem
   não coincidir (A_CONFIRMAR C50). Tentei usar `interaction` como pose intermediária
   do braço e piorou: o cotovelo dobra 78 graus ali.
@@ -216,13 +216,13 @@ que não toca no que já foi confirmado. Nada abaixo foi visto na GPU.
 - **Atalho: mão não fica fixa no cenário durante o giro.** Marcado como `shortcut:`
   no renderer; sobe de nível quando houver contatos de cena (guia 7.1).
 - **Jerk.** O limiar global de 8000 não vale para o acento no onset (golpe por
-  projeto; as molas só amortecem). `tests/test_dance_motion.py` usa um teto por estilo
+  projeto; as molas só amortecem). `tests/test_movimento_danca.py` usa um teto por estilo
   abaixo do pior caso do código antigo e exige zero salto entre quadros. Medido a
   60 fps com BPM fixo: head bob 77 mil -> 53 mil depois de mover a preparação, rock
   206 mil, hip hop 170 mil, breakdance 94 mil.
 - **Caminhos antigos nos docs.** Os 6 docs do plano passaram ao layout
   `src/sejoga/animacao`, `nucleo`, `musica`, `render`, `desktop` e `tentaculos`
-  (`limb_ik` virou `animacao/arm_ik.py`). `tools/profile_music_styles.py` e
+  (`limb_ik` virou `animacao/ik_bracos.py`). `tools/profile_music_styles.py` e
   `tools/capture_dance_animation.py` não existem mais e foram marcados como
   removidos. Nenhum doc foi apagado.
 - **Não verificado:** tudo o que é visual (leitura dos passos, braços "cruzados", mão em

@@ -3,7 +3,7 @@
 Centraliza, em um único lugar, a "assinatura" da respiração de cada
 personalidade de idle: com que frequência o peito infla, o quanto infla
 (amplitude) e quanto balanço a mola deixa sobrar (bounce). Espelha o estilo de
-``spring_tuning.py``: uma entrada por valor de ``rig.IdlePersonality``, com
+``mola_tuning.py``: uma entrada por valor de ``rig.IdlePersonality``, com
 ``PADRAO`` de fallback e uma guarda que falha cedo se faltar cobertura.
 
 Sem depender de Panda3D, Qt ou Win32. Este é o lugar para o usuário calibrar o

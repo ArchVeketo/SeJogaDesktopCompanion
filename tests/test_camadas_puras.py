@@ -21,7 +21,7 @@ _PROIBIDOS = {
 _PACOTES_PUROS = ("nucleo", "rig_mapa", "animacao")
 _MODULOS_RAIZ_PUROS = ("configuracao.py",)
 # shortcut: violações conhecidas, removidas nos lotes da refatoração.
-_VIOLACOES_ENGINE = {"animacao/lower_body.py"}
+_VIOLACOES_ENGINE: set[str] = set()
 _VIOLACOES_NUCLEO: set[str] = set()
 
 

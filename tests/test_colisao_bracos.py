@@ -12,10 +12,10 @@ from math import radians
 
 import pytest
 
-from sejoga.animacao import arm_ik
+from sejoga.animacao import ik_bracos
 from sejoga.animacao import colisao_bracos as cb
-from sejoga.animacao.arm_targets import ALVOS
-from sejoga.animacao.pose_resolver import PoseResolver
+from sejoga.animacao.alvos_bracos import ALVOS
+from sejoga.animacao.resolvedor_poses import PoseResolver
 from sejoga.nucleo.recursos import resolve_model
 from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.esqueleto import Rotation3
@@ -38,8 +38,8 @@ def modelo():
 def _pose_simetrica(modelo, nome):
     alvo = ALVOS[nome]
     pose = {}
-    pose.update(arm_ik.braco_para(modelo, "right", alvo.alvo, alvo.polo))
-    pose.update(arm_ik.braco_para(modelo, "left", alvo.alvo_espelhado(), alvo.polo))
+    pose.update(ik_bracos.braco_para(modelo, "right", alvo.alvo, alvo.polo))
+    pose.update(ik_bracos.braco_para(modelo, "left", alvo.alvo_espelhado(), alvo.polo))
 
     return pose
 

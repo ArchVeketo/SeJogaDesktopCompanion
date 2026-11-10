@@ -31,7 +31,7 @@
 
 O submenu **Personalidade do idle** inclui quatro estilos adicionais. São
 interpretações das referências deste documento, com keyframes próprios de
-dez segundos em `idle_clips.py`, sem modificar o GLTF original:
+dez segundos em `clipes_ocioso.py`, sem modificar o GLTF original:
 
 | Opção | Movimento |
 | --- | --- |
@@ -73,7 +73,7 @@ triângulo contra todos os pixels transparentes do GLTF.
 
 ### Balanço físico do corpo (04/11/2026)
 
-`body_motion.py` adiciona molas amortecidas independentes de Panda3D/Qt.
+`movimento_corpo.py` adiciona molas amortecidas independentes de Panda3D/Qt.
 Velocidade real do cursor alimenta balanço, inclinação e torção; reversão do
 arraste produz contrapeso, cabeça e antebraços respondem com atraso e a
 soltura deixa a inércia se dissipar. Clique, carinho e impacto também dão
@@ -517,11 +517,11 @@ Blockbench 5.x
 
 | Fase | Tarefa | Status |
 |------|--------|--------|
-| **2.1** | `animation.py` — AnimationController (state machine, blend tree, beat sync) | ⏳ |
+| **2.1** | `controlador_animacao.py` — AnimationController (state machine, blend tree, beat sync) | ⏳ |
 | **2.2** | `window.py` — OverlayWindow (Panda3D+Qt bridge, color key, click-through) | ⏳ |
 | **2.3** | `physics.py` — ScreenSpacePhysics (pymunk + shelves EnumWindows) | ⏳ |
 | **2.4** | `music.py` — MusicListener (GSMTU + soundcard + beat tracker) | ⏳ |
-| **2.5** | `rig_animation.py` — Integração `esqueleto.py` + `animation.py` | ⏳ |
+| **2.5** | `rig_animation.py` — Integração `esqueleto.py` + `controlador_animacao.py` | ⏳ |
 | **2.6** | `ui.py` — SettingsDialog + TrayManager + hotkeys | ⏳ |
 | **2.7** | `app.py` — Loop principal 60Hz render / 120Hz physics | ⏳ |
 | **2.8** | Animações no Blockbench (idle, walk, jump, throw, dance, hit, sleep) | ⏳ |
@@ -539,7 +539,7 @@ Blockbench 5.x
    pip install -e ".[panda3d,windows,tray,music-analysis]"
    ```
 
-2. **Criar `src/sejoga/animacao/animation.py`** com:
+2. **Criar `src/sejoga/animacao/controlador_animacao.py`** com:
    - `AnimationState` enum
    - `AnimationController` class (state machine + blend tree)
    - `BeatSyncMixin` para sincronização musical

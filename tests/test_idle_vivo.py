@@ -23,8 +23,8 @@ from math import degrees
 import pytest
 
 import analise_curvas as aa
-from sejoga.animacao.delta_states import delta_idle
-from sejoga.animacao.idle_clips import camada_respiracao
+from sejoga.animacao.estados_delta import delta_idle
+from sejoga.animacao.clipes_ocioso import camada_respiracao
 from sejoga.animacao.respiracao import Respiracao
 from sejoga.animacao.respiracao_tuning import RESPIRACAO_POR_PERSONALIDADE, parametros_de
 from sejoga.animacao.poses_base import pose_idle
