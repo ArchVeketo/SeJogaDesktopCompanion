@@ -52,6 +52,7 @@ class RespiracaoContorno:
     """
 
     def __init__(self, frequency: float = 1.6, damping: float = 0.65) -> None:
+        """Cria a mola do contorno com frequência e amortecimento dados."""
         self._spring = Spring(frequency, damping)
 
     def reset(self, base: float) -> None:
@@ -60,7 +61,9 @@ class RespiracaoContorno:
         self._spring.value = valor
         self._spring.velocity = 0.0
 
-    def update(self, dt: float, base: float, compression: float, intensidade: float) -> float:
+    def update(
+        self, dt: float, base: float, compression: float, intensidade: float
+    ) -> float:
         """Avança a respiração e devolve a espessura suavizada do frame."""
         alvo = espessura_efetiva(base, compression, intensidade)
         valor = self._spring.update(dt, alvo)

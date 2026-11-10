@@ -101,7 +101,9 @@ def limpar_logs(diretorio: Path | None = None) -> int:
         try:
             arquivo.unlink()
         except OSError as exc:
-            logging.getLogger("sejoga").warning("Could not remove log file %s: %s", arquivo, exc)
+            logging.getLogger("sejoga").warning(
+                "Could not remove log file %s: %s", arquivo, exc
+            )
             continue
         removidos += 1
     return removidos
@@ -114,6 +116,7 @@ class DebugTools:
     FRAME_QUEUE_SIZE = 16
 
     def __init__(self, app, on_recording_changed=None, debug_hotkey="ctrl+alt+f11"):
+        """Monta o painel de depuração e registra o atalho de teclado."""
         self.app = app
         self.on_recording_changed = on_recording_changed
         self.debug_hotkey = debug_hotkey.upper()
@@ -124,9 +127,9 @@ class DebugTools:
         self._fps = 0.0
         self._last_hud_update = 0.0
         self._capture_dir: Path | None = None
-        self._queue: queue.Queue[tuple[Path, bytes, int, int, dict[str, Any]] | None] = queue.Queue(
-            maxsize=self.FRAME_QUEUE_SIZE
-        )
+        self._queue: queue.Queue[
+            tuple[Path, bytes, int, int, dict[str, Any]] | None
+        ] = queue.Queue(maxsize=self.FRAME_QUEUE_SIZE)
         self._worker = threading.Thread(
             target=self._write_frames,
             name="debug-frame-writer",
@@ -151,8 +154,11 @@ class DebugTools:
         self._world_axes.setPos(0.0, 0.0, app.renderer._view_target_z)
         self._local_axes.hide()
         self._world_axes.hide()
-        joints = app.renderer.lower_body.joints + [node for chain in app.renderer.flexible_rig.chains[:1]
-                                                   for node in (chain[0],chain[1],*chain[2])]
+        joints = app.renderer.lower_body.joints + [
+            node
+            for chain in app.renderer.flexible_rig.chains[:1]
+            for node in (chain[0], chain[1], *chain[2])
+        ]
         self._joint_axes = [self._make_axes(joint) for joint in joints]
         for axis in self._joint_axes:
             axis.setScale(EIXO_ESCALA_JUNTA)
@@ -174,6 +180,7 @@ class DebugTools:
         return root.attachNewNode(lines.create())
 
     def set_visible(self, visible: bool) -> None:
+        """Mostra ou esconde o painel."""
         for axis in self._joint_axes:
             (axis.show if visible else axis.hide)()
         self.visible = bool(visible)
@@ -187,10 +194,12 @@ class DebugTools:
             self._world_axes.hide()
 
     def toggle_visible(self) -> bool:
+        """Alterna a visibilidade do painel e devolve o novo estado."""
         self.set_visible(not self.visible)
         return self.visible
 
     def set_recording(self, enabled: bool) -> None:
+        """Liga ou desliga a gravação de frames."""
         enabled = bool(enabled)
         if enabled == self.recording:
             return
@@ -198,7 +207,9 @@ class DebugTools:
             try:
                 self._capture_dir = self._new_capture_dir()
             except OSError:
-                logging.getLogger("sejoga").exception("Could not create frame capture directory")
+                logging.getLogger("sejoga").exception(
+                    "Could not create frame capture directory"
+                )
                 return
             self._frame_count = 0
             self._dropped_frames = 0
@@ -208,24 +219,31 @@ class DebugTools:
             self.on_recording_changed(self.recording)
 
     def toggle_recording(self) -> bool:
+        """Alterna a gravação de frames e devolve o novo estado."""
         self.set_recording(not self.recording)
         return self.recording
 
     def capture_once(self) -> Path | None:
+        """Captura um frame e devolve o caminho salvo, se houver."""
         if not self.recording:
             try:
                 self._capture_dir = self._new_capture_dir()
             except OSError:
-                logging.getLogger("sejoga").exception("Could not create frame capture directory")
+                logging.getLogger("sejoga").exception(
+                    "Could not create frame capture directory"
+                )
                 return None
             self._frame_count = 0
             self._dropped_frames = 0
         return self._capture_frame(self._metadata(), recording=False)
 
     def update(self, dt: float) -> None:
+        """Atualiza o painel e grava o frame, se a gravação estiver ligada."""
         if dt > 0:
             instant_fps = 1.0 / dt
-            self._fps = instant_fps if self._fps == 0 else self._fps * 0.85 + instant_fps * 0.15
+            self._fps = (
+                instant_fps if self._fps == 0 else self._fps * 0.85 + instant_fps * 0.15
+            )
         if self.visible and time.monotonic() - self._last_hud_update >= 0.2:
             self.hud.setText(self._format_hud())
             self._last_hud_update = time.monotonic()
@@ -240,13 +258,19 @@ class DebugTools:
         return {
             "timestamp": datetime.now().astimezone().isoformat(timespec="milliseconds"),
             "fps": round(self._fps, 2),
-            "animation_state": animation.state.value if animation and animation.state else None,
+            "animation_state": animation.state.value
+            if animation and animation.state
+            else None,
             "idle_personality": animation.idle_personality.value if animation else None,
             "dance_style": animation.dance_motion.style if animation else None,
-            "dance_preview": animation._dance_preview_remaining > 0 if animation else False,
+            "dance_preview": animation._dance_preview_remaining > 0
+            if animation
+            else False,
             "appendage_remaining": animation.appendage_remaining if animation else 0,
             "body_motion": vars(animation.body_motion.snapshot) if animation else None,
-            "pointer_velocity": list(animation.body_motion.pointer_velocity) if animation else None,
+            "pointer_velocity": list(animation.body_motion.pointer_velocity)
+            if animation
+            else None,
             "hidden_export_planes": renderer._hidden_export_planes,
             "tray_registration": self.app.tray_registration.last_status,
             "tentacle_contacts": renderer.tentacle_contacts.contacts,
@@ -257,8 +281,12 @@ class DebugTools:
                     "anchor": list(limb.anchor),
                     "tip": list(limb.visible_tip()),
                     "joints": [
-                        {"position": list(center), "x": list(right),
-                         "y": list(front), "z": list(tangent)}
+                        {
+                            "position": list(center),
+                            "x": list(right),
+                            "y": list(front),
+                            "z": list(tangent),
+                        }
                         for center, tangent, right, front in limb.frames
                     ],
                 }
@@ -312,7 +340,11 @@ class DebugTools:
         state = physics or {"position": (0, 0), "velocity": (0, 0), "grounded": True}
         camera_pos = meta["camera_position"]
         fov = meta["camera_fov"]
-        music_text = "off" if not music else f"{music['level']:.2f} / {music['bpm'] or 'n/a'} BPM"
+        music_text = (
+            "off"
+            if not music
+            else f"{music['level']:.2f} / {music['bpm'] or 'n/a'} BPM"
+        )
         bounds = " x ".join(f"{value:.2f}" for value in meta["model_bounds_units"])
         camera = ", ".join(f"{value:.2f}" for value in camera_pos)
         camera_fov = ", ".join(f"{value:.1f}" for value in fov)
@@ -339,7 +371,9 @@ class DebugTools:
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
-    def _capture_frame(self, metadata: dict[str, Any], *, recording: bool) -> Path | None:
+    def _capture_frame(
+        self, metadata: dict[str, Any], *, recording: bool
+    ) -> Path | None:
         if recording and self._frame_count >= self.MAX_RECORDING_FRAMES:
             self.set_recording(False)
             return None
@@ -381,7 +415,9 @@ class DebugTools:
                 image = Image.frombytes("RGB", (width, height), pixels)
                 image = image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
                 image.save(path, format="PNG")
-                with (path.parent / "frames.jsonl").open("a", encoding="utf-8") as stream:
+                with (path.parent / "frames.jsonl").open(
+                    "a", encoding="utf-8"
+                ) as stream:
                     stream.write(json.dumps(metadata, ensure_ascii=False) + "\n")
             except Exception:
                 logging.getLogger("sejoga").exception("Could not write captured frame")
@@ -389,6 +425,7 @@ class DebugTools:
                 self._queue.task_done()
 
     def close(self) -> None:
+        """Remove o painel e para a gravação."""
         self.set_recording(False)
         try:
             self._queue.join()

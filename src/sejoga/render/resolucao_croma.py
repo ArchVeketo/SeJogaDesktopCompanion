@@ -24,14 +24,17 @@ def install_chroma_resolve(pipeline, colorkey_hex: str = CHROMA_HEX_PADRAO):
     e sem ela.
     """
     from panda3d.core import Shader
+
     quad = pipeline._post_process_quad
     original = quad.getShader()
     fragment = original.getText(Shader.STFragment)
-    marker = 'vec3 color = tex_color.rgb;'
+    marker = "vec3 color = tex_color.rgb;"
     if marker not in fragment:
-        raise RuntimeError('SimplePBR tonemap shader changed; chroma resolve needs review')
+        raise RuntimeError(
+            "SimplePBR tonemap shader changed; chroma resolve needs review"
+        )
     chroma = _glsl_vec3(derivar_chroma(colorkey_hex).rgb)
-    replacement = f'''
+    replacement = f"""
     // The clear pixel is the chroma color with zero alpha. Resolve partial
     // coverage into either a clean surface color or the exact chroma background.
     vec3 chroma_key = {chroma};
@@ -47,6 +50,11 @@ def install_chroma_resolve(pipeline, colorkey_hex: str = CHROMA_HEX_PADRAO):
         float borda = (1.0 - coverage) * {DESPILL_FORCA};
         color = mix(color, min(color, mix(color, vec3(limpo), chroma_key)), borda);
     }}
-    '''
-    quad.setShader(Shader.make(Shader.SL_GLSL,
-        original.getText(Shader.STVertex), fragment.replace(marker, replacement)))
+    """
+    quad.setShader(
+        Shader.make(
+            Shader.SL_GLSL,
+            original.getText(Shader.STVertex),
+            fragment.replace(marker, replacement),
+        )
+    )

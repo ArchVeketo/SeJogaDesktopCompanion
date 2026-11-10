@@ -108,7 +108,11 @@ class MalhaFioFone:
         for nome_no, nome_malha in CAIXAS_DO_CORPO:
             no = nos.get(nome_no)
             malha = self._malha_da_caixa(no, nome_malha)
-            limites = malha.getTightBounds(no) if malha is not None and not malha.isEmpty() else None
+            limites = (
+                malha.getTightBounds(no)
+                if malha is not None and not malha.isEmpty()
+                else None
+            )
 
             if limites:
                 caixas.append((no, Vec3(limites[0]), Vec3(limites[1])))
@@ -117,8 +121,12 @@ class MalhaFioFone:
 
     def _ancoras(self) -> tuple[tuple[float, float, float], ...]:
         x, y, z = tuning.ANCORA_ORELHA_U
-        esquerda = self._model_np.getRelativePoint(self._cabeca, _gltf_para_panda((-x, y, z)))
-        direita = self._model_np.getRelativePoint(self._cabeca, _gltf_para_panda((x, y, z)))
+        esquerda = self._model_np.getRelativePoint(
+            self._cabeca, _gltf_para_panda((-x, y, z))
+        )
+        direita = self._model_np.getRelativePoint(
+            self._cabeca, _gltf_para_panda((x, y, z))
+        )
         aparelho = self._model_np.getRelativePoint(
             self._corpo, _gltf_para_panda(tuning.ANCORA_APARELHO_U)
         )
@@ -142,7 +150,9 @@ class MalhaFioFone:
             eixos = []
             meias_reais = []
 
-            for indice, base in enumerate((Vec3(1, 0, 0), Vec3(0, 1, 0), Vec3(0, 0, 1))):
+            for indice, base in enumerate(
+                (Vec3(1, 0, 0), Vec3(0, 1, 0), Vec3(0, 0, 1))
+            ):
                 vetor = self._model_np.getRelativeVector(no, base)
                 escala = vetor.length()
                 vetor.normalize()
@@ -160,9 +170,12 @@ class MalhaFioFone:
 
         for ombro, cotovelo, punho, sentido in self._bracos:
             pontos = [
-                tuple(self._model_np.getRelativePoint(no, ORIGEM)) for no in (ombro, cotovelo, punho)
+                tuple(self._model_np.getRelativePoint(no, ORIGEM))
+                for no in (ombro, cotovelo, punho)
             ]
-            ponta = self._model_np.getRelativePoint(punho, Point3(sentido * COMPRIMENTO_MAO_U, 0, 0))
+            ponta = self._model_np.getRelativePoint(
+                punho, Point3(sentido * COMPRIMENTO_MAO_U, 0, 0)
+            )
             pontos.append(tuple(ponta))
 
             for a, b in pairwise(pontos):
@@ -212,7 +225,9 @@ class MalhaFioFone:
         self._escritor_normais.setRow(0)
 
         for pontos in self._fio.pontos_das_cadeias():
-            vertices, normais = construir_tubo(pontos, REFERENCIA_VISUAL, tuning.RAIO_VISUAL_FIO_U)
+            vertices, normais = construir_tubo(
+                pontos, REFERENCIA_VISUAL, tuning.RAIO_VISUAL_FIO_U
+            )
 
             for vertice, normal in zip(vertices, normais, strict=True):
                 self._escritor_vertices.setData3(*vertice)

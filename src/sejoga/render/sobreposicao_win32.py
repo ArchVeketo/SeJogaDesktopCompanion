@@ -46,6 +46,7 @@ COLOR_KEY = 0x00D600D6
 # Helpers
 # ============================================================
 
+
 def set_window_ex_style(hwnd: int, add_flags: int = 0, remove_flags: int = 0) -> None:
     """Modifica extended window style."""
     ex_style = win32gui.GetWindowLong(hwnd, GWL_EXSTYLE)
@@ -53,12 +54,17 @@ def set_window_ex_style(hwnd: int, add_flags: int = 0, remove_flags: int = 0) ->
     win32gui.SetWindowLong(hwnd, GWL_EXSTYLE, ex_style)
 
 
-def set_layered_window_attributes(hwnd: int, color_key: int = COLOR_KEY, alpha: int = 255, flags: int = LWA_COLORKEY) -> bool:
+def set_layered_window_attributes(
+    hwnd: int, color_key: int = COLOR_KEY, alpha: int = 255, flags: int = LWA_COLORKEY
+) -> bool:
     """Define color key e/ou alpha para layered window."""
-    return ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, color_key, alpha, flags)
+    return ctypes.windll.user32.SetLayeredWindowAttributes(
+        hwnd, color_key, alpha, flags
+    )
 
 
 def set_window_pos_zorder(hwnd: int, zorder: int) -> bool:
     """Define Z-order: HWND_TOPMOST (-1), HWND_NOTOPMOST (-2), HWND_BOTTOM (1)."""
-    return ctypes.windll.user32.SetWindowPos(hwnd, zorder, 0, 0, 0, 0,
-                                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+    return ctypes.windll.user32.SetWindowPos(
+        hwnd, zorder, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+    )

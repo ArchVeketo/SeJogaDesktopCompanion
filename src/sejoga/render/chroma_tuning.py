@@ -85,7 +85,7 @@ class ChromaConfig:
 def _hex_para_rgb(hex_cor: str) -> tuple[int, int, int]:
     """Converte ``#RRGGBB`` em inteiros 0-255 por canal (sem validar formato)."""
     limpo = hex_cor.lstrip("#")
-    return tuple(int(limpo[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+    return tuple(int(limpo[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
 
 
 def _limiar_canal(valor_255: int) -> tuple[str, int]:

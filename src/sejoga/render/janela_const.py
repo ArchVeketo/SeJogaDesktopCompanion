@@ -79,3 +79,6 @@ MILISSEGUNDOS_POR_SEGUNDO = 1000.0
 # pela distância percorrida (px).
 DRAG_DIVISOR_DIRECAO = 80.0
 DRAG_DIVISOR_INTENSIDADE = 160.0
+
+#: Distância (px) da borda do monitor em que a atenção à borda acorda.
+ATENCAO_BORDA_MARGEM_PX = 60.0

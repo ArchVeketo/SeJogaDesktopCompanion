@@ -64,7 +64,6 @@ def degraus_envelope(base: int, teto_mult: int = 3) -> list[int]:
     São poucos tamanhos estáveis (repouso, estendido, pior caso) em vez de
     uma escala contínua, para que a pose viva não gere resizes por frame.
     """
-
     if base <= 0:
         raise ValueError("base deve ser positiva")
 
@@ -77,7 +76,6 @@ def degrau_para(necessario: float, base: int, teto_mult: int = 3) -> int:
     O resultado é sempre ≥ ``necessario`` (mais a margem anti-corte, exceto
     quando esbarra no teto), garantindo que a pose não seja cortada.
     """
-
     alvo = necessario + MARGEM_ANTICORTE
     degraus = degraus_envelope(base, teto_mult)
 
@@ -122,16 +120,15 @@ def escolher_tamanho(
 
     Retorna o tamanho a aplicar (igual a ``atual`` quando nada muda).
     """
-
     estado.cooldown = max(0.0, estado.cooldown - dt)
     alvo = degrau_para(necessario, base, teto_mult)
 
     if fixar_degrau:
-      # Degrau travado: só sobe se o atual não comporta mais a necessidade;
-      # caso contrário fica cravado, ignorando a oscilação do bbox rolado.
-      if alvo > atual:
-        return alvo
-      return atual
+        # Degrau travado: só sobe se o atual não comporta mais a necessidade;
+        # caso contrário fica cravado, ignorando a oscilação do bbox rolado.
+        if alvo > atual:
+            return alvo
+        return atual
 
     if alvo == atual:
         return atual
@@ -161,10 +158,13 @@ def extensao_necessaria(pontos_px: list[tuple[float, float]], folga: int = 32) -
     pixel relativas ao centro da janela. Espelha o cálculo histórico de
     ``extent`` para preservar o comportamento anti-corte da medição.
     """
-
     if not pontos_px:
         return 0.0
 
-    pico = max(max(abs(x), abs(y)) for x, y in pontos_px if math.isfinite(x) and math.isfinite(y))
+    pico = max(
+        max(abs(x), abs(y))
+        for x, y in pontos_px
+        if math.isfinite(x) and math.isfinite(y)
+    )
 
     return pico * 2 + folga
