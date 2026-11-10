@@ -261,6 +261,9 @@ simples que não toca no que já foi confirmado:
   e a hierarquia de grupos não mudam.
 - **Forma em Y.** Um ramo por orelha, junção livre no peito e uma haste até o
   aparelho. As três pontas são presas às âncoras; o resto é livre.
+- **Verlet próprio, não Pymunk:** a corda vive no referencial do modelo, com passo
+  fixo e sem corpos no espaço físico da janela (que usa coordenadas absolutas do
+  desktop); Pymunk exigiria converter a cada quadro e criaria corpos só para o fio.
 - **Simulação de Verlet em passo fixo (60 Hz)** com ligações de comprimento e uma
   rigidez de dobra unilateral fraca. Lógica pura em `animacao/fio_corda.py`,
   constantes em `animacao/fio_tuning.py`, malha em `render/fio_fone_malha.py`.
@@ -269,7 +272,8 @@ simples que não toca no que já foi confirmado:
   fio cai certo mesmo com o mascote pendurado ou inclinado. O fio só LÊ a pose;
   não escreve em nenhum nó do rig.
 - **Colisão só com o corpo:** caixas do tronco (`mesh20`), quadril (`mesh30`) e
-  cabeça (`mesh0`), lidas dos limites das malhas, e cápsulas de braço, antebraço
+  cabeça (`mesh0`) e dos nós `left-feet`/`right-feet` (pernas e pés, cujos limites
+  inteiros cobrem a perna abaixo do short), lidas dos limites das malhas, e cápsulas de braço, antebraço
   e mão a partir dos nós do rig (mesmo comprimento de mão de `colisao_bracos`).
   Sem chão e sem borda de tela. As caixas seguem a pose (matriz atual do nó).
 - **Estética:** tubo de seção quadrada com faces planas (pixelado), cor do fio
@@ -277,7 +281,7 @@ simples que não toca no que já foi confirmado:
   compartilhando os vértices).
 - **Não feito (shortcuts):** a janela que se move na física não empurra a corda
   (o referencial do modelo não vê a velocidade da janela); o balanço vem só do
-  movimento do corpo. Sem colisão fio-fio, fio-dedos nem fio-pés. Se faltar
+  movimento do corpo. Sem colisão fio-fio nem fio-dedos. Se faltar
   inércia no arraste, passar a velocidade da janela como aceleração fictícia.
 - **Só a GPU confirma:** C33 a C38 acima. Testes (`tests/test_fio_corda.py`)
   provam a lógica (comprimento, âncoras, colisão, orientação dos triângulos), não

@@ -3,8 +3,8 @@
 O fio rígido do GLTF (``mesh18``) é ocultado em tempo de execução, sem editar o
 asset, e no lugar entra um tubo de seção quadrada que segue a corda simulada.
 As âncoras (orelhas e aparelho de música) e os colisores (tronco, cabeça,
-quadril e braços) são lidos dos nós do rig a cada quadro, então o fio acompanha
-qualquer pose, incluindo o arraste pendurado (a gravidade vem do mundo).
+quadril, pernas/pés e braços) são lidos dos nós do rig a cada quadro, então o fio
+acompanha qualquer pose, incluindo o arraste pendurado (a gravidade vem do mundo).
 """
 
 from __future__ import annotations
@@ -34,8 +34,15 @@ from sejoga.animacao.primitivas_colisao import CaixaOrientada, Capsula
 NOME_PECA_RIGIDA = "mesh18"
 #: Eixo para a câmera no referencial de ``model_np`` (a frente é -Y).
 REFERENCIA_VISUAL = (0.0, -1.0, 0.0)
-#: Caixas do corpo para o fio: (nó do rig, malha cujo volume vira a caixa).
-CAIXAS_DO_CORPO = (("body", "mesh20"), ("legs", "mesh30"), ("head", "mesh0"))
+#: Caixas do corpo para o fio: (nó do rig, malha cujo volume vira a caixa;
+#: vazio = nó inteiro, usado nos pés, que cobrem as pernas abaixo do short).
+CAIXAS_DO_CORPO = (
+    ("body", "mesh20"),
+    ("legs", "mesh30"),
+    ("head", "mesh0"),
+    ("left-feet", ""),
+    ("right-feet", ""),
+)
 #: Braços: (ombro, cotovelo, punho, sentido do osso da mão no eixo x).
 BRACOS = (
     ("right-arm", "ant-arm", "hand", 1.0),
@@ -87,12 +94,20 @@ class MalhaFioFone:
     # ------------------------------------------------------------------ #
     # Leitura da pose
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _malha_da_caixa(no: NodePath | None, nome_malha: str) -> NodePath | None:
+        """Malha que define a caixa; ``nome_malha`` vazio usa o nó inteiro."""
+        if no is None or nome_malha == "":
+            return no
+
+        return no.find(f"**/{nome_malha}")
+
     def _medir_caixas(self, nos) -> list[tuple[NodePath, Vec3, Vec3]]:
         caixas = []
 
         for nome_no, nome_malha in CAIXAS_DO_CORPO:
             no = nos.get(nome_no)
-            malha = no.find(f"**/{nome_malha}") if no is not None else None
+            malha = self._malha_da_caixa(no, nome_malha)
             limites = malha.getTightBounds(no) if malha is not None and not malha.isEmpty() else None
 
             if limites:
