@@ -5,7 +5,6 @@ from __future__ import annotations
 from math import degrees
 
 import analise_curvas as aa
-
 from sejoga.animacao import sono_tuning as sono
 from sejoga.animacao.animation import AnimationController, AnimationState
 from sejoga.animacao.delta_states import delta_sleep

@@ -31,13 +31,13 @@ from sejoga.animacao.delta_states import (
     delta_walk,
     somar_deltas,
 )
+from sejoga.animacao.gestos_tuning import ACENO_DURACAO_S, ALONGAR_DURACAO_S, CUTUCAR_DURACAO_S
 from sejoga.animacao.hand_motion import HandMotion
 from sejoga.animacao.joint_springs import (
     CADEIA_DIREITA,
     CADEIA_ESQUERDA,
     LagChain,
 )
-from sejoga.animacao.gestos_tuning import ACENO_DURACAO_S, ALONGAR_DURACAO_S, CUTUCAR_DURACAO_S
 from sejoga.animacao.leg_motion import LegMotion
 from sejoga.animacao.pose_resolver import PoseResolver
 from sejoga.animacao.respiracao import Respiracao
