@@ -14,7 +14,7 @@ Companion Windows em Python: Panda3D renderiza, PySide6 oferece bandeja/configur
 ## Limites entre módulos
 
 - `modelo.py`, `esqueleto.py`, `recursos.py` e `configuracao.py` não importam Panda3D, Qt ou Win32.
-- Renderer/overlay integram o rig e a física em `window.py`; coordenadas físicas são absolutas no desktop, as do renderer são locais à janela.
+- Renderer/overlay integram o rig e a física em `janela.py`; coordenadas físicas são absolutas no desktop, as do renderer são locais à janela.
 - Preservar nomes/hierarquia dos grupos do GLTF. Animações procedurais usam rotações relativas ao rig.
 
 ## Armadilhas verificadas

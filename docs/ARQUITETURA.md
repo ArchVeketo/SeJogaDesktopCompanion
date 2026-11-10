@@ -57,15 +57,15 @@ sejoga/
 ├── configuracao.py            # Settings (pydantic-settings), load/save TOML
 ├── modelo.py             # Model/Node/Bounds (leitura glTF/GLB, bounds mundo)
 ├── esqueleto.py               # Rig/ALL_GROUPS + presets de pose (idle/walk/dance/etc.)
-├── window.py            # (etapa 2) OverlayWindow: Panda3D+PySide6 bridge, WS_EX_LAYERED
+├── janela.py            # (etapa 2) OverlayWindow: Panda3D+PySide6 bridge, WS_EX_LAYERED
 ├── fisica.py           # (etapa 2) ScreenSpacePhysics: pymunk + shelves EnumWindows
 ├── escuta_musica.py             # (etapa 2) MusicListener: GSMTU + soundcard + beat tracker
 ├── interface.py                # (etapa 2) SettingsDialog, TrayManager, hotkeys
-├── debug.py             # HUD/eixos, log rotativo e captura opcional com metadados
+├── depuracao.py             # HUD/eixos, log rotativo e captura opcional com metadados
 └── app.py               # (etapa 2) Application: loop principal 60/120 Hz
 ```
 
-**Princípio:** módulos `modelo.py`, `esqueleto.py`, `recursos.py`, `configuracao.py` são **engine-agnostic** (funcionam em CI sem GPU). Módulos `window.py`, `fisica.py`, `escuta_musica.py`, `interface.py`, `app.py` são a **etapa 2** (runtime).
+**Princípio:** módulos `modelo.py`, `esqueleto.py`, `recursos.py`, `configuracao.py` são **engine-agnostic** (funcionam em CI sem GPU). Módulos `janela.py`, `fisica.py`, `escuta_musica.py`, `interface.py`, `app.py` são a **etapa 2** (runtime).
 
 ---
 

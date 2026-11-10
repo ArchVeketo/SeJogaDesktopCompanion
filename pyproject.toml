@@ -108,12 +108,12 @@ max-complexity = 10
 max-statements = 27
 max-nested-blocks = 3
 
-# E402 (import fora do topo) e INTENCIONAL em window.py: Qt precisa carregar antes
+# E402 (import fora do topo) e INTENCIONAL em janela.py: Qt precisa carregar antes
 # do Panda3D (DLLs MSVC conflitantes) e os loadPrcFileData() precisam rodar antes
 # de importar ShowBase/panda3d.
 # Testes: o nome da funcao ja descreve o cenario; docstring por teste nao agrega.
 [tool.ruff.lint.per-file-ignores]
-"src/sejoga/render/window.py" = ["E402"]
+"src/sejoga/render/janela.py" = ["E402"]
 "tests/**" = ["D102", "D103", "D107"]
 
 [tool.pytest.ini_options]

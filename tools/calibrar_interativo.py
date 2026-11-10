@@ -160,7 +160,7 @@ class Calibrador:
         # ORDEM DE IMPORT CRÍTICA: Qt (via OverlayApp) antes de panda3d.core.
         # isort: off
         try:
-            from sejoga.render.window import OverlayApp
+            from sejoga.render.janela import OverlayApp
             from panda3d.core import Filename, TextNode
             from direct.gui.OnscreenText import OnscreenText
         except Exception as exc:  # pragma: no cover - ambiente sem engine

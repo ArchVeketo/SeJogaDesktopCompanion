@@ -13,7 +13,7 @@ from sejoga import configuracao
 def main():
     profile = Path(tempfile.mkdtemp(prefix="sejoga-animation-profile-"))
     configuracao.default_config_path = lambda: profile / "config.toml"
-    from sejoga.render.window import OverlayApp
+    from sejoga.render.janela import OverlayApp
     settings = configuracao.Settings()
     settings.physics.enabled = False
     settings.music.enabled = False

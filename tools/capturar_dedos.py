@@ -36,7 +36,7 @@ import capturar_dedos as c
 from sejoga import config
 perfil = Path(tempfile.mkdtemp(prefix="sejoga-dedos-"))
 config.default_config_path = lambda: perfil / "config.toml"
-from sejoga.render.window import OverlayApp
+from sejoga.render.janela import OverlayApp
 from sejoga.animacao import finger_gestures as fg
 from panda3d.core import Filename, PNMImage, Point2, Point3
 s = config.Settings(); s.physics.enabled = False; s.music.enabled = False

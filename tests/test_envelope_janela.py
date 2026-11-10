@@ -8,7 +8,7 @@ a pose de pior caso (não reintroduz o corte do Mário).
 import itertools
 import math
 
-from sejoga.render.canvas_envelope import (
+from sejoga.render.envelope_janela import (
     COOLDOWN,
     MARGEM_ANTICORTE,
     EstadoEnvelope,
@@ -107,10 +107,10 @@ def test_arraste_por_pe_fixa_degrau_sem_pular():
     # (ex.: alternando ~700 e ~1000 px) por muitos frames. Com fixar_degrau,
     # o tamanho deve ficar CONSTANTE e comportar o maior necessário da
     # sequência (nunca corta). Começa já no degrau estendido que a fiação de
-    # window.py garante (>= 2*base) para o arraste por pé.
+    # janela.py garante (>= 2*base) para o arraste por pé.
     necessarios = [700 if i % 2 == 0 else 1000 for i in range(200)]
     # O degrau inicial já comporta o pico da sequência (como a fiação de
-    # window.py garante ao arrastar pelo pé): não há nenhuma troca.
+    # janela.py garante ao arrastar pelo pé): não há nenhuma troca.
     atual_inicial = degrau_para(max(necessarios), BASE)
     estado = EstadoEnvelope()
     atual = atual_inicial

@@ -2,7 +2,7 @@
 
 Reúne os literais de agendamento de tarefas, margens de canto, geometria de
 spawn físico, tilt de queda, timeouts da bandeja e parâmetros de input de mouse
-que antes ficavam soltos em ``window.py``. São constantes do próprio módulo de
+que antes ficavam soltos em ``janela.py``. São constantes do próprio módulo de
 janela (lado engine Win32/Panda3D), nomeadas para dar sentido ao PORQUE sem
 alterar nenhum valor. Não há dependência de Panda3D/Qt/Win32 aqui.
 """

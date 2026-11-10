@@ -5,7 +5,7 @@ Registro da refatoração de `src/`, `tests/` e `tools/` para [CONVENCAO_PYTHON.
 ## Baseline (HEAD 62aa821)
 
 - `python -m pytest`: verde.
-- `ruff check` com as regras novas: 520 achados (D 330, PLR0915 55, E702 39, PLR1702 27, C901 20, N 27, E701 8, I001 8, E402 1 fora de `window.py`).
+- `ruff check` com as regras novas: 520 achados (D 330, PLR0915 55, E702 39, PLR1702 27, C901 20, N 27, E701 8, I001 8, E402 1 fora de `janela.py`).
 - `mypy src tools`: 14 erros em 5 arquivos (preexistentes, `physics`/`renderer`/`window`).
 - `smoke_mouse`: já falhava em `WindowFromPoint` neste ambiente.
 

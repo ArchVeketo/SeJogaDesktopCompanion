@@ -76,15 +76,15 @@ from sejoga.desktop.interface import HotkeyManager, SettingsDialog
 from sejoga.musica.escuta_musica import MusicListener
 from sejoga.nucleo.recursos import brand_dir
 from sejoga.nucleo.esqueleto import IdlePersonality
-from sejoga.render.canvas_envelope import (
+from sejoga.render.envelope_janela import (
     EstadoEnvelope,
     escolher_tamanho,
     extensao_necessaria,
 )
 from sejoga.render.chroma_tuning import derivar_chroma, pixel_e_chroma
-from sejoga.render.debug import DebugTools, configure_logging
-from sejoga.render.renderer import Panda3DRenderer
-from sejoga.render.win32_overlay import (
+from sejoga.render.depuracao import DebugTools, configure_logging
+from sejoga.render.renderizador import Panda3DRenderer
+from sejoga.render.sobreposicao_win32 import (
     COLOR_KEY,
     GWL_EXSTYLE,
     HWND_BOTTOM,
@@ -101,7 +101,7 @@ from sejoga.render.win32_overlay import (
     WS_EX_TOPMOST,
     WS_EX_TRANSPARENT,
 )
-from sejoga.render.window_const import (
+from sejoga.render.janela_const import (
     COLISAO_DIVISOR_DIRECAO,
     COLISAO_DIVISOR_FORCA,
     DELAY_CALIBRAR_COLOR_KEY,

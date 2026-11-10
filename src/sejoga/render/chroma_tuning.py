@@ -1,9 +1,9 @@
 """Calibração do color key / chroma do overlay (engine-agnóstico).
 
 A janela layered usa color key binário do Win32: o pixel de fundo é limpo numa
-cor de CHROMA com alpha zero, o shader de resolução (``chroma_resolve``) decide,
+cor de CHROMA com alpha zero, o shader de resolução (``resolucao_croma``) decide,
 por cobertura de MSAA, se cada pixel vira superfície limpa ou o chroma exato, e
-a calibração em ``window.py`` lê o pixel limpo do framebuffer DEPOIS do tone
+a calibração em ``janela.py`` lê o pixel limpo do framebuffer DEPOIS do tone
 mapping do PBR para fechar a conta com o Win32.
 
 A cor do chroma é CONFIGURÁVEL (``settings.window.colorkey_color``). Os defaults

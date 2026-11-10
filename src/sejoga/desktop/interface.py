@@ -334,7 +334,7 @@ class SettingsDialog(QDialog):
         if resposta != QMessageBox.StandardButton.Yes:
             return
         try:
-            from sejoga.render.debug import limpar_logs
+            from sejoga.render.depuracao import limpar_logs
             removidos = limpar_logs()
         except OSError as exc:
             QMessageBox.warning(self, "Falha ao limpar logs", str(exc))

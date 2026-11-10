@@ -1,6 +1,6 @@
 """Constantes e helpers Win32 da janela overlay (layered window + color key).
 
-Extraído de window.py sem reescrever a lógica: apenas reúne as constantes de
+Extraído de janela.py sem reescrever a lógica: apenas reúne as constantes de
 estilo estendido, Z-order e SetWindowPos, além dos helpers que aplicam o
 color key magenta calibrado (RGB 214,0,214 após o tone mapping do PBR).
 """

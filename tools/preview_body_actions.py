@@ -16,7 +16,7 @@ def main():
     from PIL import Image, ImageDraw, ImageGrab
 
     from sejoga.animacao.controlador_animacao import AnimationController
-    from sejoga.render.window import OverlayApp
+    from sejoga.render.janela import OverlayApp
     settings=configuracao.Settings()
     settings.physics.enabled=settings.music.enabled=False
     settings.window.outline_enabled=False

@@ -518,7 +518,7 @@ Blockbench 5.x
 | Fase | Tarefa | Status |
 |------|--------|--------|
 | **2.1** | `controlador_animacao.py` — AnimationController (state machine, blend tree, beat sync) | ⏳ |
-| **2.2** | `window.py` — OverlayWindow (Panda3D+Qt bridge, color key, click-through) | ⏳ |
+| **2.2** | `janela.py` — OverlayWindow (Panda3D+Qt bridge, color key, click-through) | ⏳ |
 | **2.3** | `fisica.py` — ScreenSpacePhysics (pymunk + shelves EnumWindows) | ⏳ |
 | **2.4** | `escuta_musica.py` — MusicListener (GSMTU + soundcard + beat tracker) | ⏳ |
 | **2.5** | `rig_animation.py` — Integração `esqueleto.py` + `controlador_animacao.py` | ⏳ |
@@ -544,7 +544,7 @@ Blockbench 5.x
    - `AnimationController` class (state machine + blend tree)
    - `BeatSyncMixin` para sincronização musical
 
-3. **Criar `src/sejoga/render/window.py`** com:
+3. **Criar `src/sejoga/render/janela.py`** com:
    - `OverlayWindow` (PySide6 QWidget + Panda3D GraphicsWindow embedding)
    - Win32 layered window setup (color key magenta)
    - Click-through toggle + hit-test

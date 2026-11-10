@@ -114,7 +114,7 @@ def test_settings_dialog_sinaliza_fechamento_no_handoff(tmp_path):
 
 def test_ao_iniciar_atualizacao_chama_quit_app():
     """O handler do OverlayApp fecha o companion via quit_app."""
-    from sejoga.render.window import OverlayApp
+    from sejoga.render.janela import OverlayApp
     chamadas = []
     stub = SimpleNamespace(logger=logging.getLogger("teste-sejoga"),
                            quit_app=lambda: chamadas.append(True))

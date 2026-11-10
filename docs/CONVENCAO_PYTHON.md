@@ -14,8 +14,8 @@ Vale para todo arquivo `.py` em `src/sejoga/`, `tests/` e `tools/`. Código novo
 ## Nomes de arquivo e pasta
 
 - Pastas e módulos em `snake_case`, em português, com substantivo que diz o que o módulo contém: `cinematica.py`, `colisao_bracos.py`, `coreografia_porta.py`.
-- Módulo de constantes calibráveis termina em `_tuning.py` (`braco_tuning.py`, `chroma_tuning.py`). Módulo de constantes fixas, que não se calibram, termina em `_const.py` (`window_const.py`).
-- Módulos com nome em inglês (`window.py`, `renderer.py`, `movimento_corpo.py`, `sistema_tentaculos.py` e outros) são renomeados para português na refatoração, atualizando todos os imports e o `pyproject.toml`. Exceções: `__init__.py`, `__main__.py`, `conftest.py`.
+- Módulo de constantes calibráveis termina em `_tuning.py` (`braco_tuning.py`, `chroma_tuning.py`). Módulo de constantes fixas, que não se calibram, termina em `_const.py` (`janela_const.py`).
+- Módulos com nome em inglês (`janela.py`, `renderizador.py`, `movimento_corpo.py`, `sistema_tentaculos.py` e outros) são renomeados para português na refatoração, atualizando todos os imports e o `pyproject.toml`. Exceções: `__init__.py`, `__main__.py`, `conftest.py`.
 - Scripts em `tools/` começam com verbo e dizem a ação: `calibrar_interativo.py`, `capturar_porta_tentaculos.py`. Os de verificação podem começar com `smoke_`.
 - Testes: um arquivo `tests/test_<modulo>.py` por módulo testado.
 
@@ -39,7 +39,7 @@ Vale para todo arquivo `.py` em `src/sejoga/`, `tests/` e `tools/`. Código novo
 
 - No topo do arquivo, em três grupos PEP 8 separados por linha em branco: biblioteca padrão, terceiros, módulos do projeto. Ordem alfabética dentro do grupo (o ruff `I` faz isso).
 - Nunca import no fim do arquivo nem dentro de função.
-- Única exceção permitida: `src/sejoga/render/window.py`, porque o Qt precisa carregar antes do Panda3D (DLLs MSVC conflitantes) e os `loadPrcFileData()` precisam rodar antes de importar o Panda3D. A exceção fica registrada no `pyproject.toml` (`E402`) com o comentário do motivo. Script de `tools/` que precise ajustar o `sys.path` antes do import também pode ter a exceção, com o motivo.
+- Única exceção permitida: `src/sejoga/render/janela.py`, porque o Qt precisa carregar antes do Panda3D (DLLs MSVC conflitantes) e os `loadPrcFileData()` precisam rodar antes de importar o Panda3D. A exceção fica registrada no `pyproject.toml` (`E402`) com o comentário do motivo. Script de `tools/` que precise ajustar o `sys.path` antes do import também pode ter a exceção, com o motivo.
 
 ## Camadas
 

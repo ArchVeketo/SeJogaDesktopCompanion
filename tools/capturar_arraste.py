@@ -42,7 +42,7 @@ import capturar_arraste as c
 from sejoga import config
 perfil = Path(tempfile.mkdtemp(prefix="sejoga-arraste-"))
 config.default_config_path = lambda: perfil / "config.toml"
-from sejoga.render.window import OverlayApp
+from sejoga.render.janela import OverlayApp
 from panda3d.core import Filename
 s = config.Settings(); s.physics.enabled = False; s.music.enabled = False
 app = OverlayApp(s); app.hotkey_manager.close(); app.taskMgr.remove("mouse-poll")

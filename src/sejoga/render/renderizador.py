@@ -1,8 +1,8 @@
 """Panda3DRenderer — render 3D do mascote (Panda3D).
 
-Extraído de window.py sem reescrever a lógica de render. Mantém os mesmos
+Extraído de janela.py sem reescrever a lógica de render. Mantém os mesmos
 imports do lado engine: Panda3D, o loader glTF e os módulos de tentáculo.
-Preserva nomes/hierarquia do rig, a calibração do color key (feita em window.py)
+Preserva nomes/hierarquia do rig, a calibração do color key (feita em janela.py)
 e os guards IsWindow/erro 1400 (que permanecem em OverlayApp).
 """
 
@@ -107,7 +107,7 @@ class Panda3DRenderer:
         self._body_facing = None
         self._giro_corpo = GiroCorpo()
         # Respiração do contorno: espessura base em repouso e driver suavizado.
-        from sejoga.render.outline_dynamics import RespiracaoContorno
+        from sejoga.render.dinamica_contorno import RespiracaoContorno
         self._outline_base_thickness = 0.0
         self._outline_breath = 0.0
         self._outline_enabled = True
@@ -203,7 +203,7 @@ class Panda3DRenderer:
 
             pipeline = simplepbr.init(use_normal_maps=False, use_emission_maps=False,
                                       max_lights=MAX_LUZES_PBR, msaa_samples=MSAA_AMOSTRAS)
-            from sejoga.render.chroma_resolve import install_chroma_resolve
+            from sejoga.render.resolucao_croma import install_chroma_resolve
             install_chroma_resolve(pipeline, self.showbase.settings.window.colorkey_color)
         except ImportError:
             pass

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from sejoga.render.outline_dynamics import (
+from sejoga.render.dinamica_contorno import (
     COMPRESSION_MAX,
     COMPRESSION_MIN,
     RespiracaoContorno,

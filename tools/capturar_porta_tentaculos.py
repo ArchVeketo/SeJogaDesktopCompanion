@@ -50,7 +50,7 @@ import capturar_porta_tentaculos as c
 from sejoga import config
 perfil = Path(tempfile.mkdtemp(prefix="sejoga-porta-"))
 config.default_config_path = lambda: perfil / "config.toml"
-from sejoga.render.window import OverlayApp
+from sejoga.render.janela import OverlayApp
 from sejoga.tentaculos.coreografia_porta import FasePorta
 from panda3d.core import ClockObject, Filename, PNMImage, Point2, Point3
 s = config.Settings(); s.physics.enabled = False; s.music.enabled = False
