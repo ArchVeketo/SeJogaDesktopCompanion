@@ -413,10 +413,11 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
         rig.set_rotation("door", y=75.0 * pulse)
         # Acorda: parte dos braços baixados (idle) e os ergue ao espreguiçar.
         # Medido no grafo de cena: elevação = eixo do nó ROLL (Z); z NEGATIVO ergue.
+        from sejoga.animacao.gestos_tuning import WAKE_BRACO_ELEVACAO as elevacao_wake
         _wake_r = braco_hpr_graus("right", "idle")["right-arm"]
         _wake_l = braco_hpr_graus("left", "idle")["left-arm"]
-        rig.set_rotation("right-arm", x=_wake_r[0], y=_wake_r[1], z=_wake_r[2] - 70.0 * pulse)
-        rig.set_rotation("left-arm", x=_wake_l[0], y=_wake_l[1], z=_wake_l[2] + 70.0 * pulse)
+        rig.set_rotation("right-arm", x=_wake_r[0], y=_wake_r[1], z=_wake_r[2] - elevacao_wake * pulse)
+        rig.set_rotation("left-arm", x=_wake_l[0], y=_wake_l[1], z=_wake_l[2] + elevacao_wake * pulse)
         # Shoulder compensation for wake (arms move)
         shoulder_comp = -45.0 * pulse * 0.15  # approx half of 90
         rig.set_rotation("shoulder", x=shoulder_comp)

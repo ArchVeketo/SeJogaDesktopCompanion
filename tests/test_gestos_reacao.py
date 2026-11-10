@@ -39,11 +39,12 @@ CROSSFADE_PADRAO_S = 0.55
 #: Teto de jerk (graus/s^3) por gesto. O limite global (8000) não vale para
 #: gestos rápidos: um quíntico de 45 graus em 0,12 s já chega a milhões, e o
 #: PoseResolver suaviza o resultado. Estes tetos protegem contra saltos novos.
-TETO_JERK = {"wave": 6.0e4, "poke": 2.5e6, "stretch": aa.LIMIAR_JERK_TRANCO}
+TETO_JERK = {"wave": 6.0e4, "poke": 2.5e6, "stretch": aa.LIMIAR_JERK_TRANCO, "wake": 1.2e4}
 GESTOS = {
     "wave": (T.ACENO_DURACAO_S, "flourish"),
     "poke": (T.CUTUCAR_DURACAO_S, "interaction"),
     "stretch": (T.ALONGAR_DURACAO_S, "flourish"),
+    "wake": (1.2, "interaction"),
 }
 
 

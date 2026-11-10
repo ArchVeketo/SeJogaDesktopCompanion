@@ -147,3 +147,10 @@ ALONGAR_PORTA_GRAUS = 20.0
 #: Respiração do tronco (``body.x``, graus) e queda dos ombros (``shoulder.x``).
 ALONGAR_RESPIRO_GRAUS = 2.5
 ALONGAR_OMBRO_QUEDA_GRAUS = 6.0
+
+# --------------------------------------------------------------------------- #
+# Acordar (``wake``)
+# --------------------------------------------------------------------------- #
+#: Elevação dos dois braços ao espreguiçar ao acordar (graus de ``right-arm.z``).
+#: Com 70 os braços (cotovelo dobrado) entravam ~0,09 u na cabeça; 30 fica dentro da folga.
+WAKE_BRACO_ELEVACAO = 30.0
