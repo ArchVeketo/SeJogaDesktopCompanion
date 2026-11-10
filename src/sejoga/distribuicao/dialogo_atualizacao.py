@@ -1,4 +1,5 @@
 """Non-blocking update checks; the stable agent applies machine-wide runtime packages."""
+
 from __future__ import annotations
 
 import contextlib
@@ -21,11 +22,16 @@ from sejoga.distribuicao.atualizador import (
 
 
 class UpdateDialog(QDialog):
+    """Diálogo que confere, baixa e aplica a atualização."""
+
     completed = Signal(object)
 
-    def __init__(self, on_install_started: Callable[[], None], settings: Settings | None = None):
+    def __init__(
+        self, on_install_started: Callable[[], None], settings: Settings | None = None
+    ):
+        """Monta o diálogo e inicia a consulta ao feed."""
         super().__init__()
-        self.setWindowTitle('Atualizações — SeJoga Companion')
+        self.setWindowTitle("Atualizações — SeJoga Companion")
         self.setMinimumWidth(420)
         # O canal efetivo vem da config do usuário, não do release-info.json.
         self._settings = settings or load_settings()
@@ -38,16 +44,20 @@ class UpdateDialog(QDialog):
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
-        self.action = QPushButton('Buscar atualizações')
+        self.action = QPushButton("Buscar atualizações")
         self.action.clicked.connect(self._action)
         layout.addWidget(self.action)
         self.completed.connect(self._completed)
         if self.launcher:
-            self.status.setText(f'Canal atual: {self._canal()}\n'
-                                'As atualizações vêm das releases oficiais do projeto.')
+            self.status.setText(
+                f"Canal atual: {self._canal()}\n"
+                "As atualizações vêm das releases oficiais do projeto."
+            )
         else:
-            self.status.setText('Instale o SeJoga pelo instalador oficial para receber '
-                                'atualizações por aqui.')
+            self.status.setText(
+                "Instale o SeJoga pelo instalador oficial para receber "
+                "atualizações por aqui."
+            )
             self.action.setEnabled(False)
 
     def _canal(self) -> str:
@@ -59,9 +69,11 @@ class UpdateDialog(QDialog):
         self._settings = settings
         self.candidate = None
         if self.launcher and not self._busy:
-            self.status.setText(f'Canal atual: {self._canal()}\n'
-                                'As atualizações vêm das releases oficiais do projeto.')
-            self.action.setText('Buscar atualizações')
+            self.status.setText(
+                f"Canal atual: {self._canal()}\n"
+                "As atualizações vêm das releases oficiais do projeto."
+            )
+            self.action.setText("Buscar atualizações")
 
     def _start(self, work: Callable, kind: str) -> None:
         self._busy = True
@@ -71,21 +83,21 @@ class UpdateDialog(QDialog):
             try:
                 result = (kind, work())
             except Exception as exc:
-                logging.getLogger('sejoga').warning('Update failed: %s', exc)
-                result = ('error', str(exc))
+                logging.getLogger("sejoga").warning("Update failed: %s", exc)
+                result = ("error", str(exc))
             with contextlib.suppress(RuntimeError):
                 self.completed.emit(result)
 
-        threading.Thread(target=run, name='sejoga-updater', daemon=True).start()
+        threading.Thread(target=run, name="sejoga-updater", daemon=True).start()
 
     def _action(self) -> None:
         if self._busy or self.launcher is None:
             return
         if self.candidate is None:
-            self.status.setText('Buscando atualizações…')
+            self.status.setText("Buscando atualizações…")
             # O canal da config define qual feed consultar.
             canal = self._canal()
-            self._start(lambda: check_update(release_para_checagem(canal)), 'checked')
+            self._start(lambda: check_update(release_para_checagem(canal)), "checked")
         else:
             self._install()
 
@@ -93,24 +105,31 @@ class UpdateDialog(QDialog):
         if self.launcher is None:
             return
         answer = QMessageBox.question(
-            self, 'Aplicar atualização?',
-            'O Mário será fechado agora e aparecerá apenas uma barra de progresso enquanto '
-            'o atualizador baixa, verifica e instala a nova versão. '
-            'O Windows solicitará permissão de administrador para atualizar todos os usuários. '
-            'Ao terminar, o Mário reabre automaticamente (se você cancelar a permissão, '
-            'ele também volta). Suas configurações serão preservadas.\n\nAtualizar agora?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
+            self,
+            "Aplicar atualização?",
+            "O Mário será fechado agora e aparecerá apenas uma barra de progresso enquanto "
+            "o atualizador baixa, verifica e instala a nova versão. "
+            "O Windows solicitará permissão de administrador para atualizar todos os usuários. "
+            "Ao terminar, o Mário reabre automaticamente (se você cancelar a permissão, "
+            "ele também volta). Suas configurações serão preservadas.\n\nAtualizar agora?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
         # Antes do handoff, aponta o channel-info.json do launcher nativo para o
         # canal escolhido na config (guard clause interno ignora modo fonte/dev).
-        reescrever_canal_channel_info(self.launcher.parent / 'channel-info.json', self._canal())
+        reescrever_canal_channel_info(
+            self.launcher.parent / "channel-info.json", self._canal()
+        )
         import win32api
+
         try:
-            win32api.ShellExecute(0, 'open', str(self.launcher), '--update', str(self.launcher.parent), 1)
+            win32api.ShellExecute(
+                0, "open", str(self.launcher), "--update", str(self.launcher.parent), 1
+            )
         except Exception as exc:
-            self.status.setText(f'Atualização não iniciada: {exc}')
+            self.status.setText(f"Atualização não iniciada: {exc}")
         else:
             self.accept()
             self.on_install_started()
@@ -119,18 +138,23 @@ class UpdateDialog(QDialog):
         self._busy = False
         self.action.setEnabled(True)
         kind, value = result
-        if kind == 'error':
-            self.status.setText(f'Não foi possível buscar atualizações: {value}')
-        elif kind == 'checked':
+        if kind == "error":
+            self.status.setText(f"Não foi possível buscar atualizações: {value}")
+        elif kind == "checked":
             self.candidate = value
             if value is None:
-                self.status.setText(f'Nenhuma atualização disponível no canal {self._canal()}.')
-                self.action.setText('Buscar atualizações')
+                self.status.setText(
+                    f"Nenhuma atualização disponível no canal {self._canal()}."
+                )
+                self.action.setText("Buscar atualizações")
             else:
-                self.status.setText(f'Versão {value.version} disponível · canal {value.channel}\n'
-                                    f'Download: {value.size / 1024 / 1024:.1f} MB')
-                self.action.setText('Atualizar agora')
+                self.status.setText(
+                    f"Versão {value.version} disponível · canal {value.channel}\n"
+                    f"Download: {value.size / 1024 / 1024:.1f} MB"
+                )
+                self.action.setText("Atualizar agora")
 
     def reject(self) -> None:
+        """Fecha o diálogo sem aplicar a atualização."""
         # Hiding does not delete the QObject while its worker is running.
         self.hide()

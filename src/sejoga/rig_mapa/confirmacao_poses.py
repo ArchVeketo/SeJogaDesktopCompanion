@@ -19,6 +19,8 @@ VERSAO_ARQUIVO = 1
 
 
 class Resposta(StrEnum):
+    """Resposta do usuário para uma pose de confirmação."""
+
     CORRETO = "correto"
     ERRADO = "errado"
     PULADO = "pulado"
@@ -38,28 +40,66 @@ class PoseDeConfirmacao:
 
 #: Ordem fixa das poses. As perguntas são curtas e respondíveis de relance.
 POSES: tuple[PoseDeConfirmacao, ...] = (
-    PoseDeConfirmacao("repouso", "idle", "C1/C6",
-                      "Braços para fora do corpo, mãos visíveis e nada enfiado no tronco/short?"),
-    PoseDeConfirmacao("repouso_lado", "idle", "C2",
-                      "(tecla v: lado) O cotovelo dobra para a FRENTE, nunca para trás?"),
-    PoseDeConfirmacao("aceno", "wave", "C1/C3",
-                      "Só o braço direito acena, a mão sobe por fora da cabeça?"),
-    PoseDeConfirmacao("alongamento", "stretch", "C1/C2",
-                      "Os braços sobem em sequência sem atravessar a cabeça?"),
-    PoseDeConfirmacao("cutucar", "poke", "C1",
-                      "A mão direita vai para a FRENTE do corpo (em direção à câmera)?"),
-    PoseDeConfirmacao("clique", "click", "C5a",
-                      "Ao clicar, o tronco cede para a FRENTE?"),
-    PoseDeConfirmacao("danca", "hip_hop", "C3/C4",
-                      "Os braços se revezam sem atravessar o tronco nem um ao outro?"),
-    PoseDeConfirmacao("danca_cruzada", "head_bob", "C4",
-                      "Braços cruzados ficam À FRENTE do tronco, sem atravessá-lo?"),
-    PoseDeConfirmacao("sono", "sleep", "C3",
-                      "Os dois braços estão espelhados (simétricos)?"),
-    PoseDeConfirmacao("arraste", "drag", "C5b",
-                      "Arrastando, o corpo pende para o lado coerente com o puxão?"),
-    PoseDeConfirmacao("queda", "fall", "C4",
-                      "Na queda, braços abertos sem atravessar a cabeça ou o tronco?"),
+    PoseDeConfirmacao(
+        "repouso",
+        "idle",
+        "C1/C6",
+        "Braços para fora do corpo, mãos visíveis e nada enfiado no tronco/short?",
+    ),
+    PoseDeConfirmacao(
+        "repouso_lado",
+        "idle",
+        "C2",
+        "(tecla v: lado) O cotovelo dobra para a FRENTE, nunca para trás?",
+    ),
+    PoseDeConfirmacao(
+        "aceno",
+        "wave",
+        "C1/C3",
+        "Só o braço direito acena, a mão sobe por fora da cabeça?",
+    ),
+    PoseDeConfirmacao(
+        "alongamento",
+        "stretch",
+        "C1/C2",
+        "Os braços sobem em sequência sem atravessar a cabeça?",
+    ),
+    PoseDeConfirmacao(
+        "cutucar",
+        "poke",
+        "C1",
+        "A mão direita vai para a FRENTE do corpo (em direção à câmera)?",
+    ),
+    PoseDeConfirmacao(
+        "clique", "click", "C5a", "Ao clicar, o tronco cede para a FRENTE?"
+    ),
+    PoseDeConfirmacao(
+        "danca",
+        "hip_hop",
+        "C3/C4",
+        "Os braços se revezam sem atravessar o tronco nem um ao outro?",
+    ),
+    PoseDeConfirmacao(
+        "danca_cruzada",
+        "head_bob",
+        "C4",
+        "Braços cruzados ficam À FRENTE do tronco, sem atravessá-lo?",
+    ),
+    PoseDeConfirmacao(
+        "sono", "sleep", "C3", "Os dois braços estão espelhados (simétricos)?"
+    ),
+    PoseDeConfirmacao(
+        "arraste",
+        "drag",
+        "C5b",
+        "Arrastando, o corpo pende para o lado coerente com o puxão?",
+    ),
+    PoseDeConfirmacao(
+        "queda",
+        "fall",
+        "C4",
+        "Na queda, braços abertos sem atravessar a cabeça ou o tronco?",
+    ),
 )
 
 
@@ -67,6 +107,7 @@ class ConfirmacaoPoses:
     """Navegação e respostas do modo confirmar."""
 
     def __init__(self, poses: tuple[PoseDeConfirmacao, ...] = POSES) -> None:
+        """Inicia a confirmação na primeira pose, sem respostas."""
         if not poses:
             raise ValueError("lista de poses vazia")
 
@@ -77,16 +118,20 @@ class ConfirmacaoPoses:
 
     @property
     def atual(self) -> PoseDeConfirmacao:
+        """Devolve a pose atual."""
         return self._poses[self._indice]
 
     @property
     def indice(self) -> int:
+        """Devolve o índice da pose atual."""
         return self._indice
 
     def respostas(self) -> dict[str, Resposta]:
+        """Devolve as respostas por pose."""
         return dict(self._respostas)
 
     def concluido(self) -> bool:
+        """Informa se todas as poses foram respondidas."""
         return all(p.nome in self._respostas for p in self._poses)
 
     def responder(self, resposta: Resposta) -> bool:
@@ -111,6 +156,7 @@ class ConfirmacaoPoses:
         return False
 
     def selecionar(self, nome: str) -> None:
+        """Seleciona a pose pelo nome."""
         nomes = [p.nome for p in self._poses]
 
         if nome not in nomes:
@@ -119,16 +165,22 @@ class ConfirmacaoPoses:
         self._indice = nomes.index(nome)
 
     def para_dict(self) -> dict[str, Any]:
+        """Serializa as respostas em dicionário."""
         return {
             "versao": VERSAO_ARQUIVO,
             "respostas": {
-                p.nome: {"item": p.item, "pergunta": p.pergunta, "resposta": self._respostas[p.nome].value}
+                p.nome: {
+                    "item": p.item,
+                    "pergunta": p.pergunta,
+                    "resposta": self._respostas[p.nome].value,
+                }
                 for p in self._poses
                 if p.nome in self._respostas
             },
         }
 
     def carregar_dict(self, dados: dict[str, Any]) -> int:
+        """Carrega as respostas do dicionário e devolve quantas foram lidas."""
         nomes = {p.nome for p in self._poses}
         carregadas = 0
 
@@ -146,13 +198,18 @@ class ConfirmacaoPoses:
     def salvar(self, destino: Path) -> None:
         """Grava o JSON em UTF-8 sem BOM, LF."""
         destino.parent.mkdir(parents=True, exist_ok=True)
-        destino.write_text(json.dumps(self.para_dict(), ensure_ascii=False, indent=2) + "\n",
-                           encoding="utf-8", newline="\n")
+        destino.write_text(
+            json.dumps(self.para_dict(), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
 
     def carregar(self, origem: Path) -> int:
+        """Carrega as respostas do arquivo e devolve quantas foram lidas."""
         return self.carregar_dict(json.loads(origem.read_text(encoding="utf-8")))
 
     def linhas_hud(self) -> list[str]:
+        """Devolve as linhas do HUD da pose atual."""
         pose = self.atual
         resposta = self._respostas.get(pose.nome)
         linhas = [

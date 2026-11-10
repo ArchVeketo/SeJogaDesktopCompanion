@@ -15,6 +15,7 @@ Direções são sempre as vistas NA TELA, com o mascote de frente para a câmera
 ``fora`` (afasta lateralmente do corpo), ``direita``/``esquerda`` (lados da
 tela) e ``nenhum`` (a rotação não produz movimento visível).
 """
+
 from __future__ import annotations
 
 import json
@@ -128,6 +129,7 @@ class EstadoCalibrador:
     """Seleção, valores aplicados e marcações do calibrador interativo."""
 
     def __init__(self, juntas: dict[str, str] | None = None) -> None:
+        """Inicia o calibrador com as juntas dadas, na primeira junta e eixo."""
         self._juntas = dict(JUNTAS if juntas is None else juntas)
         if not self._juntas:
             raise ValueError("o calibrador precisa de ao menos uma junta")
@@ -143,18 +145,22 @@ class EstadoCalibrador:
     # ------------------------------------------------------------------ seleção
     @property
     def nomes_juntas(self) -> tuple[str, ...]:
+        """Devolve os nomes das juntas calibráveis."""
         return self._nomes
 
     @property
     def junta(self) -> str:
+        """Devolve a junta selecionada."""
         return self._nomes[self._indice]
 
     @property
     def grupo(self) -> str:
+        """Devolve o grupo do rig da junta selecionada."""
         return self._juntas[self.junta]
 
     @property
     def eixo(self) -> Eixo:
+        """Devolve o eixo selecionado."""
         return self._eixo
 
     @property
@@ -163,6 +169,7 @@ class EstadoCalibrador:
         return self._valores[self.junta][self._eixo]
 
     def valor_de(self, junta: str, eixo: Eixo) -> float:
+        """Devolve o valor (graus) da junta no eixo."""
         return self._valores[junta][eixo]
 
     def proxima_junta(self, passo: int = 1) -> None:
@@ -170,11 +177,13 @@ class EstadoCalibrador:
         self._indice = (self._indice + passo) % len(self._nomes)
 
     def selecionar_junta(self, nome: str) -> None:
+        """Seleciona a junta pelo nome."""
         if nome not in self._juntas:
             raise KeyError(nome)
         self._indice = self._nomes.index(nome)
 
     def selecionar_eixo(self, eixo: Eixo) -> None:
+        """Seleciona o eixo."""
         self._eixo = Eixo(eixo)
 
     def _combinacoes(self) -> list[ChaveMarcacao]:
@@ -226,6 +235,7 @@ class EstadoCalibrador:
         return self.definir_valor(self.valor + delta_graus)
 
     def definir_valor(self, graus: float) -> float:
+        """Define o valor do eixo selecionado e devolve o valor aplicado."""
         limitado = max(-LIMITE_GRAUS, min(LIMITE_GRAUS, graus))
         self._valores[self.junta][self._eixo] = limitado
         return limitado
@@ -240,12 +250,15 @@ class EstadoCalibrador:
         return self.definir_valor(ALCANCE_NULO)
 
     def zerar_eixo(self) -> None:
+        """Zera o eixo selecionado."""
         self.definir_valor(ALCANCE_NULO)
 
     def zerar_junta(self) -> None:
+        """Zera todos os eixos da junta selecionada."""
         self._valores[self.junta] = dict.fromkeys(Eixo, 0.0)
 
     def zerar_tudo(self) -> None:
+        """Zera todas as juntas."""
         for nome in self._nomes:
             self._valores[nome] = dict.fromkeys(Eixo, 0.0)
 
@@ -272,8 +285,12 @@ class EstadoCalibrador:
             self.mensagem = "Gire o eixo antes de marcar (valor está em 0)."
             return False
         chave = (self.junta, self._eixo, sinal)
-        self._marcacoes[chave] = Marcacao(Direcao(direcao), round(self.valor, PRECISAO_EXIBICAO))
-        self.mensagem = f"{self.junta} {sinal}{self._eixo.value} = {Direcao(direcao).value}"
+        self._marcacoes[chave] = Marcacao(
+            Direcao(direcao), round(self.valor, PRECISAO_EXIBICAO)
+        )
+        self.mensagem = (
+            f"{self.junta} {sinal}{self._eixo.value} = {Direcao(direcao).value}"
+        )
         return True
 
     def desmarcar(self) -> bool:
@@ -295,12 +312,15 @@ class EstadoCalibrador:
 
     @property
     def marcacoes(self) -> dict[ChaveMarcacao, Marcacao]:
+        """Devolve as marcações feitas."""
         return dict(self._marcacoes)
 
     def total_marcado(self) -> int:
+        """Devolve quantas marcações foram feitas."""
         return len(self._marcacoes)
 
     def total_possivel(self) -> int:
+        """Devolve quantas marcações são possíveis."""
         return len(self._nomes) * len(Eixo) * 2
 
     # --------------------------------------------------------------- serialização
@@ -315,7 +335,8 @@ class EstadoCalibrador:
         marcacoes: dict[str, dict[str, dict[str, Any]]] = {}
         inverso: dict[str, dict[str, list[dict[str, str]]]] = {}
         for (junta, eixo, sinal), m in sorted(
-            self._marcacoes.items(), key=lambda kv: (self._nomes.index(kv[0][0]), kv[0][1], kv[0][2])
+            self._marcacoes.items(),
+            key=lambda kv: (self._nomes.index(kv[0][0]), kv[0][1], kv[0][2]),
         ):
             marcacoes.setdefault(junta, {})[f"{sinal}{eixo.value}"] = {
                 "direcao": m.direcao.value,
@@ -332,6 +353,7 @@ class EstadoCalibrador:
         }
 
     def para_json(self) -> str:
+        """Serializa o estado em JSON."""
         return json.dumps(self.para_dict(), ensure_ascii=False, indent=2) + "\n"
 
     def carregar_dict(self, dados: dict[str, Any]) -> int:
@@ -340,7 +362,9 @@ class EstadoCalibrador:
         Ignora com segurança juntas, eixos ou direções que não existem mais.
         """
         if dados.get("versao") != VERSAO_ARQUIVO:
-            raise ValueError(f"versão de arquivo não suportada: {dados.get('versao')!r}")
+            raise ValueError(
+                f"versão de arquivo não suportada: {dados.get('versao')!r}"
+            )
         aplicadas = 0
         for junta, itens in dados.get("marcacoes", {}).items():
             if junta not in self._juntas:
@@ -367,6 +391,7 @@ class EstadoCalibrador:
             destino_md.write_text(self.para_markdown(), encoding="utf-8", newline="\n")
 
     def carregar(self, origem_json: Path) -> int:
+        """Carrega as marcações do JSON e devolve quantas foram lidas."""
         return self.carregar_dict(json.loads(origem_json.read_text(encoding="utf-8")))
 
     def para_markdown(self) -> str:
@@ -389,9 +414,9 @@ class EstadoCalibrador:
                 )
         faltando = [n for n in self._nomes if self.pendencias(n)]
         linhas += ["", "## Juntas com pendências", ""]
-        linhas += [f"- {n}: {len(self.pendencias(n))} combinação(ões)" for n in faltando] or [
-            "- nenhuma"
-        ]
+        linhas += [
+            f"- {n}: {len(self.pendencias(n))} combinação(ões)" for n in faltando
+        ] or ["- nenhuma"]
         return "\n".join(linhas) + "\n"
 
     # --------------------------------------------------------------------- HUD
@@ -404,7 +429,9 @@ class EstadoCalibrador:
             f"JUNTA {self._indice + 1}/{len(self._nomes)}: {self.junta}  [{self.grupo}]",
             f"EIXO {self._eixo.value.upper()}  sinal {sinal}  valor {self.valor:+.{PRECISAO_EXIBICAO}f} graus",
             "valores (x y z): "
-            + " ".join(f"{self.valor_de(self.junta, e):+.{PRECISAO_EXIBICAO}f}" for e in Eixo),
+            + " ".join(
+                f"{self.valor_de(self.junta, e):+.{PRECISAO_EXIBICAO}f}" for e in Eixo
+            ),
             f"marcado para esta combinação: {marcada}",
             f"progresso: {self.total_marcado()}/{self.total_possivel()} marcações",
         ]
