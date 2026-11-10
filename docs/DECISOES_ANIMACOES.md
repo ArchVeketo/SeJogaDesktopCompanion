@@ -104,3 +104,43 @@ Quem acrescentar uma animação nova deve incluir uma seção aqui.
   horizontal. Pernas e `delta_fisica` intactos.
 - Não verificado (só GPU): sentido da contrafase, giro do tronco, leitura dos
   dedos de arraste/soltura/queda, transição fall -> land -> idle.
+
+## Gestos de reação
+
+Aceno, cutucar e alongar vivem em `animacao/gestos_reacao.py` (constantes em
+`animacao/gestos_tuning.py`); `rig.pose_flourish` e `rig.pose_interaction`
+só delegam. Continuam no caminho legado (alvo bruto, sem LayerStack).
+
+- **Alvos de mão:** `ALVO_WAVE` e `ALVO_STRETCH` ficaram como estavam. O
+  `oraculo_cena --sugerir` só achou o ponto livre mais próximo (wave a 0,015 u;
+  stretch já livre). Uma varredura em grade mostrou que subir o alongamento
+  (y 0,12 ou 0,16) atravessa a cabeça (0,03 a 0,06 u); o alvo atual dá ~49 graus
+  de elevação sobre o repouso, medido pela FK da mão.
+- **Aceno (2,6 s):** antecipação, subida de 0,6 s, três balanços de 1,8 Hz
+  amortecidos (pico de 22 graus no antebraço, pulso de 15, cabeça com 0,12 s
+  de atraso) e descida. O centro do balanço fica 18 graus mais estendido que o
+  alvo: sem isso o punho entrava na cabeça (0,043 u) no pico de flexão.
+  O cotovelo tem faixa própria, sem o recuo de antecipação, porque o recuo
+  cruzaria zero (sem hiperextensão) e criaria uma quina.
+- **Cutucar (0,4 -> 0,9 s):** recuo (0,15 s), estocada (0,12 s), sustentação
+  (0,25 s) e recuperação (0,38 s) numa faixa única `golpe` (-1 recuo, +1
+  estocada), então não há quina na passagem pelo zero. A estocada é de 30
+  graus no ombro: com 45 o braço invadia o outro braço (0,02 u). O dedo
+  indicador estendido não foi feito (os gestos de dedo `GESTURES` não têm
+  esse caso); só o punho fecha de leve.
+- **Alongar (3,2 s):** os dois braços sobem juntos, coluna em arco (10 graus),
+  cabeça para trás, bocejo de 20 graus (limite 25), sustentação de ~0,8 s e
+  queda dos ombros ao soltar.
+- **Tranco nos gestos:** o limite de jerk 8000 não vale para gestos rápidos
+  (45 graus em 0,12 s já passa de 1 milhão; o `PoseResolver` suaviza). Os testes
+  usam um teto por gesto: aceno 6e4, cutucar 2,5e6, alongar 8000, wake 1,2e4.
+  Nas auditorias, a flapada da porta no clique e o tremor do hit passam
+  desse limite por projeto; não foram mexidos.
+- **Auditoria:** click, double_click, pet, hit, land, surprise e peek não
+  atravessam, terminam no repouso e não hiperestendem. Só o `wake` atravessava
+  (0,09 u): a elevação dos braços foi de 70 para 30 graus (`WAKE_BRACO_ELEVACAO`).
+- **Limitado pelo fone (C6):** o aceno não vai além do ponto livre atual; mais
+  alto o punho encosta no fone/cabeça.
+- Não verificado (só GPU): leitura visual dos três gestos, palma para a frente
+  no aceno (C7), sinal da queda de ombros do alongar (`shoulder`/`shoulder2`),
+  o fechamento do punho no cutucar.
