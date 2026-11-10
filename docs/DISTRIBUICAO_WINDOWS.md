@@ -66,9 +66,9 @@ A publicação em si é feita pelo orquestrador (o `gh` não está disponível n
 ```powershell
 python -m pytest
 .\build.ps1
-python tools/build-update.py --channel release --version 0.1.0
-python tools/build-update.py --channel prerelease --version 0.2.0rc1
-python tools/build-update.py --channel nightly
+python tools/construir_atualizacao.py --channel release --version 0.1.0
+python tools/construir_atualizacao.py --channel prerelease --version 0.2.0rc1
+python tools/construir_atualizacao.py --channel nightly
 ```
 
 Saídas em `dist/updates/<canal>`: ZIP com metadados, checksum e manifesto. Exclui perfis `user-data`, logs e fontes de arte. Os padrões de versão vêm de `pyproject.toml`, com `rc1` ou `.dev<UTC>` conforme o canal. Release/prerelease precisam de versão nova para cada publicação; nightly usa timestamp. `build_id` também é monotônico.
@@ -80,7 +80,7 @@ A publicação agora é feita por um **pipeline de CI/CD no GitHub Actions** (`.
 - **tag `v*` estável** (ex.: `v0.2.0`) → publica **release** (feed `updates-release` + release com o instalador);
 - **execução manual** (`workflow_dispatch`) → escolhe `canal`, `gerar_instalador` e `publicar` (publicar **default FALSE**: só builda, empacota e sobe os artefatos do Actions para inspeção).
 
-Cada job roda testes/ruff como gate (falhou, não publica), `build.ps1`, `tools/build-update.py --channel <canal>` e, quando `gerar_instalador=true`, Inno Setup (`choco install innosetup`) + `tools/build-installer.ps1`. O instalador é sempre do canal `release` (o `release-info.json` embutido usa `channel=release` e versão estável do `pyproject`); por isso, em nightly/prerelease o instalador usa a versão do `pyproject`, não a versão rc/dev do feed. O feed verifica regressão via `build-update`/`updater` e sobe ZIP/checksum junto com o `channel.json`. A publicação usa o `GITHUB_TOKEN` padrão do Actions (`permissions: contents: write`), sem secret extra.
+Cada job roda testes/ruff como gate (falhou, não publica), `build.ps1`, `tools/construir_atualizacao.py --channel <canal>` e, quando `gerar_instalador=true`, Inno Setup (`choco install innosetup`) + `tools/build-installer.ps1`. O instalador é sempre do canal `release` (o `release-info.json` embutido usa `channel=release` e versão estável do `pyproject`); por isso, em nightly/prerelease o instalador usa a versão do `pyproject`, não a versão rc/dev do feed. O feed verifica regressão via `construir_atualizacao`/`updater` e sobe ZIP/checksum junto com o `channel.json`. A publicação usa o `GITHUB_TOKEN` padrão do Actions (`permissions: contents: write`), sem secret extra.
 
 > O runner do GitHub **não tem GPU**: o CI garante **build + empacote + publica**, não a **aparência** (app abre / overlay / render). A validação visual continua **manual**. Detalhes de disparo em `.github/workflows/README.md`.
 

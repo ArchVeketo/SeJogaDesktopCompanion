@@ -1,6 +1,6 @@
 """Estado puro do modo CONFIRMAR do calibrador (sem Panda3D, Qt ou Win32).
 
-O mapa de eixos agora sai do grafo de cena (``tools/oraculo_cena.py``); o usuário
+O mapa de eixos agora sai do grafo de cena (``tools/gerar_oraculo_cena.py``); o usuário
 não precisa mais marcar 96 combinações. No modo confirmar a ferramenta mostra
 cada pose real do app, faz UMA pergunta curta e o usuário responde com uma
 tecla: correto, errado ou pular. As respostas vão para

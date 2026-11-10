@@ -253,7 +253,7 @@ exe = EXE(pyz, a.scripts, exclude_binaries=True, name="SeJogaCompanion",
 coll = COLLECT(exe, a.binaries, a.datas, name="SeJogaCompanion")
 ```
 
-**Assets:** converter glTF → `.glb` (um arquivo) com `tools/gltf_to_glb.py` antes do build.
+**Assets:** converter glTF → `.glb` (um arquivo) com `tools/converter_gltf_para_glb.py` antes do build.
 
 **Inno Setup (per-user, sem UAC):**
 ```ini

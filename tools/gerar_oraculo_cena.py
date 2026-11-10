@@ -341,7 +341,7 @@ def main() -> int:
     if args.dedos or todos:
         blocos.append("## Cadeia dos dedos (FK x pivôs do Panda)\n\n" + tabela_dedos(modelo))
 
-    texto = "# Oráculo de cena (gerado por tools/oraculo_cena.py)\n\n" + "\n\n".join(blocos) + "\n"
+    texto = "# Oráculo de cena (gerado por tools/gerar_oraculo_cena.py)\n\n" + "\n\n".join(blocos) + "\n"
 
     if args.saida:
         args.saida.write_text(texto, encoding="utf-8", newline="\n")

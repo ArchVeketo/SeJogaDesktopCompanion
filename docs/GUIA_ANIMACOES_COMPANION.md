@@ -44,7 +44,7 @@ As pistas usam interpolação quíntica (velocidade e aceleração nulas nas
 pausas). Antebraço, punho e dedos têm tempos diferentes. O movimento
 secundário soma à pose autorada, preservando suas rotações. A escolha manual
 reinicia a frase, faz crossfade e permanece salva; automático inclui os nove
-estilos. `tools/preview_body_actions.py` gera
+estilos. `tools/visualizar_acoes_corpo.py` gera
 capturas do início, gesto e retorno, com perfil temporário.
 
 Os tentáculos agora aguardam a porta abrir, mantêm a raiz fixa, saem em
@@ -87,7 +87,7 @@ são reconstruídas a cada frame; não se acumulam e não alteram a hierarquia
 ou o GLTF. Isso é animação física visual, não ragdoll nem colisão rígida de
 cada parte do corpo. As posições/eixos dos tentáculos acompanham a cabeça.
 
-`tools/smoke_native_body.py` usa entrada real do Windows para arrastar,
+`tools/smoke_corpo_nativo.py` usa entrada real do Windows para arrastar,
 inverter e soltar, verifica recuperação do corpo e restaura cursor/botões.
 Capturas e JSONL incluem o estado do balanço e a velocidade do cursor.
 

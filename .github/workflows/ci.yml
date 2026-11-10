@@ -1,7 +1,7 @@
 # Pipeline de CI/CD do SeJoga Desktop Companion.
 #
 # Automatiza build, empacotamento e publicacao nos canais de distribuicao,
-# substituindo o processo manual (build.ps1 -> build-update.py -> gh release).
+# substituindo o processo manual (build.ps1 -> construir_atualizacao.py -> gh release).
 # Toda a logica fica nos scripts existentes; aqui so decidimos CANAL e se PUBLICA.
 #
 # GATILHOS:

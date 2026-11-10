@@ -3,7 +3,7 @@
 Os braços são cápsulas (braço, antebraço, mão+dedos) medidas por
 ``nucleo.cinematica`` (mesma FK do Panda3D). O corpo são caixas do referencial de
 AUTORIA (``+X`` direita, ``+Y`` frente, ``+Z`` cima) medidas no grafo de cena
-do asset em repouso (``tools/oraculo_cena.py``). As primitivas de interseção são
+do asset em repouso (``tools/gerar_oraculo_cena.py``). As primitivas de interseção são
 as de ``primitivas_colisao`` (cápsula-caixa e cápsula-cápsula).
 
 A correção é MÍNIMA e determinística: busca em subida de encosta, sobre os
@@ -43,7 +43,7 @@ from sejoga.nucleo.modelo import Model
 Vec3 = cin.Vec3
 
 # --------------------------------------------------------------------------- #
-# Geometria do braço (medida no asset; ver tools/oraculo_cena.py)
+# Geometria do braço (medida no asset; ver tools/gerar_oraculo_cena.py)
 # --------------------------------------------------------------------------- #
 #: Menor meia-aresta medida do cubo do braço (seção 0.273 x 0.227).
 MEIA_ESPESSURA_BRACO_U = 0.1135

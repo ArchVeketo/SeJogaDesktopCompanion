@@ -257,10 +257,10 @@ Ferramentas existentes:
 
 ```powershell
 python -m sejoga run
-python tools/preview_body_actions.py music-soft music-hiphop music-heavy
-python tools/profile_animation.py
-python tools/smoke_native_body.py
-python tools/smoke_bundle_dances.py
+python tools/visualizar_acoes_corpo.py music-soft music-hiphop music-heavy
+python tools/perfilar_animacao.py
+python tools/smoke_corpo_nativo.py
+python tools/smoke_pacote_dancas.py
 ```
 
 O menu tem **Prévia de dança (sem som)**. `tools/capture_dance_animation.py` e `--log-level DEBUG`, citados na versão 1.0, não existem no CLI atual (removidos), assim como `tools/profile_music_styles.py`.
@@ -285,4 +285,4 @@ Critérios de aprovação:
 
 ### Validação da entrada da caixa — 05/11/2026
 
-A ferramenta `preview_music_scene.py` foi removida (limpeza ponytail); esta sequência: preparação, arremesso, pouso e pose final, vista em `tools/preview_body_actions.py`. Descrição original: preparação, arremesso, pouso e pose final em perfil isolado. Três tentáculos empurram alvos externos distintos na caixa e se recolhem; gosma rosa sólida low-poly escorre e desaparece até 6,5 s. A dança continua durante a sequência. Cones pulsam radialmente; ondas e tremor seguem energia/graves. Prévia permanece silenciosa; o pouso em música real respeita volume e áudio habilitado.
+A ferramenta `preview_music_scene.py` foi removida (limpeza ponytail); esta sequência: preparação, arremesso, pouso e pose final, vista em `tools/visualizar_acoes_corpo.py`. Descrição original: preparação, arremesso, pouso e pose final em perfil isolado. Três tentáculos empurram alvos externos distintos na caixa e se recolhem; gosma rosa sólida low-poly escorre e desaparece até 6,5 s. A dança continua durante a sequência. Cones pulsam radialmente; ondas e tremor seguem energia/graves. Prévia permanece silenciosa; o pouso em música real respeita volume e áudio habilitado.

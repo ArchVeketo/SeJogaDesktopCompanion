@@ -1,10 +1,10 @@
 # Workflow reutilizavel (reusable workflow) com o build comum de um canal.
-# Orquestra APENAS os scripts existentes (build.ps1, tools/build-update.py,
+# Orquestra APENAS os scripts existentes (build.ps1, tools/construir_atualizacao.py,
 # tools/build-installer.ps1) — nao reimplementa a logica de empacotamento.
 #
 # Chamado por ci.yml para cada gatilho (push main / tag / manual). Faz:
 #   checkout -> setup Python 3.12 -> instala o stack -> pytest (gate) ->
-#   ruff check (gate) -> build.ps1 -> build-update.py -> (opcional) instalador ->
+#   ruff check (gate) -> build.ps1 -> construir_atualizacao.py -> (opcional) instalador ->
 #   sobe os artefatos do Actions e, se publicar=true, publica nas Releases via gh.
 #
 # AVISO: o runner do GitHub nao tem GPU. O CI garante build + empacota + publica,
@@ -34,7 +34,7 @@ on:
         required: false
         default: ''
       version:
-        description: Versao explicita repassada a build-update.py (vazio = deriva do pyproject/canal).
+        description: Versao explicita repassada a construir_atualizacao.py (vazio = deriva do pyproject/canal).
         type: string
         required: false
         default: ''
@@ -48,7 +48,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # build-update.py grava o commit HEAD no channel.json.
+          fetch-depth: 0 # construir_atualizacao.py grava o commit HEAD no channel.json.
 
       - name: Setup Python 3.12
         uses: actions/setup-python@v5
@@ -75,7 +75,7 @@ jobs:
         run: .\build.ps1
 
       # Normaliza a versao: remove o prefixo 'v' da tag (v0.2.0rc1 -> 0.2.0rc1).
-      # Vazio quando nightly/manual sem version (build-update deriva do pyproject).
+      # Vazio quando nightly/manual sem version (construir_atualizacao deriva do pyproject).
       - name: Deriva a versao limpa
         id: ver
         shell: pwsh
@@ -89,7 +89,7 @@ jobs:
         run: |
           $args = @('--channel', '${{ inputs.canal }}')
           if ('${{ steps.ver.outputs.version }}') { $args += @('--version', '${{ steps.ver.outputs.version }}') }
-          python tools/build-update.py @args
+          python tools/construir_atualizacao.py @args
 
       - name: Instala o Inno Setup (ISCC) via Chocolatey
         if: ${{ inputs.gerar_instalador }}
@@ -128,7 +128,7 @@ jobs:
 
       # Publicacao do FEED: release de tag fixa updates-<canal> com ZIP + channel.json + .sha256.
       # O updater le releases/download/updates-<canal>/channel.json. --clobber substitui os assets.
-      # build-update/updater ja rejeitam downgrade/build_id regressivo.
+      # construir_atualizacao/updater ja rejeitam downgrade/build_id regressivo.
       - name: Publica o feed updates-<canal>
         if: ${{ inputs.publicar }}
         shell: pwsh

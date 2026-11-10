@@ -22,7 +22,7 @@ class RepousoAnatomico:
     se o alvo ou o solver mudarem, estes números precisam ser regenerados (nunca
     ajustados à mão).
 
-    Eixos medidos no grafo de cena (``tools/oraculo_cena.py --eixos``), braço
+    Eixos medidos no grafo de cena (``tools/gerar_oraculo_cena.py --eixos``), braço
     direito com o eixo longo em +X: H (y) positivo leva a mão para a FRENTE;
     R (z) positivo BAIXA a mão; P (x) torce o braço no próprio eixo (escolhe o
     plano em que o cotovelo dobra). O cotovelo é o R do antebraço, com a

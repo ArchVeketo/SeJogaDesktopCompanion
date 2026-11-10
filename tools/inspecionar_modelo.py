@@ -7,9 +7,9 @@ problemas de integridade.
 
 Uso
 ---
-    python tools/inspect_model.py assets/model/mario.gltf
-    python tools/inspect_model.py assets/model/mario.glb
-    python tools/inspect_model.py assets/model/projetoMARIO.bbmodel --json
+    python tools/inspecionar_modelo.py assets/model/mario.gltf
+    python tools/inspecionar_modelo.py assets/model/mario.glb
+    python tools/inspecionar_modelo.py assets/model/projetoMARIO.bbmodel --json
 
 Saída legível por humanos por padrão; ``--json`` emite um resumo estruturado
 (útil para CI e para o runtime).

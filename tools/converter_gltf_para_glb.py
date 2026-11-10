@@ -13,7 +13,7 @@ PNG ficam embutidos como *data URI* base64 dentro do JSON. Isso funciona, mas:
 
 Uso
 ---
-    python tools/gltf_to_glb.py assets/model/mario.gltf -o assets/model/mario.glb
+    python tools/converter_gltf_para_glb.py assets/model/mario.gltf -o assets/model/mario.glb
 
 O script não depende de nenhuma biblioteca externa: só ``json``, ``base64``,
 ``struct`` e ``pathlib`` da stdlib.

@@ -49,7 +49,7 @@ Vec3 = cin.Vec3
 Mat3 = cin.Mat3
 
 #: Comprimentos de fallback (translations do glTF) caso o modelo não exponha a
-#: cadeia ``right-arm → ant-arm → hand`` (ver ``tools/inspect_model.py``).
+#: cadeia ``right-arm → ant-arm → hand`` (ver ``tools/inspecionar_modelo.py``).
 _UPPER_FALLBACK = 0.125
 _FOREARM_FALLBACK = 0.15625
 

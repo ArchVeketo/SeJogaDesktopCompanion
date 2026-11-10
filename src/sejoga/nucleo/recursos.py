@@ -68,7 +68,7 @@ def resolve_model(stem: str = DEFAULT_MODEL_STEM) -> Path:
     """Retorna o primeiro arquivo de modelo existente para ``stem``.
 
     Prefere ``.glb`` (autocontido) e cai para ``.gltf`` se o derivado ainda não
-    tiver sido gerado com ``python tools/gltf_to_glb.py``.
+    tiver sido gerado com ``python tools/converter_gltf_para_glb.py``.
 
     Raises:
         FileNotFoundError: se nenhuma variante existir.
@@ -80,7 +80,7 @@ def resolve_model(stem: str = DEFAULT_MODEL_STEM) -> Path:
     tried = ", ".join(f"{stem}{s}" for s in MODEL_SUFFIXES)
     raise FileNotFoundError(
         f"modelo não encontrado em {model_dir()} (procurei por: {tried}). "
-        "Rode 'python tools/gltf_to_glb.py assets/model/mario.gltf'."
+        "Rode 'python tools/converter_gltf_para_glb.py assets/model/mario.gltf'."
     )
 
 

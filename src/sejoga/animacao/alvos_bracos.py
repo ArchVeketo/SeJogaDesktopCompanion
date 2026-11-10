@@ -9,7 +9,7 @@ ombro e do cotovelo. Os eixos são os da FK do grafo de cena
 
 COMO OS VALORES FORAM ESCOLHIDOS (medido, não chutado): cada alvo é o ponto livre
 de atravessamento (``animacao.colisao_bracos``) mais próximo do alvo autoral
-anterior, numa grade de 0.02 u (``python tools/oraculo_cena.py --sugerir``). A
+anterior, numa grade de 0.02 u (``python tools/gerar_oraculo_cena.py --sugerir``). A
 tabela antes/depois está em ``.agents/tasks/frente3-animacao/recalibracao-gpu.md``.
 
 Limite medido do asset SEM folga: nenhuma pose com o punho mais de 0.08 u abaixo do ombro é

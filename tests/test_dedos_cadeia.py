@@ -216,7 +216,7 @@ with contextlib.suppress(ImportError):
 
 
 def _oraculo():
-    caminho = Path(__file__).resolve().parents[1] / "tools" / "oraculo_cena.py"
+    caminho = Path(__file__).resolve().parents[1] / "tools" / "gerar_oraculo_cena.py"
     spec = importlib.util.spec_from_file_location("oraculo_cena_teste", caminho)
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)

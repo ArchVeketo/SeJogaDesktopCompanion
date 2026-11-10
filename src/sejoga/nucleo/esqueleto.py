@@ -9,7 +9,7 @@ animar em Python sem nenhum clip pré-autorado:
 
 A camada de render só precisa ler ``rig.pose()`` e aplicar nos nós do engine.
 
-Os nomes abaixo foram extraídos do arquivo real (``tools/inspect_model.py``);
+Os nomes abaixo foram extraídos do arquivo real (``tools/inspecionar_modelo.py``);
 ``tests/test_modelo.py`` garante que continuam presentes.
 """
 

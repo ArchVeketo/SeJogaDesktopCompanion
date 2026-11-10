@@ -1,6 +1,6 @@
 # Pipeline de CI/CD (GitHub Actions)
 
-Automatiza o que antes era manual (`build.ps1` -> `tools/build-update.py` -> `gh release`).
+Automatiza o que antes era manual (`build.ps1` -> `tools/construir_atualizacao.py` -> `gh release`).
 O pipeline **orquestra os scripts existentes**; não reimplementa a lógica de build/empacote.
 
 ## Arquivos
@@ -8,7 +8,7 @@ O pipeline **orquestra os scripts existentes**; não reimplementa a lógica de b
 - `ci.yml` — orquestrador: decide **canal** e se **publica**, conforme o gatilho.
 - `_build-comum.yml` — workflow reutilizável (`workflow_call`) com o build comum de um canal:
   checkout → setup Python 3.12 → instala o stack → `pytest` (gate) → `ruff check` (gate) →
-  `build.ps1` → `tools/build-update.py` → (opcional) Inno Setup + `tools/build-installer.ps1` →
+  `build.ps1` → `tools/construir_atualizacao.py` → (opcional) Inno Setup + `tools/build-installer.ps1` →
   sobe artefatos do Actions e, se `publicar=true`, publica nas Releases.
 
 ## Como disparar cada caso
@@ -32,7 +32,7 @@ sem tocar nas Releases.
   O updater do app lê `releases/download/updates-<canal>/channel.json`.
 - A **release de versão** (tag `v*`) recebe o instalador `.exe` + `.sha256`. Tags `rc` entram
   como pré-release; tags estáveis entram como release.
-- `tools/build-update.py` e o updater já **rejeitam downgrade / build_id regressivo**.
+- `tools/construir_atualizacao.py` e o updater já **rejeitam downgrade / build_id regressivo**.
 
 ## Credenciais
 

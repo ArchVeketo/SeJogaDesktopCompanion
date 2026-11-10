@@ -19,7 +19,7 @@ from sejoga.nucleo.modelo import Model
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                       Limites anatômicos (clamps)                         ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
-# Eixos medidos no grafo de cena (tools/oraculo_cena.py --eixos), braço direito
+# Eixos medidos no grafo de cena (tools/gerar_oraculo_cena.py --eixos), braço direito
 # com eixo longo +X: R (``Rotation3.z``) positivo BAIXA a mão, H (``.y``)
 # positivo leva a mão para a FRENTE, P (``.x``) torce. Cotovelo = R do
 # antebraço sobre a torção-base: positivo dobra para a frente, negativo seria

@@ -20,7 +20,7 @@ Uso (a partir da raiz do worktree):
 salva um PNG (com HUD) para checagem programática; não abre loop de teclado.
 
 MODO CONFIRMAR (Parte 3, recomendado): o mapa de eixos já sai do grafo de cena
-(``tools/oraculo_cena.py``). Aqui o usuário só confirma as poses REAIS do app:
+(``tools/gerar_oraculo_cena.py``). Aqui o usuário só confirma as poses REAIS do app:
     python tools/calibrar_interativo.py --confirmar
     python tools/calibrar_interativo.py --confirmar --capturar x.png --pose aceno
 Teclas: 1 correto, 2 errado, 3 pular, v frente/lado, setas navegam, esc salva e

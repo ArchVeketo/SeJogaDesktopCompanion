@@ -9,7 +9,7 @@ O que foi verificado aqui por automação:
   empresa "Se Joga no Armário"), confirmado por `FileVersionInfo`.
 - Lógica Python do fluxo fecha->barra->reabre coberta por `tests/test_dialogo_atualizacao.py`
   (handoff ao launcher dispara o fechamento do companion nos dois caminhos de UI)
-  e pelo `tools/smoke-updater.py` (loopback, sem rede real).
+  e pelo `tools/smoke_atualizador.py` (loopback, sem rede real).
 
 ## Checklist a validar na máquina com GPU
 

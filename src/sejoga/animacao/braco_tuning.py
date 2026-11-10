@@ -63,7 +63,7 @@ POLO_COTOVELO_ANATOMICO = (0.3, -0.6, -0.75)
 #: cheia (fração 1) só o T-pose fica livre: braço+mão (≈0.61) são do tamanho do
 #: corpo e qualquer mão à frente encosta no tronco. Menor = braços mais baixos e
 #: gestos mais soltos, porém mais casca dentro do corpo. A_CONFIRMAR (C4/C6).
-#: Medido (oraculo_cena --sugerir): baixar só esta fração quase não solta o braço,
+#: Medido (gerar_oraculo_cena --sugerir): baixar só esta fração quase não solta o braço,
 #: porque o limite é a caixa do tronco/quadril; a folga por caixa abaixo é a
 #: alavanca que relaxa o braço. Por isso fica no valor original.
 FRACAO_NUCLEO_BRACO = 0.5

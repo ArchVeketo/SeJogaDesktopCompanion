@@ -172,7 +172,7 @@ Opções se reprovar C6 (escolher uma):
 
 1. Aceitar o visual atual (braços abertos, gestos contidos).
 2. Permitir mais casca no corpo: baixar `FRACAO_NUCLEO_BRACO` e regerar os alvos
-   com `python tools/oraculo_cena.py --sugerir`. Braços descem e os gestos voltam
+   com `python tools/gerar_oraculo_cena.py --sugerir`. Braços descem e os gestos voltam
    a se diferenciar, ao custo de mais braço dentro do short/tronco.
 3. Re-autorar os gestos para o espaço livre do asset (uma rodada própria).
 
@@ -212,7 +212,7 @@ Se C8 reprovar, a próxima rodada migra `rig_medidas` (ou só pernas/pés) para
 ## O que foi medido aqui e o que não foi
 
 Medido no grafo de cena do Panda (sem GPU), por `tests/test_cinematica_oraculo.py`
-e `python tools/oraculo_cena.py`:
+e `python tools/gerar_oraculo_cena.py`:
 
 - A FK pura `nucleo.cinematica` iguala a posição/orientação dos nós do Panda
   (1e-4 u, 25 poses aleatórias, todos os grupos).

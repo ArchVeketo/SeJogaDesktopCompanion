@@ -112,7 +112,7 @@ Aceno, cutucar e alongar vivem em `animacao/gestos_reacao.py` (constantes em
 só delegam. Continuam no caminho legado (alvo bruto, sem LayerStack).
 
 - **Alvos de mão:** `ALVO_WAVE` e `ALVO_STRETCH` ficaram como estavam. O
-  `oraculo_cena --sugerir` só achou o ponto livre mais próximo (wave a 0,015 u;
+  `gerar_oraculo_cena --sugerir` só achou o ponto livre mais próximo (wave a 0,015 u;
   stretch já livre). Uma varredura em grade mostrou que subir o alongamento
   (y 0,12 ou 0,16) atravessa a cabeça (0,03 a 0,06 u); o alvo atual dá ~49 graus
   de elevação sobre o repouso, medido pela FK da mão.
