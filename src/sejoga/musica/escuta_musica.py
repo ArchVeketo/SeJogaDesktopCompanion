@@ -52,8 +52,10 @@ class _BeatTracker:
         self._bpm: float | None = None
         self._period = 0.0
 
-    def update(self, rms: float, now: float, sensitivity: float) -> tuple[bool, float | None, float]:
-        if self._last_beat and now-self._last_beat > 4:
+    def update(  # noqa: PLR0915  # TODO convenção: fatiar exige validar na GPU/desktop real (layout Qt, física ou áudio); lote próprio
+        self, rms: float, now: float, sensitivity: float
+    ) -> tuple[bool, float | None, float]:
+        if self._last_beat and now - self._last_beat > 4:
             self._bpm = None
             self._period = 0.0
             self._beat_times.clear()
@@ -70,7 +72,7 @@ class _BeatTracker:
             and rms > previous * 1.08
             and now - self._last_beat >= 0.26
         )
-        if detected:
+        if detected:  # noqa: PLR1702  # TODO convenção: fatiar exige validar na GPU/desktop real (layout Qt, física ou áudio); lote próprio
             self._last_beat = now
             if self._beat_times:
                 interval = now - self._beat_times[-1]
@@ -78,7 +80,9 @@ class _BeatTracker:
                     self._beat_times.append(now)
                     intervals = [
                         current - previous
-                        for previous, current in zip(self._beat_times, list(self._beat_times)[1:], strict=False)
+                        for previous, current in zip(
+                            self._beat_times, list(self._beat_times)[1:], strict=False
+                        )
                     ]
                     if intervals:
                         self._period = statistics.median(intervals)
@@ -105,6 +109,7 @@ class MusicListener:
         poll_interval: float = 1.0,
         on_update: Callable[[MusicSnapshot], None] | None = None,
     ) -> None:
+        """Guarda as configurações; a escuta começa em ``start``."""
         self.settings = settings
         self.poll_interval = max(0.25, poll_interval)
         self.on_update = on_update
@@ -115,10 +120,12 @@ class MusicListener:
 
     @property
     def snapshot(self) -> MusicSnapshot:
+        """Devolve o último estado da música."""
         with self._lock:
             return self._snapshot
 
     def start(self) -> None:
+        """Inicia a escuta em segundo plano."""
         if not self.settings.enabled or self.settings.source == "off" or self._threads:
             return
 
@@ -133,6 +140,7 @@ class MusicListener:
         thread.start()
 
     def stop(self, timeout: float = 2.0) -> None:
+        """Para a escuta e espera a thread até ``timeout``."""
         self._stop.set()
         for thread in self._threads:
             thread.join(timeout=timeout)
@@ -173,7 +181,7 @@ class MusicListener:
         )
 
         manager = await SessionManager.request_async()
-        while not self._stop.is_set():
+        while not self._stop.is_set():  # noqa: PLR1702  # TODO convenção: fatiar exige validar na GPU/desktop real (layout Qt, física ou áudio); lote próprio
             try:
                 session = manager.get_current_session()
                 if session is None:
@@ -207,8 +215,8 @@ class MusicListener:
                 self._publish(media_error=f"Falha ao consultar a sessão: {exc}")
             await asyncio.sleep(self.poll_interval)
 
-    def _loopback_worker(self) -> None:
-        try:
+    def _loopback_worker(self) -> None:  # noqa: PLR0915  # TODO convenção: fatiar exige validar na GPU/desktop real (layout Qt, física ou áudio); lote próprio
+        try:  # noqa: PLR1702  # TODO convenção: fatiar exige validar na GPU/desktop real (layout Qt, física ou áudio); lote próprio
             import numpy as np
             import soundcard as sc
 
@@ -217,10 +225,12 @@ class MusicListener:
             tracker = _BeatTracker()
             sample_rate = 16_000
             block_size = 1024
-            frequencies = np.fft.rfftfreq(block_size, 1/sample_rate)
+            frequencies = np.fft.rfftfreq(block_size, 1 / sample_rate)
             bass_band = (frequencies >= 40) & (frequencies <= 220)
             window = np.hanning(block_size)
-            with microphone.recorder(samplerate=sample_rate, blocksize=block_size) as recorder:
+            with microphone.recorder(
+                samplerate=sample_rate, blocksize=block_size
+            ) as recorder:
                 self._publish(audio_error=None)
                 while not self._stop.is_set():
                     samples = recorder.record(numframes=block_size)
@@ -228,13 +238,18 @@ class MusicListener:
                         continue
                     rms = float(np.sqrt(np.mean(np.square(samples), dtype=np.float64)))
                     mono = samples.mean(axis=1) if samples.ndim > 1 else samples
-                    spectrum = np.abs(np.fft.rfft(mono*window))**2
-                    bass_share = float(spectrum[bass_band].sum()/max(1e-12, spectrum.sum()))  # type: ignore[operator]  # overloads do numpy nao cobrem max() aqui
+                    spectrum = np.abs(np.fft.rfft(mono * window)) ** 2
+                    # overloads do numpy não cobrem max() aqui
+                    bass_share = float(
+                        spectrum[bass_band].sum() / max(1e-12, spectrum.sum())  # type: ignore[operator]
+                    )
                     now = time.monotonic()
-                    beat, bpm, phase = tracker.update(rms, now, self.settings.sensitivity)
+                    beat, bpm, phase = tracker.update(
+                        rms, now, self.settings.sensitivity
+                    )
                     self._publish(
                         audio_level=max(0.0, min(1.0, rms * 5.0)),
-                        bass_level=max(0.0, min(1.0, rms*5*bass_share**.5)),
+                        bass_level=max(0.0, min(1.0, rms * 5 * bass_share**0.5)),
                         beat_detected=beat,
                         bpm=bpm,
                         beat_phase=phase,

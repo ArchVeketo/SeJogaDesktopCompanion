@@ -37,8 +37,8 @@ from PySide6.QtWidgets import (
 )
 
 from sejoga.configuracao import Settings, default_config_path, save_settings
+from sejoga.desktop import desktop_const as const_desktop
 from sejoga.desktop import inicializacao_automatica
-from sejoga.desktop import desktop_const as C
 
 
 class SettingsDialog(QDialog):
@@ -51,38 +51,48 @@ class SettingsDialog(QDialog):
     # Resultado da busca de atualizações feita em thread (ver _buscar_atualizacoes).
     _busca_concluida = Signal(object)
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings):  # noqa: PLR0915  # TODO convenção: fatiar exige validar na GPU/desktop real (layout Qt, física ou áudio); lote próprio
+        """Monta o diálogo de configurações com os valores atuais."""
         super().__init__()
         self._settings = settings.model_copy(deep=True)
         self.setWindowTitle("Configurações do SeJoga Companion")
-        self.setMinimumWidth(C.DIALOGO_LARGURA_MINIMA)
+        self.setMinimumWidth(const_desktop.DIALOGO_LARGURA_MINIMA)
         self._buscando_atualizacao = False
         self._atualizacao_disponivel: object | None = None
 
         self.size_input = QSpinBox()
-        self.size_input.setRange(C.TAMANHO_JANELA_MINIMO, C.TAMANHO_JANELA_MAXIMO)
-        self.size_input.setSingleStep(C.TAMANHO_JANELA_PASSO)
+        self.size_input.setRange(
+            const_desktop.TAMANHO_JANELA_MINIMO, const_desktop.TAMANHO_JANELA_MAXIMO
+        )
+        self.size_input.setSingleStep(const_desktop.TAMANHO_JANELA_PASSO)
         self.size_input.setSuffix(" px")
         self.size_input.setValue(settings.window.size)
 
         self.scale_input = QDoubleSpinBox()
-        self.scale_input.setRange(C.ESCALA_MINIMA, C.ESCALA_MAXIMA)
-        self.scale_input.setSingleStep(C.ESCALA_PASSO)
-        self.scale_input.setDecimals(C.ESCALA_CASAS)
+        self.scale_input.setRange(
+            const_desktop.ESCALA_MINIMA, const_desktop.ESCALA_MAXIMA
+        )
+        self.scale_input.setSingleStep(const_desktop.ESCALA_PASSO)
+        self.scale_input.setDecimals(const_desktop.ESCALA_CASAS)
         self.scale_input.setValue(settings.window.scale)
 
         self.outline_input = QCheckBox("Mostrar contorno")
         self.outline_input.setChecked(settings.window.outline_enabled)
         self.outline_width_input = QDoubleSpinBox()
-        self.outline_width_input.setRange(C.CONTORNO_LARGURA_MINIMA, C.CONTORNO_LARGURA_MAXIMA)
-        self.outline_width_input.setSingleStep(C.CONTORNO_LARGURA_PASSO)
-        self.outline_width_input.setDecimals(C.CONTORNO_LARGURA_CASAS)
+        self.outline_width_input.setRange(
+            const_desktop.CONTORNO_LARGURA_MINIMA, const_desktop.CONTORNO_LARGURA_MAXIMA
+        )
+        self.outline_width_input.setSingleStep(const_desktop.CONTORNO_LARGURA_PASSO)
+        self.outline_width_input.setDecimals(const_desktop.CONTORNO_LARGURA_CASAS)
         self.outline_width_input.setSuffix(" px")
         self.outline_width_input.setValue(settings.window.outline_width)
         self.outline_breath_input = QDoubleSpinBox()
-        self.outline_breath_input.setRange(C.CONTORNO_RESPIRACAO_MINIMA, C.CONTORNO_RESPIRACAO_MAXIMA)
-        self.outline_breath_input.setSingleStep(C.CONTORNO_RESPIRACAO_PASSO)
-        self.outline_breath_input.setDecimals(C.CONTORNO_RESPIRACAO_CASAS)
+        self.outline_breath_input.setRange(
+            const_desktop.CONTORNO_RESPIRACAO_MINIMA,
+            const_desktop.CONTORNO_RESPIRACAO_MAXIMA,
+        )
+        self.outline_breath_input.setSingleStep(const_desktop.CONTORNO_RESPIRACAO_PASSO)
+        self.outline_breath_input.setDecimals(const_desktop.CONTORNO_RESPIRACAO_CASAS)
         self.outline_breath_input.setValue(settings.window.outline_breath)
         self._outline_color = settings.window.outline_color.upper()
         self.outline_color_button = QPushButton()
@@ -101,12 +111,22 @@ class SettingsDialog(QDialog):
         self.idle_input.setChecked(settings.behavior.idle_animation)
 
         self.personality_input = QComboBox()
-        for key, label in (("auto", "Automática"), ("calm", "Tranquila"), ("curious", "Curiosa"),
-                           ("playful", "Brincalhona"), ("shy", "Tímida"), ("confident", "Confiante"),
-                           ("street", "Street groove · Bomb Rush"), ("fighter", "Guarda · Lethal League"),
-                           ("rhythm", "Ritmada · Hi-Fi Rush"), ("stylish", "Estilosa · Persona 5")):
+        for key, label in (
+            ("auto", "Automática"),
+            ("calm", "Tranquila"),
+            ("curious", "Curiosa"),
+            ("playful", "Brincalhona"),
+            ("shy", "Tímida"),
+            ("confident", "Confiante"),
+            ("street", "Street groove · Bomb Rush"),
+            ("fighter", "Guarda · Lethal League"),
+            ("rhythm", "Ritmada · Hi-Fi Rush"),
+            ("stylish", "Estilosa · Persona 5"),
+        ):
             self.personality_input.addItem(label, key)
-        self.personality_input.setCurrentIndex(self.personality_input.findData(settings.behavior.idle_personality))
+        self.personality_input.setCurrentIndex(
+            self.personality_input.findData(settings.behavior.idle_personality)
+        )
         self.personality_input.setEnabled(self.idle_input.isChecked())
         self.idle_input.toggled.connect(self.personality_input.setEnabled)
 
@@ -119,8 +139,10 @@ class SettingsDialog(QDialog):
         self.z_order_input.addItem("Sempre no topo", "topmost")
         self.z_order_input.addItem("Janela normal", "normal")
         self.z_order_input.addItem("Atrás das janelas", "desktop")
-        z_order = "desktop" if settings.window.mode == "desktop" else (
-            "topmost" if settings.window.always_on_top else "normal"
+        z_order = (
+            "desktop"
+            if settings.window.mode == "desktop"
+            else ("topmost" if settings.window.always_on_top else "normal")
         )
         self.z_order_input.setCurrentIndex(self.z_order_input.findData(z_order))
 
@@ -128,29 +150,47 @@ class SettingsDialog(QDialog):
         self.music_input.addItem("Desligada", "off")
         self.music_input.addItem("Sessão de mídia do Windows", "media_session")
         self.music_input.addItem("Áudio do sistema (loopback)", "loopback")
-        self.music_input.setCurrentIndex(self.music_input.findData(settings.music.source))
+        self.music_input.setCurrentIndex(
+            self.music_input.findData(settings.music.source)
+        )
         self.beat_input = QCheckBox("Reagir à batida")
         self.beat_input.setChecked(settings.music.react_to_beat)
         self.sensitivity_input = QDoubleSpinBox()
-        self.sensitivity_input.setRange(C.FRACAO_MINIMA, C.FRACAO_MAXIMA)
-        self.sensitivity_input.setSingleStep(C.FRACAO_PASSO)
+        self.sensitivity_input.setRange(
+            const_desktop.FRACAO_MINIMA, const_desktop.FRACAO_MAXIMA
+        )
+        self.sensitivity_input.setSingleStep(const_desktop.FRACAO_PASSO)
         self.sensitivity_input.setValue(settings.music.sensitivity)
         self.dance_chance_input = QDoubleSpinBox()
-        self.dance_chance_input.setRange(C.FRACAO_MINIMA, C.FRACAO_MAXIMA)
-        self.dance_chance_input.setSingleStep(C.FRACAO_PASSO)
+        self.dance_chance_input.setRange(
+            const_desktop.FRACAO_MINIMA, const_desktop.FRACAO_MAXIMA
+        )
+        self.dance_chance_input.setSingleStep(const_desktop.FRACAO_PASSO)
         self.dance_chance_input.setValue(settings.music.dance_chance)
         self.dance_style_input = QComboBox()
-        for key, label in (('auto','Automático pelo áudio'), ('head_bob','Head bob tranquilo'),
-                           ('hip_hop','Hip hop'), ('rock','Rock'), ('breakdance','Breakdance')):
+        for key, label in (
+            ("auto", "Automático pelo áudio"),
+            ("head_bob", "Head bob tranquilo"),
+            ("hip_hop", "Hip hop"),
+            ("rock", "Rock"),
+            ("breakdance", "Breakdance"),
+        ):
             self.dance_style_input.addItem(label, key)
-        self.dance_style_input.setCurrentIndex(self.dance_style_input.findData(settings.music.dance_style))
+        self.dance_style_input.setCurrentIndex(
+            self.dance_style_input.findData(settings.music.dance_style)
+        )
 
         # Canal de atualização (persistido em settings.update.channel).
         self.channel_input = QComboBox()
-        for key, label in (("release", "Estável (release)"), ("prerelease", "Pré-release"),
-                           ("nightly", "Nightly")):
+        for key, label in (
+            ("release", "Estável (release)"),
+            ("prerelease", "Pré-release"),
+            ("nightly", "Nightly"),
+        ):
             self.channel_input.addItem(label, key)
-        self.channel_input.setCurrentIndex(self.channel_input.findData(settings.update.channel))
+        self.channel_input.setCurrentIndex(
+            self.channel_input.findData(settings.update.channel)
+        )
 
         # Botão "Buscar atualizações" + rótulo de status (busca roda em thread).
         self.check_update_button = QPushButton("Buscar atualizações")
@@ -169,9 +209,9 @@ class SettingsDialog(QDialog):
 
         # (7) FPS alvo do mascote (aplicado ao vivo pelo OverlayApp).
         self.fps_input = QSpinBox()
-        self.fps_input.setRange(C.FPS_MINIMO, C.FPS_MAXIMO)
-        self.fps_input.setSingleStep(C.FPS_PASSO)
-        self.fps_input.setSuffix(C.FPS_SUFIXO)
+        self.fps_input.setRange(const_desktop.FPS_MINIMO, const_desktop.FPS_MAXIMO)
+        self.fps_input.setSingleStep(const_desktop.FPS_PASSO)
+        self.fps_input.setSuffix(const_desktop.FPS_SUFIXO)
         self.fps_input.setValue(settings.window.fps)
 
         # (6) Monitor preferido para a posição inicial (Automático = None).
@@ -179,6 +219,7 @@ class SettingsDialog(QDialog):
         self.monitor_input.addItem("Automático", None)
         with contextlib.suppress(Exception):
             import win32api
+
             for indice in range(len(win32api.EnumDisplayMonitors())):
                 self.monitor_input.addItem(f"Monitor {indice + 1}", indice)
         alvo_monitor = self.monitor_input.findData(settings.window.preferred_monitor)
@@ -266,11 +307,14 @@ class SettingsDialog(QDialog):
             "Loopback requer a dependência opcional soundcard (extra music-loopback)."
         )
         self.loopback_notice.setWordWrap(True)
-        self.hotkey_notice = QLabel("Use combinações como ctrl+alt+m. As alterações são aplicadas ao salvar.")
+        self.hotkey_notice = QLabel(
+            "Use combinações como ctrl+alt+m. As alterações são aplicadas ao salvar."
+        )
         self.hotkey_notice.setWordWrap(True)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
@@ -289,7 +333,9 @@ class SettingsDialog(QDialog):
         )
 
     def _choose_outline_color(self) -> None:
-        color = QColorDialog.getColor(QColor(self._outline_color), self, "Cor do contorno")
+        color = QColorDialog.getColor(
+            QColor(self._outline_color), self, "Cor do contorno"
+        )
         if color.isValid():
             self._outline_color = color.name().upper()
             self._show_outline_color()
@@ -301,7 +347,9 @@ class SettingsDialog(QDialog):
         )
 
     def _choose_colorkey_color(self) -> None:
-        color = QColorDialog.getColor(QColor(self._colorkey_color), self, "Cor do color key")
+        color = QColorDialog.getColor(
+            QColor(self._colorkey_color), self, "Cor do color key"
+        )
         if color.isValid():
             self._colorkey_color = color.name().upper()
             self._show_colorkey_color()
@@ -312,7 +360,9 @@ class SettingsDialog(QDialog):
             pasta.mkdir(parents=True, exist_ok=True)
             os.startfile(str(pasta))  # abre pasta do próprio perfil no Explorer
         except OSError as exc:
-            logging.getLogger("sejoga").warning("Não foi possível abrir %s: %s", pasta, exc)
+            logging.getLogger("sejoga").warning(
+                "Não foi possível abrir %s: %s", pasta, exc
+            )
 
     def _abrir_pasta_logs(self) -> None:
         self._abrir_pasta(default_config_path().parent / "logs")
@@ -326,7 +376,8 @@ class SettingsDialog(QDialog):
     def _limpar_logs(self) -> None:
         """Remove os logs após confirmação, sem derrubar o diálogo em erro."""
         resposta = QMessageBox.question(
-            self, "Limpar logs",
+            self,
+            "Limpar logs",
             "Remover todos os arquivos de log do perfil?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -335,13 +386,14 @@ class SettingsDialog(QDialog):
             return
         try:
             from sejoga.render.depuracao import limpar_logs
+
             removidos = limpar_logs()
         except OSError as exc:
             QMessageBox.warning(self, "Falha ao limpar logs", str(exc))
             return
         QMessageBox.information(self, "Logs", f"{removidos} arquivo(s) removido(s).")
 
-    def _save(self) -> None:
+    def _save(self) -> None:  # noqa: PLR0915  # TODO convenção: fatiar exige validar na GPU/desktop real (layout Qt, física ou áudio); lote próprio
         updated = self._settings.model_copy(deep=True)
         updated.window.size = self.size_input.value()
         updated.window.scale = self.scale_input.value()
@@ -388,7 +440,11 @@ class SettingsDialog(QDialog):
         try:
             save_settings(updated)
         except Exception as exc:
-            QMessageBox.critical(self, "Falha ao salvar", f"Não foi possível salvar as configurações:\n{exc}")
+            QMessageBox.critical(
+                self,
+                "Falha ao salvar",
+                f"Não foi possível salvar as configurações:\n{exc}",
+            )
             return
 
         # Autostart: a fonte de verdade é o atalho .lnk; a guard clause interna
@@ -429,7 +485,9 @@ class SettingsDialog(QDialog):
             try:
                 resultado = ("ok", check_update(release_para_checagem(canal)))
             except Exception as exc:  # degradação graciosa: rede/feed indisponível
-                logging.getLogger("sejoga").warning("Busca de atualização falhou: %s", exc)
+                logging.getLogger("sejoga").warning(
+                    "Busca de atualização falhou: %s", exc
+                )
                 resultado = ("erro", str(exc))
             with contextlib.suppress(RuntimeError):
                 self._busca_concluida.emit(resultado)
@@ -445,12 +503,17 @@ class SettingsDialog(QDialog):
             self.update_status_label.setText(f"Erro ao buscar atualizações: {valor}")
             return
         if valor is None:
-            self.update_status_label.setText(f"Nenhuma atualização disponível no canal {canal}.")
+            self.update_status_label.setText(
+                f"Nenhuma atualização disponível no canal {canal}."
+            )
             return
         self._atualizacao_disponivel = valor
-        self.update_status_label.setText(f"Versão {valor.version} disponível no canal {canal}.")
+        self.update_status_label.setText(
+            f"Versão {valor.version} disponível no canal {canal}."
+        )
         resposta = QMessageBox.question(
-            self, "Atualização disponível",
+            self,
+            "Atualização disponível",
             f"Versão {valor.version} está disponível no canal {canal}.\n\n"
             "Deseja atualizar agora? O Mário será fechado e aparecerá apenas uma barra "
             "de progresso. O Windows pedirá permissão de administrador e o Mário será "
@@ -474,8 +537,11 @@ class SettingsDialog(QDialog):
             return
         reescrever_canal_channel_info(launcher.parent / "channel-info.json", canal)
         import win32api
+
         try:
-            win32api.ShellExecute(0, "open", str(launcher), "--update", str(launcher.parent), 1)
+            win32api.ShellExecute(
+                0, "open", str(launcher), "--update", str(launcher.parent), 1
+            )
         except Exception as exc:
             self.update_status_label.setText(f"Atualização não iniciada: {exc}")
         else:
@@ -541,7 +607,10 @@ class HotkeyManager:
         "right": 0x27,
     }
 
-    def __init__(self, shortcuts: dict[str, str], callbacks: dict[str, Callable[[], None]]):
+    def __init__(  # noqa: PLR0915  # TODO convenção: fatiar exige validar na GPU/desktop real (layout Qt, física ou áudio); lote próprio
+        self, shortcuts: dict[str, str], callbacks: dict[str, Callable[[], None]]
+    ):
+        """Monta o ícone da bandeja e o menu."""
         self._callbacks: dict[int, Callable[[], None]] = {}
         self._shortcuts: list[tuple[int, str, int, int]] = []
         self._registered_ids: list[int] = []
@@ -552,7 +621,12 @@ class HotkeyManager:
         self._bridge.activated.connect(self._dispatch)
         self._register = ctypes.windll.user32.RegisterHotKey
         self._unregister = ctypes.windll.user32.UnregisterHotKey
-        self._register.argtypes = (wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT)
+        self._register.argtypes = (
+            wintypes.HWND,
+            ctypes.c_int,
+            wintypes.UINT,
+            wintypes.UINT,
+        )
         self._register.restype = wintypes.BOOL
         self._unregister.argtypes = (wintypes.HWND, ctypes.c_int)
         self._unregister.restype = wintypes.BOOL
@@ -566,12 +640,16 @@ class HotkeyManager:
                 print(f"[hotkeys] {exc}")
                 continue
             hotkey_id = _HOTKEY_ID_BASE + index
-            self._shortcuts.append((hotkey_id, shortcut, modifiers | _MOD_NOREPEAT, key))
+            self._shortcuts.append(
+                (hotkey_id, shortcut, modifiers | _MOD_NOREPEAT, key)
+            )
             self._callbacks[hotkey_id] = callback
 
-        self._thread = threading.Thread(target=self._message_loop, name="global-hotkeys", daemon=True)
+        self._thread = threading.Thread(
+            target=self._message_loop, name="global-hotkeys", daemon=True
+        )
         self._thread.start()
-        self._ready.wait(timeout=C.THREAD_TIMEOUT)
+        self._ready.wait(timeout=const_desktop.THREAD_TIMEOUT)
 
     @classmethod
     def _parse_shortcut(cls, shortcut: str) -> tuple[int, int]:
@@ -591,7 +669,11 @@ class HotkeyManager:
             key = cls._KEYS[key_name]
         elif len(key_name) == 1 and key_name.isascii() and key_name.isalnum():
             key = ord(key_name.upper())
-        elif key_name.startswith("f") and key_name[1:].isdigit() and 1 <= int(key_name[1:]) <= 24:
+        elif (
+            key_name.startswith("f")
+            and key_name[1:].isdigit()
+            and 1 <= int(key_name[1:]) <= 24
+        ):
             key = 0x70 + int(key_name[1:]) - 1
         else:
             raise ValueError(f"unsupported key in shortcut: {shortcut}")
@@ -632,7 +714,8 @@ class HotkeyManager:
             callback()
 
     def close(self) -> None:
+        """Remove o ícone da bandeja."""
         if self._thread_id:
             ctypes.windll.user32.PostThreadMessageW(self._thread_id, _WM_QUIT, 0, 0)
         if self._thread.is_alive():
-            self._thread.join(timeout=C.THREAD_TIMEOUT)
+            self._thread.join(timeout=const_desktop.THREAD_TIMEOUT)

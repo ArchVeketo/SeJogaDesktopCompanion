@@ -1,8 +1,8 @@
-"""Autostart via atalho .lnk na pasta Startup do usuário (puro Win32).
+r"""Autostart via atalho .lnk na pasta Startup do usuário (puro Win32).
 
 A fonte de verdade do autostart é um atalho ``SeJoga Companion.lnk`` na pasta
 ``Startup`` do usuário apontando para o ``SeJogaLauncher.exe`` instalado — o
-mesmo alvo dos atalhos do instalador, nunca ``HKCU\\...\\Run``.
+mesmo alvo dos atalhos do instalador, nunca ``HKCU\...\Run``.
 
 Guard clause no estilo de ``reescrever_canal_channel_info``: em modo fonte/dev
 (sem launcher instalado), ``ativar``/``desativar`` são inertes e retornam
@@ -22,10 +22,18 @@ NOME_ATALHO = "SeJoga Companion.lnk"
 
 
 def caminho_atalho() -> Path:
-    """``%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\<atalho>``."""
+    r"""Devolve ``%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\<atalho>``."""
     appdata = os.environ.get("APPDATA")
     base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-    return base / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / NOME_ATALHO
+    return (
+        base
+        / "Microsoft"
+        / "Windows"
+        / "Start Menu"
+        / "Programs"
+        / "Startup"
+        / NOME_ATALHO
+    )
 
 
 def esta_ativo() -> bool:
