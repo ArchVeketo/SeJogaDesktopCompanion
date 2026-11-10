@@ -228,3 +228,15 @@ que não toca no que já foi confirmado. Nada abaixo foi visto na GPU.
 - **Não verificado:** tudo o que é visual (leitura dos passos, braços "cruzados", mão em
   chifre, sinal do roll no chão, mão perto do chão), sinal de `body.x`, correlação
   entre a perna carregada e o braço do hip hop, e a taxa real de quadros.
+
+## Pendências da revisão final (não bloqueantes)
+
+Revisão aprovada. Nada abaixo foi refeito; fica para a validação na GPU ou para trabalho futuro.
+
+- Nenhuma mudança foi vista na GPU. Conferir C39..C52 e O13..O17 em `docs/RECALIBRACAO_GPU.md`. Mais arriscados: sinal da contrafase de braço/perna (C42), roll do breakdance, sinal do `body.x` do head bob (+8 soma com +10 do renderer) e ombros caídos do sono/alongar.
+- Tetos de jerk por estilo/gesto (danças até 2,3e5, cutucar 2,5e6) são altos e podem esconder trancos. Conferir visualmente.
+- Head bob: braços cruzados de verdade não foram feitos (fallback de antebraços à frente do peito). Cutucar: indicador estendido não foi feito.
+- Breakdance: mão plantada não fica fixa no cenário durante o giro (`shortcut:` no renderer). Resolver quando houver contatos de cena.
+- Ambiente (preexistente): `test_colisao_bracos.py` e `test_speaker_effects.py` na mesma sessão fecham com 0xC0000005 (Panda + Qt). A suíte completa em ordem alfabética passa.
+- Corrida pode ficar rápida demais para os amortecimentos do PoseResolver (não medido).
+- Hover e gestos de mão não foram auditados por amostragem.
