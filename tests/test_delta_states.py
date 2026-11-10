@@ -147,6 +147,27 @@ def test_delta_fall_reage_a_velocidade():
     # Cabeça deve ter inclinação diferente subindo vs descendo
     assert subindo["head"].x != descendo["head"].x
 
+def test_delta_fall_flail_em_z_e_y_sem_torcao_e_espelhado():
+    """A queda balança por z/y; a torção x dos braços é só a base de IK."""
+    from math import radians
+
+    base = delta_fall(0.0, (0, 800))
+    for t in (0.1, 0.2, 0.3, 0.45):
+        delta = delta_fall(t, (0, 800))
+        for lado in ("right-arm", "left-arm"):
+            assert delta[lado].x == pytest.approx(base[lado].x)
+        # Espelho: z e y invertem; fingers2 é o oposto de fingers.
+        flail_z = delta["right-arm"].z - base["right-arm"].z
+        assert delta["left-arm"].z - base["left-arm"].z == pytest.approx(-flail_z)
+        flail_y = delta["right-arm"].y - base["right-arm"].y
+        assert delta["left-arm"].y - base["left-arm"].y == pytest.approx(-flail_y)
+        assert delta["ant-arm"].z >= base["ant-arm"].z - 1e-9
+        assert delta["ant-arm2"].z <= base["ant-arm2"].z + 1e-9
+
+    delta = delta_fall(0.1, (0, 800))
+    assert delta["fingers"].z < 0 < delta["fingers2"].z
+    assert abs(delta["right-arm"].z - base["right-arm"].z) > radians(1.0)
+
 
 def test_delta_sleep_tem_posicao_relaxada():
     """delta_sleep inclina a cabeça para baixo (dormindo)."""

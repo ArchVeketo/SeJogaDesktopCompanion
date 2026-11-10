@@ -27,6 +27,8 @@ AMOSTRAS_POR_CICLO = 48
 MARGEM_JERK = 1.5
 #: Pico de jerk do easing quíntico em um trecho: 60 * delta / duração^3.
 COEFICIENTE_JERK_QUINTICO = 60.0
+#: Quadros ignorados em cada ponta (o detector deriva as bordas sem centrar).
+BORDA_DETECTOR = 5
 MODOS = (("walk", FASE_CAMINHADA, False), ("run", FASE_CORRIDA, True))
 
 
@@ -150,3 +152,22 @@ def test_arraste_nao_atravessa_o_corpo(modelo, parte):
         movimento = BodyPose(roll=40 * u, pitch=20 * u, limb_swing=30 * u)
         _sem_atravessar(modelo, delta_drag(movimento, parte, 1.0))
 
+
+
+@pytest.mark.parametrize("velocidade", [(0, 800), (600, -300)])
+def test_queda_sem_tranco_em_cinco_segundos(velocidade):
+    def amostrar(t: float):
+        delta = delta_fall(t, velocidade)
+
+        return {g: (degrees(r.x), degrees(r.y), degrees(r.z)) for g, r in delta.items()}
+
+    clipe = aa.ClipeAnalisavel("queda", amostrar, duracao=5.0, loop=False)
+    # As bordas usam diferença simples (erro numérico do detector): ignorá-las.
+    trancos = []
+    for grupo, trio in aa.amostrar_clipe(clipe).items():
+        for eixo, serie in zip("xyz", trio, strict=True):
+            pico = max(abs(j) for j in serie.jerk[BORDA_DETECTOR:-BORDA_DETECTOR])
+            if aa.amplitude(serie) >= aa.AMPLITUDE_MINIMA_ATIVA and pico >= aa.LIMIAR_JERK_TRANCO:
+                trancos.append(f"{grupo}.{eixo} {pico:.0f}")
+
+    assert trancos == []

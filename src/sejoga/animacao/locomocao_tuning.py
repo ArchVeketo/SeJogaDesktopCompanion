@@ -77,8 +77,9 @@ QUEDA_FLAIL_VELOCIDADE = 8.0
 QUEDA_FLAIL_Z = 10.0
 #: Fração do flail em y (azimute), com o sinal de espelho (y inverte).
 QUEDA_FLAIL_Y_FRACAO = 0.5
-#: Fração do flail que o antebraço acompanha em z (flexão apenas positiva).
-QUEDA_FLAIL_COTOVELO_FRACAO = 0.5
+#: Flexão extra do cotovelo (fração de flail^2/pico): oscila a 2x a frequência do
+#: flail, então fica pequena para não passar do limiar de jerk.
+QUEDA_FLAIL_COTOVELO_FRACAO = 0.3
 #: Fração do flail que balança a cabeça (z).
 QUEDA_FLAIL_CABECA_FRACAO = 0.3
 #: Velocidade (px/s) em que o vento satura (efeito 1.0) e inclinação da cabeça.

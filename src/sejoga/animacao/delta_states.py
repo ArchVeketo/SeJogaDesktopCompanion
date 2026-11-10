@@ -336,23 +336,34 @@ def delta_fall(t: float, velocity: tuple[float, float] = (0, 0)) -> dict[str, Ro
     # Velocidade vertical determina se está subindo ou descendo
     ascending = vy < 0
 
-    wind_effect = min(1.0, (abs(vx) + abs(vy)) / 1000)
-    head_tilt = -8 if ascending else 8
+    wind_effect = min(1.0, (abs(vx) + abs(vy)) / loc.QUEDA_VENTO_SATURACAO)
+    head_tilt = -loc.QUEDA_CABECA_INCLINACAO if ascending else loc.QUEDA_CABECA_INCLINACAO
 
-    # Flailing dos braços na queda (termo aditivo sobre a base de IK da queda).
-    flail = sin(t * 8) * 10 * wind_effect
+    # Flail dos braços em z (elevação) e y (azimute), nunca em x (torção). Base:
+    # mãos abertas para fora (silhueta aérea), vinda do alvo de queda.
+    flail = sin(t * loc.QUEDA_FLAIL_VELOCIDADE) * loc.QUEDA_FLAIL_Z * wind_effect
+    flail_y = flail * loc.QUEDA_FLAIL_Y_FRACAO
+    # Quadrado: sempre >= 0 e sem a quina de abs() (que daria tranco).
+    cotovelo = flail**2 / loc.QUEDA_FLAIL_Z * loc.QUEDA_FLAIL_COTOVELO_FRACAO
+    tumble = max(
+        -loc.QUEDA_TUMBLE_MAX_GRAUS,
+        min(loc.QUEDA_TUMBLE_MAX_GRAUS, vx * loc.QUEDA_TUMBLE_GRAUS_POR_PX),
+    )
 
-    # Base: mãos abertas para fora (silhueta aérea), vinda do alvo de queda.
     delta = _delta_braco_ik("fall")
-    delta["head"] = Rotation3(radians(head_tilt), 0, radians(flail * 0.3))
-    delta["right-arm"] = _somar(delta["right-arm"], x=flail, z=-abs(flail) * 0.5)
-    # Espelho: a torção (x) tem o MESMO sinal nos dois lados; a elevação inverte.
-    delta["left-arm"] = _somar(delta["left-arm"], x=flail, z=abs(flail) * 0.5)
-    delta["ant-arm"] = _somar(delta.get("ant-arm", Rotation3()), x=flail * 0.5)
-    delta["ant-arm2"] = _somar(delta.get("ant-arm2", Rotation3()), x=flail * 0.5)
+    delta["head"] = Rotation3(
+        radians(head_tilt), 0, radians(flail * loc.QUEDA_FLAIL_CABECA_FRACAO)
+    )
+    delta["body"] = Rotation3(0, 0, radians(tumble))
+    # Espelho (x, -y, -z): y e z invertem no braço esquerdo; x ficaria igual.
+    delta["right-arm"] = _somar(delta["right-arm"], y=flail_y, z=flail)
+    delta["left-arm"] = _somar(delta["left-arm"], y=-flail_y, z=-flail)
+    # Cotovelo só flexiona mais (direito z+, esquerdo z-): sem hiperextensão.
+    delta["ant-arm"] = _somar(delta.get("ant-arm", Rotation3()), z=cotovelo)
+    delta["ant-arm2"] = _somar(delta.get("ant-arm2", Rotation3()), z=-cotovelo)
+    delta.update(_delta_dedos(loc.QUEDA_DEDOS_ABERTOS))
 
     return delta
-
 
 def delta_sleep(t: float) -> dict[str, Rotation3]:
     """Delta aditivo do estado de sono.
