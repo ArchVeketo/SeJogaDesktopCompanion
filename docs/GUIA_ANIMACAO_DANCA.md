@@ -228,10 +228,10 @@ Snapshot do fonte em 05/11/2026. Consultar o relatório de build: o executável 
 
 | Área | Referência no código | Estado e diferença para o alvo |
 |---|---|---|
-| Análise | [`music.py`](../src/sejoga/musica/music.py), `_BeatTracker`, `_loopback_worker` | RMS/graves/onset/BPM estimado; sem reconhecimento confiável de gênero |
+| Análise | [`escuta_musica.py`](../src/sejoga/musica/escuta_musica.py), `_BeatTracker`, `_loopback_worker` | RMS/graves/onset/BPM estimado; sem reconhecimento confiável de gênero |
 | Coreografia | [`movimento_danca.py`](../src/sejoga/animacao/movimento_danca.py), `DanceMotion`; [`poses_danca.py`](../src/sejoga/animacao/poses_danca.py); [`danca_frases_tuning.py`](../src/sejoga/animacao/danca_frases_tuning.py) | Quatro estilos em passos de quatro poses por batida (acento no onset, u = 0), braços por alvos de mão (IK) e molas por junta; ainda sem contatos de cena |
 | Prioridades | [`controlador_animacao.py`](../src/sejoga/animacao/controlador_animacao.py), `update`, `interact` | Dança persiste e peek tem timer independente; preservar isso |
-| Caixa | [`music_speaker.py`](../src/sejoga/musica/music_speaker.py), `MusicSpeaker` | Gabinete dimensionado pela pose neutra: largura ×1,20 e altura ×1,15; graffiti aplicado |
+| Caixa | [`caixa_som.py`](../src/sejoga/musica/caixa_som.py), `MusicSpeaker` | Gabinete dimensionado pela pose neutra: largura ×1,20 e altura ×1,15; graffiti aplicado |
 | Entrada | `MusicSpeaker.update` e [`window.py`](../src/sejoga/render/window.py), `update_appendages` | Preparação lateral, arco, pouso, três tentáculos empurrando e gosma rosa temporária; cones e ondas reagem à batida/graves |
 | Head nod | `DanceMotion.apply` e `Panda3DRenderer.update_appendages` | Frase de 4 batidas (nod no 1 e no 3, inclinação lateral no 2, pausa no 4), costas inclinadas por `body.x` e apoiadas na caixa pelo renderer; braços em fallback "cruzado" (antebraços à frente do peito, sem cruzar o corpo) |
 | IK | [`ik_bracos.py`](../src/sejoga/animacao/ik_bracos.py), `braco_para(modelo, lado, alvo, polo)` | Solver 3D de dois segmentos (alvo de mão para ombro e cotovelo); não resolve costas/pés ou apoio completo |

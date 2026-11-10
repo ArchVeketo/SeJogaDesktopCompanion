@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'src'))
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from sejoga.configuracao import Settings
-from sejoga.desktop.ui import SettingsDialog
+from sejoga.desktop.interface import SettingsDialog
 from sejoga.distribuicao.dialogo_atualizacao import UpdateDialog
 from sejoga.distribuicao.atualizador import ReleaseInfo, Update
 

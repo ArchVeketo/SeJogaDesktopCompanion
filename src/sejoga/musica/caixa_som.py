@@ -92,7 +92,7 @@ class MusicSpeaker:
         badge=box(self.geometry,'speaker-pink-label',(.26,.015,.056),(.95,.14,.48,1))
         badge.setPos(0,.145,.201)
         self._add_graffiti()
-        from sejoga.musica.speaker_effects import SpeakerEffects
+        from sejoga.musica.efeitos_caixa_som import SpeakerEffects
         self.effects=SpeakerEffects(self.geometry)
         self.age=0.0;self.visibility=0.0;self.was_dancing=False
         self.ejecting=False
@@ -208,5 +208,5 @@ class MusicSpeaker:
             settings=self.renderer.showbase.settings.audio
             controller=self.renderer.showbase.animation_controller
             if settings.enabled and controller._dance_preview_remaining <= 0:
-                from sejoga.musica.sound_effects import play_speaker_landing
+                from sejoga.musica.efeitos_sonoros import play_speaker_landing
                 play_speaker_landing(settings.master_volume)

@@ -1,6 +1,6 @@
 import win32con
 
-from sejoga.desktop.desktop_shell import DesktopIntegration
+from sejoga.desktop.integracao_desktop import DesktopIntegration
 
 
 def test_restart_manager_query_or_cancellation_does_not_close_the_app():

@@ -11,7 +11,7 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
     from PySide6.QtWidgets import QApplication, QDialog
 
     from sejoga import configuracao
-    from sejoga.desktop.ui import SettingsDialog
+    from sejoga.desktop.interface import SettingsDialog
     app = QApplication.instance() or QApplication([])  # noqa: F841  # intencional: mantem a QApplication viva durante o teste (evita GC)
     primary = tmp_path / "locked" / "config.toml"
     fallback = tmp_path / "fallback" / "config.toml"
@@ -63,18 +63,18 @@ def test_novos_campos_persistem_e_reabrem(tmp_path, monkeypatch):
     from PySide6.QtWidgets import QApplication, QDialog
 
     from sejoga import configuracao
-    from sejoga.desktop import autostart, ui
-    from sejoga.desktop.ui import SettingsDialog
+    from sejoga.desktop import inicializacao_automatica, interface
+    from sejoga.desktop.interface import SettingsDialog
     app = QApplication.instance() or QApplication([])  # noqa: F841  # intencional: mantem a QApplication viva durante o teste (evita GC)
     destino = tmp_path / "config.toml"
     monkeypatch.setenv("SEJOGA_CONFIG_PATH", str(destino))
     monkeypatch.setattr(configuracao, "default_config_path", lambda: destino)
-    monkeypatch.setattr(ui, "default_config_path", lambda: destino)
+    monkeypatch.setattr(interface, "default_config_path", lambda: destino)
     # Autostart mockado para não tocar a pasta Startup real do usuário.
     ativacoes: list[bool] = []
-    monkeypatch.setattr(autostart, "esta_ativo", lambda: False)
-    monkeypatch.setattr(autostart, "ativar", lambda: ativacoes.append(True) or True)
-    monkeypatch.setattr(autostart, "desativar", lambda: ativacoes.append(False) or True)
+    monkeypatch.setattr(inicializacao_automatica, "esta_ativo", lambda: False)
+    monkeypatch.setattr(inicializacao_automatica, "ativar", lambda: ativacoes.append(True) or True)
+    monkeypatch.setattr(inicializacao_automatica, "desativar", lambda: ativacoes.append(False) or True)
 
     dialog = SettingsDialog(configuracao.Settings())
     updates = []

@@ -96,7 +96,7 @@ def test_falha_no_handoff_mantem_o_companion_aberto(tmp_path):
 
 def test_settings_dialog_sinaliza_fechamento_no_handoff(tmp_path):
     """SettingsDialog também fecha o companion ao delegar ao launcher."""
-    from sejoga.desktop.ui import SettingsDialog
+    from sejoga.desktop.interface import SettingsDialog
     _app()
     launcher = _launcher(tmp_path)
     fechou = []

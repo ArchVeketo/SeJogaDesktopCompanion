@@ -1,7 +1,7 @@
 """Limiares calibráveis da física de tela (sem engine/Win32).
 
 Centraliza os números que um humano calibra "no olho" da física de arremesso,
-quique e apoio em prateleiras, separados da lógica em ``physics.py``. Os valores
+quique e apoio em prateleiras, separados da lógica em ``fisica.py``. Os valores
 são os de hoje (não mudar o comportamento): este módulo apenas dá nome e um só
 lugar ao que estava inline.
 
@@ -9,8 +9,8 @@ Divisão de responsabilidade:
 
 - ``configuracao.py`` já é a fonte de ``gravity``, ``mass``, ``bounce``, ``friction``,
   ``throw_multiplier``, ``mascot_radius`` e ``wall_thickness``. Não duplicar
-  aqui: ``physics.py`` consome do ``settings``.
-- Constantes estruturais já nomeadas no topo de ``physics.py`` (``FIXED_DT``,
+  aqui: ``fisica.py`` consome do ``settings``.
+- Constantes estruturais já nomeadas no topo de ``fisica.py`` (``FIXED_DT``,
   ``MAX_SUBSTEPS``, ``MAX_VELOCITY``, ``DEFAULT_GRAVITY``, ``DRAG``,
   ``WALL_THICKNESS``, ``SHELF_CACHE_TTL``, ``SHELF_REFRESH_DISTANCE``, ``CAT_*``,
   ``DWMWA_*``) ficam lá.
@@ -87,5 +87,5 @@ class FisicaTuning:
     DT_MAXIMO: float = 0.05
 
 
-#: Instância única consumida por ``physics.py``.
+#: Instância única consumida por ``fisica.py``.
 FISICA = FisicaTuning()

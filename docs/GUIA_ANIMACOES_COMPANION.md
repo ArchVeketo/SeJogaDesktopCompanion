@@ -519,10 +519,10 @@ Blockbench 5.x
 |------|--------|--------|
 | **2.1** | `controlador_animacao.py` — AnimationController (state machine, blend tree, beat sync) | ⏳ |
 | **2.2** | `window.py` — OverlayWindow (Panda3D+Qt bridge, color key, click-through) | ⏳ |
-| **2.3** | `physics.py` — ScreenSpacePhysics (pymunk + shelves EnumWindows) | ⏳ |
-| **2.4** | `music.py` — MusicListener (GSMTU + soundcard + beat tracker) | ⏳ |
+| **2.3** | `fisica.py` — ScreenSpacePhysics (pymunk + shelves EnumWindows) | ⏳ |
+| **2.4** | `escuta_musica.py` — MusicListener (GSMTU + soundcard + beat tracker) | ⏳ |
 | **2.5** | `rig_animation.py` — Integração `esqueleto.py` + `controlador_animacao.py` | ⏳ |
-| **2.6** | `ui.py` — SettingsDialog + TrayManager + hotkeys | ⏳ |
+| **2.6** | `interface.py` — SettingsDialog + TrayManager + hotkeys | ⏳ |
 | **2.7** | `app.py` — Loop principal 60Hz render / 120Hz physics | ⏳ |
 | **2.8** | Animações no Blockbench (idle, walk, jump, throw, dance, hit, sleep) | ⏳ |
 | **2.9** | Export `.glb` + validação (glTF Validator) | ⏳ |

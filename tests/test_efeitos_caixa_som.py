@@ -1,6 +1,6 @@
 from panda3d.core import NodePath
 
-from sejoga.musica.speaker_effects import SpeakerEffects
+from sejoga.musica.efeitos_caixa_som import SpeakerEffects
 
 
 def test_slime_flows_then_clears_and_can_replay():

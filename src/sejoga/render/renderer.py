@@ -291,7 +291,7 @@ class Panda3DRenderer:
         self.tentacle_drips = TentacleDrips(self.model_np)
         from sejoga.animacao.gestos_dedos import FingerGestures
         self.finger_gestures = FingerGestures(self)
-        from sejoga.musica.music_speaker import MusicSpeaker
+        from sejoga.musica.caixa_som import MusicSpeaker
         self.music_speaker = MusicSpeaker(self)
         for tentacle in self.tentacle_pool.tentacles:
             create_tentacle_geometry(tentacle, self.model_np, self.outline_np)

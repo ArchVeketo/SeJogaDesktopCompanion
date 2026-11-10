@@ -69,11 +69,11 @@ from sejoga.animacao.foco_atencao import (
 )
 from sejoga.animacao.interacao_mouse import MouseInteraction
 from sejoga.configuracao import Settings, load_settings, save_settings
-from sejoga.desktop.desktop_shell import DesktopIntegration
-from sejoga.desktop.physics import create_physics
-from sejoga.desktop.tray_registration import TrayRegistration
-from sejoga.desktop.ui import HotkeyManager, SettingsDialog
-from sejoga.musica.music import MusicListener
+from sejoga.desktop.integracao_desktop import DesktopIntegration
+from sejoga.desktop.fisica import create_physics
+from sejoga.desktop.registro_bandeja import TrayRegistration
+from sejoga.desktop.interface import HotkeyManager, SettingsDialog
+from sejoga.musica.escuta_musica import MusicListener
 from sejoga.nucleo.recursos import brand_dir
 from sejoga.nucleo.esqueleto import IdlePersonality
 from sejoga.render.canvas_envelope import (

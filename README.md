@@ -110,7 +110,7 @@ src/sejoga/
   molas_juntas.py  Molas por junta e cadeia de atraso
   clipes_animacao.py     Clipes de animação como dados
   esqueleto.py            Catálogo do rig e poses procedurais
-  physics.py        Física de tela (Pymunk)
+  fisica.py        Física de tela (Pymunk)
   renderer.py       Renderizador Panda3D
   win32_overlay.py  Janela em camadas / clique-através (Win32)
 ```

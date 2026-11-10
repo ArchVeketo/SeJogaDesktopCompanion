@@ -21,7 +21,7 @@ def main():
     import win32con
     import win32gui
 
-    from sejoga.desktop.tray_registration import IconData
+    from sejoga.desktop.registro_bandeja import IconData
     from sejoga.render.window import OverlayApp
 
     # isort: split

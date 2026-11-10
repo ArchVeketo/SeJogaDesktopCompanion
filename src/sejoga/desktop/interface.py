@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from sejoga.configuracao import Settings, default_config_path, save_settings
-from sejoga.desktop import autostart
+from sejoga.desktop import inicializacao_automatica
 from sejoga.desktop import desktop_const as C
 
 
@@ -165,7 +165,7 @@ class SettingsDialog(QDialog):
         # (1) Iniciar com o Windows: estado inicial lido do atalho real na Startup.
         self.autostart_input = QCheckBox("Iniciar com o Windows")
         with contextlib.suppress(Exception):
-            self.autostart_input.setChecked(autostart.esta_ativo())
+            self.autostart_input.setChecked(inicializacao_automatica.esta_ativo())
 
         # (7) FPS alvo do mascote (aplicado ao vivo pelo OverlayApp).
         self.fps_input = QSpinBox()
@@ -395,9 +395,9 @@ class SettingsDialog(QDialog):
         # torna isto inerte em modo fonte/dev (sem launcher instalado).
         with contextlib.suppress(Exception):
             if updated.window.autostart:
-                autostart.ativar()
+                inicializacao_automatica.ativar()
             else:
-                autostart.desativar()
+                inicializacao_automatica.desativar()
 
         self.settings_applied.emit(updated)
         self.accept()

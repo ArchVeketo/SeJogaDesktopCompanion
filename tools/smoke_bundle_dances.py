@@ -21,8 +21,8 @@ def main():
     import win32process
     from PIL import ImageGrab
 
-    from sejoga.desktop.desktop_shell import DesktopIntegration
-    from sejoga.desktop.tray_registration import TrayRegistration
+    from sejoga.desktop.integracao_desktop import DesktopIntegration
+    from sejoga.desktop.registro_bandeja import TrayRegistration
     profile=Path(tempfile.mkdtemp(prefix='sejoga-bundle-dances-'))
     settings=Settings()
     settings.window.start_position=(650,200)

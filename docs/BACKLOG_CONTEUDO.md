@@ -19,7 +19,7 @@ Entram como clipes/estados no motor novo (`clipes_animacao.py` para clipes cícl
 | A1 | **Comemorar** | evento (inscrição, conquista, manual) | não (~2s) | braços, cabeça, corpo, porta | Explosão de energia: antecipação curta, braços pra cima, porta abre, assenta. Combina com efeito de notas/partículas. | P1 | código |
 | A2 | **Dormir sentado** | idle longo (variação de SLEEP) | sim | corpo, pernas, cabeça, porta | Sentado, cabeça pende, respiração lenta. Variante da pose SLEEP atual. | P2 | código |
 | A3 | **Dormir em pé** | idle longo (variação) | sim | corpo, cabeça, braços | Cochilo em pé, balanço mínimo, porta fecha. Já perto do SLEEP atual. | P2 | código |
-| A4 | **Dormir deitado no chão** | idle muito longo / manual | sim | corpo inteiro, pernas, braços | Deita no desktop, respiração ampla. Precisa interagir com a física de "chão" (physics.py). | P2 | misto |
+| A4 | **Dormir deitado no chão** | idle muito longo / manual | sim | corpo inteiro, pernas, braços | Deita no desktop, respiração ampla. Precisa interagir com a física de "chão" (fisica.py). | P2 | misto |
 | A5 | **Reação a cutucada por parte do corpo** | duplo clique em parte específica (head/arm/body/legs/feet) | não (~0.4–1s) | localizada na parte cutucada | Já existe `double_click` genérico + picking de parte (grab_part). Expandir para reação DIFERENTE por parte (cabeça = treme porta; braço = recolhe; pernas = pula). | P1 | código |
 | A6 | **Cuspir/espirrar objeto do armário** | evento / manual | não (~1.5s) | porta, cabeça, corpo | Evolui o `pose_sneeze` + `animacao_saida.py`. Porta abre forte e um PROP sai cuspido (ver A-prop). Depende de prop spawnável. | P2 | misto |
 | A7 | **Loading com a logo** | app iniciando / operação longa | sim | — (tela/overlay, não o rig) | Animação de carregamento usando a logo (assets/brand). Pode ser overlay 2D pixelado, não o mascote. | P1 | arte+código |
@@ -42,7 +42,7 @@ Cada prop = **geometria nova** (pipeline de arte: Blockbench, que casa com o `.b
 | P1b | **Placa** | puxada do armário | mão | Mostrar texto configurável (like, inscrever, sininho — ver sistema REC) | P1 | arte+código |
 | P1c | **Guitarra** | pega | duas mãos + corpo | Tocar junto com dança/música | P2 | arte+código |
 | P1d | **Microfone** | pego | mão | Cantar/apresentar (modo REC) | P2 | arte+código |
-| P1e | **MP3 player na cintura** | **já faz parte do mascote** (na cintura); pode ser destacado e segurado | cintura → mão | **Interface de player pixelada**: ao pegar, abre UI de player (play/pause/faixa) estilo pixel art. Conecta com `music.py`/`music_speaker.py`. | P1 | arte+código+UI |
+| P1e | **MP3 player na cintura** | **já faz parte do mascote** (na cintura); pode ser destacado e segurado | cintura → mão | **Interface de player pixelada**: ao pegar, abre UI de player (play/pause/faixa) estilo pixel art. Conecta com `escuta_musica.py`/`caixa_som.py`. | P1 | arte+código+UI |
 
 **Observações:**
 - Todos no estilo low poly + street. O MP3 player (P1e) é o mais rico: é prop + UI pixelada + integração com o sistema de música que já existe.
@@ -53,13 +53,13 @@ Cada prop = **geometria nova** (pipeline de arte: Blockbench, que casa com o `.b
 
 ## 3. Efeitos (partículas/overlay, muitos com base existente)
 
-Já existem `speaker_effects.py`, `sound_effects.py`, `tentacle_drips.py` (gosma) para reaproveitar.
+Já existem `efeitos_caixa_som.py`, `efeitos_sonoros.py`, `tentacle_drips.py` (gosma) para reaproveitar.
 
 | # | Efeito | Gatilho | Base existente | Estilo | Prioridade | Tipo |
 |---|--------|---------|----------------|--------|------------|------|
 | E1 | **Notas musicais pixeladas** | dança / música tocando | — (novo, overlay 2D) | pixelado | P1 | código+arte |
-| E2 | **Ondas sonoras** (caixa de som / devices de música) | música / speaker ativo | `speaker_effects.py` | pixelado/low poly | P1 | código |
-| E3 | **Poeira de aterrissagem** | land (queda → chão) | `sound_effects.py`? / novo | low poly/pixel | P1 | código |
+| E2 | **Ondas sonoras** (caixa de som / devices de música) | música / speaker ativo | `efeitos_caixa_som.py` | pixelado/low poly | P1 | código |
+| E3 | **Poeira de aterrissagem** | land (queda → chão) | `efeitos_sonoros.py`? / novo | low poly/pixel | P1 | código |
 | E4 | **Poeira de deslize** | arraste rápido no chão | novo | pixel | P2 | código |
 | E5 | **Poeira de queda** | durante FALL | novo | pixel | P2 | código |
 | E6 | **Zzz no sono** | SLEEP / dormir | novo (overlay) | pixelado | P1 | código+arte |

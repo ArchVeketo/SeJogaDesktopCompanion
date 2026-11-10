@@ -137,9 +137,9 @@ def main():
             p = app.physics
             left, top, right, _bottom = p.bounds
             p.set_position((left + right) / 2, top + 300)
-            with patch("sejoga.desktop.physics.time.monotonic", return_value=10.0):
+            with patch("sejoga.desktop.fisica.time.monotonic", return_value=10.0):
                 p.start_drag(*p.state.position)
-            with patch("sejoga.desktop.physics.time.monotonic", return_value=10.02):
+            with patch("sejoga.desktop.fisica.time.monotonic", return_value=10.02):
                 p.update_drag(p.state.position[0] + 20, p.state.position[1] - 10)
                 velocity = p.end_drag()
             assert velocity[0] > 0 and velocity[1] < 0
