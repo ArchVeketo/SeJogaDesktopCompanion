@@ -57,7 +57,7 @@ câmera. O diagnóstico mostra as tríades RGB e inclui os eixos/posições de
 cada articulação no JSONL. A seção da malha mantém espessura durante a
 saída; a parte visível percorre a curva em vez de alterar opacidade.
 
-`tentacle_constraints.py` projeta cápsulas e vértices contra caixas orientadas
+`restricoes_tentaculos.py` projeta cápsulas e vértices contra caixas orientadas
 que seguem as peças animadas. Há quarenta volumes neste asset: cinco painéis
 do armário oco, porta, fones e peças sólidas do tronco/braços/pernas. Planos
 decorativos transparentes e eixos de diagnóstico não bloqueiam a cadeia.

@@ -2,7 +2,7 @@
 import pytest
 from panda3d.core import Mat4, Point3, Vec3
 
-from sejoga.tentaculos.tentacle_constraints import ObstacleBox, TentacleContacts
+from sejoga.tentaculos.restricoes_tentaculos import ObstacleBox, TentacleContacts
 
 
 @pytest.mark.parametrize("angle", (0, 35, 85, 120))

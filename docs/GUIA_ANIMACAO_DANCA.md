@@ -239,7 +239,7 @@ Snapshot do fonte em 05/11/2026. Consultar o relatório de build: o executável 
 | Pernas | [`movimento_pernas.py`](../src/sejoga/animacao/movimento_pernas.py) | Fase compartilhada; magnitudes `DANCA_*` por estilo (rock com base larga e joelho no acento, hip hop com quique); footwork/plantio ainda precisam de contatos de cena |
 | Mãos | [`gestos_dedos.py`](../src/sejoga/animacao/gestos_dedos.py) | Dedos direitos e rock existem; falta polimento do braço estendido e alternância bilateral |
 | Chão | `Panda3DRenderer.apply_body_motion`, `_giro_no_quadril` | Giro e roll conjugados no quadro de autoria, pivô no quadril, correção por bounds: **a mão ainda não fica fixa no cenário (atalho `shortcut:`), não é six-step completo** |
-| Gosma | [`tentacle_drips.py`](../src/sejoga/tentaculos/tentacle_drips.py) | Gotas/spray existem; ligar aos acentos sem esconder a pose |
+| Gosma | [`gotas_tentaculos.py`](../src/sejoga/tentaculos/gotas_tentaculos.py) | Gotas/spray existem; ligar aos acentos sem esconder a pose |
 | Fones | Peças no GLTF | Material/textura reativa e atraso específico ainda pendentes |
 
 ## 10. Ordem de implementação e validação

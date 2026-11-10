@@ -24,7 +24,7 @@ from sejoga.tentaculos.ondulacao import (
     OndulacaoTuning,
     deslocamento_ondulante,
 )
-from sejoga.tentaculos.tentacle_constraints import TentacleContacts
+from sejoga.tentaculos.restricoes_tentaculos import TentacleContacts
 
 # Tolerância ao tratar a base da frente como degenerada (frente quase vertical).
 EPSILON_BASE_FRENTE = 1e-6

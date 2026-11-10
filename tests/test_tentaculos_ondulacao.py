@@ -13,7 +13,7 @@ from sejoga.tentaculos.ondulacao import (
     atraso_de_fase_por_segmento,
     deslocamento_ondulante,
 )
-from sejoga.tentaculos.tentacle_system import (
+from sejoga.tentaculos.sistema_tentaculos import (
     DEFAULT_SEGMENTS,
     TentacleDirector,
     TentaclePool,

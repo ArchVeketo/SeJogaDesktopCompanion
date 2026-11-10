@@ -30,8 +30,8 @@ from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.esqueleto import Rig
 from sejoga.render.dedos_malha import fatiar_dedos
 from sejoga.render.fio_fone_malha import MalhaFioFone, ocultar_peca_rigida_do_fio
-from sejoga.tentaculos.tentacle_constraints import ObstacleBox, TentacleContacts
-from sejoga.tentaculos.tentacle_system import (
+from sejoga.tentaculos.restricoes_tentaculos import ObstacleBox, TentacleContacts
+from sejoga.tentaculos.sistema_tentaculos import (
     TentacleDirector,
     TentaclePool,
     TentacleState,
@@ -287,7 +287,7 @@ class Panda3DRenderer:
             self.rig, self.model_np, self.outline_np, spawn_points,
             rng=random.Random(), unit_scale=unit_scale,
         )
-        from sejoga.tentaculos.tentacle_drips import TentacleDrips
+        from sejoga.tentaculos.gotas_tentaculos import TentacleDrips
         self.tentacle_drips = TentacleDrips(self.model_np)
         from sejoga.animacao.gestos_dedos import FingerGestures
         self.finger_gestures = FingerGestures(self)

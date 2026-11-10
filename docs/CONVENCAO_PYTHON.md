@@ -15,7 +15,7 @@ Vale para todo arquivo `.py` em `src/sejoga/`, `tests/` e `tools/`. Código novo
 
 - Pastas e módulos em `snake_case`, em português, com substantivo que diz o que o módulo contém: `cinematica.py`, `colisao_bracos.py`, `coreografia_porta.py`.
 - Módulo de constantes calibráveis termina em `_tuning.py` (`braco_tuning.py`, `chroma_tuning.py`). Módulo de constantes fixas, que não se calibram, termina em `_const.py` (`window_const.py`).
-- Módulos com nome em inglês (`window.py`, `renderer.py`, `movimento_corpo.py`, `tentacle_system.py` e outros) são renomeados para português na refatoração, atualizando todos os imports e o `pyproject.toml`. Exceções: `__init__.py`, `__main__.py`, `conftest.py`.
+- Módulos com nome em inglês (`window.py`, `renderer.py`, `movimento_corpo.py`, `sistema_tentaculos.py` e outros) são renomeados para português na refatoração, atualizando todos os imports e o `pyproject.toml`. Exceções: `__init__.py`, `__main__.py`, `conftest.py`.
 - Scripts em `tools/` começam com verbo e dizem a ação: `calibrar_interativo.py`, `capturar_porta_tentaculos.py`. Os de verificação podem começar com `smoke_`.
 - Testes: um arquivo `tests/test_<modulo>.py` por módulo testado.
 
