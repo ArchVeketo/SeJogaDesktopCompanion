@@ -53,6 +53,12 @@ ONDULACAO_CONFIANTE = OndulacaoTuning(
     frequencia_hz=0.9, comprimento_onda=0.8, expoente_envelope=1.1,
 )
 
+# Espirro (rajada): mesma onda, bem mais ampla e rápida; ativa só durante o burst.
+ONDULACAO_ESPIRRO = OndulacaoTuning(
+    amplitude_lateral_px=22.0, amplitude_cima_px=14.0,
+    frequencia_hz=0.8, comprimento_onda=0.85, expoente_envelope=1.0,
+)
+
 ONDULACAO_POR_TEMPERAMENTO: dict[IdlePersonality, OndulacaoTuning] = {
     IdlePersonality.CALM: ONDULACAO_CALMA,
     IdlePersonality.CURIOUS: ONDULACAO_CURIOSA,

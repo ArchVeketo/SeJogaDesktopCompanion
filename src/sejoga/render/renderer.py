@@ -791,6 +791,7 @@ void main() {{
             door.setHpr(base_h + self.tentacle_director._door_current, base_p, base_r)
         if active:
             self._update_tentacle_contacts()
+        self.tentacle_director._pedido_porta_externo = self._door_requested
         self.tentacle_director._door_requested = max(self._door_requested, 85.0 if active else 0.0)
         # The animation controller owns ambient timing. Keep updating the door
         # after the last limb is dormant, so it can finish closing smoothly.

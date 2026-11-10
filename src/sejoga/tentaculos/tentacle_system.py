@@ -15,9 +15,11 @@ from itertools import pairwise
 from panda3d.core import GeomVertexRewriter, NodePath, Quat, Vec3
 
 from sejoga.nucleo.rig import IdlePersonality, Rig
+from sejoga.tentaculos import coreografia_porta as coreo
 from sejoga.tentaculos.ondulacao import (
     FASE_POR_SEMENTE_RAD,
     ONDULACAO_CALMA,
+    ONDULACAO_ESPIRRO,
     ONDULACAO_POR_TEMPERAMENTO,
     OndulacaoTuning,
     deslocamento_ondulante,
@@ -138,6 +140,13 @@ class Tentacle:
     tempo_onda: float = 0.0
     params_antes_recolher: dict = field(default_factory=dict)
 
+    # Saída pela porta (temperamento) e ajustes que a coreografia impõe a um
+    # tentáculo específico; None = usa o padrão do estado.
+    saida: coreo.SaidaTuning = coreo.SAIDA_CALMA
+    duracao_revelacao_s: float | None = None
+    duracao_recolher_s: float | None = None
+    mola_forcada: tuple[float, float] | None = None
+
     # Buffers de render reaproveitados entre frames (evita recriar o
     # GeomVertexRewriter e recomputar a curva quando a pose não mudou).
     _vertex_rewriter: GeomVertexRewriter | None = None
@@ -225,6 +234,9 @@ class TentaclePool:
             t.state = TentacleState.CURIOUS
             t.state_time = 0.0
             t.params = dict(STATE_PARAMS["curious"])
+            t.duracao_revelacao_s = None
+            t.duracao_recolher_s = None
+            t.mola_forcada = None
         return selected
 
     def release(self, tentacle: Tentacle) -> None:
@@ -252,6 +264,7 @@ class TentaclePool:
             t.impulse_chance = sp["impulse_chance"]
             t.impulse_strength = sp["impulse_strength"]
             t.ondulacao = ONDULACAO_POR_TEMPERAMENTO[personality]
+            t.saida = coreo.SAIDA_POR_TEMPERAMENTO[personality]
 
 
 # ============================================================
@@ -291,6 +304,15 @@ class TentacleDirector:
         self._door_current = 0.0
         self.burst = False
         self.appearance_count = 1
+
+        # Coreografia porta x tentáculos: empurrador/puxador, ângulo imposto à porta
+        # e pedido de porta vindo do rig (outra animação dona da porta).
+        self.coreografia = coreo.CoreografiaPorta()
+        self._atuador: Tentacle | None = None
+        self._alvo_atuador: Vec3 | None = None
+        self._angulo_coreografado: float | None = None
+        self._pedido_porta_externo = 0.0
+        self._borda_porta_local: Vec3 | None = None
         self.speaker_throw_remaining=0.0
         self.speaker_throw_limbs: list[Tentacle]=[]
 
@@ -321,7 +343,10 @@ class TentacleDirector:
 
     def trigger_curious(self) -> None:
         """Força um momento curious (espiada)."""
-        self._spawn_curious(count=self.rng.choices((1, 2, 3, 4, 6), weights=(16, 44, 25, 12, 3), k=1)[0])
+        self._spawn_curious(
+            count=self.rng.choices((1, 2, 3, 4, 6), weights=(16, 44, 25, 12, 3), k=1)[0],
+            coreografar=True,
+        )
 
     def trigger_speaker_throw(self):
         self.speaker_throw_remaining=1.5
@@ -343,7 +368,7 @@ class TentacleDirector:
                     segment.length *= 2.0
                 limb.spring = 260
                 limb.damper = 27
-        self._door_requested = 130
+        self._door_requested = coreo.SAIDA_ESPIRRO.angulo_empurrao_graus
 
     def update(self, dt: float, idle_time: float, personality: IdlePersonality) -> None:
         """Atualiza todos os tentáculos e decide transições."""
@@ -358,6 +383,8 @@ class TentacleDirector:
 
         # Atualiza pool
         self.pool.update_personality(personality)
+        if self._outro_dono_da_porta():
+            self._cancelar_coreografia()
 
         # Frenzy
         if self.frenzy_mode:
@@ -390,6 +417,7 @@ class TentacleDirector:
         self._separate_tentacles()
 
         # Door sync
+        self._avancar_coreografia(dt)
         self._update_door(dt)
 
     # ------------------------------------------------------------------
@@ -422,18 +450,26 @@ class TentacleDirector:
         self._door_requested = 135.0
 
     def _retract_all(self) -> None:
+        self._cancelar_coreografia()
         for t in self.pool.tentacles:
             if t.state != TentacleState.DORMANT:
                 self.pool.release(t)
         self._door_requested = 0.0
 
     def _update_tentacle(self, tentacle: Tentacle, dt: float) -> None:
-        if tentacle.state == TentacleState.CURIOUS and self._door_current < 50.0:
+        # O atuador da coreografia (empurra/puxa a porta) não espera a porta abrir.
+        if (tentacle.state == TentacleState.CURIOUS and tentacle is not self._atuador
+                and self._door_current < coreo.LIMIAR_SAIDA_PORTA_GRAUS):
             return
         tentacle.state_time += dt
 
         if tentacle.state == TentacleState.RETRACTING:
-            progress = min(1.0, max(0.0, tentacle.state_time / (.45 if self.burst else 1.5)))
+            duracao_recolher = 1.5
+            if self.burst:
+                duracao_recolher = .45
+            elif tentacle.duracao_recolher_s is not None:
+                duracao_recolher = tentacle.duracao_recolher_s
+            progress = min(1.0, max(0.0, tentacle.state_time / duracao_recolher))
             eased = progress ** 3 * (10 - 15 * progress + 6 * progress * progress)
             tentacle.reveal = tentacle.retract_reveal * (1 - eased)
             if progress >= 1.0:
@@ -454,7 +490,10 @@ class TentacleDirector:
 
         # Parâmetros atuais
         p = tentacle.params
-        reveal_time = max(0.0, min(1.0, tentacle.state_time / (.30 if getattr(tentacle,'speaker_throw',False) else .16 if self.burst else 1.8)))
+        duracao_revelacao = tentacle.duracao_revelacao_s
+        if duracao_revelacao is None:
+            duracao_revelacao = tentacle.saida.duracao_s
+        reveal_time = max(0.0, min(1.0, tentacle.state_time / (.30 if getattr(tentacle,'speaker_throw',False) else coreo.SAIDA_ESPIRRO.duracao_s if self.burst else duracao_revelacao)))
         tentacle.reveal = reveal_time ** 3 * (10 - 15 * reveal_time + 6 * reveal_time ** 2)
         self._atualizar_segmentos(tentacle, dt, p)
 
@@ -468,6 +507,8 @@ class TentacleDirector:
         # Spring params
         spring = 190 if getattr(tentacle,'speaker_throw',False) else 380 if self.burst else tentacle.spring
         damper = 24 if getattr(tentacle,'speaker_throw',False) else 30 if self.burst else tentacle.damper
+        if tentacle.mola_forcada is not None:
+            spring, damper = tentacle.mola_forcada
 
         # Atualiza cada segmento
         for i, seg in enumerate(tentacle.segments):
@@ -492,21 +533,14 @@ class TentacleDirector:
                 target_pos = (tentacle.anchor * (v ** 3) + a * (3 * v * v * u) +
                               b * (3 * v * u * u) + tentacle.target * (u ** 3))
                 arch = math.sin(math.pi * t_param)
-                phase = tentacle.state_time * (5.0 if self.burst else 1.5) - t_param * (7.5 if self.burst else 2.0) + tentacle.seed * .001
-                if self.burst:
-                    # A travelling bend with delayed tips, rather than rigid spokes.
-                    wave = math.sin(math.pi * t_param) * math.sin(phase)
-                    target_pos += (lateral * (.065 * wave) + forward * (.045 * math.cos(phase) * arch)
-                                   + up * (.075 * math.sin(phase - .7) * arch))
-                    target_pos += lateral * (math.sin(phase) * 4.0 * tentacle.unit_scale * arch)
-                else:
-                    # Onda serpenteante da base à ponta, no plano da frente da cabeça.
-                    onda_lateral, onda_cima = deslocamento_ondulante(
-                        tentacle.ondulacao, t_param, tentacle.tempo_onda,
-                        tentacle.seed * FASE_POR_SEMENTE_RAD,
-                    )
-                    escala_onda = tentacle.unit_scale * tentacle.length_scale
-                    target_pos += lateral * (onda_lateral * escala_onda) + up * (onda_cima * escala_onda)
+                # Onda serpenteante da base à ponta, no plano da frente da cabeça.
+                # O espirro usa a mesma onda com intensidade de rajada.
+                onda_lateral, onda_cima = deslocamento_ondulante(
+                    ONDULACAO_ESPIRRO if self.burst else tentacle.ondulacao,
+                    t_param, tentacle.tempo_onda, tentacle.seed * FASE_POR_SEMENTE_RAD,
+                )
+                escala_onda = tentacle.unit_scale * tentacle.length_scale
+                target_pos += lateral * (onda_lateral * escala_onda) + up * (onda_cima * escala_onda)
                 target_pos += (
                     forward * (8.0 * tentacle.unit_scale * arch)
                     + up * (12.0 * tentacle.unit_scale * arch)
@@ -634,7 +668,8 @@ class TentacleDirector:
         st = tentacle.state
 
         if st == TentacleState.CURIOUS:
-            if tentacle.state_time > (.95 if self.burst else 4.8):
+            # O atuador só é solto pela coreografia.
+            if tentacle is not self._atuador and tentacle.state_time > (.95 if self.burst else 4.8):
                 self.pool.release(tentacle)
 
         elif st == TentacleState.REACHING:
@@ -693,6 +728,12 @@ class TentacleDirector:
         pass  # Lógica está em _check_state_transition
 
     def _update_door(self, dt: float) -> None:
+        if self._angulo_coreografado is not None:
+            # Porta presa à coreografia (empurrão, esquecimento, puxão): sem suavização própria.
+            self._door_current = self._angulo_coreografado
+            if self.door_node:
+                self.door_node.setH(self._door_current)
+            return
         # Suaviza abertura/fechamento da porta
         diff = self._door_requested - self._door_current
         opening = diff > 0
@@ -716,7 +757,7 @@ class TentacleDirector:
             )
         return Vec3(0, 0, 0)
 
-    def _spawn_curious(self, count: int) -> list[Tentacle]:
+    def _spawn_curious(self, count: int, coreografar: bool = False) -> list[Tentacle]:
         self.appearance_count = count
         active = self.pool.get_available(count)
         for index, t in enumerate(active):
@@ -726,7 +767,7 @@ class TentacleDirector:
                 segment.length = SEGMENT_LENGTH * self.pool.unit_scale * t.length_scale
             t.state = TentacleState.CURIOUS
             # Stagger the pair so the second tentacle follows the first.
-            t.state_time = -0.48 * index
+            t.state_time = -t.saida.escalonamento_s * index
             t.params = dict(STATE_PARAMS["curious"])
             # Concept silhouette: crown, side curl, then lower tendrils.
             # Targets have independent depth so the limbs do not form a flat fan.
@@ -739,7 +780,124 @@ class TentacleDirector:
             offset = (lateral * x + frente * y + cima * z) * self.pool.unit_scale * t.length_scale
             t.target = t.anchor + offset
         self._door_requested = max(self._door_requested, 85.0)
+        if coreografar and active:
+            self._iniciar_empurrao(active[0])
         return active
+
+    # ------------------------------------------------------------------
+    # Coreografia tentáculos x porta
+    # ------------------------------------------------------------------
+
+    def _outro_dono_da_porta(self) -> bool:
+        """Rajada, caixa de som, fúria, engolir ou pedido do rig: a porta não é nossa."""
+        return (self.burst or getattr(self, "music_ejection", False) or self.frenzy_mode
+                or self.swallowing or self.speaker_throw_remaining > 0
+                or self._pedido_porta_externo > coreo.LIMIAR_PEDIDO_EXTERNO_GRAUS)
+
+    def _cancelar_coreografia(self) -> None:
+        """Devolve a porta ao comportamento normal (pedido suavizado)."""
+        self.coreografia.cancelar()
+        self._angulo_coreografado = None
+        if self._atuador is not None:
+            self._atuador.mola_forcada = None
+        self._atuador = None
+        self._alvo_atuador = None
+
+    def _iniciar_empurrao(self, empurrador: Tentacle) -> None:
+        """O primeiro tentáculo sorteado empurra a porta, se ela estiver parada e fechada."""
+        fase = self.coreografia.fase
+        if fase is not coreo.FasePorta.FECHADA:
+            # Aparição durante a coreografia (esquecida, puxando...): volta ao normal.
+            if fase is not coreo.FasePorta.ABERTA and fase is not coreo.FasePorta.EMPURRANDO:
+                self._cancelar_coreografia()
+            return
+        if self._outro_dono_da_porta() or self._door_current >= coreo.LIMIAR_PORTA_FECHADA_GRAUS:
+            return
+        borda = self._ponto_borda_porta()
+        if borda is None:
+            return
+        self._atuador = empurrador
+        self._alvo_atuador = empurrador.target
+        self.coreografia.iniciar_empurrao()
+
+    def _avancar_coreografia(self, dt: float) -> None:
+        if self.coreografia.fase is coreo.FasePorta.FECHADA:
+            return
+        atuador = self._atuador
+        fase = self.coreografia.fase
+        if fase is coreo.FasePorta.EMPURRANDO and (
+                atuador is None or atuador.state in (TentacleState.DORMANT, TentacleState.RETRACTING)):
+            self._cancelar_coreografia()
+            return
+        passo = self.coreografia.avancar(
+            dt,
+            revelacao_atuador=atuador.reveal if atuador is not None else 0.0,
+            angulo_porta=self._door_current,
+            ha_ativos=any(t.state != TentacleState.DORMANT for t in self.pool.tentacles),
+            angulo_empurrao=atuador.saida.angulo_empurrao_graus if atuador is not None else 0.0,
+        )
+        self._angulo_coreografado = passo.angulo_porta
+        if passo.fim_empurrao and atuador is not None:
+            # Empurrão feito: o tentáculo volta ao alvo comum de qualquer curioso.
+            atuador.target = self._alvo_atuador
+            self._atuador = None
+            self._alvo_atuador = None
+        if passo.chamar_puxador:
+            self._chamar_puxador()
+        if passo.soltar_puxador and atuador is not None:
+            atuador.mola_forcada = None
+            atuador.duracao_recolher_s = coreo.VOLTA_PUXADOR_S
+            self.pool.release(atuador)
+            self._atuador = None
+        self._apontar_atuador()
+
+    def _apontar_atuador(self) -> None:
+        """Mira o atuador na borda livre da porta, que se move com ela."""
+        atuador = self._atuador
+        borda = self._ponto_borda_porta()
+        if atuador is None or borda is None:
+            return
+        if self.coreografia.fase is coreo.FasePorta.EMPURRANDO:
+            # A ponta visível está em `reveal` da curva: estende o alvo para que a
+            # ponta chegue à borda ao fim do empurrão (aproximação linear).
+            atuador.target = atuador.anchor + (borda - atuador.anchor) / coreo.REVELACAO_FIM_EMPURRAO
+        else:
+            atuador.target = borda
+
+    def _chamar_puxador(self) -> None:
+        disponiveis = self.pool.get_available(1)
+        if not disponiveis:
+            self._cancelar_coreografia()
+            return
+        puxador = disponiveis[0]
+        puxador.length_scale = 1.0
+        puxador.girth_scale = 1.0
+        for segmento in puxador.segments:
+            segmento.length = SEGMENT_LENGTH * self.pool.unit_scale
+        puxador.state_time = 0.0
+        puxador.params = dict(STATE_PARAMS["curious"])
+        puxador.params["max_len"] = coreo.ALCANCE_PUXADOR
+        puxador.duracao_revelacao_s = coreo.TEMPO_ALCANCE_PUXAO_S
+        puxador.mola_forcada = (coreo.MOLA_PUXADOR, coreo.AMORTECEDOR_PUXADOR)
+        self._atuador = puxador
+
+    def _ponto_borda_porta(self) -> Vec3 | None:
+        """Borda livre da porta (oposta à dobradiça, na altura do meio), no espaço do modelo."""
+        if not self.door_node:
+            return None
+        if self._borda_porta_local is None:
+            limites = self.door_node.getTightBounds(self.door_node)
+            if not limites:
+                return None
+            baixo, alto = limites
+            centro = (baixo + alto) * .5
+            # A largura é o maior lado horizontal; a dobradiça fica na origem do nó.
+            eixo = 0 if (alto.x - baixo.x) >= (alto.y - baixo.y) else 1
+            extremo = alto[eixo] if abs(alto[eixo]) >= abs(baixo[eixo]) else baixo[eixo]
+            borda = Vec3(centro)
+            borda[eixo] = extremo
+            self._borda_porta_local = borda
+        return self.model_np.getRelativePoint(self.door_node, self._borda_porta_local)
 
 
 def _base_frente(tentacle: Tentacle) -> tuple[Vec3, Vec3, Vec3]:
