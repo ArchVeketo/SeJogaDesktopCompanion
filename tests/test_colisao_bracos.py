@@ -16,9 +16,9 @@ from sejoga.animacao import arm_ik
 from sejoga.animacao import colisao_bracos as cb
 from sejoga.animacao.arm_targets import ALVOS
 from sejoga.animacao.pose_resolver import PoseResolver
-from sejoga.nucleo.assets import resolve_model
-from sejoga.nucleo.model import load_model
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.recursos import resolve_model
+from sejoga.nucleo.modelo import load_model
+from sejoga.nucleo.esqueleto import Rotation3
 
 #: Quadros dados ao resolvedor para corrigir e para relaxar.
 QUADROS_CORRECAO = 60

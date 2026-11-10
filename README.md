@@ -109,7 +109,7 @@ src/sejoga/
   anim_layers.py    Camadas aditivas (base, locomoção, música...)
   joint_springs.py  Molas por junta e cadeia de atraso
   anim_clips.py     Clipes de animação como dados
-  rig.py            Catálogo do rig e poses procedurais
+  esqueleto.py            Catálogo do rig e poses procedurais
   physics.py        Física de tela (Pymunk)
   renderer.py       Renderizador Panda3D
   win32_overlay.py  Janela em camadas / clique-através (Win32)

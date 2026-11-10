@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.esqueleto import Rotation3
 
 # Ordem de prioridade determinística das camadas conhecidas. Camadas com nome
 # fora desta lista são aplicadas depois, na ordem em que chegam.

@@ -10,21 +10,21 @@ pytest.importorskip("PySide6")
 def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatch):
     from PySide6.QtWidgets import QApplication, QDialog
 
-    from sejoga import config
+    from sejoga import configuracao
     from sejoga.desktop.ui import SettingsDialog
     app = QApplication.instance() or QApplication([])  # noqa: F841  # intencional: mantem a QApplication viva durante o teste (evita GC)
     primary = tmp_path / "locked" / "config.toml"
     fallback = tmp_path / "fallback" / "config.toml"
-    original = config._write_settings
+    original = configuracao._write_settings
     monkeypatch.delenv("SEJOGA_CONFIG_PATH", raising=False)
-    monkeypatch.setattr(config, "default_config_path", lambda: primary)
-    monkeypatch.setattr(config, "fallback_config_path", lambda: fallback)
+    monkeypatch.setattr(configuracao, "default_config_path", lambda: primary)
+    monkeypatch.setattr(configuracao, "fallback_config_path", lambda: fallback)
     def write(path, payload):
         if path == primary:
             raise PermissionError("locked profile")
         original(path, payload)
-    monkeypatch.setattr(config, "_write_settings", write)
-    dialog = SettingsDialog(config.Settings())
+    monkeypatch.setattr(configuracao, "_write_settings", write)
+    dialog = SettingsDialog(configuracao.Settings())
     updates = []
     dialog.settings_applied.connect(updates.append)
     dialog.outline_width_input.setValue(4.5)
@@ -42,11 +42,11 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
     assert updates[0].window.outline_width == 4.5
     assert updates[0].window.outline_breath == .7
     assert updates[0].window.colorkey_color == "#00FF00"
-    assert config.load_settings(fallback).window.colorkey_color == "#00FF00"
-    assert config.load_settings(fallback).window.outline_width == 4.5
-    assert config.load_settings(fallback).window.outline_breath == .7
-    assert config.load_settings(fallback).behavior.idle_personality == "fighter"
-    reopened = SettingsDialog(config.load_settings(fallback))
+    assert configuracao.load_settings(fallback).window.colorkey_color == "#00FF00"
+    assert configuracao.load_settings(fallback).window.outline_width == 4.5
+    assert configuracao.load_settings(fallback).window.outline_breath == .7
+    assert configuracao.load_settings(fallback).behavior.idle_personality == "fighter"
+    reopened = SettingsDialog(configuracao.load_settings(fallback))
     assert reopened.colorkey_color_button.text() == "#00FF00"
     assert reopened.personality_input.currentData() == "fighter"
     assert reopened.outline_breath_input.value() == .7
@@ -62,13 +62,13 @@ def test_novos_campos_persistem_e_reabrem(tmp_path, monkeypatch):
     """FPS, monitor preferido, color key de diagnóstico e nível de log."""
     from PySide6.QtWidgets import QApplication, QDialog
 
-    from sejoga import config
+    from sejoga import configuracao
     from sejoga.desktop import autostart, ui
     from sejoga.desktop.ui import SettingsDialog
     app = QApplication.instance() or QApplication([])  # noqa: F841  # intencional: mantem a QApplication viva durante o teste (evita GC)
     destino = tmp_path / "config.toml"
     monkeypatch.setenv("SEJOGA_CONFIG_PATH", str(destino))
-    monkeypatch.setattr(config, "default_config_path", lambda: destino)
+    monkeypatch.setattr(configuracao, "default_config_path", lambda: destino)
     monkeypatch.setattr(ui, "default_config_path", lambda: destino)
     # Autostart mockado para não tocar a pasta Startup real do usuário.
     ativacoes: list[bool] = []
@@ -76,7 +76,7 @@ def test_novos_campos_persistem_e_reabrem(tmp_path, monkeypatch):
     monkeypatch.setattr(autostart, "ativar", lambda: ativacoes.append(True) or True)
     monkeypatch.setattr(autostart, "desativar", lambda: ativacoes.append(False) or True)
 
-    dialog = SettingsDialog(config.Settings())
+    dialog = SettingsDialog(configuracao.Settings())
     updates = []
     dialog.settings_applied.connect(updates.append)
     dialog.fps_input.setValue(90)
@@ -96,7 +96,7 @@ def test_novos_campos_persistem_e_reabrem(tmp_path, monkeypatch):
     assert updates[0].logging.level == "DEBUG"
     assert ativacoes == [True]
 
-    salvo = config.load_settings(destino)
+    salvo = configuracao.load_settings(destino)
     assert salvo.window.fps == 90
     assert salvo.window.diagnostic_colorkey is True
     assert salvo.window.preferred_monitor == monitor_esperado

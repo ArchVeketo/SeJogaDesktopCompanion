@@ -27,7 +27,8 @@ from sejoga.animacao.delta_states import delta_idle
 from sejoga.animacao.idle_clips import camada_respiracao
 from sejoga.animacao.respiracao import Respiracao
 from sejoga.animacao.respiracao_tuning import RESPIRACAO_POR_PERSONALIDADE, parametros_de
-from sejoga.nucleo.rig import ALL_GROUPS, IdlePersonality, Rig, Rotation3, pose_idle
+from sejoga.animacao.poses_base import pose_idle
+from sejoga.nucleo.esqueleto import ALL_GROUPS, IdlePersonality, Rig, Rotation3
 
 FPS = 60.0
 DT = 1.0 / FPS

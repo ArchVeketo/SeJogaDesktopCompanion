@@ -19,7 +19,8 @@ from sejoga.animacao.anim_clips import amostrar_clipe, ciclo_da_fase
 from sejoga.animacao.body_motion import BodyPose
 from sejoga.animacao.idle_clips import camada_respiracao, sample_idle, sample_track
 from sejoga.animacao.rig_base import REPOUSO
-from sejoga.nucleo.rig import IdlePersonality, Rotation3, braco_hpr_graus
+from sejoga.animacao.braco_hpr import braco_hpr_graus
+from sejoga.nucleo.esqueleto import IdlePersonality, Rotation3
 
 #: Base de repouso (graus) dos grupos de braço, a mesma que ``sample_idle``
 #: usa por baixo das frases; subtraída para obter o delta do idle.

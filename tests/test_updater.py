@@ -140,7 +140,7 @@ def test_installed_channel_and_stable_launcher_are_found_outside_runtime(tmp_pat
     launcher = tmp_path/'SeJogaLauncher.exe'
     launcher.write_bytes(b'fixture')
     assert updater.installed_launcher() == launcher
-    from sejoga.config import APP_NAME, profile_app_name
+    from sejoga.configuracao import APP_NAME, profile_app_name
     # Instalador unico: o perfil mora sempre no mesmo caminho, independente do canal.
     assert profile_app_name() == APP_NAME
     (current/'release-info.json').write_text('invalid')
@@ -156,7 +156,7 @@ def test_config_channel_drives_update_feed(monkeypatch):
         raise HTTPError('feed', 404, 'missing', {}, None)
 
     monkeypatch.setattr(updater, '_read', read)
-    from sejoga.config import Settings
+    from sejoga.configuracao import Settings
     settings = Settings()
     settings.update.channel = 'prerelease'
     current = updater.release_para_checagem(settings.update.channel)

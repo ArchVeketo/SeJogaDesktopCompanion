@@ -49,7 +49,7 @@ Quem acrescentar uma animação nova deve incluir uma seção aqui.
   porta idle fizer falta na GPU, volta como track `door` em `CLIPS`.
 - **Limite de jerk de um quíntico:** `60*delta/T^3`. Regra prática usada nas
   frases: rampas >= 0,5 s e delta <= ~16° nessas rampas, ou rampas maiores.
-- `_idle_pulse` continua em `nucleo/rig.py` porque `pose_secondary` ainda o usa.
+- `_idle_pulse` continua em `animacao/poses_base.py` (antes `nucleo/rig.py`) porque `pose_secondary` ainda o usa.
 
 ## Sono
 

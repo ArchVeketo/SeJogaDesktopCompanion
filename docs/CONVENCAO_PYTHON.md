@@ -45,7 +45,7 @@ Vale para todo arquivo `.py` em `src/sejoga/`, `tests/` e `tools/`. Código novo
 
 Regra do AGENTS.md, que aqui substitui a regra de camadas dos coletores:
 
-- Pacotes puros, sem Panda3D, Qt nem Win32: `nucleo/`, `rig_mapa/`, `animacao/`, `config.py`, `model.py`, `rig.py`, `assets.py`.
+- Pacotes puros, sem Panda3D, Qt nem Win32: `nucleo/`, `rig_mapa/`, `animacao/`, `configuracao.py`, `modelo.py`, `esqueleto.py`, `recursos.py`.
 - Pacotes com engine: `render/`, `desktop/`, `musica/`, `distribuicao/`, `tentaculos/` e `tools/`.
 - A dependência vai sempre do lado com engine para o lado puro, nunca o contrário.
 - Entre os puros, `nucleo/` é a base: `animacao/` e `rig_mapa/` podem importar de `nucleo/`, e `nucleo/` não importa de `animacao/` nem de `rig_mapa/`. Constantes que o `nucleo/` precisa ficam no `nucleo/`.

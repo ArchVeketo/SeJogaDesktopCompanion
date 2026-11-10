@@ -16,7 +16,7 @@ from typing import Any
 from direct.gui.OnscreenText import OnscreenText
 from panda3d.core import LineSegs, TextNode
 
-from sejoga.config import default_config_path
+from sejoga.configuracao import default_config_path
 
 # Estilo dos eixos de referência do diagnóstico (gizmo X/Y/Z).
 EIXO_ESPESSURA = 2.5

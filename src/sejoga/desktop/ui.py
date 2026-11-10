@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from sejoga.config import Settings, default_config_path, save_settings
+from sejoga.configuracao import Settings, default_config_path, save_settings
 from sejoga.desktop import autostart
 from sejoga.desktop import desktop_const as C
 

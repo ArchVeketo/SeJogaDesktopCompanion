@@ -8,7 +8,7 @@ from sejoga.animacao.anim_layers import (
     MixerCamadas,
     Prioridade,
 )
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.esqueleto import Rotation3
 
 
 def test_soma_aditiva_por_junta():

@@ -19,10 +19,10 @@ _PROIBIDOS = {
     "pywin32",
 }
 _PACOTES_PUROS = ("nucleo", "rig_mapa", "animacao")
-_MODULOS_RAIZ_PUROS = ("config.py",)
+_MODULOS_RAIZ_PUROS = ("configuracao.py",)
 # shortcut: violações conhecidas, removidas nos lotes da refatoração.
 _VIOLACOES_ENGINE = {"animacao/lower_body.py"}
-_VIOLACOES_NUCLEO = {"nucleo/rig.py", "nucleo/flexible_rig.py", "nucleo/cinematica.py"}
+_VIOLACOES_NUCLEO: set[str] = set()
 
 
 def _listar_modulos_puros() -> list[str]:

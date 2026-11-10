@@ -8,7 +8,7 @@ from sejoga.animacao.spring_tuning import (
     lag_de,
     tensao_de,
 )
-from sejoga.nucleo.rig import ALL_GROUPS
+from sejoga.nucleo.esqueleto import ALL_GROUPS
 
 
 def test_todos_os_grupos_tem_entrada():

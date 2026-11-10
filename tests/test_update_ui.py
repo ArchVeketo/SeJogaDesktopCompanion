@@ -17,7 +17,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
-from sejoga.config import Settings
+from sejoga.configuracao import Settings
 from sejoga.distribuicao.update_ui import UpdateDialog
 from sejoga.distribuicao.updater import ReleaseInfo, Update
 

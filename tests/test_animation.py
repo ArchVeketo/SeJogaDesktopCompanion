@@ -3,7 +3,7 @@ from itertools import pairwise
 
 from fk_bracos import punho
 from sejoga.animacao.animation import AnimationController, AnimationState
-from sejoga.nucleo.rig import ALL_GROUPS, Rig, Rotation3
+from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig, Rotation3
 
 
 def controller():
@@ -54,7 +54,7 @@ def test_hover_keeps_personality_phrase_and_arm_motion():
 
 
 def test_fall_pose_uses_velocity_not_application_uptime():
-    from sejoga.nucleo.rig import pose_thrown
+    from sejoga.animacao.poses_base import pose_thrown
     animation = controller()
     pose_thrown(animation.rig, .7, (0, -600))
     ascending = animation.rig.pose()
@@ -75,7 +75,7 @@ def test_fall_pose_uses_velocity_not_application_uptime():
 def test_wave_turns_palm_out_and_keeps_elbow_bent():
     from math import degrees
 
-    from sejoga.nucleo.rig import pose_flourish
+    from sejoga.animacao.poses_base import pose_flourish
 
     animation = controller()
     pose_flourish(animation.rig, "wave", .95)
@@ -92,7 +92,7 @@ def test_wave_turns_palm_out_and_keeps_elbow_bent():
 def test_walk_and_drag_poses_have_counterbalanced_arms():
     from math import degrees
 
-    from sejoga.nucleo.rig import pose_drag, pose_walk
+    from sejoga.animacao.poses_base import pose_drag, pose_walk
     animation = controller()
     pose_walk(animation.rig, 0.0)
     walk_left = degrees(animation.rig.current["left-arm"].y)
@@ -372,7 +372,7 @@ def test_silent_dance_preview_expires_without_restarting_itself():
 def test_crossfade_por_junta_deixa_a_ponta_balancar_mais_que_a_ancora():
     from math import isfinite
 
-    from sejoga.nucleo.rig import Rotation3
+    from sejoga.nucleo.esqueleto import Rotation3
     animation = controller()
     # Estabiliza em idle por muitos frames: o regime estável deixa cada junta
     # com a sua tensão da tabela (sem uniformizar a frequência).
@@ -426,7 +426,7 @@ def test_surprise_reaction_fires_and_expires_like_the_others():
 def test_surprise_pose_recoils_body_and_turns_head_toward_stimulus():
     from math import degrees
 
-    from sejoga.nucleo.rig import pose_interaction
+    from sejoga.animacao.poses_base import pose_interaction
     animation = controller()
     # Estímulo à direita: a cabeça gira para o lado (y>0) e o tronco recua (x<0).
     pose_interaction(animation.rig, "surprise", 0.35, direction=1.0, vertical=0.0)

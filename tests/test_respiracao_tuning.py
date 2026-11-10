@@ -6,7 +6,7 @@ from sejoga.animacao.respiracao_tuning import (
     RESPIRACAO_POR_PERSONALIDADE,
     parametros_de,
 )
-from sejoga.nucleo.rig import IdlePersonality
+from sejoga.nucleo.esqueleto import IdlePersonality
 
 
 def test_todas_as_personalidades_tem_entrada():

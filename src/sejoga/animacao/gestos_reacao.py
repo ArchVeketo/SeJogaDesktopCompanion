@@ -11,7 +11,8 @@ from math import exp, sin, tau
 
 from sejoga.animacao import gestos_tuning as T
 from sejoga.animacao.idle_clips import sample_track
-from sejoga.nucleo.rig import Rig, braco_hpr_graus
+from sejoga.animacao.braco_hpr import braco_hpr_graus
+from sejoga.nucleo.esqueleto import Rig
 
 Trio = tuple[float, float, float]
 

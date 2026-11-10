@@ -403,7 +403,7 @@ Blockbench 5.x
     │
     └── Runtime
         ├── Carregar via Panda3D (panda3d-gltf) ou raylib
-        ├── Animations procedural usam rig groups (rig.py)
+        ├── Animations procedural usam rig groups (esqueleto.py)
         └── Animações keyframed (se houver) via Actor/AnimationController
 ```
 
@@ -455,7 +455,7 @@ Blockbench 5.x
 | **2.2** | `physics.py` — ScreenSpacePhysics (pymunk + shelves EnumWindows one-way) | ⏳ |
 | **2.3** | `music.py` — MusicListener (GSMTU + soundcard + beat tracker numpy/librosa) | ⏳ |
 | **2.4** | `animation.py` — AnimationController (state machine, blend tree, beat sync) | ⏳ |
-| **2.5** | `rig_animation.py` — Integração `rig.py` + `animation.py` (procedural + keyframe) | ⏳ |
+| **2.5** | `rig_animation.py` — Integração `esqueleto.py` + `animation.py` (procedural + keyframe) | ⏳ |
 | **2.6** | `ui.py` — SettingsDialog + TrayManager + hotkeys | ⏳ |
 | **2.7** | `app.py` — Loop principal 60Hz render / 120Hz physics | ⏳ |
 | **2.8** | Animações no Blockbench (idle, walk, jump, throw, dance, hit, sleep, etc.) | ⏳ |

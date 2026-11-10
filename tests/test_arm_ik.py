@@ -12,8 +12,8 @@ from sejoga.animacao import braco_tuning as tun
 from sejoga.animacao.arm_targets import ALVOS
 from sejoga.animacao.rig_base import REPOUSO
 from sejoga.nucleo import cinematica as cin
-from sejoga.nucleo.assets import resolve_model
-from sejoga.nucleo.model import load_model
+from sejoga.nucleo.recursos import resolve_model
+from sejoga.nucleo.modelo import load_model
 
 #: Tolerância (graus) entre ``REPOUSO`` e a saída do IK para ``ALVO_IDLE``.
 TOLERANCIA_REPOUSO_GRAUS = 0.01
@@ -66,7 +66,7 @@ def test_dobra_do_cotovelo_leva_a_mao_para_a_frente(modelo):
     """Torção-base do antebraço: flexão positiva move o punho para a FRENTE."""
     from math import radians
 
-    from sejoga.nucleo.rig import Rotation3
+    from sejoga.nucleo.esqueleto import Rotation3
 
     reto = cin.posicao_no(modelo, "hand", {})
     dobrado = cin.posicao_no(modelo, "hand", {"ant-arm": Rotation3(0.0, 0.0, radians(45.0))})

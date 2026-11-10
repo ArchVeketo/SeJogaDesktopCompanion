@@ -11,7 +11,7 @@ Princípios:
 
 Uso::
 
-    from sejoga.config import load_settings, save_settings
+    from sejoga.configuracao import load_settings, save_settings
 
     settings = load_settings()
     settings.window.mode = "desktop"

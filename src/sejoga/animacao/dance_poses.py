@@ -4,7 +4,7 @@ Cada passo dura uma batida. O acento cai no onset (u = 0); a sustentação, a
 recuperação e a preparação seguem até a batida seguinte, de modo que o passo
 termina na pose de acento do próximo. Cabeça e tronco são deltas em graus sobre
 o repouso (zero); os braços são alvos de mão de ``arm_targets`` resolvidos pela
-IK (``nucleo.rig.braco_hpr_graus``). Python puro, sem engine.
+IK (``animacao.braco_hpr.braco_hpr_graus``). Python puro, sem engine.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 from sejoga.animacao import dance_tuning as tune
 from sejoga.animacao.idle_clips import sample_track
-from sejoga.nucleo.rig import braco_hpr_graus
+from sejoga.animacao.braco_hpr import braco_hpr_graus
 
 Trio = tuple[float, float, float]
 

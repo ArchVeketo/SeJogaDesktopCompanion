@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from sejoga.nucleo.rig import IdlePersonality
+from sejoga.nucleo.esqueleto import IdlePersonality
 
 # --- Porta -------------------------------------------------------------------
 

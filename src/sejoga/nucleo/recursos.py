@@ -35,7 +35,7 @@ def _get_base_dir() -> Path:
             return Path(sys._MEIPASS)
         # PyInstaller onedir: executável em dist/SeJogaCompanion/, assets em _internal/assets
         return Path(sys.executable).parent / "_internal"
-    # Desenvolvimento: src/sejoga/nucleo/assets.py -> nucleo -> sejoga -> src -> raiz
+    # Desenvolvimento: src/sejoga/nucleo/recursos.py -> nucleo -> sejoga -> src -> raiz
     return _PACKAGE_DIR.parents[2]
 
 

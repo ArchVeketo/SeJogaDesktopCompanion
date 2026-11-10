@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import pytest
 
-from sejoga.nucleo.assets import resolve_model
-from sejoga.nucleo.model import load_model
-from sejoga.nucleo.rig import ALL_GROUPS, Rig, pose_idle, pose_thrown, pose_walk
+from sejoga.nucleo.recursos import resolve_model
+from sejoga.nucleo.modelo import load_model
+from sejoga.animacao.poses_base import pose_idle, pose_thrown, pose_walk
+from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig
 
 
 @pytest.fixture(scope="module")

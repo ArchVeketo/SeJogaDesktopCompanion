@@ -11,12 +11,12 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from sejoga import config
+from sejoga import configuracao
 
 
 def main():
     profile = Path(tempfile.mkdtemp(prefix="sejoga-native-body-"))
-    config.default_config_path = lambda: profile / "config.toml"
+    configuracao.default_config_path = lambda: profile / "config.toml"
     import win32api
     import win32con
     import win32gui
@@ -28,7 +28,7 @@ def main():
     # OverlayApp loads Qt's runtime DLLs before Panda3D on Windows.
     from panda3d.core import Filename
 
-    settings = config.Settings()
+    settings = configuracao.Settings()
     settings.physics.enabled = settings.music.enabled = False
     settings.window.start_position = (600, 250)
     settings.window.outline_enabled = False

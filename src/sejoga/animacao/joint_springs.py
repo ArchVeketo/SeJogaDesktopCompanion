@@ -16,7 +16,7 @@ from sejoga.animacao.spring_tuning import (
     CADEIA_ATENUACAO,
     CADEIA_FREQUENCIA,
 )
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.esqueleto import Rotation3
 
 # Cadeias ombro->antebraço->mão->dedos e o espelho do lado esquerdo.
 CADEIA_DIREITA = ("right-arm", "ant-arm", "hand", "fingers")

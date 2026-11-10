@@ -5,7 +5,7 @@ import pytest
 
 from sejoga.animacao.joint_springs import CADEIA_DIREITA, JointSpring, LagChain, SpringPose
 from sejoga.animacao.spring_tuning import amortecimento_de, frequencia_de
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.esqueleto import Rotation3
 
 
 def test_joint_spring_response_is_frame_rate_independent():

@@ -1,7 +1,7 @@
 """Engine independent arm follow-through layered over authored gestures."""
 from math import exp, radians, sin
 
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.esqueleto import Rotation3
 
 
 class HandMotion:

@@ -24,10 +24,10 @@ from panda3d.core import (
 )
 
 from sejoga.animacao.animation import AnimationState
-from sejoga.nucleo.assets import resolve_model
+from sejoga.nucleo.recursos import resolve_model
 from sejoga.nucleo.cinematica import BASE_ADICIONAL_GRAUS
-from sejoga.nucleo.model import load_model
-from sejoga.nucleo.rig import Rig
+from sejoga.nucleo.modelo import load_model
+from sejoga.nucleo.esqueleto import Rig
 from sejoga.render.dedos_malha import fatiar_dedos
 from sejoga.render.fio_fone_malha import MalhaFioFone, ocultar_peca_rigida_do_fio
 from sejoga.tentaculos.tentacle_constraints import ObstacleBox, TentacleContacts
@@ -270,7 +270,7 @@ class Panda3DRenderer:
         self.set_visual_scale(self.showbase.settings.window.scale)
 
         self._apply_rig_to_model()
-        from sejoga.nucleo.flexible_rig import FlexibleRig
+        from sejoga.animacao.rig_flexivel import FlexibleRig
         self.flexible_rig = FlexibleRig(self)
 
         unit_scale = float(self._view_height / self.height / self.model_np.getScale().x)
@@ -642,11 +642,11 @@ void main() {{
         O ``_suspension_pivot`` vive no quadro do mundo, girado em relação ao
         mascote pelo nó raiz do asset (giro de frente). Conjugar pela rotação
         desse nó (``F⁻¹ · R · F``, vetor-linha do Panda) faz o arraste usar o
-        MESMO sentido de pitch/roll do tronco em pé (``flexible_rig``).
+        MESMO sentido de pitch/roll do tronco em pé (``rig_flexivel``).
         """
         from panda3d.core import Mat4, TransformState
 
-        from sejoga.nucleo.flexible_rig import no_de_facing
+        from sejoga.animacao.rig_flexivel import no_de_facing
 
         facing = no_de_facing(self.model_np).getMat(self.model_np).getUpper3()
         quadro = Mat4(facing)

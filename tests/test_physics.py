@@ -9,7 +9,7 @@ if sys.platform != "win32":
     pytest.skip("Windows physics backend", allow_module_level=True)
 pytest.importorskip("pymunk")
 
-from sejoga.config import Settings
+from sejoga.configuracao import Settings
 from sejoga.desktop.physics import MAX_VELOCITY, ScreenSpacePhysics, Shelf
 
 

@@ -16,9 +16,9 @@ from sejoga.animacao.body_motion import BodyPose
 from sejoga.animacao.delta_states import delta_drag, delta_fall, delta_walk
 from sejoga.animacao.leg_motion import FASE_CAMINHADA, FASE_CORRIDA
 from sejoga.animacao.rig_base import pose_repouso
-from sejoga.nucleo.assets import resolve_model
-from sejoga.nucleo.model import load_model
-from sejoga.nucleo.rig import ALL_GROUPS, Rig, Rotation3
+from sejoga.nucleo.recursos import resolve_model
+from sejoga.nucleo.modelo import load_model
+from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig, Rotation3
 
 FPS = 60.0
 QUADROS_AQUECIMENTO = 30

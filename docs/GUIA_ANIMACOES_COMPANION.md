@@ -25,7 +25,7 @@
 - A **espiada** dura 9 s: abertura gradual de 2,5 s, sustentação e recolhimento. Aparece após 60–100 s acumulados de idle disponível ou pela ação manual Mostrar tentáculos. Dois tentáculos low-poly grossos, com quatro ventosas cada, emergem em sequência; a malha segue a curva da mola e atualiza apenas enquanto está ativa.
 - Porta limitada a 38°/s; contatos mudam o alvo da mola sem saltar o ângulo. O recolhimento libera o fechamento.
 - Na dança, os braços longos ficam recolhidos para baixo, junto às laterais do corpo. Os demais estados ainda usam suas poses próprias.
-- Esses movimentos são poses procedurais em `src/sejoga/nucleo/rig.py`; a tabela completa abaixo continua sendo a especificação para animações futuras.
+- Esses movimentos são poses procedurais em `src/sejoga/nucleo/esqueleto.py`; a tabela completa abaixo continua sendo a especificação para animações futuras.
 
 ### Idles autorados no runtime (04/11/2026)
 
@@ -454,7 +454,7 @@ Blockbench 5.x
     │
     └── Runtime
         ├── Carregar via Panda3D (panda3d-gltf) ou raylib
-        ├── Animations procedural usam rig groups (rig.py)
+        ├── Animations procedural usam rig groups (esqueleto.py)
         └── Animações keyframed (se houver) via Actor/AnimationController
 ```
 
@@ -521,7 +521,7 @@ Blockbench 5.x
 | **2.2** | `window.py` — OverlayWindow (Panda3D+Qt bridge, color key, click-through) | ⏳ |
 | **2.3** | `physics.py` — ScreenSpacePhysics (pymunk + shelves EnumWindows) | ⏳ |
 | **2.4** | `music.py` — MusicListener (GSMTU + soundcard + beat tracker) | ⏳ |
-| **2.5** | `rig_animation.py` — Integração `rig.py` + `animation.py` | ⏳ |
+| **2.5** | `rig_animation.py` — Integração `esqueleto.py` + `animation.py` | ⏳ |
 | **2.6** | `ui.py` — SettingsDialog + TrayManager + hotkeys | ⏳ |
 | **2.7** | `app.py` — Loop principal 60Hz render / 120Hz physics | ⏳ |
 | **2.8** | Animações no Blockbench (idle, walk, jump, throw, dance, hit, sleep) | ⏳ |

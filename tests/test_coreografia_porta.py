@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sejoga.nucleo.rig import IdlePersonality
+from sejoga.nucleo.esqueleto import IdlePersonality
 from sejoga.tentaculos import coreografia_porta as coreo
 
 DT = 1 / 30

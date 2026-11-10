@@ -11,9 +11,10 @@ from sejoga.animacao import colisao_bracos as cb
 from sejoga.animacao import dance_tuning as tune
 from sejoga.animacao.dance_frases_tuning import FRASES
 from sejoga.animacao.dance_poses import PassoDanca, PoseDanca, amostrar_passo
-from sejoga.nucleo.assets import resolve_model
-from sejoga.nucleo.model import load_model
-from sejoga.nucleo.rig import Rotation3, braco_hpr_graus
+from sejoga.nucleo.recursos import resolve_model
+from sejoga.nucleo.modelo import load_model
+from sejoga.animacao.braco_hpr import braco_hpr_graus
+from sejoga.nucleo.esqueleto import Rotation3
 
 #: Tolerância (graus) de comparação entre amostras.
 TOLERANCIA_GRAUS = 1e-6

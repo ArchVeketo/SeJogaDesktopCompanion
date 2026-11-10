@@ -10,17 +10,18 @@ FRONTEIRA: Python puro, sem engine.
 
 from __future__ import annotations
 
+from sejoga.nucleo.cinematica_const import (
+    EPSILON_DEGENERADO as EPSILON_DEGENERADO,
+)
+from sejoga.nucleo.cinematica_const import (
+    TORCAO_BASE_ANTEBRACO_GRAUS as TORCAO_BASE_ANTEBRACO_GRAUS,
+)
+
 # --------------------------------------------------------------------------- #
 # Osso base do cotovelo
 # --------------------------------------------------------------------------- #
-#: Torção fixa (graus, em P/``Rotation3.x``) do antebraço em relação ao braço.
-#: O nó do braço tem o eixo longo em ±X; a dobradiça do cotovelo é o ROLL (R) do
-#: antebraço, que, sem torção, gira em torno do eixo frente-trás e abre o
-#: antebraço PARA OS LADOS (para dentro do tronco). Com 90° de torção a dobradiça
-#: passa a ser lateral e o antebraço dobra para a FRENTE (flexão anatômica) para
-#: qualquer elevação lateral do ombro. Os gestos continuam escrevendo deltas em
-#: ``ant-arm.x`` em torno desta base (somada pelo renderer e pela FK).
-TORCAO_BASE_ANTEBRACO_GRAUS = 90.0
+#: ``TORCAO_BASE_ANTEBRACO_GRAUS`` vem de ``nucleo/cinematica_const.py`` (ver
+#: o import no topo): a FK de ``nucleo`` não importa ``animacao``.
 
 # --------------------------------------------------------------------------- #
 # Limites do cotovelo (dobradiça de 1 grau de liberdade)
@@ -48,8 +49,7 @@ OMBRO_AZIMUTE_MAX_GRAUS = 120.0
 TOLERANCIA_PADRAO = 0.01
 #: Sobra mínima (fração do alcance) para não esticar o braço até a singularidade.
 FOLGA_ALCANCE = 1e-4
-#: Norma abaixo da qual um vetor é tratado como nulo (direção degenerada).
-EPSILON_DEGENERADO = 1e-9
+#: ``EPSILON_DEGENERADO`` também vem de ``nucleo/cinematica_const.py``.
 #: Direção para onde o COTOVELO aponta, em ``arm_targets`` (direita, cima,
 #: frente): para trás, para baixo e levemente para fora, como o cotovelo humano.
 #: O antebraço dobra para a frente em torno dessa direção. A_CONFIRMAR (C2).

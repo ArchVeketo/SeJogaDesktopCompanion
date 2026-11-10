@@ -14,19 +14,19 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sejoga import config
+from sejoga import configuracao
 
 
 def main():
     profile = Path(tempfile.mkdtemp(prefix="sejoga-mouse-smoke-"))
-    config.default_config_path = lambda: profile / "config.toml"
+    configuracao.default_config_path = lambda: profile / "config.toml"
     import win32gui
     from PIL import ImageGrab
 
     from sejoga.animacao.animation import AnimationState
     from sejoga.render.window import WS_EX_TRANSPARENT, OverlayApp
 
-    settings = config.Settings()
+    settings = configuracao.Settings()
     settings.physics.enabled = "--physics" in sys.argv
     settings.physics.collide_with_windows = False
     settings.music.enabled = False
@@ -114,7 +114,7 @@ def main():
         assert win32gui.GetWindowRect(app.hwnd)[:2] == (before[0] + 90, before[1] + 35)
         poll(destination, screen=True)
         assert not app._drag_active
-        assert config.load_settings().window.start_position == (before[0] + 90, before[1] + 35)
+        assert configuracao.load_settings().window.start_position == (before[0] + 90, before[1] + 35)
 
         # Holding a button from outside cannot steal another application's drag.
         before = win32gui.GetWindowRect(app.hwnd)[:2]
@@ -149,7 +149,7 @@ def main():
             assert abs(p.state.velocity[0]) < 5
             origin = win32gui.GetWindowRect(app.hwnd)[:2]
             assert origin == tuple(round(p.state.position[i] - app._physics_local[i]) for i in (0, 1))
-            assert config.load_settings().window.start_position == origin
+            assert configuracao.load_settings().window.start_position == origin
             results["throw"] = {"release_velocity": velocity, "rest": list(p.state.position), "origin": origin}
 
         app.set_debug_overlay(True)

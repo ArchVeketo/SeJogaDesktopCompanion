@@ -45,12 +45,8 @@ from sejoga.animacao.respiracao_tuning import parametros_de
 from sejoga.animacao.rig_base import REPOUSO
 from sejoga.animacao.sono_tuning import SONO_TRANSICAO_S
 from sejoga.animacao.spring_tuning import amortecimento_de, frequencia_de
-from sejoga.nucleo.model import Model
-from sejoga.nucleo.rig import (
-    ALL_GROUPS,
-    IdlePersonality,
-    Rig,
-    Rotation3,
+from sejoga.nucleo.modelo import Model
+from sejoga.animacao.poses_base import (
     pose_drag,
     pose_flourish,
     pose_idle,
@@ -61,6 +57,7 @@ from sejoga.nucleo.rig import (
     pose_thrown,
     pose_walk,
 )
+from sejoga.nucleo.esqueleto import ALL_GROUPS, IdlePersonality, Rig, Rotation3
 
 
 class AnimationState(StrEnum):
@@ -477,7 +474,7 @@ class AnimationController:
         elif self.state == AnimationState.SLEEP:
             pose_sleep(self.rig, self.clock)
         elif self.state.value in ('hang_loose', 'thumbs_up', 'rock', 'finger_gun'):
-            from sejoga.nucleo.rig import braco_hpr_graus
+            from sejoga.animacao.braco_hpr import braco_hpr_graus
             pose_idle(self.rig, self.clock, self.idle_personality)
             # Gesto de mão (hang loose/joinha/rock/finger gun): ergue o braço à
             # frente a partir do alvo de interação (IK) para a mão ficar visível.
@@ -489,7 +486,7 @@ class AnimationController:
             self.rig.set_rotation('hand', x=180, y=0, z=0)
             self.rig.set_rotation('fingers', z=0)
         elif self.state == AnimationState.SNEEZE:
-            from sejoga.nucleo.rig import pose_sneeze
+            from sejoga.animacao.poses_base import pose_sneeze
             pose_sneeze(self.rig, self._reaction_time)
         elif self.state in (AnimationState.WAVE, AnimationState.STRETCH, AnimationState.PEEK, AnimationState.HIT):
             pose_flourish(self.rig, self.state.value, self._reaction_time)

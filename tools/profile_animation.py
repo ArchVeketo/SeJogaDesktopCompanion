@@ -7,14 +7,14 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from sejoga import config
+from sejoga import configuracao
 
 
 def main():
     profile = Path(tempfile.mkdtemp(prefix="sejoga-animation-profile-"))
-    config.default_config_path = lambda: profile / "config.toml"
+    configuracao.default_config_path = lambda: profile / "config.toml"
     from sejoga.render.window import OverlayApp
-    settings = config.Settings()
+    settings = configuracao.Settings()
     settings.physics.enabled = False
     settings.music.enabled = False
     app = OverlayApp(settings)

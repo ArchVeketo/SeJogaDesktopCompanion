@@ -53,10 +53,10 @@ O **SeJogaDesktopCompanion** é um *desktop companion* 3D interativo do mascote 
 sejoga/
 ├── __init__.py          # versão, exports públicos
 ├── __main__.py          # CLI: inspect, config, doctor, run
-├── assets.py            # resolução de caminhos (dev vs _MEIPASS)
-├── config.py            # Settings (pydantic-settings), load/save TOML
-├── model.py             # Model/Node/Bounds (leitura glTF/GLB, bounds mundo)
-├── rig.py               # Rig/ALL_GROUPS + presets de pose (idle/walk/dance/etc.)
+├── recursos.py            # resolução de caminhos (dev vs _MEIPASS)
+├── configuracao.py            # Settings (pydantic-settings), load/save TOML
+├── modelo.py             # Model/Node/Bounds (leitura glTF/GLB, bounds mundo)
+├── esqueleto.py               # Rig/ALL_GROUPS + presets de pose (idle/walk/dance/etc.)
 ├── window.py            # (etapa 2) OverlayWindow: Panda3D+PySide6 bridge, WS_EX_LAYERED
 ├── physics.py           # (etapa 2) ScreenSpacePhysics: pymunk + shelves EnumWindows
 ├── music.py             # (etapa 2) MusicListener: GSMTU + soundcard + beat tracker
@@ -65,7 +65,7 @@ sejoga/
 └── app.py               # (etapa 2) Application: loop principal 60/120 Hz
 ```
 
-**Princípio:** módulos `model.py`, `rig.py`, `assets.py`, `config.py` são **engine-agnostic** (funcionam em CI sem GPU). Módulos `window.py`, `physics.py`, `music.py`, `ui.py`, `app.py` são a **etapa 2** (runtime).
+**Princípio:** módulos `modelo.py`, `esqueleto.py`, `recursos.py`, `configuracao.py` são **engine-agnostic** (funcionam em CI sem GPU). Módulos `window.py`, `physics.py`, `music.py`, `ui.py`, `app.py` são a **etapa 2** (runtime).
 
 ---
 

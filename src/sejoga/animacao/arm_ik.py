@@ -42,8 +42,8 @@ from math import acos, cos, pi, sin, sqrt
 
 from sejoga.animacao import braco_tuning as tun
 from sejoga.nucleo import cinematica as cin
-from sejoga.nucleo.model import Model
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.modelo import Model
+from sejoga.nucleo.esqueleto import Rotation3
 
 Vec3 = cin.Vec3
 Mat3 = cin.Mat3

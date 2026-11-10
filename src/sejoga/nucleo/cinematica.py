@@ -25,9 +25,9 @@ from __future__ import annotations
 
 from math import atan2, cos, degrees, radians, sin, sqrt
 
-from sejoga.animacao.braco_tuning import EPSILON_DEGENERADO, TORCAO_BASE_ANTEBRACO_GRAUS
-from sejoga.nucleo.model import Model
-from sejoga.nucleo.rig import ALL_GROUPS, Rotation3
+from sejoga.nucleo.cinematica_const import EPSILON_DEGENERADO, TORCAO_BASE_ANTEBRACO_GRAUS
+from sejoga.nucleo.modelo import Model
+from sejoga.nucleo.esqueleto import ALL_GROUPS, Rotation3
 
 Vec3 = tuple[float, float, float]
 #: Matriz 3x3 linha-maior (9 floats), aplicada a vetores coluna.

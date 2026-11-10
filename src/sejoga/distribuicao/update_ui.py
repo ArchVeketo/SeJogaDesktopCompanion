@@ -9,7 +9,7 @@ from collections.abc import Callable
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDialog, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
-from sejoga.config import Settings, load_settings
+from sejoga.configuracao import Settings, load_settings
 from sejoga.distribuicao.updater import (
     Update,
     check_update,

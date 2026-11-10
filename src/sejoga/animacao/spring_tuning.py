@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sejoga.nucleo.rig import ALL_GROUPS
+from sejoga.nucleo.esqueleto import ALL_GROUPS
 
 
 @dataclass(frozen=True, slots=True)

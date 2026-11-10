@@ -228,7 +228,7 @@ def test_recorte_do_asset_real_fecha_cada_segmento_sem_buraco():
     """Dedos reais do mario.gltf: sem sobreposição, volumes dos segmentos somam o original."""
     core = pytest.importorskip("panda3d.core", reason="Panda3D indisponível")
     gltf = pytest.importorskip("gltf", reason="panda3d-gltf indisponível")
-    from sejoga.nucleo.assets import resolve_model
+    from sejoga.nucleo.recursos import resolve_model
     from sejoga.render import dedos_malha as dm
 
     core.loadPrcFileData("", "window-type none\naudio-library-name null")
@@ -251,8 +251,8 @@ def test_recorte_do_asset_real_fecha_cada_segmento_sem_buraco():
 def test_fk_da_cadeia_iguala_o_panda_e_espelha():
     pytest.importorskip("panda3d.core", reason="Panda3D indisponível")
     pytest.importorskip("gltf", reason="panda3d-gltf indisponível")
-    from sejoga.nucleo.assets import resolve_model
-    from sejoga.nucleo.model import load_model
+    from sejoga.nucleo.recursos import resolve_model
+    from sejoga.nucleo.modelo import load_model
 
     medidas = _oraculo().medir_dedos(load_model(resolve_model()))
     assert len(medidas) == 10

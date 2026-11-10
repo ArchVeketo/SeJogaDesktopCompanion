@@ -13,8 +13,8 @@ from math import radians
 from sejoga.animacao import braco_tuning as tun
 from sejoga.animacao.colisao_bracos import ResolvedorBracos
 from sejoga.animacao.joint_springs import SpringPose
-from sejoga.nucleo.model import Model
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.modelo import Model
+from sejoga.nucleo.esqueleto import Rotation3
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                       Limites anatômicos (clamps)                         ║

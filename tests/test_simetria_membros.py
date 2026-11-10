@@ -14,7 +14,8 @@ import pytest
 from fk_bracos import punho
 from sejoga.animacao.delta_states import delta_dance, delta_fall
 from sejoga.animacao.rig_base import REPOUSO, pose_repouso
-from sejoga.nucleo.rig import ALL_GROUPS, IdlePersonality, Rig, Rotation3, pose_idle, pose_sleep
+from sejoga.animacao.poses_base import pose_idle, pose_sleep
+from sejoga.nucleo.esqueleto import ALL_GROUPS, IdlePersonality, Rig, Rotation3
 
 #: Gestos/estilos assimétricos por definição (não entram no contrato de espelho).
 ASSIMETRIAS_INTENCIONAIS = frozenset({

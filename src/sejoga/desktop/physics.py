@@ -32,7 +32,7 @@ import pymunk
 import win32gui
 import win32process
 
-from sejoga.config import Settings, load_settings
+from sejoga.configuracao import Settings, load_settings
 from sejoga.desktop.fisica_tuning import FISICA
 
 # Project imports

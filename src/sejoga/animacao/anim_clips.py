@@ -20,7 +20,7 @@ from math import tau
 
 from sejoga.animacao import locomocao_tuning as loc
 from sejoga.animacao.idle_clips import sample_track
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.esqueleto import Rotation3
 
 #: Separador de rótulo numa chave de track: ``"head:quique"`` soma em ``head``.
 _SEPARADOR_ROTULO = ":"

@@ -11,8 +11,8 @@ from __future__ import annotations
 from functools import lru_cache
 
 from sejoga.animacao import arm_ik
-from sejoga.nucleo.assets import resolve_model
-from sejoga.nucleo.model import Model, load_model
+from sejoga.nucleo.recursos import resolve_model
+from sejoga.nucleo.modelo import Model, load_model
 
 
 @lru_cache(maxsize=1)

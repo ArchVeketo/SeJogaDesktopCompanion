@@ -37,8 +37,8 @@ from sejoga.animacao.primitivas_colisao import (
     penetracao_capsula_capsula,
 )
 from sejoga.nucleo import cinematica as cin
-from sejoga.nucleo.model import Model
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.modelo import Model
+from sejoga.nucleo.esqueleto import Rotation3
 
 Vec3 = cin.Vec3
 

@@ -15,9 +15,9 @@ from math import radians
 import pytest
 
 from sejoga.nucleo import cinematica as cin
-from sejoga.nucleo.assets import resolve_model
-from sejoga.nucleo.model import load_model
-from sejoga.nucleo.rig import ALL_GROUPS, Rotation3
+from sejoga.nucleo.recursos import resolve_model
+from sejoga.nucleo.modelo import load_model
+from sejoga.nucleo.esqueleto import ALL_GROUPS, Rotation3
 
 # Qt ANTES do Panda3D no mesmo processo (senão o QtCore carregado depois
 # quebra com access violation nos testes de UI da mesma sessão do pytest).

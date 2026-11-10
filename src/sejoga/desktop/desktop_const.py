@@ -5,7 +5,7 @@ Separa número "mágico" de código em dois grupos nomeados:
 - **Layout/UX do diálogo de configurações** (``ui.py``): faixas, passos e
   larguras dos widgets Qt. São escolhas de interface, não limiares de domínio
   (estes vivem em ``fisica_tuning.py``); os extremos espelham os limites de
-  validação de ``config.py``.
+  validação de ``configuracao.py``.
 - **Protocolo Win32 da bandeja e da janela** (``tray_registration.py``,
   ``desktop_shell.py``): mensagens, flags e tamanhos de ícone exigidos pela
   API do Shell/USER32. Têm valor fixo ditado pelo sistema operacional.
@@ -27,7 +27,7 @@ TAMANHO_JANELA_MINIMO = 240
 TAMANHO_JANELA_MAXIMO = 960
 TAMANHO_JANELA_PASSO = 40
 
-#: FPS alvo do mascote: faixa (quadros/s), passo e sufixo (espelha config.py).
+#: FPS alvo do mascote: faixa (quadros/s), passo e sufixo (espelha configuracao.py).
 FPS_MINIMO = 15
 FPS_MAXIMO = 240
 FPS_PASSO = 5
@@ -39,7 +39,7 @@ ESCALA_MAXIMA = 2.5
 ESCALA_PASSO = 0.1
 ESCALA_CASAS = 1
 
-#: Espessura do contorno: faixa (px), passo e casas (espelha config.py).
+#: Espessura do contorno: faixa (px), passo e casas (espelha configuracao.py).
 CONTORNO_LARGURA_MINIMA = 0.5
 CONTORNO_LARGURA_MAXIMA = 8.0
 CONTORNO_LARGURA_PASSO = 0.5

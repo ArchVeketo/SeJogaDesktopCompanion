@@ -178,7 +178,7 @@ SNAP_SUSPENSAO = FaixaClamp(minimo=0.0, maximo=1.0)
 # era de QUADRO, não de sinal. Os pivôs da coluna moravam em ``model_np``, sem o
 # giro de frente do nó raiz do asset, e o arraste aplicava pitch/roll no quadro
 # do mundo: pitch e roll saíam invertidos em relação às juntas do rig. Agora os
-# dois caminhos (em pé: ``flexible_rig``; pendurado: ``renderer.apply_body_motion``)
+# dois caminhos (em pé: ``rig_flexivel``; pendurado: ``renderer.apply_body_motion``)
 # usam o referencial de AUTORIA, onde (medido em tests/test_tronco_quadro.py):
 #   pitch NEGATIVO  -> topo do tronco/cabeça vai para a FRENTE do mascote;
 #   roll POSITIVO   -> topo tomba para a DIREITA do mascote;

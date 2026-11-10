@@ -108,7 +108,7 @@ reprovar. Nenhum valor abaixo foi chutado para "parecer certo".
 | C4 | Todas as poses do `--confirmar` | braço/mão não entram no tronco, short, pés, cabeça/fone nem no outro braço | atravessa → `FRACAO_NUCLEO_BRACO` (0.5), `FOLGA_PENETRACAO_U` (0.01), `FOLGA_EXTRA_CAIXA_U`, `colisao_bracos.CAIXAS_CORPO` |
 | C5 | Tronco (clique, arraste pelo braço direito, cursor) | (a) clique: cede para a frente; (b) arraste pelo braço direito: topo inclina para o lado do braço segurado; (c) cursor: tronco contra-gira (padrão) ou acompanha; (d) amplitude boa | sentido trocado → `TRONCO_{YAW,PITCH,ROLL}_SINAL`, `TRONCO_OLHAR_YAW_SINAL` (-1 contra-gira, +1 acompanha); amplitude → `TRONCO_*_GANHO`, `SNAP_*` |
 | C6 | **BLOQUEIO DE ACEITE.** Repouso, sono, cutucar, alongar e queda | os estados são distinguíveis entre si e o repouso com braços ABERTOS é aceitável | estados parecidos demais → ver abaixo |
-| C7 | Pico do aceno | a palma fica para a FRENTE (para quem olha) | palma para trás → pose da mão em `rig.py` (aceno) e `tools/spec_gestos.SPEC_WAVE` |
+| C7 | Pico do aceno | a palma fica para a FRENTE (para quem olha) | palma para trás → pose da mão em `esqueleto.py` (aceno) e `tools/spec_gestos.SPEC_WAVE` |
 | C8 | Pernas e pés (repouso, queda, dança, acordar, arraste pela perna) | pernas e pés movem-se para o lado certo e sem se atravessar | direção errada ou atravessa → ver abaixo |
 | C9 | Limites do ombro (gestos extremos: alongar, aceno alto, arraste) | o ombro não vira para uma posição impossível | → `OMBRO_ELEVACAO_*_GRAUS` (-120/110), `OMBRO_AZIMUTE_*_GRAUS` (±120) |
 | C10 | Caixa musical | nasce no lado, altura e orientação de antes | → `music_speaker.FACING_MASCOTE_GRAUS`/`FACING_CAIXA_EXTRA_GRAUS` |

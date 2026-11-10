@@ -8,7 +8,7 @@ import analise_curvas as aa
 from sejoga.animacao import sono_tuning as sono
 from sejoga.animacao.animation import AnimationController, AnimationState
 from sejoga.animacao.delta_states import delta_sleep
-from sejoga.nucleo.rig import ALL_GROUPS, Rig, Rotation3
+from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig, Rotation3
 
 #: Duração (s) que cobre mais de um ciclo de cochilo e de respiração.
 _DURACAO_S = 60.0

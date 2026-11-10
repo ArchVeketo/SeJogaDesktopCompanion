@@ -5,8 +5,9 @@ import pytest
 
 from sejoga.animacao.animation import AnimationController
 from sejoga.animacao.idle_clips import CLIPS, sample_idle, sample_track
-from sejoga.config import Settings
-from sejoga.nucleo.rig import ALL_GROUPS, IdlePersonality, Rig, Rotation3, pose_idle, pose_secondary
+from sejoga.configuracao import Settings
+from sejoga.animacao.poses_base import pose_idle, pose_secondary
+from sejoga.nucleo.esqueleto import ALL_GROUPS, IdlePersonality, Rig, Rotation3
 
 
 @pytest.mark.parametrize("style", CLIPS)

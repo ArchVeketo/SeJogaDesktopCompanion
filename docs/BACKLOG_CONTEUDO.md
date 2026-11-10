@@ -12,7 +12,7 @@
 
 ## 1. Animações (procedurais, como dados)
 
-Entram como clipes/estados no motor novo (`anim_clips.py` para clipes cíclicos como dados; `rig.py`/camadas para gestos). Gatilho = o que dispara. Juntas = grupos do rig que a animação controla.
+Entram como clipes/estados no motor novo (`anim_clips.py` para clipes cíclicos como dados; `esqueleto.py`/camadas para gestos). Gatilho = o que dispara. Juntas = grupos do rig que a animação controla.
 
 | # | Animação | Gatilho | Loop? | Juntas principais | Intenção / notas | Prioridade | Tipo |
 |---|----------|---------|-------|-------------------|------------------|------------|------|

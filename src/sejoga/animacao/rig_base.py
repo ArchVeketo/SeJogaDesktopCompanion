@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sejoga.nucleo.cinematica import espelhar_rotacao
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.esqueleto import Rotation3
 
 
 @dataclass(frozen=True)

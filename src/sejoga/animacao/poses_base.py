@@ -1,86 +1,16 @@
-"""Catálogo do rig e utilitários de animação procedural.
+"""Presets de pose procedurais do companion.
 
-O modelo do Mário (export Blockbench 4.12.4) **não tem skin**: os grupos
-``head``, ``door``, ``shoulder``... são nós de transformação. Isso permite
-animar em Python sem nenhum clip pré-autorado:
-
-    rig.set_rotation("head", yaw=8)      # olha para o lado
-    rig.set_rotation("door", yaw=-90)    # abre a portinha
-
-A camada de render só precisa ler ``rig.pose()`` e aplicar nos nós do engine.
-
-Os nomes abaixo foram extraídos do arquivo real (``tools/inspect_model.py``);
-``tests/test_model.py`` garante que continuam presentes.
+Saíram de ``nucleo/esqueleto.py``: usam gestos e clipes de ``animacao``, e
+``nucleo`` não importa ``animacao``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import StrEnum
 from itertools import pairwise
-from math import degrees, exp, pi, radians, sin, tanh
+from math import degrees, exp, pi, sin, tanh
 
-from sejoga.nucleo.model import Model
-
-# --------------------------------------------------------------------------- #
-# IK de braço: resolução preguiçosa do Model + cache dos HPR por alvo de mão
-# --------------------------------------------------------------------------- #
-# Os gestos de braço declaram ALVOS DE MÃO (ver sejoga.animacao.arm_targets) e o
-# solver 3D (sejoga.animacao.arm_ik) os converte nos HPR reais dos bones. Como
-# resolver a IK a cada frame custaria caro, cacheamos o HPR por (alvo, lado): os
-# alvos dos gestos são fixos, então a cadeia FK roda uma vez por alvo.
-_MODELO_IK_CACHE: Model | None = None
-_HPR_ALVO_CACHE: dict[tuple, dict[str, Rotation3]] = {}
-
-
-def _modelo_ik() -> Model:
-    """Carrega o Model de produção uma vez (resolução preguiçosa, cacheada)."""
-    global _MODELO_IK_CACHE
-
-    if _MODELO_IK_CACHE is None:
-        from sejoga.nucleo.assets import resolve_model
-        from sejoga.nucleo.model import load_model
-
-        _MODELO_IK_CACHE = load_model(resolve_model())
-
-    return _MODELO_IK_CACHE
-
-
-def definir_modelo_ik(model: Model | None) -> None:
-    """Injeta o Model usado pela IK de braço (ex.: o renderer passa o seu).
-
-    Limpa o cache de HPR para recomputar os alvos com a nova geometria.
-    """
-    global _MODELO_IK_CACHE
-
-    _MODELO_IK_CACHE = model
-    _HPR_ALVO_CACHE.clear()
-
-
-def braco_hpr_graus(lado: str, nome_alvo: str, model: Model | None = None) -> dict[str, tuple[float, float, float]]:
-    """HPR (graus) do braço do ``lado`` para o alvo de mão nomeado em arm_targets.
-
-    Devolve ``{grupo: (x_pitch, y_heading, z_roll)}`` em GRAUS, pronto para
-    ``rig.set_rotation``. Cacheado por (lado, nome_alvo). O eixo X (torção) fica
-    em 0: o IK posiciona a mão; o giro do pulso é termo aditivo do gesto.
-    """
-    chave = (lado, nome_alvo)
-    cache = _HPR_ALVO_CACHE.get(chave)
-
-    if cache is None:
-        from sejoga.animacao import arm_ik
-        from sejoga.animacao.arm_targets import ALVOS
-
-        alvo = ALVOS[nome_alvo]
-        m = model if model is not None else _modelo_ik()
-        alvo_lado = alvo.alvo if lado == "right" else alvo.alvo_espelhado()
-        cache = arm_ik.braco_para(m, lado, alvo_lado, alvo.polo)
-        _HPR_ALVO_CACHE[chave] = cache
-
-    return {
-        grupo: (degrees(rot.x), degrees(rot.y), degrees(rot.z))
-        for grupo, rot in cache.items()
-    }
+from sejoga.animacao.braco_hpr import braco_hpr_graus
+from sejoga.nucleo.esqueleto import IdlePersonality, Rig
 
 
 def _idle_pulse(t: float, period: float, attack: float, hold: float, release: float, offset: float = 0.0) -> float:
@@ -100,97 +30,6 @@ def _idle_pulse(t: float, period: float, attack: float, hold: float, release: fl
     if phase < release:
         return 1.0 - ease(phase / release)
     return 0.0
-
-#: Grupos que formam o rig animável, por região do corpo.
-HEAD_GROUPS = ("head", "door")
-BODY_GROUPS = ("body", "legs")
-ARM_GROUPS = ("right-arm", "left-arm")
-ARM_SUBGROUPS = (
-    "shoulder",
-    "shoulder2",
-    "ant-arm",
-    "ant-arm2",
-    "hand",
-    "hand2",
-    "fingers",
-    "fingers2",
-)
-FOOT_GROUPS = ("left-feet", "right-feet")
-
-ALL_GROUPS = HEAD_GROUPS + BODY_GROUPS + ARM_GROUPS + ARM_SUBGROUPS + FOOT_GROUPS
-
-
-class IdlePersonality(StrEnum):
-    CALM = "calm"
-    CURIOUS = "curious"
-    PLAYFUL = "playful"
-    SHY = "shy"
-    CONFIDENT = "confident"
-    STREET = "street"
-    FIGHTER = "fighter"
-    RHYTHM = "rhythm"
-    STYLISH = "stylish"
-
-
-@dataclass(frozen=True, slots=True)
-class Rotation3:
-    """Rotação em radianos (eixo Y = "olhar para os lados")."""
-
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
-
-
-@dataclass
-class Rig:
-    """Estado de pose por nome de grupo.
-
-    ``rest`` guarda o estado inicial lido do modelo, para que qualquer pose
-    seja relativa (evita "deriva" acumulada entre animações).
-    """
-
-    rest: dict[str, Rotation3] = field(default_factory=dict)
-    current: dict[str, Rotation3] = field(default_factory=dict)
-
-    @classmethod
-    def from_model(cls, model: Model) -> Rig:
-        rig = cls()
-        for group in ALL_GROUPS:
-            if model.find(group) is not None:
-                rig.rest[group] = Rotation3()
-                rig.current[group] = Rotation3()
-        return rig
-
-    @property
-    def groups(self) -> tuple[str, ...]:
-        return tuple(self.rest)
-
-    @property
-    def missing(self) -> tuple[str, ...]:
-        return tuple(g for g in ALL_GROUPS if g not in self.rest)
-
-    def set_rotation(
-        self,
-        group: str,
-        *,
-        x: float = 0.0,
-        y: float = 0.0,
-        z: float = 0.0,
-        degrees: bool = True,
-    ) -> None:
-        """Define a rotação *absoluta* do grupo (em graus por padrão)."""
-        if group not in self.rest:
-            raise KeyError(f"grupo de rig desconhecido: {group!r}")
-        if degrees:
-            x, y, z = radians(x), radians(y), radians(z)
-        self.current[group] = Rotation3(x, y, z)
-
-    def pose(self) -> dict[str, Rotation3]:
-        """Snapshot imutável para o renderizador."""
-        return dict(self.current)
-
-    def reset(self) -> None:
-        self.current = dict(self.rest)
 
 
 # --------------------------------------------------------------------------- #

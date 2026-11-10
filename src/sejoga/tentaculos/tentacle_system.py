@@ -14,7 +14,7 @@ from itertools import pairwise
 
 from panda3d.core import GeomVertexRewriter, NodePath, Quat, Vec3
 
-from sejoga.nucleo.rig import IdlePersonality, Rig
+from sejoga.nucleo.esqueleto import IdlePersonality, Rig
 from sejoga.tentaculos import coreografia_porta as coreo
 from sejoga.tentaculos.ondulacao import (
     FASE_POR_SEMENTE_RAD,

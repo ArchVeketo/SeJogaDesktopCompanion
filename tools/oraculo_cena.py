@@ -30,9 +30,9 @@ from sejoga.animacao import arm_ik
 from sejoga.animacao import colisao_bracos as cb
 from sejoga.animacao.arm_targets import ALVOS
 from sejoga.nucleo import cinematica as cin
-from sejoga.nucleo.assets import resolve_model
-from sejoga.nucleo.model import load_model
-from sejoga.nucleo.rig import ALL_GROUPS, Rotation3
+from sejoga.nucleo.recursos import resolve_model
+from sejoga.nucleo.modelo import load_model
+from sejoga.nucleo.esqueleto import ALL_GROUPS, Rotation3
 
 #: Ângulo de teste (graus) do mapa de eixos.
 ANGULO_TESTE_GRAUS = 30.0

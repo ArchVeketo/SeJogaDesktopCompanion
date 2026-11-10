@@ -24,7 +24,7 @@ from math import radians
 from pathlib import Path
 from typing import Any
 
-from sejoga.nucleo.rig import Rotation3
+from sejoga.nucleo.esqueleto import Rotation3
 
 # --------------------------------------------------------------------------- #
 # Constantes nomeadas

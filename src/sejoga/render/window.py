@@ -68,14 +68,14 @@ from sejoga.animacao.foco_atencao import (
     GatilhoAtencao,
 )
 from sejoga.animacao.interaction import MouseInteraction
-from sejoga.config import Settings, load_settings, save_settings
+from sejoga.configuracao import Settings, load_settings, save_settings
 from sejoga.desktop.desktop_shell import DesktopIntegration
 from sejoga.desktop.physics import create_physics
 from sejoga.desktop.tray_registration import TrayRegistration
 from sejoga.desktop.ui import HotkeyManager, SettingsDialog
 from sejoga.musica.music import MusicListener
-from sejoga.nucleo.assets import brand_dir
-from sejoga.nucleo.rig import IdlePersonality
+from sejoga.nucleo.recursos import brand_dir
+from sejoga.nucleo.esqueleto import IdlePersonality
 from sejoga.render.canvas_envelope import (
     EstadoEnvelope,
     escolher_tamanho,
@@ -421,12 +421,12 @@ class OverlayApp(ShowBase):
 
         A correção amortecida no ``AnimationController`` mede as partes do rig a
         partir deste modelo. É o mesmo glTF/GLB do render, lido pelo leitor puro
-        (``sejoga.nucleo.model``), independente do Panda3D. Falha de carga NÃO derruba
+        (``sejoga.nucleo.modelo``), independente do Panda3D. Falha de carga NÃO derruba
         o companion: devolve ``None`` e a correção fica inerte.
         """
         try:
-            from sejoga.nucleo.assets import resolve_model
-            from sejoga.nucleo.model import load_model
+            from sejoga.nucleo.recursos import resolve_model
+            from sejoga.nucleo.modelo import load_model
 
             return load_model(resolve_model())
         except Exception:

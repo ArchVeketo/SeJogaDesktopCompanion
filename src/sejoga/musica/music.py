@@ -16,7 +16,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
-from sejoga.config import MusicSettings
+from sejoga.configuracao import MusicSettings
 
 logger = logging.getLogger(__name__)
 

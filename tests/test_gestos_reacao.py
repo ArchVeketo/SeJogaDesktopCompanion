@@ -12,16 +12,11 @@ from sejoga.animacao import colisao_bracos as cb
 from sejoga.animacao import gestos_tuning as T
 from sejoga.animacao.animation import AnimationController, AnimationState
 from sejoga.nucleo import cinematica as cin
-from sejoga.nucleo.assets import resolve_model
-from sejoga.nucleo.model import load_model
-from sejoga.nucleo.rig import (
-    ALL_GROUPS,
-    Rig,
-    Rotation3,
-    braco_hpr_graus,
-    pose_flourish,
-    pose_interaction,
-)
+from sejoga.nucleo.recursos import resolve_model
+from sejoga.nucleo.modelo import load_model
+from sejoga.animacao.braco_hpr import braco_hpr_graus
+from sejoga.animacao.poses_base import pose_flourish, pose_interaction
+from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig, Rotation3
 
 FPS = 60.0
 #: Tolerância (graus) de retorno ao repouso no fim do gesto.

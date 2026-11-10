@@ -102,7 +102,8 @@ class MusicSpeaker:
         self.root.hide()
 
     def _measure_character(self):
-        from sejoga.nucleo.rig import IdlePersonality, pose_idle
+        from sejoga.animacao.poses_base import pose_idle
+        from sejoga.nucleo.esqueleto import IdlePersonality
         rig=self.renderer.rig
         previous=rig.pose()
         rig.reset();pose_idle(rig,0,IdlePersonality.CALM)
@@ -119,7 +120,7 @@ class MusicSpeaker:
     def _add_graffiti(self):
         from panda3d.core import PNMImage, StringStream
 
-        from sejoga.nucleo.assets import assets_dir
+        from sejoga.nucleo.recursos import assets_dir
         # Read through Python's native filesystem. Frozen Panda's virtual
         # filesystem can reject the onedir path even when the PNG exists.
         image=PNMImage()

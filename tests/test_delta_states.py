@@ -11,7 +11,7 @@ from sejoga.animacao.delta_states import (
     delta_walk,
 )
 from sejoga.animacao.rig_base import pose_repouso
-from sejoga.nucleo.rig import IdlePersonality, Rotation3
+from sejoga.nucleo.esqueleto import IdlePersonality, Rotation3
 
 
 def test_delta_idle_produz_delta_nao_pose_absoluta():

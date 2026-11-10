@@ -8,7 +8,7 @@ from sejoga.animacao import dance_tuning as tune
 from sejoga.animacao.dance_frases_tuning import FRASES
 from sejoga.animacao.dance_motion import DanceMotion
 from sejoga.animacao.leg_motion import LegMotion
-from sejoga.nucleo.rig import ALL_GROUPS, Rig, Rotation3
+from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig, Rotation3
 
 FPS = 60.0
 #: Aquecimento (s) descartado: tempo, força e acento ainda convergem.

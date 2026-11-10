@@ -46,7 +46,7 @@ def main():
             sys.path.insert(0, str(internal_dir))
 
     # Now run the app
-    from sejoga.config import load_settings
+    from sejoga.configuracao import load_settings
     from sejoga.render.window import OverlayApp
 
     settings = load_settings()

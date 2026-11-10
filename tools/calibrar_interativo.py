@@ -41,8 +41,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from sejoga import config
-from sejoga.nucleo.rig import Rotation3
+from sejoga import configuracao
+from sejoga.nucleo.esqueleto import Rotation3
 from sejoga.rig_mapa.calibrador_estado import (
     JUNTAS,
     PASSO_FINO_GRAUS,
@@ -155,7 +155,7 @@ class Calibrador:
     # ------------------------------------------------------------------ boot
     def _subir(self) -> None:
         perfil = _perfil()
-        config.default_config_path = lambda: perfil / "config.toml"
+        configuracao.default_config_path = lambda: perfil / "config.toml"
 
         # ORDEM DE IMPORT CRÍTICA: Qt (via OverlayApp) antes de panda3d.core.
         # isort: off
@@ -168,7 +168,7 @@ class Calibrador:
         # isort: on
         self._Filename = Filename
 
-        settings = config.Settings()
+        settings = configuracao.Settings()
         settings.physics.enabled = False
         settings.music.enabled = False
         settings.window.size = TAMANHO_JANELA

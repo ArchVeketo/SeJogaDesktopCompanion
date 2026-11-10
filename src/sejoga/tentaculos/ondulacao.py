@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from sejoga.nucleo.rig import IdlePersonality
+from sejoga.nucleo.esqueleto import IdlePersonality
 
 # Defasagem entre o plano lateral e o plano vertical: a ponta descreve uma
 # elipse (serpentear) em vez de oscilar num único plano.

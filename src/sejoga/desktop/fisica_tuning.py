@@ -7,7 +7,7 @@ lugar ao que estava inline.
 
 Divisão de responsabilidade:
 
-- ``config.py`` já é a fonte de ``gravity``, ``mass``, ``bounce``, ``friction``,
+- ``configuracao.py`` já é a fonte de ``gravity``, ``mass``, ``bounce``, ``friction``,
   ``throw_multiplier``, ``mascot_radius`` e ``wall_thickness``. Não duplicar
   aqui: ``physics.py`` consome do ``settings``.
 - Constantes estruturais já nomeadas no topo de ``physics.py`` (``FIXED_DT``,
