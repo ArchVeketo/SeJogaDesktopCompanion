@@ -18,8 +18,8 @@ pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from sejoga.configuracao import Settings
-from sejoga.distribuicao.update_ui import UpdateDialog
-from sejoga.distribuicao.updater import ReleaseInfo, Update
+from sejoga.distribuicao.dialogo_atualizacao import UpdateDialog
+from sejoga.distribuicao.atualizador import ReleaseInfo, Update
 
 
 def _app():
@@ -40,9 +40,9 @@ def test_confirmar_atualizacao_faz_handoff_e_fecha_o_companion(tmp_path):
     _app()
     launcher = _launcher(tmp_path)
     fechou = []
-    with (patch("sejoga.distribuicao.update_ui.installed_release",
+    with (patch("sejoga.distribuicao.dialogo_atualizacao.installed_release",
                 return_value=ReleaseInfo("0.1.0", "release")),
-          patch("sejoga.distribuicao.update_ui.installed_launcher", return_value=launcher),
+          patch("sejoga.distribuicao.dialogo_atualizacao.installed_launcher", return_value=launcher),
           patch("win32api.ShellExecute") as shell,
           patch.object(QMessageBox, "question",
                        return_value=QMessageBox.StandardButton.Yes)):
@@ -60,9 +60,9 @@ def test_recusar_atualizacao_nao_fecha_nem_faz_handoff(tmp_path):
     _app()
     launcher = _launcher(tmp_path)
     fechou = []
-    with (patch("sejoga.distribuicao.update_ui.installed_release",
+    with (patch("sejoga.distribuicao.dialogo_atualizacao.installed_release",
                 return_value=ReleaseInfo("0.1.0", "release")),
-          patch("sejoga.distribuicao.update_ui.installed_launcher", return_value=launcher),
+          patch("sejoga.distribuicao.dialogo_atualizacao.installed_launcher", return_value=launcher),
           patch("win32api.ShellExecute") as shell,
           patch.object(QMessageBox, "question",
                        return_value=QMessageBox.StandardButton.No)):
@@ -79,9 +79,9 @@ def test_falha_no_handoff_mantem_o_companion_aberto(tmp_path):
     _app()
     launcher = _launcher(tmp_path)
     fechou = []
-    with (patch("sejoga.distribuicao.update_ui.installed_release",
+    with (patch("sejoga.distribuicao.dialogo_atualizacao.installed_release",
                 return_value=ReleaseInfo("0.1.0", "release")),
-          patch("sejoga.distribuicao.update_ui.installed_launcher", return_value=launcher),
+          patch("sejoga.distribuicao.dialogo_atualizacao.installed_launcher", return_value=launcher),
           patch("win32api.ShellExecute", side_effect=OSError("sem shell")),
           patch.object(QMessageBox, "question",
                        return_value=QMessageBox.StandardButton.Yes)):
@@ -100,7 +100,7 @@ def test_settings_dialog_sinaliza_fechamento_no_handoff(tmp_path):
     _app()
     launcher = _launcher(tmp_path)
     fechou = []
-    with (patch("sejoga.distribuicao.updater.installed_launcher", return_value=launcher),
+    with (patch("sejoga.distribuicao.atualizador.installed_launcher", return_value=launcher),
           patch("win32api.ShellExecute") as shell):
         dialog = SettingsDialog(Settings())
         dialog.atualizacao_iniciada.connect(lambda: fechou.append(True))

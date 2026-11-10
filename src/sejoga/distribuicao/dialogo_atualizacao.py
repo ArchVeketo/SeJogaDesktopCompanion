@@ -10,7 +10,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDialog, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
 from sejoga.configuracao import Settings, load_settings
-from sejoga.distribuicao.updater import (
+from sejoga.distribuicao.atualizador import (
     Update,
     check_update,
     installed_launcher,

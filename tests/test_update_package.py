@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from sejoga.distribuicao.updater import ReleaseInfo, parse_manifest
+from sejoga.distribuicao.atualizador import ReleaseInfo, parse_manifest
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('build_update_test', ROOT/'tools/build-update.py')

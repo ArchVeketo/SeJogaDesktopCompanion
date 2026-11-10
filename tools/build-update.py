@@ -13,7 +13,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'src'))
-from sejoga.distribuicao.updater import CHANNELS, REPOSITORY, ReleaseInfo, version_order  # noqa: E402
+from sejoga.distribuicao.atualizador import (
+    CHANNELS,
+    REPOSITORY,
+    ReleaseInfo,
+    version_order,
+)  # noqa: E402
 
 
 def build_package(bundle: Path, output: Path, info: ReleaseInfo) -> dict:

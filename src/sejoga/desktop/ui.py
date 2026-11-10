@@ -12,7 +12,7 @@ from ctypes import wintypes
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
-    from sejoga.distribuicao.updater import Update
+    from sejoga.distribuicao.atualizador import Update
 
     # Resultado da busca em thread: ("ok", Update|None) no sucesso ou ("erro", mensagem).
     ResultadoBusca = tuple[str, "Update | None"] | tuple[str, str]
@@ -406,7 +406,7 @@ class SettingsDialog(QDialog):
         """Busca o feed do canal selecionado sem bloquear a UI (thread + Signal)."""
         if self._buscando_atualizacao:
             return
-        from sejoga.distribuicao.updater import (
+        from sejoga.distribuicao.atualizador import (
             check_update,
             installed_launcher,
             release_para_checagem,
@@ -464,7 +464,10 @@ class SettingsDialog(QDialog):
 
     def _iniciar_atualizacao(self, canal: str) -> None:
         """Delega ao launcher nativo, apontando o channel-info.json ao canal."""
-        from sejoga.distribuicao.updater import installed_launcher, reescrever_canal_channel_info
+        from sejoga.distribuicao.atualizador import (
+            installed_launcher,
+            reescrever_canal_channel_info,
+        )
 
         launcher = installed_launcher()
         if launcher is None:

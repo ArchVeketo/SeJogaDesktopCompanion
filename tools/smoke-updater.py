@@ -12,8 +12,8 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from sejoga.configuracao import Settings
 from sejoga.desktop.ui import SettingsDialog
-from sejoga.distribuicao.update_ui import UpdateDialog
-from sejoga.distribuicao.updater import ReleaseInfo, Update
+from sejoga.distribuicao.dialogo_atualizacao import UpdateDialog
+from sejoga.distribuicao.atualizador import ReleaseInfo, Update
 
 
 def main():
@@ -36,9 +36,9 @@ def main():
         assert not dialog._busy, 'Update worker did not finish'
 
     # Bandeja: buscar -> versão disponível -> recusar -> confirmar -> handoff.
-    with (patch('sejoga.distribuicao.update_ui.installed_release', return_value=ReleaseInfo('0.1.0', 'release')),
-          patch('sejoga.distribuicao.update_ui.installed_launcher', return_value=launcher),
-          patch('sejoga.distribuicao.update_ui.check_update', return_value=update),
+    with (patch('sejoga.distribuicao.dialogo_atualizacao.installed_release', return_value=ReleaseInfo('0.1.0', 'release')),
+          patch('sejoga.distribuicao.dialogo_atualizacao.installed_launcher', return_value=launcher),
+          patch('sejoga.distribuicao.dialogo_atualizacao.check_update', return_value=update),
           patch('win32api.ShellExecute') as launch):
         dialog = UpdateDialog(lambda: started.append(True), settings)
         dialog.show()
@@ -61,9 +61,9 @@ def main():
         dialog.close()
 
     # Bandeja: 404/sem atualização mostra 'nenhuma atualização' e não trava.
-    with (patch('sejoga.distribuicao.update_ui.installed_release', return_value=ReleaseInfo('0.1.0', 'release')),
-          patch('sejoga.distribuicao.update_ui.installed_launcher', return_value=launcher),
-          patch('sejoga.distribuicao.update_ui.check_update', return_value=None)):
+    with (patch('sejoga.distribuicao.dialogo_atualizacao.installed_release', return_value=ReleaseInfo('0.1.0', 'release')),
+          patch('sejoga.distribuicao.dialogo_atualizacao.installed_launcher', return_value=launcher),
+          patch('sejoga.distribuicao.dialogo_atualizacao.check_update', return_value=None)):
         dialog = UpdateDialog(lambda: None, settings)
         dialog._action()
         finish_worker(dialog)
@@ -73,9 +73,9 @@ def main():
         dialog.close()
 
     # Bandeja: erro de rede recupera sem travar.
-    with (patch('sejoga.distribuicao.update_ui.installed_release', return_value=ReleaseInfo('0.1.0', 'release')),
-          patch('sejoga.distribuicao.update_ui.installed_launcher', return_value=launcher),
-          patch('sejoga.distribuicao.update_ui.check_update', side_effect=OSError('offline'))):
+    with (patch('sejoga.distribuicao.dialogo_atualizacao.installed_release', return_value=ReleaseInfo('0.1.0', 'release')),
+          patch('sejoga.distribuicao.dialogo_atualizacao.installed_launcher', return_value=launcher),
+          patch('sejoga.distribuicao.dialogo_atualizacao.check_update', side_effect=OSError('offline'))):
         dialog = UpdateDialog(lambda: None, settings)
         dialog._action()
         finish_worker(dialog)
@@ -88,9 +88,9 @@ def main():
     settings_pre = Settings()
     settings_pre.update.channel = 'prerelease'
     channel_info.write_text(json.dumps({'channel': 'release', 'scope': 'machine'}), encoding='utf-8')
-    with (patch('sejoga.distribuicao.updater.installed_launcher', return_value=launcher),
-          patch('sejoga.distribuicao.updater.installed_release', return_value=None),
-          patch('sejoga.distribuicao.updater.check_update', return_value=update),
+    with (patch('sejoga.distribuicao.atualizador.installed_launcher', return_value=launcher),
+          patch('sejoga.distribuicao.atualizador.installed_release', return_value=None),
+          patch('sejoga.distribuicao.atualizador.check_update', return_value=update),
           patch('win32api.ShellExecute') as launch):
         dialog = SettingsDialog(settings_pre)
 

@@ -6,8 +6,13 @@ from urllib.error import HTTPError
 
 import pytest
 
-from sejoga.distribuicao import updater
-from sejoga.distribuicao.updater import ReleaseInfo, download_update, parse_manifest, version_order
+from sejoga.distribuicao import atualizador
+from sejoga.distribuicao.atualizador import (
+    ReleaseInfo,
+    download_update,
+    parse_manifest,
+    version_order,
+)
 
 
 def manifest(channel='release', version='0.2.0', build_id=2):
@@ -15,7 +20,7 @@ def manifest(channel='release', version='0.2.0', build_id=2):
     return dict(schema_version=1, architecture='windows-x64', channel=channel, version=version,
                 build_id=build_id, version_order=version_order(version), name=name, size=16,
                 sha256='a'*64,
-                url=f'https://github.com/{updater.REPOSITORY}/releases/download/updates-{channel}/{name}')
+                url=f'https://github.com/{atualizador.REPOSITORY}/releases/download/updates-{channel}/{name}')
 
 
 @pytest.mark.parametrize(('channel', 'old', 'new'), [
@@ -31,7 +36,7 @@ def test_channels_only_offer_newer_payloads(channel, old, new):
     assert parse_manifest(data, ReleaseInfo(new, channel, 2)) is None
     assert parse_manifest(manifest(channel, old), current) is None
     assert parse_manifest(manifest(channel, new, build_id=1), current) is None
-    data['channel'] = next(c for c in updater.CHANNELS if c != channel)
+    data['channel'] = next(c for c in atualizador.CHANNELS if c != channel)
     with pytest.raises(ValueError, match='incompatível'):
         parse_manifest(data, current)
 
@@ -79,7 +84,7 @@ def test_verified_package_download_is_atomic(tmp_path, monkeypatch):
     data = manifest()
     data.update(size=len(payload), sha256=hashlib.sha256(payload).hexdigest())
     update = parse_manifest(data, ReleaseInfo('0.1.0', 'release'))
-    monkeypatch.setattr(updater, '_open', lambda _url: io.BytesIO(payload))
+    monkeypatch.setattr(atualizador, '_open', lambda _url: io.BytesIO(payload))
     path = download_update(update, tmp_path)
     assert path.read_bytes() == payload
     assert not list(tmp_path.glob('*.part'))
@@ -90,7 +95,7 @@ def test_corrupt_or_truncated_payload_is_not_promoted(tmp_path, monkeypatch, pay
     data = manifest()
     data['sha256'] = hashlib.sha256(b'PK-test-runtime!').hexdigest()
     update = parse_manifest(data, ReleaseInfo('0.1.0', 'release'))
-    monkeypatch.setattr(updater, '_open', lambda _url: io.BytesIO(payload))
+    monkeypatch.setattr(atualizador, '_open', lambda _url: io.BytesIO(payload))
     with pytest.raises(ValueError):
         download_update(update, tmp_path)
     assert not list(tmp_path.iterdir())
@@ -103,16 +108,16 @@ def test_fixed_feed_does_not_need_new_installer_or_release_listing(monkeypatch):
         calls.append(url)
         return json.dumps(manifest()).encode()
 
-    monkeypatch.setattr(updater, '_read', read)
-    assert updater.check_update(ReleaseInfo('0.1.0', 'release')).version == '0.2.0'
-    assert calls == [f'https://github.com/{updater.REPOSITORY}/releases/download/updates-release/channel.json']
+    monkeypatch.setattr(atualizador, '_read', read)
+    assert atualizador.check_update(ReleaseInfo('0.1.0', 'release')).version == '0.2.0'
+    assert calls == [f'https://github.com/{atualizador.REPOSITORY}/releases/download/updates-release/channel.json']
 
 
 def test_unpublished_channel_is_not_an_error(monkeypatch):
     def missing(*args):
         raise HTTPError('test', 404, 'missing', {}, None)
-    monkeypatch.setattr(updater, '_read', missing)
-    assert updater.check_update(ReleaseInfo('0.1.0', 'release')) is None
+    monkeypatch.setattr(atualizador, '_read', missing)
+    assert atualizador.check_update(ReleaseInfo('0.1.0', 'release')) is None
 
 
 def test_single_installer_runs_without_published_feed(monkeypatch):
@@ -120,31 +125,31 @@ def test_single_installer_runs_without_published_feed(monkeypatch):
     # check_update apenas informa "sem atualizacao" (None). A logica equivalente do
     # launcher nativo (SeJogaLauncher.cs: FeedIndisponivel -> StartCurrent quando ha
     # runtime) e validada por inspecao, pois iscc/instalacao real nao rodam aqui.
-    for channel in updater.CHANNELS:
+    for channel in atualizador.CHANNELS:
         current = ReleaseInfo('0.2.0' if channel == 'release' else
                               '0.2.0rc1' if channel == 'prerelease' else '0.2.0.dev1', channel)
 
         def missing(*args):
             raise HTTPError('feed', 404, 'missing', {}, None)
 
-        monkeypatch.setattr(updater, '_read', missing)
-        assert updater.check_update(current) is None
+        monkeypatch.setattr(atualizador, '_read', missing)
+        assert atualizador.check_update(current) is None
 
 
 def test_installed_channel_and_stable_launcher_are_found_outside_runtime(tmp_path, monkeypatch):
     current = tmp_path/'runtime/current'
     current.mkdir(parents=True)
-    monkeypatch.setattr(updater, 'sys', SimpleNamespace(frozen=True, executable=str(current/'app.exe')))
+    monkeypatch.setattr(atualizador, 'sys', SimpleNamespace(frozen=True, executable=str(current/'app.exe')))
     (current/'release-info.json').write_text(json.dumps({'version': '0.2.0rc1', 'channel': 'prerelease', 'build_id': 2}))
-    assert updater.installed_release() == ReleaseInfo('0.2.0rc1', 'prerelease', 2)
+    assert atualizador.installed_release() == ReleaseInfo('0.2.0rc1', 'prerelease', 2)
     launcher = tmp_path/'SeJogaLauncher.exe'
     launcher.write_bytes(b'fixture')
-    assert updater.installed_launcher() == launcher
+    assert atualizador.installed_launcher() == launcher
     from sejoga.configuracao import APP_NAME, profile_app_name
     # Instalador unico: o perfil mora sempre no mesmo caminho, independente do canal.
     assert profile_app_name() == APP_NAME
     (current/'release-info.json').write_text('invalid')
-    assert updater.installed_release() is None
+    assert atualizador.installed_release() is None
 
 
 def test_config_channel_drives_update_feed(monkeypatch):
@@ -155,28 +160,28 @@ def test_config_channel_drives_update_feed(monkeypatch):
         calls.append(url)
         raise HTTPError('feed', 404, 'missing', {}, None)
 
-    monkeypatch.setattr(updater, '_read', read)
+    monkeypatch.setattr(atualizador, '_read', read)
     from sejoga.configuracao import Settings
     settings = Settings()
     settings.update.channel = 'prerelease'
-    current = updater.release_para_checagem(settings.update.channel)
+    current = atualizador.release_para_checagem(settings.update.channel)
     assert current.channel == 'prerelease'
-    assert updater.check_update(current) is None
-    assert calls == [f'https://github.com/{updater.REPOSITORY}/releases/download/updates-prerelease/channel.json']
+    assert atualizador.check_update(current) is None
+    assert calls == [f'https://github.com/{atualizador.REPOSITORY}/releases/download/updates-prerelease/channel.json']
 
 
 def test_release_para_checagem_prefers_installed_release(monkeypatch):
-    monkeypatch.setattr(updater, 'installed_release',
+    monkeypatch.setattr(atualizador, 'installed_release',
                         lambda: ReleaseInfo('0.2.0rc1', 'prerelease', 7))
-    assert updater.release_para_checagem('prerelease') == ReleaseInfo('0.2.0rc1', 'prerelease', 7)
+    assert atualizador.release_para_checagem('prerelease') == ReleaseInfo('0.2.0rc1', 'prerelease', 7)
     # Canal diferente do instalado cai para a versao-piso do canal pedido.
-    assert updater.release_para_checagem('release') == ReleaseInfo('0.1.0', 'release', 0)
+    assert atualizador.release_para_checagem('release') == ReleaseInfo('0.1.0', 'release', 0)
 
 
 def test_reescrever_canal_channel_info_preserva_campos(tmp_path):
     path = tmp_path / 'channel-info.json'
     path.write_text(json.dumps({'channel': 'release', 'scope': 'machine'}), encoding='utf-8')
-    assert updater.reescrever_canal_channel_info(path, 'nightly') is True
+    assert atualizador.reescrever_canal_channel_info(path, 'nightly') is True
     dados = json.loads(path.read_text(encoding='utf-8-sig'))
     assert dados == {'channel': 'nightly', 'scope': 'machine'}
     assert list(tmp_path.glob('channel-info-*.tmp')) == []
@@ -184,11 +189,11 @@ def test_reescrever_canal_channel_info_preserva_campos(tmp_path):
 
 def test_reescrever_canal_channel_info_ausente_nao_falha(tmp_path):
     ausente = tmp_path / 'nao-existe.json'
-    assert updater.reescrever_canal_channel_info(ausente, 'release') is False
+    assert atualizador.reescrever_canal_channel_info(ausente, 'release') is False
 
 
 def test_external_redirect_is_blocked_before_following():
-    redirect = updater._GitHubRedirect()
+    redirect = atualizador._GitHubRedirect()
     for url in ('http://github.com/file', 'https://example.com/file'):
         with pytest.raises(ValueError, match='Redirecionamento'):
             redirect.redirect_request(None, None, 302, '', {}, url)

@@ -891,7 +891,7 @@ class OverlayApp(ShowBase):
         settings_action = self.tray_menu.addAction("Configurações...")
         settings_action.triggered.connect(lambda _checked=False: self.open_settings_dialog())
 
-        from sejoga.distribuicao.update_ui import UpdateDialog
+        from sejoga.distribuicao.dialogo_atualizacao import UpdateDialog
         # Fluxo fecha->barra->reabre: ao confirmar a atualização, o launcher nativo
         # assume (download/verificação/instalação com barra de progresso própria) e
         # pede elevação. O companion fecha aqui para não ficar renderizando atrás da

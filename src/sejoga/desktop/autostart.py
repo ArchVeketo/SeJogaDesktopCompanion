@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from sejoga.distribuicao.updater import installed_launcher
+from sejoga.distribuicao.atualizador import installed_launcher
 
 NOME_ATALHO = "SeJoga Companion.lnk"
 
