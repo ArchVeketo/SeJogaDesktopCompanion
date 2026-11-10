@@ -29,6 +29,7 @@ from sejoga.nucleo.cinematica import BASE_ADICIONAL_GRAUS
 from sejoga.nucleo.model import load_model
 from sejoga.nucleo.rig import Rig
 from sejoga.render.dedos_malha import fatiar_dedos
+from sejoga.render.fio_fone_malha import MalhaFioFone, ocultar_peca_rigida_do_fio
 from sejoga.tentaculos.tentacle_constraints import ObstacleBox, TentacleContacts
 from sejoga.tentaculos.tentacle_system import (
     TentacleDirector,
@@ -230,6 +231,9 @@ class Panda3DRenderer:
                 # show dotted triangular scaffolding in the desktop projection.
                 plane.stash()
                 self._hidden_export_planes.append(name)
+        # O fio rígido do fone sai de cena (antes do copyTo do contorno); a corda
+        # simulada de MalhaFioFone toma o lugar. O asset não é alterado.
+        ocultar_peca_rigida_do_fio(model_np)
         # Dedos viram cadeia de pivôs ANTES do copyTo do contorno (herda a cadeia).
         fatiar_dedos(model_np)
         # Rota B (Frente 3): a orientação "de frente" agora mora no ASSET —
@@ -299,6 +303,7 @@ class Panda3DRenderer:
         self._tentacle_anchor_local = [head_node.getRelativePoint(self.model_np, t.anchor)
                                       for t in self.tentacle_pool.tentacles]
         self._setup_tentacle_contacts()
+        self.fio_fone = MalhaFioFone(self)
         self.set_outline_settings(self.showbase.settings.window)
         self.set_model_screen_position(
             self.width / 2,
@@ -816,6 +821,7 @@ void main() {{
             base_h, base_p, base_r = self._rig_base_hpr["door"]
             door.setHpr(base_h + self.tentacle_director._door_current, base_p, base_r)
             self._outline_nodes["door"].setHpr(door.getHpr())
+        self.fio_fone.atualizar(dt)
 
     def begin_exit_effect(self):
         from panda3d.core import Shader

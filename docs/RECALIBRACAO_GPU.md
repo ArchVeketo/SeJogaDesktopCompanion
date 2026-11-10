@@ -125,6 +125,12 @@ reprovar. Nenhum valor abaixo foi chutado para "parecer certo".
 | C30 | **Parte C.** O temperamento NÃO afeta o fechamento (escolha minha) | fechar sempre igual | quer variar → usar `SaidaTuning` no puxão |
 | C31 | **Parte C.** Cancelamentos: espirro, caixa de som, fúria, engolir, esconder, pedido do rig > 5 graus | reações de antes iguais; porta não fica presa | porta presa/atrasada → `LIMIAR_PEDIDO_EXTERNO_GRAUS` (5), `LIMIAR_PORTA_FECHADA_GRAUS` (5), `TentacleDirector._outro_dono_da_porta` |
 | C32 | **Parte C.** Borda livre da porta calculada do bounding box (dobradiça na origem do nó) | ponta do puxador na borda certa em todas as vistas | ponta fora da borda → `_ponto_borda_porta` (eixo e extremo) |
+| C33 | **Fio do fone.** Idle de frente: o fio sai da parte de baixo de cada fone, passa pela frente do pescoço/peito e termina no aparelho de música na cintura (lado direito do mascote na tela) | corda fina e escura, ligada aos dois fones e ao aparelho, sem ponta solta nem buraco; o fio rígido antigo (plano em V) não aparece | solta/some do aparelho ou do fone → `fio_tuning.ANCORA_ORELHA_U` (0.225, 0.04, 0) e `ANCORA_APARELHO_U` (0.117, 0.025, -0.1465), em coordenadas locais do GLTF |
+| C34 | **Fio do fone.** Dobra e peso (idle, andar, dança, arraste e queda; ver também o pendurado) | o fio pende com laço, balança atrasado em relação ao corpo e assenta em ~2 s; pendurado, o laço cai para baixo do mundo | duro/reto → subir `COMPRIMENTO_RAMO_ORELHA_U` (0.34) / `COMPRIMENTO_HASTE_U` (0.34). Laço grande demais ou pesado → descer os mesmos. Balança demais → descer `VELOCIDADE_RESTANTE_POR_SEGUNDO` (0.12). Parece de borracha → subir `GRAVIDADE_FIO_U` (7.0) |
+| C35 | **Fio do fone.** Colisão só com o corpo: erga e cruze os braços, aceno, alongar, abaixar o tronco | o fio encosta e desliza no tronco, no quadril, na cabeça e nos braços e nunca os atravessa; não colide com chão nem borda da tela | atravessa o corpo → subir `RAIO_COLISAO_FIO_U` (0.02) / `RAIO_BRACO_PARA_FIO_U` (0.115) ou `ITERACOES_FIO` (8). Colado demais ao tecido → descer `RAIO_COLISAO_FIO_U`. Caixas do corpo: `render/fio_fone_malha.CAIXAS_DO_CORPO` |
+| C36 | **Fio do fone.** Estética pixelada | seção quadrada, faces planas, cor #0B0044 como o fio antigo, contorno igual ao do resto do mascote | grosso/fino demais → `RAIO_VISUAL_FIO_U` (0.014). Cor diferente do fio antigo → `COR_FIO`. Sem contorno → conferir `MalhaFioFone._criar_malha` (cópia sob `outline_np`) |
+| C37 | **Fio do fone.** Arrastar a janela rápido, trocar de monitor e acordar com o fio no meio do gesto | sem estalo, fio esticado nem explosão; após teleporte o fio reaparece caído | explode ou estica → descer `PASSO_FIO_S`/`TEMPO_MAXIMO_QUADRO_FIO_S` (0.05). Reinicia sem querer → subir `SALTO_REINICIO_FIO_U` (0.8) |
+| C38 | **Fio do fone.** Regressão do confirmado: modelo de frente, braços para a frente no idle, balanço de braços e pernas, dedos com 3 juntas, tentáculos/porta e espirro | tudo igual ao já aprovado; o fio é o único elemento novo | qualquer diferença além do fio → reportar: o fio só LÊ a pose (não escreve em nenhum nó do rig), então a causa mais provável é a ocultação do `mesh18` em `renderer._load_model` |
 
 ### C6: perda de gesto aceita sem sua confirmação
 
@@ -243,3 +249,36 @@ calibrador, fonte com acentos do HUD (`segoeui.ttf`), custo por quadro
   (alvos mais baixos, idle ainda à frente). Penetração antes → depois no
   `diagnostico-parte4.md`. É o fecho da família C6: nenhum gesto foi perdido, ao
   custo de braço tocando mais a camiseta/short. Reprovou → C13.
+
+## Parte 5: fio do fone como corda simulada (decisões)
+
+Decisões de design tomadas sem consulta (fila noturna), sempre pela opção mais
+simples que não toca no que já foi confirmado:
+
+- **Peça rígida substituída, asset intacto.** O fio do GLTF é o plano `mesh18`
+  (filho de `head`, V das orelhas + haste até o aparelho `mesh21` em `body`). Ele
+  é ocultado (`stash`) em `renderer._load_model` e a corda nova o substitui. O GLTF
+  e a hierarquia de grupos não mudam.
+- **Forma em Y.** Um ramo por orelha, junção livre no peito e uma haste até o
+  aparelho. As três pontas são presas às âncoras; o resto é livre.
+- **Simulação de Verlet em passo fixo (60 Hz)** com ligações de comprimento e uma
+  rigidez de dobra unilateral fraca. Lógica pura em `animacao/fio_corda.py`,
+  constantes em `animacao/fio_tuning.py`, malha em `render/fio_fone_malha.py`.
+- **Referencial `model_np`.** A corda simula no referencial local do modelo; a
+  gravidade vem do mundo (vetor "para baixo" convertido para o modelo), então o
+  fio cai certo mesmo com o mascote pendurado ou inclinado. O fio só LÊ a pose;
+  não escreve em nenhum nó do rig.
+- **Colisão só com o corpo:** caixas do tronco (`mesh20`), quadril (`mesh30`) e
+  cabeça (`mesh0`), lidas dos limites das malhas, e cápsulas de braço, antebraço
+  e mão a partir dos nós do rig (mesmo comprimento de mão de `colisao_bracos`).
+  Sem chão e sem borda de tela. As caixas seguem a pose (matriz atual do nó).
+- **Estética:** tubo de seção quadrada com faces planas (pixelado), cor do fio
+  antigo (#0B0044), mesmo contorno do mascote (cópia sob `outline_np`
+  compartilhando os vértices).
+- **Não feito (shortcuts):** a janela que se move na física não empurra a corda
+  (o referencial do modelo não vê a velocidade da janela); o balanço vem só do
+  movimento do corpo. Sem colisão fio-fio, fio-dedos nem fio-pés. Se faltar
+  inércia no arraste, passar a velocidade da janela como aceleração fictícia.
+- **Só a GPU confirma:** C33 a C38 acima. Testes (`tests/test_fio_corda.py`)
+  provam a lógica (comprimento, âncoras, colisão, orientação dos triângulos), não
+  o visual.
