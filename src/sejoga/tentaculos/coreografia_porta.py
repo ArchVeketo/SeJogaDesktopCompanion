@@ -56,6 +56,8 @@ TOLERANCIA_PORTA_FECHADA_GRAUS = 0.5
 
 
 class FasePorta(StrEnum):
+    """Fases da coreografia da porta."""
+
     FECHADA = "fechada"
     EMPURRANDO = "empurrando"
     ABERTA = "aberta"
@@ -69,20 +71,34 @@ class FasePorta(StrEnum):
 class SaidaTuning:
     """Como os tentáculos saem pela porta em um temperamento."""
 
-    duracao_s: float            # tempo da revelação (e do empurrão: contato segue a revelação)
-    escalonamento_s: float      # atraso entre um tentáculo e o próximo
-    angulo_empurrao_graus: float  # porta ao fim do empurrão (maior = empurrão mais forte)
+    duracao_s: float  # tempo da revelação (e do empurrão: contato segue a revelação)
+    escalonamento_s: float  # atraso entre um tentáculo e o próximo
+    angulo_empurrao_graus: (
+        float  # porta ao fim do empurrão (maior = empurrão mais forte)
+    )
 
 
 #: Calmo preserva a temporização anterior (1,8 s e 0,48 s). Ângulo > LIMIAR_SAIDA_PORTA_GRAUS.
-SAIDA_CALMA = SaidaTuning(duracao_s=1.8, escalonamento_s=0.48, angulo_empurrao_graus=60.0)
-SAIDA_CURIOSA = SaidaTuning(duracao_s=1.3, escalonamento_s=0.36, angulo_empurrao_graus=66.0)
-SAIDA_AGITADA = SaidaTuning(duracao_s=0.55, escalonamento_s=0.12, angulo_empurrao_graus=85.0)
-SAIDA_TIMIDA = SaidaTuning(duracao_s=2.6, escalonamento_s=0.70, angulo_empurrao_graus=55.0)
-SAIDA_CONFIANTE = SaidaTuning(duracao_s=0.9, escalonamento_s=0.24, angulo_empurrao_graus=75.0)
+SAIDA_CALMA = SaidaTuning(
+    duracao_s=1.8, escalonamento_s=0.48, angulo_empurrao_graus=60.0
+)
+SAIDA_CURIOSA = SaidaTuning(
+    duracao_s=1.3, escalonamento_s=0.36, angulo_empurrao_graus=66.0
+)
+SAIDA_AGITADA = SaidaTuning(
+    duracao_s=0.55, escalonamento_s=0.12, angulo_empurrao_graus=85.0
+)
+SAIDA_TIMIDA = SaidaTuning(
+    duracao_s=2.6, escalonamento_s=0.70, angulo_empurrao_graus=55.0
+)
+SAIDA_CONFIANTE = SaidaTuning(
+    duracao_s=0.9, escalonamento_s=0.24, angulo_empurrao_graus=75.0
+)
 
 #: Espirro = saída violenta levada ao extremo: revelação quase instantânea, porta já aberta pela rajada.
-SAIDA_ESPIRRO = SaidaTuning(duracao_s=0.16, escalonamento_s=0.0, angulo_empurrao_graus=130.0)
+SAIDA_ESPIRRO = SaidaTuning(
+    duracao_s=0.16, escalonamento_s=0.0, angulo_empurrao_graus=130.0
+)
 
 SAIDA_POR_TEMPERAMENTO: dict[IdlePersonality, SaidaTuning] = {
     IdlePersonality.CALM: SAIDA_CALMA,
@@ -100,7 +116,9 @@ SAIDA_POR_TEMPERAMENTO: dict[IdlePersonality, SaidaTuning] = {
 
 def angulo_empurrado(revelacao: float, angulo_final: float) -> float:
     """Ângulo da porta empurrada: 0 até o contato, `angulo_final` ao fim do empurrão."""
-    x = (revelacao - REVELACAO_INICIO_CONTATO) / (REVELACAO_FIM_EMPURRAO - REVELACAO_INICIO_CONTATO)
+    x = (revelacao - REVELACAO_INICIO_CONTATO) / (
+        REVELACAO_FIM_EMPURRAO - REVELACAO_INICIO_CONTATO
+    )
     x = max(0.0, min(1.0, x))
     return angulo_final * x * x * (3.0 - 2.0 * x)
 
@@ -123,16 +141,18 @@ class CoreografiaPorta:
     tempo: float = 0.0
 
     def iniciar_empurrao(self) -> None:
+        """Inicia o empurrão da porta."""
         self._entrar(FasePorta.EMPURRANDO)
 
     def cancelar(self) -> None:
+        """Cancela a coreografia em curso."""
         self._entrar(FasePorta.FECHADA)
 
     def _entrar(self, fase: FasePorta) -> None:
         self.fase = fase
         self.tempo = 0.0
 
-    def avancar(
+    def avancar(  # noqa: C901  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
         self,
         dt: float,
         *,
@@ -148,7 +168,9 @@ class CoreografiaPorta:
             if revelacao_atuador >= REVELACAO_FIM_EMPURRAO:
                 self._entrar(FasePorta.ABERTA)
                 return Passo(angulo_porta=angulo_empurrao, fim_empurrao=True)
-            return Passo(angulo_porta=angulo_empurrado(revelacao_atuador, angulo_empurrao))
+            return Passo(
+                angulo_porta=angulo_empurrado(revelacao_atuador, angulo_empurrao)
+            )
         if fase is FasePorta.ABERTA:
             if not ha_ativos:
                 self._entrar(FasePorta.ESQUECIDA)
