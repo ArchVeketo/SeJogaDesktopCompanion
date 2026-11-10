@@ -19,25 +19,29 @@ import shutil
 import sys
 from pathlib import Path
 
-from sejoga.nucleo.assets import assets_dir, resolve_model
+from sejoga.nucleo.recursos import assets_dir, resolve_model
 
 from . import __version__
-from .config import default_config_path, load_settings, save_settings
+from .configuracao import default_config_path, load_settings, save_settings
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
-    from sejoga.nucleo.model import load_model
-    from sejoga.nucleo.rig import ALL_GROUPS, Rig
+    from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig
+    from sejoga.nucleo.modelo import load_model
 
     path = Path(args.model) if args.model else resolve_model()
     model = load_model(path)
     rig = Rig.from_model(model)
 
     print(f"modelo: {model.path}")
-    print(f"  nós={len(model.nodes)} meshes={model.mesh_count} "
-          f"primitivas={model.primitive_count} vértices={model.vertex_count}")
-    print(f"  materiais={model.material_count} texturas={model.texture_count} "
-          f"skinned={model.is_skinned}")
+    print(
+        f"  nós={len(model.nodes)} meshes={model.mesh_count} "
+        f"primitivas={model.primitive_count} vértices={model.vertex_count}"
+    )
+    print(
+        f"  materiais={model.material_count} texturas={model.texture_count} "
+        f"skinned={model.is_skinned}"
+    )
     print(f"  animações embutidas: {model.animation_names or 'nenhuma'}")
     b = model.bounds
     print(f"  bounds min={b.minimum} max={b.maximum}")
@@ -89,7 +93,7 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         status = "ok" if len(found) == len(modules) else "ausente"
         print(f"extra {extra}: {status}")
         if status == "ausente":
-            print(f"  instale com: pip install -e \".[{extra}]\"")
+            print(f'  instale com: pip install -e ".[{extra}]"')
         ok = ok and status == "ok"
 
     print(f"config: {default_config_path()}")
@@ -117,6 +121,7 @@ def _module_available(name: str) -> bool:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Monta o parser da linha de comando com os subcomandos."""
     parser = argparse.ArgumentParser(prog="sejoga", description=__doc__)
     parser.add_argument("--version", action="version", version=f"sejoga {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -138,6 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Executa a linha de comando e devolve o código de saída."""
     args = build_parser().parse_args(argv)
     return int(args.func(args))
 

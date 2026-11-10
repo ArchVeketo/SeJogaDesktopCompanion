@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""
-Entry point for SeJogaDesktopCompanion executable.
-Handles both development and frozen (PyInstaller) modes.
+"""Ponto de entrada do executável do SeJogaDesktopCompanion.
+
+Funciona em desenvolvimento e empacotado pelo PyInstaller.
 """
 
 import os
@@ -10,8 +10,8 @@ from pathlib import Path
 
 
 def setup_frozen_paths():
-    """Configure paths for PyInstaller frozen executable."""
-    if getattr(sys, 'frozen', False):
+    """Configura os caminhos do executável empacotado pelo PyInstaller."""
+    if getattr(sys, "frozen", False):
         # Running as PyInstaller bundle
         bundle_dir = Path(sys._MEIPASS)
         # Add bundle directory to sys.path for imports
@@ -22,20 +22,20 @@ def setup_frozen_paths():
         if internal_dir.exists() and str(internal_dir) not in sys.path:
             sys.path.insert(0, str(internal_dir))
         # Set assets directory for frozen mode
-        os.environ['SEJOGA_ASSETS_DIR'] = str(bundle_dir / "assets")
+        os.environ["SEJOGA_ASSETS_DIR"] = str(bundle_dir / "assets")
     else:
         # Development mode
         project_root = Path(__file__).parent.parent
-        os.environ['SEJOGA_ASSETS_DIR'] = str(project_root / "assets")
+        os.environ["SEJOGA_ASSETS_DIR"] = str(project_root / "assets")
 
 
 def main():
-    """Main entry point."""
-    # Setup paths for frozen/development mode
+    """Inicia o companion e devolve o código de saída."""
+    # Caminhos do bundle antes dos imports do sejoga (por isso imports locais).
     import sys
     from pathlib import Path
 
-    if getattr(sys, 'frozen', False):
+    if getattr(sys, "frozen", False):
         # PyInstaller bundle
         bundle_dir = Path(sys._MEIPASS)
         if str(bundle_dir) not in sys.path:
@@ -46,8 +46,8 @@ def main():
             sys.path.insert(0, str(internal_dir))
 
     # Now run the app
-    from sejoga.config import load_settings
-    from sejoga.render.window import OverlayApp
+    from sejoga.configuracao import load_settings
+    from sejoga.render.janela import OverlayApp
 
     settings = load_settings()
     app = OverlayApp(settings)

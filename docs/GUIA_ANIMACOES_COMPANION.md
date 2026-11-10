@@ -25,13 +25,13 @@
 - A **espiada** dura 9 s: abertura gradual de 2,5 s, sustentação e recolhimento. Aparece após 60–100 s acumulados de idle disponível ou pela ação manual Mostrar tentáculos. Dois tentáculos low-poly grossos, com quatro ventosas cada, emergem em sequência; a malha segue a curva da mola e atualiza apenas enquanto está ativa.
 - Porta limitada a 38°/s; contatos mudam o alvo da mola sem saltar o ângulo. O recolhimento libera o fechamento.
 - Na dança, os braços longos ficam recolhidos para baixo, junto às laterais do corpo. Os demais estados ainda usam suas poses próprias.
-- Esses movimentos são poses procedurais em `src/sejoga/rig.py`; a tabela completa abaixo continua sendo a especificação para animações futuras.
+- Esses movimentos são poses procedurais em `src/sejoga/nucleo/esqueleto.py`; a tabela completa abaixo continua sendo a especificação para animações futuras.
 
 ### Idles autorados no runtime (04/11/2026)
 
 O submenu **Personalidade do idle** inclui quatro estilos adicionais. São
 interpretações das referências deste documento, com keyframes próprios de
-dez segundos em `idle_clips.py`, sem modificar o GLTF original:
+dez segundos em `clipes_ocioso.py`, sem modificar o GLTF original:
 
 | Opção | Movimento |
 | --- | --- |
@@ -44,7 +44,7 @@ As pistas usam interpolação quíntica (velocidade e aceleração nulas nas
 pausas). Antebraço, punho e dedos têm tempos diferentes. O movimento
 secundário soma à pose autorada, preservando suas rotações. A escolha manual
 reinicia a frase, faz crossfade e permanece salva; automático inclui os nove
-estilos. `tools/preview_idle_styles.py` gera ciclos completos em GIF e
+estilos. `tools/visualizar_acoes_corpo.py` gera
 capturas do início, gesto e retorno, com perfil temporário.
 
 Os tentáculos agora aguardam a porta abrir, mantêm a raiz fixa, saem em
@@ -57,12 +57,12 @@ câmera. O diagnóstico mostra as tríades RGB e inclui os eixos/posições de
 cada articulação no JSONL. A seção da malha mantém espessura durante a
 saída; a parte visível percorre a curva em vez de alterar opacidade.
 
-`tentacle_constraints.py` projeta cápsulas e vértices contra caixas orientadas
+`restricoes_tentaculos.py` projeta cápsulas e vértices contra caixas orientadas
 que seguem as peças animadas. Há quarenta volumes neste asset: cinco painéis
 do armário oco, porta, fones e peças sólidas do tronco/braços/pernas. Planos
 decorativos transparentes e eixos de diagnóstico não bloqueiam a cadeia.
 As raízes acompanham a cabeça; a porta espera recolhimento e limita sua
-velocidade. `tools/verify_tentacle_contacts.py` verifica vértices renderizados,
+velocidade. (a verificação `verify_tentacle_contacts.py` foi removida) verifica vértices renderizados,
 eixos ortogonais e fechamento durante um ciclo completo. São restrições
 geométricas aproximadas; não constituem física de tecido nem colisão por
 triângulo contra todos os pixels transparentes do GLTF.
@@ -73,7 +73,7 @@ triângulo contra todos os pixels transparentes do GLTF.
 
 ### Balanço físico do corpo (04/11/2026)
 
-`body_motion.py` adiciona molas amortecidas independentes de Panda3D/Qt.
+`movimento_corpo.py` adiciona molas amortecidas independentes de Panda3D/Qt.
 Velocidade real do cursor alimenta balanço, inclinação e torção; reversão do
 arraste produz contrapeso, cabeça e antebraços respondem com atraso e a
 soltura deixa a inércia se dissipar. Clique, carinho e impacto também dão
@@ -87,7 +87,7 @@ são reconstruídas a cada frame; não se acumulam e não alteram a hierarquia
 ou o GLTF. Isso é animação física visual, não ragdoll nem colisão rígida de
 cada parte do corpo. As posições/eixos dos tentáculos acompanham a cabeça.
 
-`tools/smoke_native_body.py` usa entrada real do Windows para arrastar,
+`tools/smoke_corpo_nativo.py` usa entrada real do Windows para arrastar,
 inverter e soltar, verifica recuperação do corpo e restaura cursor/botões.
 Capturas e JSONL incluem o estado do balanço e a velocidade do cursor.
 
@@ -454,7 +454,7 @@ Blockbench 5.x
     │
     └── Runtime
         ├── Carregar via Panda3D (panda3d-gltf) ou raylib
-        ├── Animations procedural usam rig groups (rig.py)
+        ├── Animations procedural usam rig groups (esqueleto.py)
         └── Animações keyframed (se houver) via Actor/AnimationController
 ```
 
@@ -517,12 +517,12 @@ Blockbench 5.x
 
 | Fase | Tarefa | Status |
 |------|--------|--------|
-| **2.1** | `animation.py` — AnimationController (state machine, blend tree, beat sync) | ⏳ |
-| **2.2** | `window.py` — OverlayWindow (Panda3D+Qt bridge, color key, click-through) | ⏳ |
-| **2.3** | `physics.py` — ScreenSpacePhysics (pymunk + shelves EnumWindows) | ⏳ |
-| **2.4** | `music.py` — MusicListener (GSMTU + soundcard + beat tracker) | ⏳ |
-| **2.5** | `rig_animation.py` — Integração `rig.py` + `animation.py` | ⏳ |
-| **2.6** | `ui.py` — SettingsDialog + TrayManager + hotkeys | ⏳ |
+| **2.1** | `controlador_animacao.py` — AnimationController (state machine, blend tree, beat sync) | ⏳ |
+| **2.2** | `janela.py` — OverlayWindow (Panda3D+Qt bridge, color key, click-through) | ⏳ |
+| **2.3** | `fisica.py` — ScreenSpacePhysics (pymunk + shelves EnumWindows) | ⏳ |
+| **2.4** | `escuta_musica.py` — MusicListener (GSMTU + soundcard + beat tracker) | ⏳ |
+| **2.5** | `rig_animation.py` — Integração `esqueleto.py` + `controlador_animacao.py` | ⏳ |
+| **2.6** | `interface.py` — SettingsDialog + TrayManager + hotkeys | ⏳ |
 | **2.7** | `app.py` — Loop principal 60Hz render / 120Hz physics | ⏳ |
 | **2.8** | Animações no Blockbench (idle, walk, jump, throw, dance, hit, sleep) | ⏳ |
 | **2.9** | Export `.glb` + validação (glTF Validator) | ⏳ |
@@ -539,12 +539,12 @@ Blockbench 5.x
    pip install -e ".[panda3d,windows,tray,music-analysis]"
    ```
 
-2. **Criar `src/sejoga/animation.py`** com:
+2. **Criar `src/sejoga/animacao/controlador_animacao.py`** com:
    - `AnimationState` enum
    - `AnimationController` class (state machine + blend tree)
    - `BeatSyncMixin` para sincronização musical
 
-3. **Criar `src/sejoga/window.py`** com:
+3. **Criar `src/sejoga/render/janela.py`** com:
    - `OverlayWindow` (PySide6 QWidget + Panda3D GraphicsWindow embedding)
    - Win32 layered window setup (color key magenta)
    - Click-through toggle + hit-test

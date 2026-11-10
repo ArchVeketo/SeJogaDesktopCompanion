@@ -2,12 +2,12 @@
 
 Separa número "mágico" de código em dois grupos nomeados:
 
-- **Layout/UX do diálogo de configurações** (``ui.py``): faixas, passos e
+- **Layout/UX do diálogo de configurações** (``interface.py``): faixas, passos e
   larguras dos widgets Qt. São escolhas de interface, não limiares de domínio
   (estes vivem em ``fisica_tuning.py``); os extremos espelham os limites de
-  validação de ``config.py``.
-- **Protocolo Win32 da bandeja e da janela** (``tray_registration.py``,
-  ``desktop_shell.py``): mensagens, flags e tamanhos de ícone exigidos pela
+  validação de ``configuracao.py``.
+- **Protocolo Win32 da bandeja e da janela** (``registro_bandeja.py``,
+  ``integracao_desktop.py``): mensagens, flags e tamanhos de ícone exigidos pela
   API do Shell/USER32. Têm valor fixo ditado pelo sistema operacional.
 
 Módulo sem engine gráfica própria: só define números; quem desenha é o Qt/Win32.
@@ -16,7 +16,7 @@ Módulo sem engine gráfica própria: só define números; quem desenha é o Qt/
 from __future__ import annotations
 
 # ============================================================
-# Layout do diálogo de configurações (ui.py)
+# Layout do diálogo de configurações (interface.py)
 # ============================================================
 
 #: Largura mínima (px) do diálogo de preferências.
@@ -27,7 +27,7 @@ TAMANHO_JANELA_MINIMO = 240
 TAMANHO_JANELA_MAXIMO = 960
 TAMANHO_JANELA_PASSO = 40
 
-#: FPS alvo do mascote: faixa (quadros/s), passo e sufixo (espelha config.py).
+#: FPS alvo do mascote: faixa (quadros/s), passo e sufixo (espelha configuracao.py).
 FPS_MINIMO = 15
 FPS_MAXIMO = 240
 FPS_PASSO = 5
@@ -39,7 +39,7 @@ ESCALA_MAXIMA = 2.5
 ESCALA_PASSO = 0.1
 ESCALA_CASAS = 1
 
-#: Espessura do contorno: faixa (px), passo e casas (espelha config.py).
+#: Espessura do contorno: faixa (px), passo e casas (espelha configuracao.py).
 CONTORNO_LARGURA_MINIMA = 0.5
 CONTORNO_LARGURA_MAXIMA = 8.0
 CONTORNO_LARGURA_PASSO = 0.5
@@ -61,7 +61,7 @@ THREAD_TIMEOUT = 2.0
 
 
 # ============================================================
-# Protocolo Win32 da bandeja (tray_registration.py)
+# Protocolo Win32 da bandeja (registro_bandeja.py)
 # ============================================================
 
 #: Qt registra o ícone com uID=0 e callback WM_APP+101; reusamos o mesmo par.
@@ -88,7 +88,7 @@ TRAY_TOOLTIP_MAX = 127
 
 
 # ============================================================
-# Protocolo Win32 da janela nativa (desktop_shell.py)
+# Protocolo Win32 da janela nativa (integracao_desktop.py)
 # ============================================================
 
 #: Tamanhos (px) dos ícones pequeno e grande da janela.

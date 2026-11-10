@@ -179,7 +179,11 @@ class GateAtencao:
         self._avancar_ambiente(dt, origem_janela, largura, altura, ambiente_habilitado)
 
         candidatos = list(gatilhos)
-        if ambiente_habilitado and self._ambiente_restante > 0 and self._ambiente_ponto is not None:
+        if (
+            ambiente_habilitado
+            and self._ambiente_restante > 0
+            and self._ambiente_ponto is not None
+        ):
             candidatos.append(
                 GatilhoAtencao("ambiente", self._ambiente_ponto, PRIORIDADE_AMBIENTE)
             )

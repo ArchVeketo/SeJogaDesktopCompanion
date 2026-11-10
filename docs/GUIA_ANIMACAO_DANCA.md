@@ -228,18 +228,18 @@ Snapshot do fonte em 05/11/2026. Consultar o relatório de build: o executável 
 
 | Área | Referência no código | Estado e diferença para o alvo |
 |---|---|---|
-| Análise | [`music.py`](../src/sejoga/music.py), `_BeatTracker`, `_loopback_worker` | RMS/graves/onset/BPM estimado; sem reconhecimento confiável de gênero |
-| Coreografia | [`dance_motion.py`](../src/sejoga/dance_motion.py), `DanceMotion` | Quatro estilos com suavização; ainda precisa de frases/contatos mais autorados |
-| Prioridades | [`animation.py`](../src/sejoga/animation.py), `update`, `interact` | Dança persiste e peek tem timer independente; preservar isso |
-| Caixa | [`music_speaker.py`](../src/sejoga/music_speaker.py), `MusicSpeaker` | Gabinete dimensionado pela pose neutra: largura ×1,20 e altura ×1,15; graffiti aplicado |
-| Entrada | `MusicSpeaker.update` e [`window.py`](../src/sejoga/window.py), `update_appendages` | Preparação lateral, arco, pouso, três tentáculos empurrando e gosma rosa temporária; cones e ondas reagem à batida/graves |
-| Head nod | `DanceMotion.apply` e `Panda3DRenderer.update_appendages` | Orientação invertida conforme pedido, costas contra a lateral da caixa, braços cruzados; contato resolvido pelo plano lateral |
-| IK | [`limb_ik.py`](../src/sejoga/limb_ik.py), `solve_arm(horizontal, downward, upper_length, forearm_length)` | Solver planar de dois segmentos; não resolve costas/pés ou apoio completo 3D |
-| Pivôs | [`flexible_rig.py`](../src/sejoga/flexible_rig.py), [`lower_body.py`](../src/sejoga/lower_body.py) | Coluna/pescoço/ombros e quadril/joelho no runtime; preservar junções ao resolver apoio |
-| Pernas | [`leg_motion.py`](../src/sejoga/leg_motion.py) | Fase compartilhada existe; footwork/plantio ainda precisam de contatos de cena |
-| Mãos | [`finger_gestures.py`](../src/sejoga/finger_gestures.py) | Dedos direitos e rock existem; falta polimento do braço estendido e alternância bilateral |
-| Chão | `Panda3DRenderer.apply_body_motion` | Inclinação/giro global e correção por bounds: **protótipo, não six-step com mão fixa** |
-| Gosma | [`tentacle_drips.py`](../src/sejoga/tentacle_drips.py) | Gotas/spray existem; ligar aos acentos sem esconder a pose |
+| Análise | [`escuta_musica.py`](../src/sejoga/musica/escuta_musica.py), `_BeatTracker`, `_loopback_worker` | RMS/graves/onset/BPM estimado; sem reconhecimento confiável de gênero |
+| Coreografia | [`movimento_danca.py`](../src/sejoga/animacao/movimento_danca.py), `DanceMotion`; [`poses_danca.py`](../src/sejoga/animacao/poses_danca.py); [`danca_frases_tuning.py`](../src/sejoga/animacao/danca_frases_tuning.py) | Quatro estilos em passos de quatro poses por batida (acento no onset, u = 0), braços por alvos de mão (IK) e molas por junta; ainda sem contatos de cena |
+| Prioridades | [`controlador_animacao.py`](../src/sejoga/animacao/controlador_animacao.py), `update`, `interact` | Dança persiste e peek tem timer independente; preservar isso |
+| Caixa | [`caixa_som.py`](../src/sejoga/musica/caixa_som.py), `MusicSpeaker` | Gabinete dimensionado pela pose neutra: largura ×1,20 e altura ×1,15; graffiti aplicado |
+| Entrada | `MusicSpeaker.update` e [`janela.py`](../src/sejoga/render/janela.py), `update_appendages` | Preparação lateral, arco, pouso, três tentáculos empurrando e gosma rosa temporária; cones e ondas reagem à batida/graves |
+| Head nod | `DanceMotion.apply` e `Panda3DRenderer.update_appendages` | Frase de 4 batidas (nod no 1 e no 3, inclinação lateral no 2, pausa no 4), costas inclinadas por `body.x` e apoiadas na caixa pelo renderer; braços em fallback "cruzado" (antebraços à frente do peito, sem cruzar o corpo) |
+| IK | [`ik_bracos.py`](../src/sejoga/animacao/ik_bracos.py), `braco_para(modelo, lado, alvo, polo)` | Solver 3D de dois segmentos (alvo de mão para ombro e cotovelo); não resolve costas/pés ou apoio completo |
+| Pivôs | [`rig_flexivel.py`](../src/sejoga/animacao/rig_flexivel.py), [`corpo_inferior.py`](../src/sejoga/render/corpo_inferior.py) | Coluna/pescoço/ombros e quadril/joelho no runtime; preservar junções ao resolver apoio |
+| Pernas | [`movimento_pernas.py`](../src/sejoga/animacao/movimento_pernas.py) | Fase compartilhada; magnitudes `DANCA_*` por estilo (rock com base larga e joelho no acento, hip hop com quique); footwork/plantio ainda precisam de contatos de cena |
+| Mãos | [`gestos_dedos.py`](../src/sejoga/animacao/gestos_dedos.py) | Dedos direitos e rock existem; falta polimento do braço estendido e alternância bilateral |
+| Chão | `Panda3DRenderer.apply_body_motion`, `_giro_no_quadril` | Giro e roll conjugados no quadro de autoria, pivô no quadril, correção por bounds: **a mão ainda não fica fixa no cenário (atalho `shortcut:`), não é six-step completo** |
+| Gosma | [`gotas_tentaculos.py`](../src/sejoga/tentaculos/gotas_tentaculos.py) | Gotas/spray existem; ligar aos acentos sem esconder a pose |
 | Fones | Peças no GLTF | Material/textura reativa e atraso específico ainda pendentes |
 
 ## 10. Ordem de implementação e validação
@@ -257,14 +257,13 @@ Ferramentas existentes:
 
 ```powershell
 python -m sejoga run
-python tools/preview_body_actions.py music-soft music-hiphop music-heavy
-python tools/profile_music_styles.py
-python tools/verify_render_resize.py
-python tools/smoke_native_body.py
-python tools/smoke_bundle_dances.py
+python tools/visualizar_acoes_corpo.py music-soft music-hiphop music-heavy
+python tools/perfilar_animacao.py
+python tools/smoke_corpo_nativo.py
+python tools/smoke_pacote_dancas.py
 ```
 
-O menu tem **Prévia de dança (sem som)**. `tools/capture_dance_animation.py` e `--log-level DEBUG`, citados na versão 1.0, não existem no CLI atual.
+O menu tem **Prévia de dança (sem som)**. `tools/capture_dance_animation.py` e `--log-level DEBUG`, citados na versão 1.0, não existem no CLI atual (removidos), assim como `tools/profile_music_styles.py`.
 
 Critérios de aprovação:
 
@@ -282,7 +281,8 @@ Critérios de aprovação:
 
 - **1.0:** levantamento inicial de código e referências gerais.
 - **2.0:** incorporada a descrição completa do autor: caixa gigante e costas apoiadas tornam-se requisitos explícitos. Estado do runtime separado da especificação; referências primárias e comandos existentes conferidos. A versão original foi preservada localmente em `.local/reference-inputs/GUIA_ANIMACAO_DANCA_v1.md`.
+- **2.1:** as quatro danças re-autoradas em passos de quatro poses (acento, sustentação, recuperação, preparação) com acento no onset; braços por alvos de mão; breakdance com pivô conjugado no quadril; caminhos do código atualizados para o layout `src/sejoga/animacao`, `nucleo`, `musica`, `render`, `desktop` e `tentaculos`. Decisões em [DECISOES_ANIMACOES.md](DECISOES_ANIMACOES.md).
 
 ### Validação da entrada da caixa — 05/11/2026
 
-`python tools/preview_music_scene.py` captura preparação, arremesso, pouso e pose final em perfil isolado. Três tentáculos empurram alvos externos distintos na caixa e se recolhem; gosma rosa sólida low-poly escorre e desaparece até 6,5 s. A dança continua durante a sequência. Cones pulsam radialmente; ondas e tremor seguem energia/graves. Prévia permanece silenciosa; o pouso em música real respeita volume e áudio habilitado.
+A ferramenta `preview_music_scene.py` foi removida (limpeza ponytail); esta sequência: preparação, arremesso, pouso e pose final, vista em `tools/visualizar_acoes_corpo.py`. Descrição original: preparação, arremesso, pouso e pose final em perfil isolado. Três tentáculos empurram alvos externos distintos na caixa e se recolhem; gosma rosa sólida low-poly escorre e desaparece até 6,5 s. A dança continua durante a sequência. Cones pulsam radialmente; ondas e tremor seguem energia/graves. Prévia permanece silenciosa; o pouso em música real respeita volume e áudio habilitado.

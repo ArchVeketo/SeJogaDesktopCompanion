@@ -42,8 +42,8 @@ state/
 user-data/
 logs/
 
-# Modelo derivado gerado por tools/gltf_to_glb.py (regenerável)
-# Mantido fora do controle de versão: rode `python tools/gltf_to_glb.py`
+# Modelo derivado gerado por tools/converter_gltf_para_glb.py (regenerável)
+# Mantido fora do controle de versão: rode `python tools/converter_gltf_para_glb.py`
 assets/model/*.glb
 
 # Capturas / debug

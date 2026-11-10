@@ -53,19 +53,19 @@ O **SeJogaDesktopCompanion** é um *desktop companion* 3D interativo do mascote 
 sejoga/
 ├── __init__.py          # versão, exports públicos
 ├── __main__.py          # CLI: inspect, config, doctor, run
-├── assets.py            # resolução de caminhos (dev vs _MEIPASS)
-├── config.py            # Settings (pydantic-settings), load/save TOML
-├── model.py             # Model/Node/Bounds (leitura glTF/GLB, bounds mundo)
-├── rig.py               # Rig/ALL_GROUPS + presets de pose (idle/walk/dance/etc.)
-├── window.py            # (etapa 2) OverlayWindow: Panda3D+PySide6 bridge, WS_EX_LAYERED
-├── physics.py           # (etapa 2) ScreenSpacePhysics: pymunk + shelves EnumWindows
-├── music.py             # (etapa 2) MusicListener: GSMTU + soundcard + beat tracker
-├── ui.py                # (etapa 2) SettingsDialog, TrayManager, hotkeys
-├── debug.py             # HUD/eixos, log rotativo e captura opcional com metadados
+├── recursos.py            # resolução de caminhos (dev vs _MEIPASS)
+├── configuracao.py            # Settings (pydantic-settings), load/save TOML
+├── modelo.py             # Model/Node/Bounds (leitura glTF/GLB, bounds mundo)
+├── esqueleto.py               # Rig/ALL_GROUPS + presets de pose (idle/walk/dance/etc.)
+├── janela.py            # (etapa 2) OverlayWindow: Panda3D+PySide6 bridge, WS_EX_LAYERED
+├── fisica.py           # (etapa 2) ScreenSpacePhysics: pymunk + shelves EnumWindows
+├── escuta_musica.py             # (etapa 2) MusicListener: GSMTU + soundcard + beat tracker
+├── interface.py                # (etapa 2) SettingsDialog, TrayManager, hotkeys
+├── depuracao.py             # HUD/eixos, log rotativo e captura opcional com metadados
 └── app.py               # (etapa 2) Application: loop principal 60/120 Hz
 ```
 
-**Princípio:** módulos `model.py`, `rig.py`, `assets.py`, `config.py` são **engine-agnostic** (funcionam em CI sem GPU). Módulos `window.py`, `physics.py`, `music.py`, `ui.py`, `app.py` são a **etapa 2** (runtime).
+**Princípio:** módulos `modelo.py`, `esqueleto.py`, `recursos.py`, `configuracao.py` são **engine-agnostic** (funcionam em CI sem GPU). Módulos `janela.py`, `fisica.py`, `escuta_musica.py`, `interface.py`, `app.py` são a **etapa 2** (runtime).
 
 ---
 
@@ -253,7 +253,7 @@ exe = EXE(pyz, a.scripts, exclude_binaries=True, name="SeJogaCompanion",
 coll = COLLECT(exe, a.binaries, a.datas, name="SeJogaCompanion")
 ```
 
-**Assets:** converter glTF → `.glb` (um arquivo) com `tools/gltf_to_glb.py` antes do build.
+**Assets:** converter glTF → `.glb` (um arquivo) com `tools/converter_gltf_para_glb.py` antes do build.
 
 **Inno Setup (per-user, sem UAC):**
 ```ini

@@ -13,8 +13,8 @@ Companion Windows em Python: Panda3D renderiza, PySide6 oferece bandeja/configur
 
 ## Limites entre módulos
 
-- `model.py`, `rig.py`, `assets.py` e `config.py` não importam Panda3D, Qt ou Win32.
-- Renderer/overlay integram o rig e a física em `window.py`; coordenadas físicas são absolutas no desktop, as do renderer são locais à janela.
+- `modelo.py`, `esqueleto.py`, `recursos.py` e `configuracao.py` não importam Panda3D, Qt ou Win32.
+- Renderer/overlay integram o rig e a física em `janela.py`; coordenadas físicas são absolutas no desktop, as do renderer são locais à janela.
 - Preservar nomes/hierarquia dos grupos do GLTF. Animações procedurais usam rotações relativas ao rig.
 
 ## Armadilhas verificadas
@@ -29,6 +29,8 @@ Companion Windows em Python: Panda3D renderiza, PySide6 oferece bandeja/configur
 - `build.ps1` filtra o PATH privado do Codex; não remover esse filtro. A ICU do Poppler é incompatível com os símbolos importados por QtCore.
 - Não trocar PySide6/compilador aleatoriamente para corrigir uma DLL: identificar origem e símbolos da DLL no bundle.
 - Erros de permissão do perfil não justificam pedir execução como administrador. A persistência usa temporário exclusivo e perfil alternativo persistente em caso de acesso negado.
+- Eixo de membro se prova pela FK do grafo de cena (`nucleo/cinematica.py` == Panda, `tests/test_cinematica_oraculo.py`), não pela câmera frontal: ela não enxerga profundidade. `Rotation3` é LOCAL a cada nó; nunca copiar/perseguir o ângulo de uma junta em outra.
+- Testes que importam Panda3D no processo do pytest precisam importar PySide6 antes, senão os testes de Qt da mesma sessão caem com access violation.
 
 ## Ferramentas do projeto
 

@@ -95,8 +95,8 @@ Todas as personalidades melhoradas para evitar "mãos sempre pra baixo":
 ## 📊 Estatísticas
 
 ### Arquivos Modificados
-- `src/sejoga/rig.py` - 109 inserções, 67 deleções
-- `src/sejoga/animation.py` - Transição aumentada
+- `src/sejoga/nucleo/rig.py` - 109 inserções, 67 deleções
+- `src/sejoga/animacao/animation.py` - Transição aumentada
 - `README.md` - 209 inserções, 29 deleções
 - `docs/MELHORIAS_ANIMACAO_2026-11-04.md` - 118 linhas (novo)
 - `docs/SESSION_SUMMARY_2026-11-04.md` - Este arquivo (novo)

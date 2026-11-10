@@ -37,7 +37,7 @@ dependencies = [
 [project.optional-dependencies]
 # Renderizador 3D. A escolha final está documentada em docs/ARQUITETURA.md;
 # ambos os grupos ficam disponíveis para permitir a comparação de protótipos.
-# pymunk é o motor de física 2D usado por physics.py (dependência real de runtime).
+# pymunk é o motor de física 2D usado por desktop/fisica.py (dependência real de runtime).
 panda3d = [
     "panda3d>=1.10.15",
     "panda3d-gltf>=1.3",
@@ -63,7 +63,7 @@ music-analysis = ["numpy>=2.0"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
-    "ruff>=0.6",
+    "ruff>=0.17",
     "mypy>=1.11",
 ]
 
@@ -77,38 +77,44 @@ packages = ["src/sejoga"]
 "assets" = "sejoga/_bundled_assets"
 
 [tool.ruff]
-line-length = 100
+line-length = 88
 target-version = "py311"
 src = ["src", "tests", "tools"]
 
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
-ignore = ["E501"]
+[tool.ruff.format]
+quote-style = "double"
 
-# E402 (import fora do topo) e INTENCIONAL nestes modulos: a ordem de import
-# e obrigatoria para o runtime funcionar.
-# - window.py: Qt precisa carregar antes do Panda3D (DLLs MSVC conflitantes) e
-#   os loadPrcFileData() precisam rodar antes de importar ShowBase/panda3d.
-# - preview_tentacle*.py: loadPrcFileData()/config antes de importar o engine.
-# - build_tentacle_model.py: sys.path.insert antes de importar sejoga.
-#
-# E701/E702 (multiplos statements por linha) sao o ESTILO DENSO INTENCIONAL dos
-# construtores procedurais de geometria/efeitos/audio e das rotinas de preview.
-# Separar cada statement nao melhora a legibilidade desse codigo compacto.
+[tool.ruff.lint]
+select = [
+  "E", "F", "W", "I", "UP", "B", "SIM", "RUF",
+  "N", "D", "C901", "PLR0915", "PLR1702",
+]
+# N802/N816: nomes camelCase exigidos por Panda3D/Qt/Win32 (userExit, nextEntry).
+# D401: a heurística de modo imperativo do ruff é do inglês e erra nas
+# docstrings em português ("Converte" falha, "Devolve" passa).
+ignore = ["E501", "N802", "N816", "D401"]
+# PLR1702 so existe como regra em preview; explicit-preview-rules impede que o
+# preview ligue outras regras fora do escopo da convencao.
+preview = true
+explicit-preview-rules = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-statements = 27
+max-nested-blocks = 3
+
+# E402 (import fora do topo) e INTENCIONAL em janela.py: Qt precisa carregar antes
+# do Panda3D (DLLs MSVC conflitantes) e os loadPrcFileData() precisam rodar antes
+# de importar ShowBase/panda3d.
+# Testes: o nome da funcao ja descreve o cenario; docstring por teste nao agrega.
 [tool.ruff.lint.per-file-ignores]
-"src/sejoga/render/window.py" = ["E402"]
-"tools/preview_tentacle.py" = ["E402"]
-"tools/preview_tentacle_system.py" = ["E402", "E701", "E702"]
-"tools/build_tentacle_model.py" = ["E402"]
-"src/sejoga/musica/music_speaker.py" = ["E701", "E702"]
-"src/sejoga/musica/speaker_effects.py" = ["E701", "E702"]
-"src/sejoga/musica/sound_effects.py" = ["E701", "E702"]
-"src/sejoga/animacao/lower_body.py" = ["E702"]
-"tools/preview_body_actions.py" = ["E701", "E702"]
-"tools/profile_music_styles.py" = ["E701", "E702"]
-"tools/preview_music_scene.py" = ["E701", "E702"]
-"tools/verify_render_resize.py" = ["E701", "E702"]
-"tools/smoke_bundle_dances.py" = ["E702"]
+"src/sejoga/render/janela.py" = ["E402"]
+"tests/**" = ["D102", "D103", "D107"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

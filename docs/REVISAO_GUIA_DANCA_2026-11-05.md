@@ -24,7 +24,7 @@ Para o refinamento, cada estilo deve ter uma frase com silhuetas distinguíveis:
 | Pernas estáticas | `leg_motion.py` já usa fase compartilhada; pivôs explícitos de quadril/joelho estão na revisão em andamento. |
 | IK como integração futura | Existe solver planar para o braço apoiado na caixa. A assinatura real é `solve_arm(horizontal, downward, upper_length, forearm_length)`. |
 | Porta limitada a 48° durante dança | A ejeção da caixa e os tentáculos são camadas independentes e precisam de abertura maior. O corpo continua dançando. |
-| `tools/capture_dance_animation.py` | Esse arquivo ainda não existe. Usar `tools/preview_body_actions.py music-soft music-hiphop music-heavy`, `tools/profile_music_styles.py` e `tools/smoke_bundle_dances.py`. |
+| `tools/capture_dance_animation.py` | Esse arquivo ainda não existe. Usar `tools/preview_body_actions.py music-soft music-hiphop music-heavy`, `tools/profile_music_styles.py` (removido depois) e `tools/smoke_bundle_dances.py`. |
 | `python -m sejoga --log-level DEBUG` | Essa opção não existe no CLI atual. Não documentar como comando válido. |
 | Logs de troca de estilo apresentados como exemplo real | São exemplos de formato; ainda não são mensagens emitidas pelo código atual. |
 
@@ -48,6 +48,6 @@ A própria [Ableton, em Tempo and genre](https://learningmusic.ableton.com/make-
 
 ## Evidência e pendências
 
-Os valores de hardware/CPU apresentados na seção 12.1 não têm relatório anexado que os comprove. As medições desta sessão estão em `tools/profile_music_styles.py`: medem o loop de animação/render, incluindo trechos com tentáculos, e não apenas `DanceMotion.update`.
+Os valores de hardware/CPU apresentados na seção 12.1 não têm relatório anexado que os comprove. As medições desta sessão estavam em `tools/profile_music_styles.py` (removido depois): medem o loop de animação/render, incluindo trechos com tentáculos, e não apenas `DanceMotion.update`.
 
 Faltam congelamento musical explícito, alternância bilateral do gesto de rock e polimento dos apoios. Trilhas/partículas e som de pouso são secundários à coreografia. O fluxo de camadas deve ser preservado: porta e tentáculos não substituem a dança.

@@ -105,14 +105,14 @@ Companion em Python: **Panda3D** renderiza, **PySide6** cuida da bandeja e das c
 
 ```
 src/sejoga/
-  animation.py      Controlador de estados e composição de camadas
-  anim_layers.py    Camadas aditivas (base, locomoção, música...)
-  joint_springs.py  Molas por junta e cadeia de atraso
-  anim_clips.py     Clipes de animação como dados
-  rig.py            Catálogo do rig e poses procedurais
-  physics.py        Física de tela (Pymunk)
-  renderer.py       Renderizador Panda3D
-  win32_overlay.py  Janela em camadas / clique-através (Win32)
+  controlador_animacao.py      Controlador de estados e composição de camadas
+  camadas_animacao.py    Camadas aditivas (base, locomoção, música...)
+  molas_juntas.py  Molas por junta e cadeia de atraso
+  clipes_animacao.py     Clipes de animação como dados
+  esqueleto.py            Catálogo do rig e poses procedurais
+  fisica.py        Física de tela (Pymunk)
+  renderizador.py       Renderizador Panda3D
+  sobreposicao_win32.py  Janela em camadas / clique-através (Win32)
 ```
 
 ```powershell
