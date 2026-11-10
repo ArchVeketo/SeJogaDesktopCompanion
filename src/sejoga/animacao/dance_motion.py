@@ -4,9 +4,11 @@ A amplitude e os acentos vêm de um envelope por batida (acento no downbeat,
 transições em borda de frase) em vez de ``sin(t)`` cru; o resultado por junta
 é suavizado por molas amortecidas, dando peso e recuperação naturais.
 """
-from math import exp, sin, tau
+from math import exp, floor, sin, tau
 
 from sejoga.animacao import dance_tuning as tune
+from sejoga.animacao.dance_frases_tuning import FRASES, frase_do_estilo
+from sejoga.animacao.dance_poses import amostrar_passo
 from sejoga.animacao.joint_springs import SpringPose
 from sejoga.animacao.rig_base import REPOUSO
 from sejoga.animacao.spring_tuning import DANCA_AMORTECIMENTO, DANCA_FREQUENCIA
@@ -66,12 +68,38 @@ class DanceMotion:
         self.acento += (acento * (tune.ACENTO_BASE + self.energy * tune.ACENTO_GANHO_ENERGIA) - self.acento) \
             * (1 - exp(-dt * tune.SUAVIZACAO_ACENTO))
 
+    def _posicao_na_frase(self, passos):
+        """Devolve (indice do passo, u da batida) da frase de ``passos``.
+
+        O u vem da fase corrigida pelos onsets (acento em u = 0); a batida
+        inteira vem de ``style_beats``. Rock acima de ROCK_MEIO_TEMPO_BPM dura
+        duas batidas por passo.
+        """
+        u = (self.phase/tau) % 1
+        batida = round(self.style_beats-u)+u
+        if self.style == 'rock' and self.tempo > tune.ROCK_MEIO_TEMPO_BPM:
+            batida /= 2
+        return floor(batida) % len(passos), batida % 1
+
+    def _montar_alvo_por_passos(self, rig):
+        """Pose da dança amostrada dos passos de quatro poses do estilo."""
+        passos = frase_do_estilo(self.style)
+        indice, u = self._posicao_na_frase(passos)
+        ganho = tune.GANHO_PASSO_BASE+self.energy*tune.GANHO_PASSO_ENERGIA
+        pose = amostrar_passo(passos[indice], u, passos[(indice+1) % len(passos)], ganho)
+        for grupo, (x, y, z) in pose.items():
+            rig.set_rotation(grupo, x=x, y=y, z=z)
+        rig.set_rotation('door', y=0)
+        return rig.pose()
+
     def _montar_alvo(self, rig):
         """Autora a pose crua da dança no rig e devolve o snapshot alvo.
 
         Compartilhado por apply (que grava no rig) e contribuicao (que apenas
         lê o resultado suavizado por molas), garantindo o mesmo resultado.
         """
+        if self.style in FRASES:
+            return self._montar_alvo_por_passos(rig)
         p = self.phase
         # Acento vindo do envelope por batida/compasso (downbeat mais forte),
         # em vez de um pulso derivado só da fase local.

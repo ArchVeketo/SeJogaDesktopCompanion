@@ -21,13 +21,15 @@ Trio = tuple[float, float, float]
 GRUPOS_BRACO = {"right": ("right-arm", "ant-arm"), "left": ("left-arm", "ant-arm2")}
 _TODOS_GRUPOS_BRACO = frozenset(g for par in GRUPOS_BRACO.values() for g in par)
 _ZERO: Trio = (0.0, 0.0, 0.0)
+#: Grupos escalados pelo ganho (energia); mãos e dedos entram como declarados.
+GRUPOS_COM_GANHO = frozenset({"head", "body"})
 
 
 @dataclass(frozen=True)
 class PoseDanca:
     """Uma pose-chave: deltas de cabeça/tronco e alvos de mão de cada braço."""
 
-    #: Delta em graus por grupo (``head``, ``body``); o que falta vale zero.
+    #: Graus por grupo (``head``/``body`` em delta; ``hand`` etc. absolutos).
     corpo: dict[str, Trio] = field(default_factory=dict)
     #: Nome do alvo de mão (``arm_targets.ALVOS``) do braço direito.
     braco_dir: str = "idle"
@@ -72,7 +74,7 @@ def amostrar_passo(
     """Pose (graus) do ``passo`` na fração ``u`` (0..1) da batida.
 
     O último trecho vai até o acento do ``proximo`` (ou do próprio passo, que
-    fecha o laço). ``ganho`` escala só cabeça/tronco; os braços vão ao alvo.
+    fecha o laço). ``ganho`` escala só cabeça/tronco; braços e mãos vão ao declarado.
     """
     destino = (proximo or passo).poses[0]
     chaves = [*zip(tune.U_POSES, passo.poses, strict=True), (1.0, destino)]
@@ -81,6 +83,6 @@ def amostrar_passo(
     for grupo in _grupos_das_poses([pose for _, pose in chaves]):
         faixa = tuple((quando, _trio_do_grupo(pose, grupo)) for quando, pose in chaves)
         trio = sample_track(faixa, u)
-        saida[grupo] = trio if grupo in _TODOS_GRUPOS_BRACO else tuple(v * ganho for v in trio)
+        saida[grupo] = tuple(v * ganho for v in trio) if grupo in GRUPOS_COM_GANHO else trio
 
     return saida

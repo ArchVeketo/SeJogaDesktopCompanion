@@ -2,14 +2,47 @@
 
 from __future__ import annotations
 
+from math import radians
+
 import pytest
 
+from sejoga.animacao import braco_tuning as bt
+from sejoga.animacao import colisao_bracos as cb
 from sejoga.animacao import dance_tuning as tune
+from sejoga.animacao.dance_frases_tuning import FRASES
 from sejoga.animacao.dance_poses import PassoDanca, PoseDanca, amostrar_passo
-from sejoga.nucleo.rig import braco_hpr_graus
+from sejoga.nucleo.assets import resolve_model
+from sejoga.nucleo.model import load_model
+from sejoga.nucleo.rig import Rotation3, braco_hpr_graus
 
 #: Tolerância (graus) de comparação entre amostras.
 TOLERANCIA_GRAUS = 1e-6
+#: Amostras por batida ao varrer uma frase.
+AMOSTRAS_POR_BATIDA = 10
+#: Folga (u) sobre a de colisão: a interpolação entre alvos livres pode raspar.
+FOLGA_TRANSICAO_U = 0.02
+#: Fração de batida antes do fim do passo usada para checar a emenda.
+EPSILON_EMENDA = 1e-4
+#: Maior diferença (graus) aceita na emenda entre dois passos (sem pop).
+POP_MAXIMO_GRAUS = 0.5
+GRUPOS_BRACO = ("right-arm", "left-arm", "ant-arm", "ant-arm2")
+
+
+def _varrer(frase: tuple[PassoDanca, ...]) -> list[dict[str, tuple[float, float, float]]]:
+    """Amostras da frase inteira, passo a passo, fechando no primeiro passo."""
+    amostras = []
+    for i, passo in enumerate(frase):
+        proximo = frase[(i + 1) % len(frase)]
+        for k in range(AMOSTRAS_POR_BATIDA):
+            amostras.append(amostrar_passo(passo, k / AMOSTRAS_POR_BATIDA, proximo))
+    amostras.append(amostrar_passo(frase[0], 0.0))
+
+    return amostras
+
+
+@pytest.fixture(scope="module")
+def modelo():
+    return load_model(resolve_model())
 
 
 def _passo_de_teste() -> PassoDanca:
@@ -86,3 +119,51 @@ def test_u_poses_tem_quatro_instantes_crescentes_com_acento_no_onset():
     assert tune.U_POSES[0] == 0.0
     assert list(tune.U_POSES) == sorted(tune.U_POSES)
     assert tune.U_POSES[-1] < 1.0
+
+
+@pytest.mark.parametrize("estilo", sorted(FRASES))
+def test_frase_tem_quatro_poses_por_passo(estilo):
+    for passo in FRASES[estilo]:
+        assert len(passo.poses) == 4
+
+
+@pytest.mark.parametrize("estilo", sorted(FRASES))
+def test_frase_fecha_o_laco_sem_pop_nas_emendas(estilo):
+    frase = FRASES[estilo]
+
+    for i, passo in enumerate(frase):
+        proximo = frase[(i + 1) % len(frase)]
+        fim = amostrar_passo(passo, 1.0 - EPSILON_EMENDA, proximo)
+        inicio = amostrar_passo(proximo, 0.0)
+        for grupo, trio in fim.items():
+            for a, b in zip(trio, inicio[grupo], strict=True):
+                assert abs(a - b) < POP_MAXIMO_GRAUS, (estilo, i, grupo)
+
+
+@pytest.mark.parametrize("estilo", sorted(FRASES))
+def test_frase_mantem_cotovelos_sem_hiperextensao(estilo):
+    for amostra in _varrer(FRASES[estilo]):
+        assert amostra["ant-arm"][2] >= -TOLERANCIA_GRAUS
+        assert amostra["ant-arm2"][2] <= TOLERANCIA_GRAUS
+
+
+@pytest.mark.parametrize("estilo", sorted(FRASES))
+def test_frase_mantem_bracos_dentro_dos_clamps_do_resolvedor(estilo):
+    for amostra in _varrer(FRASES[estilo]):
+        for grupo in ("right-arm", "left-arm"):
+            _, azimute, elevacao = amostra[grupo]
+            assert bt.OMBRO_ELEVACAO_MIN_GRAUS <= elevacao <= bt.OMBRO_ELEVACAO_MAX_GRAUS
+            assert bt.OMBRO_AZIMUTE_MIN_GRAUS <= azimute <= bt.OMBRO_AZIMUTE_MAX_GRAUS
+        assert amostra["ant-arm"][2] <= bt.COTOVELO_MAX_GRAUS
+
+
+@pytest.mark.parametrize("estilo", sorted(FRASES))
+def test_frase_nao_atravessa_o_corpo_com_o_modelo_real(modelo, estilo):
+    for amostra in _varrer(FRASES[estilo]):
+        pose = {
+            grupo: Rotation3(*(radians(v) for v in amostra[grupo])) for grupo in GRUPOS_BRACO
+        }
+        for lado in ("right", "left"):
+            assert cb.penetracao_do_lado(modelo, lado, pose) <= (
+                cb.FOLGA_PENETRACAO_U + FOLGA_TRANSICAO_U
+            ), (estilo, lado)
