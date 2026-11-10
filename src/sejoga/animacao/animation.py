@@ -687,9 +687,9 @@ class AnimationController:
         if state == AnimationState.DRAG:
             return delta_drag(motion, grab_part)
         if state == AnimationState.WALK:
-            return delta_walk(t, run=False)
+            return delta_walk(self.leg_motion.phase, run=False)
         if state == AnimationState.RUN:
-            return delta_walk(t, run=True)
+            return delta_walk(self.leg_motion.phase, run=True)
         if state == AnimationState.FALL:
             return delta_fall(self.state_time, velocity)
         if state == AnimationState.SLEEP:

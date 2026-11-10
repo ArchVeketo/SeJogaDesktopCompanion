@@ -220,21 +220,20 @@ def pose_idle(
 
 
 def pose_walk(rig: Rig, t: float, *, run: bool = False) -> None:
-    """Passada alternada, lida de um clipe de keyframes (ver anim_clips)."""
+    """Passada alternada: delta do clipe (ver anim_clips) sobre o repouso."""
     from sejoga.animacao.anim_clips import amostrar_clipe
+    from sejoga.animacao.rig_base import pose_repouso
     frequency = 2.5 if run else 1.5
     # Um ciclo do clipe = uma passada completa; a frequência controla o ritmo.
-    pose = amostrar_clipe("run" if run else "walk", t * frequency)
+    delta = amostrar_clipe("run" if run else "walk", t * frequency)
+    repouso = pose_repouso()
     rig.set_rotation("legs", x=0)
     rig.set_rotation("left-feet", x=0)
     rig.set_rotation("right-feet", x=0)
-    for group, (x, y, z) in pose.items():
-        rig.set_rotation(group, x=x, y=y, z=z)
-
-    # Compensação de ombro a partir do antebraço amostrado do clipe.
-    shoulder_comp = degrees(rig.current["ant-arm"].x) * 0.15
-    rig.set_rotation("shoulder", x=shoulder_comp)
-    rig.set_rotation("shoulder2", x=-shoulder_comp)
+    for group, (dx, dy, dz) in delta.items():
+        base = repouso[group]
+        rig.set_rotation(group, x=degrees(base.x) + dx, y=degrees(base.y) + dy,
+                         z=degrees(base.z) + dz)
 
 
 def pose_drag(rig: Rig, t: float, direction: float = 0.0, drag_intensity: float = 0.0) -> None:

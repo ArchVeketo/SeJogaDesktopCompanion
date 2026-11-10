@@ -94,10 +94,10 @@ def test_walk_and_drag_poses_have_counterbalanced_arms():
 
     from sejoga.nucleo.rig import pose_drag, pose_walk
     animation = controller()
-    pose_walk(animation.rig, 1 / 6)
-    walk_left = degrees(animation.rig.current["left-arm"].z)
-    pose_walk(animation.rig, .5)
-    walk_other = degrees(animation.rig.current["left-arm"].z)
+    pose_walk(animation.rig, 0.0)
+    walk_left = degrees(animation.rig.current["left-arm"].y)
+    pose_walk(animation.rig, 1 / 3)
+    walk_other = degrees(animation.rig.current["left-arm"].y)
     assert abs(walk_left - walk_other) > 10
     # Convenção medida no grafo de cena (não confirmada na GPU): o arraste estende o braço para a FRENTE pela
     # PROFUNDIDADE (Y/heading), não pela elevação (Z): cada direção avança um

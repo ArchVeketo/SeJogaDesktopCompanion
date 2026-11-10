@@ -14,6 +14,7 @@ from math import cos, radians, sin, tau
 
 from sejoga.animacao import body_motion_tuning as tune
 from sejoga.animacao import sono_tuning as sono
+from sejoga.animacao.anim_clips import amostrar_clipe, ciclo_da_fase
 from sejoga.animacao.body_motion import BodyPose
 from sejoga.animacao.idle_clips import camada_respiracao, sample_idle, sample_track
 from sejoga.animacao.rig_base import REPOUSO
@@ -194,13 +195,14 @@ def _somar_z(rot: Rotation3, z_graus: float) -> Rotation3:
     return Rotation3(rot.x, rot.y, rot.z + radians(z_graus))
 
 
-def delta_walk(t: float, run: bool = False) -> dict[str, Rotation3]:
+def delta_walk(fase: float, run: bool = False) -> dict[str, Rotation3]:
     """Delta aditivo do estado de caminhada/corrida.
 
     Parameters
     ----------
-    t:
-        Tempo do clock (segundos).
+    fase:
+        Fase da passada (radianos), a MESMA de ``LegMotion.phase``: os braços
+        balançam em contrafase às pernas porque partilham este relógio.
     run:
         Se True, corrida (mais amplitude).
 
@@ -208,20 +210,11 @@ def delta_walk(t: float, run: bool = False) -> dict[str, Rotation3]:
     -------
     Delta em radianos a ser somado à pose de repouso.
     """
-    # Frequência e amplitude dependem se caminhando ou correndo
-    freq = 5.0 if run else 3.0
-    amp = 1.5 if run else 1.0
-
-    phase = t * freq
-    arm_swing = sin(phase) * 15 * amp
-    body_sway = sin(phase) * 2 * amp
-    head_bob = sin(phase * 2) * 1.5 * amp
+    clipe = amostrar_clipe("run" if run else "walk", ciclo_da_fase(fase))
 
     return {
-        "body": Rotation3(radians(head_bob * 0.5), radians(body_sway), 0),
-        "head": Rotation3(radians(head_bob), 0, 0),
-        "right-arm": Rotation3(radians(arm_swing), 0, 0),
-        "left-arm": Rotation3(radians(-arm_swing), 0, 0),
+        grupo: Rotation3(radians(x), radians(y), radians(z))
+        for grupo, (x, y, z) in clipe.items()
     }
 
 

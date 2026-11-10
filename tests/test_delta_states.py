@@ -70,29 +70,43 @@ def test_delta_drag_perna_recolhe_bracos():
         assert punho(composta, lado)[1] <= punho(base, lado)[1] + 1e-6, lado
 
 
-def test_delta_walk_alterna_bracos():
-    """delta_walk produz oscilação alternada dos braços."""
-    delta1 = delta_walk(0.0)
-    delta2 = delta_walk(0.5)
+def test_delta_walk_balanca_bracos_por_y_e_quase_sem_torcao():
+    """delta_walk balança por y (frente/trás); a torção x é desprezível."""
+    from math import pi
 
-    # Em tempos diferentes, os braços devem estar em posições diferentes
-    if "right-arm" in delta1 and "right-arm" in delta2:
-        assert delta1["right-arm"].x != delta2["right-arm"].x
+    frente = delta_walk(pi / 2)
+    tras = delta_walk(3 * pi / 2)
+
+    assert frente["right-arm"].y > 0 > tras["right-arm"].y
+    assert abs(frente["right-arm"].y) > 10 * abs(frente["right-arm"].x)
+    assert abs(frente["left-arm"].x) < 1e-9
+
+
+def test_delta_walk_braco_oposto_a_perna():
+    """Perna esquerda à frente (sin(fase)>0) = braço direito à frente (y>0)."""
+    from math import pi
+
+    from sejoga.animacao.leg_motion import LegMotion
+
+    movimento = LegMotion()
+    for _ in range(10):
+        movimento.update(1 / 60, "walk")
+    fase = movimento.phase
+    perna_esquerda_a_frente = fase % (2 * pi) < pi
+    braco_direito_a_frente = delta_walk(fase)["right-arm"].y > 0
+
+    assert perna_esquerda_a_frente == braco_direito_a_frente
 
 
 def test_delta_walk_run_tem_mais_amplitude():
     """delta_walk com run=True tem mais amplitude que caminhada."""
-    walk = delta_walk(0.25, run=False)
-    run = delta_walk(0.25, run=True)
+    from math import pi
 
-    # A amplitude do balanço deve ser maior na corrida
-    # (testamos em um ponto onde o sin não é zero)
-    if "body" in walk and "body" in run:
-        # Em algum eixo a corrida deve ter valor absoluto maior
-        assert (
-            abs(run["body"].x) >= abs(walk["body"].x) or
-            abs(run["body"].y) >= abs(walk["body"].y)
-        )
+    walk = delta_walk(pi / 2, run=False)
+    run = delta_walk(pi / 2, run=True)
+
+    assert abs(run["right-arm"].y) > abs(walk["right-arm"].y)
+    assert run["body"].x > walk["body"].x
 
 
 def test_delta_fall_reage_a_velocidade():
