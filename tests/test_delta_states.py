@@ -193,3 +193,40 @@ def test_delta_fisica_peito_mantem_rotacao_em_pe():
 
     assert peito.x != 0.0
     assert peito.z != 0.0
+
+
+@pytest.mark.parametrize("personalidade", list(IdlePersonality))
+def test_delta_idle_fecha_a_frase_sem_pop(personalidade):
+    """Na virada do clipe (10 s) o delta não salta: posição contínua."""
+    from math import degrees
+
+    antes = delta_idle(9.999, personalidade)
+    depois = delta_idle(10.001, personalidade)
+
+    for grupo, rot in antes.items():
+        for eixo in "xyz":
+            salto = degrees(abs(getattr(rot, eixo) - getattr(depois[grupo], eixo)))
+            assert salto < 0.5, f"{personalidade.value}.{grupo}.{eixo} saltou {salto:.2f}"
+
+
+def test_delta_idle_nove_personalidades_distintas():
+    """As nove personalidades produzem deltas diferentes entre si."""
+    for t in (0.0, 2.5, 5.0):
+        deltas = [delta_idle(t, p) for p in IdlePersonality]
+        assert all(a != b for i, a in enumerate(deltas) for b in deltas[i + 1:]), t
+
+
+@pytest.mark.parametrize("personalidade", list(IdlePersonality))
+def test_delta_idle_respiracao_soma_uma_unica_vez(personalidade):
+    """Com respiração=1 o delta difere do de respiração=0 exatamente pela camada."""
+    from math import radians
+
+    from sejoga.animacao.idle_clips import camada_respiracao
+
+    sem = delta_idle(3.3, personalidade, respiracao=0.0)
+    com = delta_idle(3.3, personalidade, respiracao=1.0)
+
+    for grupo, (ex, ey, ez) in camada_respiracao(1.0, 1.0).items():
+        assert com[grupo].x - sem[grupo].x == pytest.approx(radians(ex))
+        assert com[grupo].y - sem[grupo].y == pytest.approx(radians(ey))
+        assert com[grupo].z - sem[grupo].z == pytest.approx(radians(ez))

@@ -57,3 +57,6 @@ def test_four_styles_have_distinct_rest_and_peak_silhouettes():
     for time in (0, 2.5):
         poses = [sample_idle(style, time) for style in CLIPS]
         assert all(a != b for i, a in enumerate(poses) for b in poses[i + 1:])
+
+def test_clips_tem_as_nove_personalidades():
+    assert set(CLIPS) == {p.value for p in IdlePersonality}

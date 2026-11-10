@@ -23,6 +23,7 @@ from math import degrees
 import pytest
 
 import analise_curvas as aa
+from sejoga.animacao.delta_states import delta_idle
 from sejoga.animacao.idle_clips import camada_respiracao
 from sejoga.animacao.respiracao import Respiracao
 from sejoga.animacao.respiracao_tuning import RESPIRACAO_POR_PERSONALIDADE, parametros_de
@@ -140,8 +141,7 @@ def test_loop_da_camada_de_respiracao_fecha_sem_pop(personality: IdlePersonality
 
 # --------------------------------------------------------------------------- #
 # (c) SUAVIDADE — a respiração não introduz trancos (jerk) novos no idle.
-#     (Trancos autorais pré-existentes de rhythm/confident no eixo z não são da
-#     respiração, que só atua no eixo x de peito/ombros/cabeça.)
+#     Os próprios idles também não têm tranco: ver o teste de delta_idle abaixo.
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.parametrize("personality", list(IdlePersonality))
@@ -179,3 +179,19 @@ def test_nove_personalidades_continuam_distintas() -> None:
         assert all(
             a != b for i, a in enumerate(poses) for b in poses[i + 1:]
         ), f"personalidades achatadas em t={t}"
+
+@pytest.mark.parametrize("personality", list(IdlePersonality))
+def test_delta_idle_sem_tranco_em_40_segundos(personality: IdlePersonality) -> None:
+    """O caminho vivo (delta_idle) não tem tranco de jerk nas nove personalidades."""
+    def amostrar(t: float) -> dict[str, tuple[float, float, float]]:
+        return {
+            g: (degrees(r.x), degrees(r.y), degrees(r.z))
+            for g, r in delta_idle(t, personality).items()
+        }
+
+    clipe = aa.ClipeAnalisavel(nome="delta", amostrar=amostrar, duracao=40.0, loop=False)
+    trancos = [c for c in aa.analisar(clipe) if c.categoria == "SUAVIDADE"]
+
+    assert trancos == [], f"{personality.value}: " + "; ".join(
+        f"{c.grupo}.{c.eixo} {c.metrica}" for c in trancos
+    )
