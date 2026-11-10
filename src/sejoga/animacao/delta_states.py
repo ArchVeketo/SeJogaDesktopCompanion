@@ -13,6 +13,7 @@ from __future__ import annotations
 from math import cos, radians, sin, tau
 
 from sejoga.animacao import body_motion_tuning as tune
+from sejoga.animacao import locomocao_tuning as loc
 from sejoga.animacao import sono_tuning as sono
 from sejoga.animacao.anim_clips import amostrar_clipe, ciclo_da_fase
 from sejoga.animacao.body_motion import BodyPose
@@ -107,11 +108,14 @@ def delta_idle(
     return delta
 
 
-def delta_drag(motion: BodyPose, grab_part: str = "body") -> dict[str, Rotation3]:
+def delta_drag(
+    motion: BodyPose, grab_part: str = "body", drag_intensity: float = 0.0
+) -> dict[str, Rotation3]:
     """Delta aditivo do estado de arraste.
 
     Braços reagem à física (pitch, roll, limb_swing), partindo da base de
-    repouso (z=68). O delta DIMINUI ou AUMENTA z conforme a física pede.
+    repouso (z=68). O delta DIMINUI ou AUMENTA z conforme a física pede. Os
+    dedos fecham em garra conforme ``drag_intensity``.
 
     Parameters
     ----------
@@ -119,11 +123,72 @@ def delta_drag(motion: BodyPose, grab_part: str = "body") -> dict[str, Rotation3
         Snapshot do BodyMotion com roll, pitch, limb_swing etc.
     grab_part:
         Parte sendo arrastada: 'body', 'right-arm', 'left-arm', 'legs', etc.
+    drag_intensity:
+        Intensidade do arraste suavizada (0..1); controla o curl dos dedos.
 
     Returns
     -------
     Delta em radianos a ser somado à pose de repouso.
     """
+    delta = _delta_drag_bracos(motion, grab_part)
+    delta.update(_delta_dedos(
+        loc.ARRASTE_DEDOS_BASE + loc.ARRASTE_DEDOS_GRIP * max(0.0, min(1.0, drag_intensity))
+    ))
+
+    return delta
+
+
+def _delta_dedos(curl: float) -> dict[str, Rotation3]:
+    """Curl (graus) em ``fingers``; ``fingers2`` usa o sinal de espelho."""
+    return {
+        "fingers": Rotation3(0, 0, radians(curl)),
+        "fingers2": Rotation3(0, 0, radians(-curl)),
+    }
+
+
+def delta_soltura(tempo: float, aperto: float) -> dict[str, Rotation3]:
+    """Dedos que abrem além do ponto ao largar e assentam (aditivo, fecha em 0).
+
+    Parameters
+    ----------
+    tempo:
+        Segundos desde que o mascote foi solto.
+    aperto:
+        Intensidade do arraste no instante da soltura (0..1).
+
+    Returns
+    -------
+    Delta dos dedos em radianos; vazio fora da janela de soltura.
+    """
+    if tempo >= loc.SOLTURA_DURACAO_S:
+        return {}
+
+    inicio = loc.ARRASTE_DEDOS_BASE + loc.ARRASTE_DEDOS_GRIP * max(0.0, min(1.0, aperto))
+    chaves = (
+        (0.0, (0.0, 0.0, inicio)),
+        (loc.SOLTURA_ABERTURA_S, (0.0, 0.0, loc.SOLTURA_ABERTURA_GRAUS)),
+        (loc.SOLTURA_ASSENTO_S, (0.0, 0.0, loc.SOLTURA_ASSENTO_GRAUS)),
+        (loc.SOLTURA_DURACAO_S, (0.0, 0.0, 0.0)),
+    )
+
+    return _delta_dedos(sample_track(chaves, max(0.0, tempo))[2])
+
+
+def somar_deltas(
+    base: dict[str, Rotation3], extra: dict[str, Rotation3]
+) -> dict[str, Rotation3]:
+    """Soma dois deltas junta a junta (cópia; os argumentos não mudam)."""
+    soma = dict(base)
+
+    for grupo, rot in extra.items():
+        atual = soma.get(grupo, Rotation3())
+        soma[grupo] = Rotation3(atual.x + rot.x, atual.y + rot.y, atual.z + rot.z)
+
+    return soma
+
+
+def _delta_drag_bracos(motion: BodyPose, grab_part: str) -> dict[str, Rotation3]:
+    """Braços e cabeça do arraste por parte pega (termos confirmados na GPU)."""
     delta: dict[str, Rotation3] = {}
 
     if grab_part in ("legs", "left-feet", "right-feet"):
@@ -323,8 +388,7 @@ def delta_sleep(t: float) -> dict[str, Rotation3]:
         0,
         radians(sono.SONO_CABECA_Z_BASE),
     )
-    delta["fingers"] = Rotation3(0, 0, radians(curl))
-    delta["fingers2"] = Rotation3(0, 0, radians(-curl))
+    delta.update(_delta_dedos(curl))
 
     return delta
 

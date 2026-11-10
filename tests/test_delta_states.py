@@ -69,6 +69,36 @@ def test_delta_drag_perna_recolhe_bracos():
     for lado in ("right", "left"):
         assert punho(composta, lado)[1] <= punho(base, lado)[1] + 1e-6, lado
 
+def test_delta_drag_fecha_dedos_com_a_intensidade_e_espelha():
+    """Os dedos fecham com a intensidade do arraste; fingers2 usa o espelho."""
+    motion = BodyPose()
+    solto = delta_drag(motion, "body", 0.0)
+    firme = delta_drag(motion, "body", 1.0)
+
+    assert firme["fingers"].z > solto["fingers"].z > 0
+    assert firme["fingers2"].z == pytest.approx(-firme["fingers"].z)
+
+
+def test_delta_drag_mantem_termos_de_balanco_em_z():
+    """A intensidade só mexe nos dedos: os braços seguem a física como antes."""
+    motion = BodyPose(roll=5, pitch=-10, limb_swing=15)
+    sem = delta_drag(motion, "body", 0.0)
+    com = delta_drag(motion, "body", 1.0)
+
+    for grupo in ("right-arm", "left-arm", "head"):
+        assert sem[grupo] == com[grupo]
+
+
+def test_delta_soltura_abre_alem_do_ponto_e_fecha_em_zero():
+    """Ao largar os dedos abrem (curl negativo) e voltam a zero sem salto."""
+    from sejoga.animacao import locomocao_tuning as loc
+    from sejoga.animacao.delta_states import delta_soltura
+
+    abertura = delta_soltura(loc.SOLTURA_ABERTURA_S, 1.0)
+    assert abertura["fingers"].z < 0 < abertura["fingers2"].z
+    assert delta_soltura(loc.SOLTURA_DURACAO_S, 1.0) == {}
+    assert abs(delta_soltura(loc.SOLTURA_DURACAO_S - 1e-4, 1.0)["fingers"].z) < 1e-3
+
 
 def test_delta_walk_balanca_bracos_por_y_e_quase_sem_torcao():
     """delta_walk balança por y (frente/trás); a torção x é desprezível."""

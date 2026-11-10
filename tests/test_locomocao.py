@@ -148,5 +148,5 @@ def test_arraste_nao_atravessa_o_corpo(modelo, parte):
     for i in range(AMOSTRAS_POR_CICLO):
         u = i / AMOSTRAS_POR_CICLO - 0.5
         movimento = BodyPose(roll=40 * u, pitch=20 * u, limb_swing=30 * u)
-        _sem_atravessar(modelo, delta_drag(movimento, parte))
+        _sem_atravessar(modelo, delta_drag(movimento, parte, 1.0))
 

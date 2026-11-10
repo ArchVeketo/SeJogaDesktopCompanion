@@ -27,7 +27,9 @@ from sejoga.animacao.delta_states import (
     delta_fisica,
     delta_idle,
     delta_sleep,
+    delta_soltura,
     delta_walk,
+    somar_deltas,
 )
 from sejoga.animacao.hand_motion import HandMotion
 from sejoga.animacao.joint_springs import (
@@ -569,6 +571,11 @@ class AnimationController:
             velocity,
             grab_part,
         )
+        # Soltura: os dedos abrem além do ponto ao largar (aditivo, fecha em 0).
+        if delta_estado and not dragging and self.state != AnimationState.DRAG:
+            delta_estado = somar_deltas(
+                delta_estado, delta_soltura(self._release_time, self._release_grip)
+            )
 
         # Determina se o estado atual está totalmente migrado para deltas
         # Estados não migrados usam a pose legada diretamente
@@ -685,7 +692,7 @@ class AnimationController:
         if state in (AnimationState.IDLE, AnimationState.HOVER):
             return delta_idle(t, self.idle_personality, self.respiracao_valor)
         if state == AnimationState.DRAG:
-            return delta_drag(motion, grab_part)
+            return delta_drag(motion, grab_part, self.drag_intensity)
         if state == AnimationState.WALK:
             return delta_walk(self.leg_motion.phase, run=False)
         if state == AnimationState.RUN:

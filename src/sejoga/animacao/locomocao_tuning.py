@@ -48,3 +48,44 @@ CABECA_QUIQUE_CORRIDA = 2.5
 #: Contra-giro da cabeça (``head.y``): mantém o olhar à frente.
 CABECA_CONTRAGIRO_CAMINHADA = 1.5
 CABECA_CONTRAGIRO_CORRIDA = 2.5
+
+# --------------------------------------------------------------------------- #
+# Arraste: dedos agarrando (graus em ``fingers.z``; ``fingers2`` usa o espelho)
+# --------------------------------------------------------------------------- #
+#: Curl mínimo dos dedos enquanto é arrastado (mesmo valor da pose legada).
+ARRASTE_DEDOS_BASE = 8.0
+#: Curl extra proporcional à intensidade do arraste (0..1).
+ARRASTE_DEDOS_GRIP = 24.0
+
+# --------------------------------------------------------------------------- #
+# Soltura: ao largar, os dedos abrem além do ponto e assentam (aditivo)
+# --------------------------------------------------------------------------- #
+#: Duração total da soltura (s); depois dela o delta some, sem salto.
+SOLTURA_DURACAO_S = 0.9
+#: Instante (s) e curl (graus) da abertura máxima: overshoot aberto (negativo).
+SOLTURA_ABERTURA_S = 0.22
+SOLTURA_ABERTURA_GRAUS = -22.0
+#: Instante (s) e curl (graus) do assentamento, antes de voltar a zero.
+SOLTURA_ASSENTO_S = 0.6
+SOLTURA_ASSENTO_GRAUS = 4.0
+
+# --------------------------------------------------------------------------- #
+# Queda: flail em z/y (nunca em torção x) e dedos abertos
+# --------------------------------------------------------------------------- #
+#: Velocidade angular do flail (rad/s) e amplitudes (graus) em z (elevação).
+QUEDA_FLAIL_VELOCIDADE = 8.0
+QUEDA_FLAIL_Z = 10.0
+#: Fração do flail em y (azimute), com o sinal de espelho (y inverte).
+QUEDA_FLAIL_Y_FRACAO = 0.5
+#: Fração do flail que o antebraço acompanha em z (flexão apenas positiva).
+QUEDA_FLAIL_COTOVELO_FRACAO = 0.5
+#: Fração do flail que balança a cabeça (z).
+QUEDA_FLAIL_CABECA_FRACAO = 0.3
+#: Velocidade (px/s) em que o vento satura (efeito 1.0) e inclinação da cabeça.
+QUEDA_VENTO_SATURACAO = 1000.0
+QUEDA_CABECA_INCLINACAO = 8.0
+#: Dedos abertos na queda (curl negativo; ``fingers2`` usa o espelho).
+QUEDA_DEDOS_ABERTOS = -10.0
+#: Tumble leve do corpo por velocidade horizontal (graus por px/s, em body.z).
+QUEDA_TUMBLE_GRAUS_POR_PX = 0.004
+QUEDA_TUMBLE_MAX_GRAUS = 4.0
