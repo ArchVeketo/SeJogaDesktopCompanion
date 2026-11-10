@@ -35,9 +35,9 @@ class RepousoAnatomico:
     """
 
     # Ombro (osso base da cadeia): IK do alvo idle.
-    BRACO_X: float = 27.05     # torção: põe a dobradiça do cotovelo à frente
-    BRACO_Y: float = 0.81     # azimute: braço para o lado, sem recuo
-    BRACO_Z: float = 33.49     # elevação: braço caído, afastado do tronco
+    BRACO_X: float = 27.05  # torção: põe a dobradiça do cotovelo à frente
+    BRACO_Y: float = 0.81  # azimute: braço para o lado, sem recuo
+    BRACO_Z: float = 33.49  # elevação: braço caído, afastado do tronco
 
     # Antebraço (cotovelo): flexão para a frente (IK do alvo idle).
     ANTEBRACO_X: float = 0.0
@@ -59,7 +59,9 @@ def pose_repouso() -> dict[str, Rotation3]:
     """Pose anatômica base em radianos. Todos os estados partem daqui."""
     from math import radians
 
-    braco = Rotation3(radians(REPOUSO.BRACO_X), radians(REPOUSO.BRACO_Y), radians(REPOUSO.BRACO_Z))
+    braco = Rotation3(
+        radians(REPOUSO.BRACO_X), radians(REPOUSO.BRACO_Y), radians(REPOUSO.BRACO_Z)
+    )
     antebraco = Rotation3(radians(REPOUSO.ANTEBRACO_X), 0, radians(REPOUSO.ANTEBRACO_Z))
     mao = Rotation3(radians(REPOUSO.MAO_X), 0, radians(REPOUSO.MAO_Z))
     dedos = Rotation3(0, 0, radians(REPOUSO.DEDOS_Z))

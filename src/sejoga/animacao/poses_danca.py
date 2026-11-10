@@ -12,8 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from sejoga.animacao import danca_tuning as tune
-from sejoga.animacao.clipes_ocioso import sample_track
 from sejoga.animacao.braco_hpr import braco_hpr_graus
+from sejoga.animacao.clipes_ocioso import sample_track
 
 Trio = tuple[float, float, float]
 
@@ -83,6 +83,8 @@ def amostrar_passo(
     for grupo in _grupos_das_poses([pose for _, pose in chaves]):
         faixa = tuple((quando, _trio_do_grupo(pose, grupo)) for quando, pose in chaves)
         trio = sample_track(faixa, u)
-        saida[grupo] = tuple(v * ganho for v in trio) if grupo in GRUPOS_COM_GANHO else trio
+        saida[grupo] = (
+            tuple(v * ganho for v in trio) if grupo in GRUPOS_COM_GANHO else trio
+        )
 
     return saida

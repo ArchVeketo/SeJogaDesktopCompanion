@@ -48,7 +48,9 @@ def _ciclo(*keys: tuple[float, tuple[float, float, float]]) -> Chaves:
     return keys
 
 
-def _par(frente: tuple[float, float, float], tras: tuple[float, float, float]) -> Chaves:
+def _par(
+    frente: tuple[float, float, float], tras: tuple[float, float, float]
+) -> Chaves:
     """Ciclo de dois extremos: ``frente`` em t=0 e ``tras`` em t=0.5."""
     return _ciclo((0.0, frente), (_MEIO, tras), (1.0, frente))
 
@@ -71,32 +73,41 @@ def _clipe_passada(
         (1.0, (quique, 0.0, 0.0)),
     )
 
-    return ClipeAnim(1.0, {
-        # Braço à frente sobe (z negativo ergue); ao voltar, desce.
-        "right-arm": _par((0.0, braco_y, -braco_z), (0.0, -braco_y, braco_z)),
-        "left-arm": _par((0.0, braco_y, -braco_z), (0.0, -braco_y, braco_z)),
-        # Cotovelo flexiona mais com o braço à frente; nunca hiperestende.
-        "ant-arm": _par((0.0, 0.0, cotovelo), (0.0, 0.0, 0.0)),
-        "ant-arm2": _par((0.0, 0.0, 0.0), (0.0, 0.0, -cotovelo)),
-        # Tronco gira com o ombro que avança e inclina (corrida).
-        "body": _par((inclinacao, giro, 0.0), (inclinacao, -giro, 0.0)),
-        # Cabeça: contra-giro suave + quique a cada apoio (duas vezes por ciclo).
-        "head": _par((0.0, -contragiro, 0.0), (0.0, contragiro, 0.0)),
-        "head" + _SEPARADOR_ROTULO + "quique": quique_chaves,
-    })
+    return ClipeAnim(
+        1.0,
+        {
+            # Braço à frente sobe (z negativo ergue); ao voltar, desce.
+            "right-arm": _par((0.0, braco_y, -braco_z), (0.0, -braco_y, braco_z)),
+            "left-arm": _par((0.0, braco_y, -braco_z), (0.0, -braco_y, braco_z)),
+            # Cotovelo flexiona mais com o braço à frente; nunca hiperestende.
+            "ant-arm": _par((0.0, 0.0, cotovelo), (0.0, 0.0, 0.0)),
+            "ant-arm2": _par((0.0, 0.0, 0.0), (0.0, 0.0, -cotovelo)),
+            # Tronco gira com o ombro que avança e inclina (corrida).
+            "body": _par((inclinacao, giro, 0.0), (inclinacao, -giro, 0.0)),
+            # Cabeça: contra-giro suave + quique a cada apoio (duas vezes por ciclo).
+            "head": _par((0.0, -contragiro, 0.0), (0.0, contragiro, 0.0)),
+            "head" + _SEPARADOR_ROTULO + "quique": quique_chaves,
+        },
+    )
 
 
 CLIPES = {
     "walk": _clipe_passada(
-        loc.BRACO_AZIMUTE_CAMINHADA, loc.BRACO_ELEVACAO_CAMINHADA,
-        loc.COTOVELO_CAMINHADA, loc.TRONCO_GIRO_CAMINHADA,
-        loc.TRONCO_INCLINACAO_CAMINHADA, loc.CABECA_QUIQUE_CAMINHADA,
+        loc.BRACO_AZIMUTE_CAMINHADA,
+        loc.BRACO_ELEVACAO_CAMINHADA,
+        loc.COTOVELO_CAMINHADA,
+        loc.TRONCO_GIRO_CAMINHADA,
+        loc.TRONCO_INCLINACAO_CAMINHADA,
+        loc.CABECA_QUIQUE_CAMINHADA,
         loc.CABECA_CONTRAGIRO_CAMINHADA,
     ),
     "run": _clipe_passada(
-        loc.BRACO_AZIMUTE_CORRIDA, loc.BRACO_ELEVACAO_CORRIDA,
-        loc.COTOVELO_CORRIDA, loc.TRONCO_GIRO_CORRIDA,
-        loc.TRONCO_INCLINACAO_CORRIDA, loc.CABECA_QUIQUE_CORRIDA,
+        loc.BRACO_AZIMUTE_CORRIDA,
+        loc.BRACO_ELEVACAO_CORRIDA,
+        loc.COTOVELO_CORRIDA,
+        loc.TRONCO_GIRO_CORRIDA,
+        loc.TRONCO_INCLINACAO_CORRIDA,
+        loc.CABECA_QUIQUE_CORRIDA,
         loc.CABECA_CONTRAGIRO_CORRIDA,
     ),
 }
@@ -119,7 +130,9 @@ def amostrar_clipe(nome: str, t: float) -> dict[str, tuple[float, float, float]]
 
 def amostrar_clipe_rotacoes(nome: str, t: float) -> dict[str, Rotation3]:
     """Igual a :func:`amostrar_clipe`, porém devolvendo ``Rotation3`` em graus."""
-    return {grupo: Rotation3(*valor) for grupo, valor in amostrar_clipe(nome, t).items()}
+    return {
+        grupo: Rotation3(*valor) for grupo, valor in amostrar_clipe(nome, t).items()
+    }
 
 
 def ciclo_da_fase(fase: float) -> float:

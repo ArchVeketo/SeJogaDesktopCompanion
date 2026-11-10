@@ -20,18 +20,39 @@ ORDEM_PRIORIDADE = ("base", "locomocao", "interacao", "musica", "fisica")
 
 # Juntas controladas pela camada de música (dança). As pernas/pés ficam de
 # fora: continuam vindo da base e do IK de lower_body.
-MASCARA_MUSICA = frozenset({
-    "head", "body", "right-arm", "left-arm", "ant-arm", "ant-arm2",
-    "hand", "hand2", "fingers", "fingers2", "door",
-})
+MASCARA_MUSICA = frozenset(
+    {
+        "head",
+        "body",
+        "right-arm",
+        "left-arm",
+        "ant-arm",
+        "ant-arm2",
+        "hand",
+        "hand2",
+        "fingers",
+        "fingers2",
+        "door",
+    }
+)
 
 # Juntas da camada de interação (follow-through da cadeia dos braços). Cobre as
 # duas cadeias ombro->antebraço->mão->dedos; não toca cabeça/corpo/pernas, para
 # não sobrescrever música e locomoção.
-MASCARA_INTERACAO = frozenset({
-    "right-arm", "left-arm", "ant-arm", "ant-arm2",
-    "hand", "hand2", "fingers", "fingers2", "shoulder", "shoulder2",
-})
+MASCARA_INTERACAO = frozenset(
+    {
+        "right-arm",
+        "left-arm",
+        "ant-arm",
+        "ant-arm2",
+        "hand",
+        "hand2",
+        "fingers",
+        "fingers2",
+        "shoulder",
+        "shoulder2",
+    }
+)
 
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
@@ -88,6 +109,7 @@ class LayerStack:
     """
 
     def __init__(self) -> None:
+        """Inicia a pilha sem camadas."""
         from sejoga.animacao.pose_repouso import pose_repouso
 
         self._camadas: dict[str, CamadaDelta] = {}
@@ -131,6 +153,7 @@ class CamadaAnim:
     mascara: frozenset[str] | None = None
 
     def afeta(self, grupo: str) -> bool:
+        """Informa se a camada afeta o grupo do rig."""
         return self.mascara is None or grupo in self.mascara
 
     def aplicada(self, grupo: str) -> Rotation3 | None:
@@ -142,7 +165,9 @@ class CamadaAnim:
             return None
         if self.peso == 1.0:
             return rotacao
-        return Rotation3(rotacao.x * self.peso, rotacao.y * self.peso, rotacao.z * self.peso)
+        return Rotation3(
+            rotacao.x * self.peso, rotacao.y * self.peso, rotacao.z * self.peso
+        )
 
 
 class MixerCamadas:

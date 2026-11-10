@@ -90,7 +90,9 @@ select = [
   "N", "D", "C901", "PLR0915", "PLR1702",
 ]
 # N802/N816: nomes camelCase exigidos por Panda3D/Qt/Win32 (userExit, nextEntry).
-ignore = ["E501", "N802", "N816"]
+# D401: a heurística de modo imperativo do ruff é do inglês e erra nas
+# docstrings em português ("Converte" falha, "Devolve" passa).
+ignore = ["E501", "N802", "N816", "D401"]
 # PLR1702 so existe como regra em preview; explicit-preview-rules impede que o
 # preview ligue outras regras fora do escopo da convencao.
 preview = true

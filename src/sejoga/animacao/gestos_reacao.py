@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from math import exp, sin, tau
 
-from sejoga.animacao import gestos_tuning as T
-from sejoga.animacao.clipes_ocioso import sample_track
+from sejoga.animacao import gestos_tuning as tuning_gestos
 from sejoga.animacao.braco_hpr import braco_hpr_graus
+from sejoga.animacao.clipes_ocioso import sample_track
 from sejoga.nucleo.esqueleto import Rig
 
 Trio = tuple[float, float, float]
@@ -45,20 +45,27 @@ def _entre(repouso: Trio, alvo: Trio, fator: float) -> Trio:
 
 def _balanco(instante: float) -> float:
     """Balanço amortecido do aceno em -1..1 (zero antes, depois e nas pontas)."""
-    decorrido = instante - T.ACENO_BALANCO_INICIO_S
-    duracao = T.ACENO_BALANCOS / T.ACENO_FREQUENCIA_HZ
+    decorrido = instante - tuning_gestos.ACENO_BALANCO_INICIO_S
+    duracao = tuning_gestos.ACENO_BALANCOS / tuning_gestos.ACENO_FREQUENCIA_HZ
 
     if decorrido <= 0.0 or decorrido >= duracao:
         return 0.0
 
-    entrada = _suave(decorrido / T.ACENO_SUAVIZACAO_S)
-    saida = _suave((duracao - decorrido) / T.ACENO_SUAVIZACAO_S)
-    oscilacao = sin(tau * T.ACENO_FREQUENCIA_HZ * decorrido)
+    entrada = _suave(decorrido / tuning_gestos.ACENO_SUAVIZACAO_S)
+    saida = _suave((duracao - decorrido) / tuning_gestos.ACENO_SUAVIZACAO_S)
+    oscilacao = sin(tau * tuning_gestos.ACENO_FREQUENCIA_HZ * decorrido)
 
-    return oscilacao * exp(-T.ACENO_AMORTECIMENTO * decorrido) * entrada * saida
+    return (
+        oscilacao
+        * exp(-tuning_gestos.ACENO_AMORTECIMENTO * decorrido)
+        * entrada
+        * saida
+    )
 
 
-def _entre_braco(lado: str, nome_alvo: str, fator: float, fator_cotovelo: float) -> dict[str, Trio]:
+def _entre_braco(
+    lado: str, nome_alvo: str, fator: float, fator_cotovelo: float
+) -> dict[str, Trio]:
     """HPR do braço entre o repouso e o alvo, com fator próprio para o cotovelo.
 
     O cotovelo tem faixa própria (sem recuo de antecipação): o recuo cruzaria
@@ -74,7 +81,9 @@ def _entre_braco(lado: str, nome_alvo: str, fator: float, fator_cotovelo: float)
     }
 
 
-def _aplicar_braco(rig: Rig, lado: str, hpr: dict[str, Trio], cotovelo_extra: float = 0.0) -> None:
+def _aplicar_braco(
+    rig: Rig, lado: str, hpr: dict[str, Trio], cotovelo_extra: float = 0.0
+) -> None:
     """Grava ombro e cotovelo do ``lado``; o cotovelo nunca hiperestende."""
     ombro, cotovelo = _GRUPOS_BRACO[lado]
     x, y, z = hpr[ombro]
@@ -87,28 +96,36 @@ def _aplicar_braco(rig: Rig, lado: str, hpr: dict[str, Trio], cotovelo_extra: fl
 
 def aplicar_aceno(rig: Rig, t: float) -> None:
     """Aceno: antecipa, ergue o braço direito, balança o antebraço e desce."""
-    elevacao = _faixa(T.ACENO_ELEVACAO_CHAVES, t)
+    elevacao = _faixa(tuning_gestos.ACENO_ELEVACAO_CHAVES, t)
     balanco = _balanco(t)
-    balanco_cabeca = _balanco(t - T.ACENO_CABECA_ATRASO_S)
+    balanco_cabeca = _balanco(t - tuning_gestos.ACENO_CABECA_ATRASO_S)
     # O centro do balanço fica mais estendido que o alvo: o punho não entra na cabeça.
-    desvio = T.ACENO_ANTEBRACO_DESLOCAMENTO * elevacao + T.ACENO_ANTEBRACO_GRAUS * balanco
+    desvio = (
+        tuning_gestos.ACENO_ANTEBRACO_DESLOCAMENTO * elevacao
+        + tuning_gestos.ACENO_ANTEBRACO_GRAUS * balanco
+    )
     _aplicar_braco(
         rig,
         "right",
-        _entre_braco("right", "wave", elevacao, _faixa(T.ACENO_COTOVELO_CHAVES, t)),
+        _entre_braco(
+            "right", "wave", elevacao, _faixa(tuning_gestos.ACENO_COTOVELO_CHAVES, t)
+        ),
         desvio,
     )
     # O braço esquerdo fica no repouso baixado (só o direito acena).
     _aplicar_braco(rig, "left", braco_hpr_graus("left", "idle"))
-    rig.set_rotation("hand", x=T.ACENO_PULSO_GRAUS * balanco)
-    rig.set_rotation("fingers", z=T.ACENO_DEDOS_GRAUS * elevacao)
+    rig.set_rotation("hand", x=tuning_gestos.ACENO_PULSO_GRAUS * balanco)
+    rig.set_rotation("fingers", z=tuning_gestos.ACENO_DEDOS_GRAUS * elevacao)
     rig.set_rotation(
-        "body", y=T.ACENO_CORPO_GIRO * elevacao, z=T.ACENO_CORPO_INCLINACAO * elevacao - balanco
+        "body",
+        y=tuning_gestos.ACENO_CORPO_GIRO * elevacao,
+        z=tuning_gestos.ACENO_CORPO_INCLINACAO * elevacao - balanco,
     )
     rig.set_rotation(
         "head",
-        y=T.ACENO_CABECA_GIRO * elevacao,
-        z=T.ACENO_CABECA_INCLINACAO * elevacao + T.ACENO_CABECA_GRAUS * balanco_cabeca,
+        y=tuning_gestos.ACENO_CABECA_GIRO * elevacao,
+        z=tuning_gestos.ACENO_CABECA_INCLINACAO * elevacao
+        + tuning_gestos.ACENO_CABECA_GRAUS * balanco_cabeca,
     )
 
 
@@ -119,20 +136,22 @@ def _entre_extremos(golpe: float, no_recuo: float, na_estocada: float) -> float:
     return (na_estocada - no_recuo) / 2.0 * golpe + quadratico * golpe * golpe
 
 
-def aplicar_cutucar(rig: Rig, t: float, ombro: Trio, cotovelo: tuple[float, float]) -> None:
+def aplicar_cutucar(
+    rig: Rig, t: float, ombro: Trio, cotovelo: tuple[float, float]
+) -> None:
     """Cutucar: recuo, estocada, sustentação e recuperação do braço direito.
 
     ``ombro`` é o HPR-base de ``right-arm`` e ``cotovelo`` é ``(x, z)`` de ``ant-arm``.
     """
-    recuo = T.CUTUCAR_RECUO_S
-    estocada = recuo + T.CUTUCAR_ESTOCADA_S
-    sustentacao = estocada + T.CUTUCAR_SUSTENTACAO_S
+    recuo = tuning_gestos.CUTUCAR_RECUO_S
+    estocada = recuo + tuning_gestos.CUTUCAR_ESTOCADA_S
+    sustentacao = estocada + tuning_gestos.CUTUCAR_SUSTENTACAO_S
     chaves = (
         (0.0, 0.0),
         (recuo, -1.0),
         (estocada, 1.0),
         (sustentacao, 1.0),
-        (T.CUTUCAR_DURACAO_S, 0.0),
+        (tuning_gestos.CUTUCAR_DURACAO_S, 0.0),
     )
     golpe = _faixa(chaves, t)
     # 0 no recuo e em repouso, 1 na estocada: abre porta, estende cotovelo, fecha dedos.
@@ -141,37 +160,57 @@ def aplicar_cutucar(rig: Rig, t: float, ombro: Trio, cotovelo: tuple[float, floa
     rig.set_rotation(
         "right-arm",
         x=bx,
-        y=by + _entre_extremos(golpe, T.CUTUCAR_OMBRO_RECUO, T.CUTUCAR_OMBRO_ESTOCADA),
-        z=bz - T.CUTUCAR_OMBRO_ELEVACAO * golpe,
+        y=by
+        + _entre_extremos(
+            golpe,
+            tuning_gestos.CUTUCAR_OMBRO_RECUO,
+            tuning_gestos.CUTUCAR_OMBRO_ESTOCADA,
+        ),
+        z=bz - tuning_gestos.CUTUCAR_OMBRO_ELEVACAO * golpe,
     )
     rig.set_rotation(
-        "ant-arm", x=cotovelo[0], z=cotovelo[1] * (1.0 - T.CUTUCAR_COTOVELO_EXTENSAO * avanco)
+        "ant-arm",
+        x=cotovelo[0],
+        z=cotovelo[1] * (1.0 - tuning_gestos.CUTUCAR_COTOVELO_EXTENSAO * avanco),
     )
     rig.set_rotation(
-        "body", x=_entre_extremos(golpe, T.CUTUCAR_TRONCO_RECUO, T.CUTUCAR_TRONCO_ESTOCADA)
+        "body",
+        x=_entre_extremos(
+            golpe,
+            tuning_gestos.CUTUCAR_TRONCO_RECUO,
+            tuning_gestos.CUTUCAR_TRONCO_ESTOCADA,
+        ),
     )
     rig.set_rotation(
         "head",
-        x=_entre_extremos(golpe, T.CUTUCAR_CABECA_RECUO, T.CUTUCAR_CABECA_ESTOCADA),
-        z=T.CUTUCAR_CABECA_ROLL * avanco,
+        x=_entre_extremos(
+            golpe,
+            tuning_gestos.CUTUCAR_CABECA_RECUO,
+            tuning_gestos.CUTUCAR_CABECA_ESTOCADA,
+        ),
+        z=tuning_gestos.CUTUCAR_CABECA_ROLL * avanco,
     )
-    rig.set_rotation("door", y=T.CUTUCAR_PORTA_GRAUS * avanco)
-    rig.set_rotation("fingers", z=T.CUTUCAR_DEDOS_GRAUS * avanco)
+    rig.set_rotation("door", y=tuning_gestos.CUTUCAR_PORTA_GRAUS * avanco)
+    rig.set_rotation("fingers", z=tuning_gestos.CUTUCAR_DEDOS_GRAUS * avanco)
 
 
 def aplicar_alongar(rig: Rig, t: float) -> None:
     """Alongar: respira, sobe os dois braços, arqueia a coluna, boceja e solta."""
-    elevacao = _faixa(T.ALONGAR_ELEVACAO_CHAVES, t)
-    respiro = _faixa(T.ALONGAR_RESPIRO_CHAVES, t)
-    queda = _faixa(T.ALONGAR_QUEDA_CHAVES, t)
-    cotovelo = _faixa(T.ALONGAR_COTOVELO_CHAVES, t)
-    bocejo = _faixa(T.ALONGAR_BOCEJO_CHAVES, t)
+    elevacao = _faixa(tuning_gestos.ALONGAR_ELEVACAO_CHAVES, t)
+    respiro = _faixa(tuning_gestos.ALONGAR_RESPIRO_CHAVES, t)
+    queda = _faixa(tuning_gestos.ALONGAR_QUEDA_CHAVES, t)
+    cotovelo = _faixa(tuning_gestos.ALONGAR_COTOVELO_CHAVES, t)
+    bocejo = _faixa(tuning_gestos.ALONGAR_BOCEJO_CHAVES, t)
 
     for lado in ("right", "left"):
         _aplicar_braco(rig, lado, _entre_braco(lado, "stretch", elevacao, cotovelo))
 
-    rig.set_rotation("body", x=-T.ALONGAR_ARCO_GRAUS * elevacao + T.ALONGAR_RESPIRO_GRAUS * respiro)
-    rig.set_rotation("head", x=-T.ALONGAR_CABECA_GRAUS * elevacao)
-    rig.set_rotation("door", y=T.ALONGAR_PORTA_GRAUS * bocejo)
-    rig.set_rotation("shoulder", x=T.ALONGAR_OMBRO_QUEDA_GRAUS * queda)
-    rig.set_rotation("shoulder2", x=-T.ALONGAR_OMBRO_QUEDA_GRAUS * queda)
+    rig.set_rotation(
+        "body",
+        x=-tuning_gestos.ALONGAR_ARCO_GRAUS * elevacao
+        + tuning_gestos.ALONGAR_RESPIRO_GRAUS * respiro,
+    )
+    rig.set_rotation("head", x=-tuning_gestos.ALONGAR_CABECA_GRAUS * elevacao)
+    rig.set_rotation("door", y=tuning_gestos.ALONGAR_PORTA_GRAUS * bocejo)
+    rig.set_rotation("shoulder", x=tuning_gestos.ALONGAR_OMBRO_QUEDA_GRAUS * queda)
+    rig.set_rotation("shoulder2", x=-tuning_gestos.ALONGAR_OMBRO_QUEDA_GRAUS * queda)

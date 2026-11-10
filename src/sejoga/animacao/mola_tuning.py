@@ -49,10 +49,10 @@ TENSAO_PADRAO = TensaoJunta(frequencia=2.2, amortecimento=0.72, lag=0.0)
 #: abaixo de 1.0 (a mola analítica usa sqrt(1-ζ²)) e com body (0.90) >= dedos,
 #: o invariante de ``tests/test_mola_tuning.py``. NOMEADOS para calibração
 #: fina na GPU: mexer aqui ajusta o "osso" sem tocar na pose de repouso.
-AMORT_BRACO = 0.72       # right-arm/left-arm (antes 0.60)
-AMORT_ANTEBRACO = 0.78   # ant-arm/ant-arm2   (antes 0.50) — pior gelatina
-AMORT_MAO = 0.75         # hand/hand2         (antes 0.50)
-AMORT_DEDOS = 0.62       # fingers/fingers2   (antes 0.40)
+AMORT_BRACO = 0.72  # right-arm/left-arm (antes 0.60)
+AMORT_ANTEBRACO = 0.78  # ant-arm/ant-arm2   (antes 0.50) — pior gelatina
+AMORT_MAO = 0.75  # hand/hand2         (antes 0.50)
+AMORT_DEDOS = 0.62  # fingers/fingers2   (antes 0.40)
 
 
 #: Uma entrada por grupo de ``rig.ALL_GROUPS``. Valores de PARTIDA aprovados;

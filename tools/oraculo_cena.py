@@ -243,7 +243,7 @@ def medir_dedos(modelo) -> list[dict]:
     loadPrcFileData("", "window-type none\naudio-library-name null")
     import gltf
 
-    from sejoga.animacao import dedos_tuning as T
+    from sejoga.animacao import dedos_tuning as tuning_dedos
     from sejoga.render import dedos_malha as dm
 
     raiz = NodePath(gltf.load_model(str(resolve_model())))
@@ -258,7 +258,7 @@ def medir_dedos(modelo) -> list[dict]:
 
     linhas = []
 
-    for grupo, meshes in (("fingers", T.MESH_DEDOS_DIREITA), ("fingers2", T.MESH_DEDOS_ESQUERDA)):
+    for grupo, meshes in (("fingers", tuning_dedos.MESH_DEDOS_DIREITA), ("fingers2", tuning_dedos.MESH_DEDOS_ESQUERDA)):
         no_grupo = raiz.find(f"**/{grupo}")
         rot, origem = cin.transformacao_no(modelo, grupo)
 

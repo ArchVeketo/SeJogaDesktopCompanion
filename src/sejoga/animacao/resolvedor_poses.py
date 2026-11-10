@@ -13,8 +13,8 @@ from math import radians
 from sejoga.animacao import braco_tuning as tun
 from sejoga.animacao.colisao_bracos import ResolvedorBracos
 from sejoga.animacao.molas_juntas import SpringPose
-from sejoga.nucleo.modelo import Model
 from sejoga.nucleo.esqueleto import Rotation3
+from sejoga.nucleo.modelo import Model
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                       Limites anatômicos (clamps)                         ║
@@ -73,8 +73,7 @@ class PoseResolver:
         # Frequência-base por junta (regime estável): para devolver a tensão
         # após a aceleração da transição.
         self._frequencia_base = {
-            grupo: tensao[0]
-            for grupo, tensao in (tensoes_crossfade or {}).items()
+            grupo: tensao[0] for grupo, tensao in (tensoes_crossfade or {}).items()
         }
         self._frequencia_default = frequencia_crossfade
 
@@ -148,7 +147,10 @@ class PoseResolver:
 
         # 3. Braços não atravessam o corpo (FK real, se houver model)
         if model is not None:
-            if self._resolvedor_bracos is None or self._resolvedor_bracos.model is not model:
+            if (
+                self._resolvedor_bracos is None
+                or self._resolvedor_bracos.model is not model
+            ):
                 self._resolvedor_bracos = ResolvedorBracos(model)
 
             pose = self._aplicar_clamps(self._resolvedor_bracos.resolver(pose))
@@ -195,10 +197,12 @@ class PoseResolver:
         if self._just_transitioned:
             # Primeiro frame após a troca: segura a pose anterior (continuidade
             # de posição e velocidade) antes de a mola começar a perseguir.
-            self._crossfade.definir({
-                grupo: self._transition_from.get(grupo, Rotation3())
-                for grupo in pose_alvo
-            })
+            self._crossfade.definir(
+                {
+                    grupo: self._transition_from.get(grupo, Rotation3())
+                    for grupo in pose_alvo
+                }
+            )
             self._just_transitioned = False
             return {
                 grupo: self._transition_from.get(grupo, Rotation3())
@@ -207,7 +211,11 @@ class PoseResolver:
 
         # Molas por junta. Durante a janela de transição acelera-se o retargeting.
         em_transicao = self._state_time < self._transition_seconds
-        freq_troca = max(0.6, 1.0 / self._transition_seconds) if self._transition_seconds > 0 else 1.0
+        freq_troca = (
+            max(0.6, 1.0 / self._transition_seconds)
+            if self._transition_seconds > 0
+            else 1.0
+        )
         for grupo, mola in self._crossfade.molas.items():
             freq_junta = self._frequencia_base.get(grupo, self._frequencia_default)
             frequencia = max(freq_junta, freq_troca) if em_transicao else freq_junta

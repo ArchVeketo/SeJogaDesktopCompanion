@@ -58,7 +58,7 @@ def _clamp(valor: float, minimo: float, maximo: float) -> float:
     return max(minimo, min(maximo, valor))
 
 
-def dist_segmento_segmento(p1: Vetor3, q1: Vetor3, p2: Vetor3, q2: Vetor3) -> float:
+def dist_segmento_segmento(p1: Vetor3, q1: Vetor3, p2: Vetor3, q2: Vetor3) -> float:  # noqa: PLR0915  # TODO convenção: fatiar sem prova visual na GPU arrisca mudar o movimento; lote próprio com caracterização
     """Menor distância entre os segmentos ``[p1,q1]`` e ``[p2,q2]``.
 
     Algoritmo clássico (Ericson, *Real-Time Collision Detection*). Trata
@@ -91,7 +91,11 @@ def dist_segmento_segmento(p1: Vetor3, q1: Vetor3, p2: Vetor3, q2: Vetor3) -> fl
             denominador = a * e - b * b
 
             # Paralelos (denominador ~0): escolhe s=0 e resolve t.
-            s = _clamp((b * f - c * e) / denominador, 0.0, 1.0) if denominador > epsilon else 0.0
+            s = (
+                _clamp((b * f - c * e) / denominador, 0.0, 1.0)
+                if denominador > epsilon
+                else 0.0
+            )
 
             t = (b * s + f) / e
 

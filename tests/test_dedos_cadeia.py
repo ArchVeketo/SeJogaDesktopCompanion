@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from sejoga.animacao import dedos_cascata as cascata
-from sejoga.animacao import dedos_tuning as T
+from sejoga.animacao import dedos_tuning as tuning_dedos
 from sejoga.nucleo import malha_corte as mc
 
 #: Lâmina sintética: comprimento (X), espessura (Z, eixo "cima") e largura (Y).
@@ -23,7 +23,7 @@ COMPRIMENTO, ESPESSURA, LARGURA = 0.146, 0.05, 0.073
 #: UV ao longo do comprimento: u = U0 + GANHO_U * x (linear, como a face longa).
 U0, GANHO_U = 0.25, 0.2
 TOLERANCIA = 1e-9
-FRACOES = T.FRACOES_SEGMENTOS_DEDO
+FRACOES = tuning_dedos.FRACOES_SEGMENTOS_DEDO
 DIRECAO = (1.0, 0.0, 0.0)
 EIXO = mc.eixo_de_flexao(DIRECAO)
 
@@ -75,7 +75,7 @@ def _volume(triangulos):
 def _cortar(angulo_projeto):
     return mc.cortar_cadeia(
         _caixa(), DIRECAO, EIXO, FRACOES, angulo_projeto,
-        T.FRACAO_MAXIMA_SOBREPOSICAO, T.FRACAO_SECAO_DA_RAIZ,
+        tuning_dedos.FRACAO_MAXIMA_SOBREPOSICAO, tuning_dedos.FRACAO_SECAO_DA_RAIZ,
     )
 
 
@@ -109,7 +109,7 @@ def test_recorte_sem_sobreposicao_preserva_area_e_volume():
 
 
 def test_sobreposicao_avanca_sobre_o_vizinho_com_volume_extra_exato():
-    angulo = T.ANGULO_PROJETO_SOBREPOSICAO_GRAUS
+    angulo = tuning_dedos.ANGULO_PROJETO_SOBREPOSICAO_GRAUS
     segmentos = _cortar(angulo)
     e = (ESPESSURA / 2) * tan(radians(angulo) / 2)
     volumes = [_volume(s.triangulos) for s in segmentos]
@@ -123,7 +123,7 @@ def test_sobreposicao_avanca_sobre_o_vizinho_com_volume_extra_exato():
 
 def test_uv_continua_no_plano_de_corte():
     """Todo vértice de superfície criado no corte mantém a UV linear da original."""
-    for segmento in _cortar(T.ANGULO_PROJETO_SOBREPOSICAO_GRAUS):
+    for segmento in _cortar(tuning_dedos.ANGULO_PROJETO_SOBREPOSICAO_GRAUS):
         for t in _sem_tampas(segmento.triangulos):
             for v in t:
                 assert isclose(v[6], U0 + GANHO_U * v[0], abs_tol=1e-9)
@@ -132,7 +132,7 @@ def test_uv_continua_no_plano_de_corte():
 
 def test_sobreposicao_tampa_a_cunha_externa_ate_o_angulo_de_projeto():
     """Ao dobrar θ, as faces externas se cruzam a (t/2)·tan(θ/2) da junta."""
-    for graus in (20.0, 45.0, T.ANGULO_PROJETO_SOBREPOSICAO_GRAUS):
+    for graus in (20.0, 45.0, tuning_dedos.ANGULO_PROJETO_SOBREPOSICAO_GRAUS):
         theta = radians(graus)
         meia = ESPESSURA / 2
         # Face externa do vizinho girado: reta pelo ponto (s, cima) = (meia·sen, meia·cos)
@@ -142,14 +142,14 @@ def test_sobreposicao_tampa_a_cunha_externa_ate_o_angulo_de_projeto():
         p_s, p_c = meia * sin(theta), meia * cos(theta)
         passo = (p_c - meia) / sin(theta)
         cruzamento = p_s + passo * cos(theta)
-        e = mc.sobreposicao(ESPESSURA, graus, 1.0, T.FRACAO_MAXIMA_SOBREPOSICAO)
+        e = mc.sobreposicao(ESPESSURA, graus, 1.0, tuning_dedos.FRACAO_MAXIMA_SOBREPOSICAO)
         assert isclose(cruzamento, meia * tan(theta / 2), abs_tol=1e-12)
         assert e >= cruzamento - 1e-12
 
 
 def test_pivos_ficam_no_centro_da_secao_de_cada_junta():
-    segmentos = _cortar(T.ANGULO_PROJETO_SOBREPOSICAO_GRAUS)
-    juntas = [T.FRACAO_SECAO_DA_RAIZ * COMPRIMENTO, FRACOES[0] * COMPRIMENTO,
+    segmentos = _cortar(tuning_dedos.ANGULO_PROJETO_SOBREPOSICAO_GRAUS)
+    juntas = [tuning_dedos.FRACAO_SECAO_DA_RAIZ * COMPRIMENTO, FRACOES[0] * COMPRIMENTO,
               (FRACOES[0] + FRACOES[1]) * COMPRIMENTO]
 
     for segmento, s in zip(segmentos, juntas, strict=True):
@@ -174,7 +174,7 @@ def test_numero_de_juntas():
 
 @pytest.mark.parametrize("dedo", range(5))
 def test_gesto_fecha_todas_as_juntas_dentro_dos_limites(dedo):
-    limites = T.LIMITES_JUNTA_POLEGAR_GRAUS if dedo == 0 else T.LIMITES_JUNTA_DEDO_GRAUS
+    limites = tuning_dedos.LIMITES_JUNTA_POLEGAR_GRAUS if dedo == 0 else tuning_dedos.LIMITES_JUNTA_DEDO_GRAUS
     aberto = cascata.angulos_juntas(dedo, 1, 0.0, "idle", 0.0, 0.0)
     fechado = cascata.angulos_juntas(dedo, 1, 0.0, "thumbs_up", 0.0, 80.0)
 
@@ -188,7 +188,7 @@ def test_movimento_secundario_vivo_no_idle_e_some_com_gesto_firme():
         return {cascata.angulos_juntas(2, 1, t / 10, "idle", 0.0, flexao) for t in range(40)}
 
     assert len(amostras(0.0)) > 1
-    assert len(amostras(T.FLEXAO_GESTO_REFERENCIA_GRAUS)) == 1
+    assert len(amostras(tuning_dedos.FLEXAO_GESTO_REFERENCIA_GRAUS)) == 1
 
 
 def test_maos_nao_batem_em_unissono():
@@ -199,11 +199,11 @@ def test_maos_nao_batem_em_unissono():
 
 def test_suavizar_converge_sem_salto():
     atual, alvo = (0.0, 0.0, 0.0), (30.0, 40.0, 20.0)
-    passo = cascata.suavizar(atual, alvo, T.PASSO_MAXIMO_S)
+    passo = cascata.suavizar(atual, alvo, tuning_dedos.PASSO_MAXIMO_S)
     assert all(0 < p < a for p, a in zip(passo, alvo, strict=True))
 
     for _ in range(200):
-        atual = cascata.suavizar(atual, alvo, T.PASSO_MAXIMO_S)
+        atual = cascata.suavizar(atual, alvo, tuning_dedos.PASSO_MAXIMO_S)
 
     assert atual == pytest.approx(alvo, abs=1e-3)
 
@@ -234,14 +234,14 @@ def test_recorte_do_asset_real_fecha_cada_segmento_sem_buraco():
     core.loadPrcFileData("", "window-type none\naudio-library-name null")
     raiz = core.NodePath(gltf.load_model(str(resolve_model())))
 
-    for dedo, mesh in enumerate(T.MESH_DEDOS_DIREITA + T.MESH_DEDOS_ESQUERDA):
+    for dedo, mesh in enumerate(tuning_dedos.MESH_DEDOS_DIREITA + tuning_dedos.MESH_DEDOS_ESQUERDA):
         triangulos = dm._ler_triangulos(raiz.find(f"**/mesh{mesh}").node())
         pontos = [(v[0], v[1], v[2]) for t in triangulos for v in t]
         direcao = mc.eixo_principal(pontos)
-        fracoes = T.FRACOES_SEGMENTOS_POLEGAR if dedo % 5 == 0 else FRACOES
+        fracoes = tuning_dedos.FRACOES_SEGMENTOS_POLEGAR if dedo % 5 == 0 else FRACOES
         segmentos = mc.cortar_cadeia(
             triangulos, direcao, mc.eixo_de_flexao(direcao), fracoes, 0.0,
-            T.FRACAO_MAXIMA_SOBREPOSICAO, T.FRACAO_SECAO_DA_RAIZ,
+            tuning_dedos.FRACAO_MAXIMA_SOBREPOSICAO, tuning_dedos.FRACAO_SECAO_DA_RAIZ,
         )
         volumes = [abs(_volume(s.triangulos)) for s in segmentos]
         assert all(v > 0 for v in volumes), mesh

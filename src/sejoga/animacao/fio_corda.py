@@ -85,7 +85,9 @@ def empurrar_ponto_de_capsula(ponto: Vetor3, capsula: Capsula, folga: float) -> 
     t = 0.0
 
     if comprimento_quadrado > EPSILON:
-        t = max(0.0, min(1.0, _dot(_sub(ponto, capsula.a), eixo) / comprimento_quadrado))
+        t = max(
+            0.0, min(1.0, _dot(_sub(ponto, capsula.a), eixo) / comprimento_quadrado)
+        )
 
     mais_proximo = _soma(capsula.a, _esc(eixo, t))
     saida = _sub(ponto, mais_proximo)
@@ -97,7 +99,9 @@ def empurrar_ponto_de_capsula(ponto: Vetor3, capsula: Capsula, folga: float) -> 
     return _soma(mais_proximo, _esc(_normalizar(saida), limite))
 
 
-def empurrar_ponto_de_caixa(ponto: Vetor3, caixa: CaixaOrientada, folga: float) -> Vetor3:
+def empurrar_ponto_de_caixa(
+    ponto: Vetor3, caixa: CaixaOrientada, folga: float
+) -> Vetor3:
     """Afasta ``ponto`` da caixa até ficar ``folga`` fora da superfície."""
     relativo = _sub(ponto, caixa.centro)
     locais = [_dot(relativo, eixo) for eixo in caixa.eixos]
@@ -124,7 +128,9 @@ def _destino_fora_da_caixa(
     locais: list[float], meias: Vetor3, folga: float
 ) -> list[float] | None:
     """Ponto fora da caixa: só move se estiver mais perto que ``folga``."""
-    presos = [max(-meia, min(meia, local)) for local, meia in zip(locais, meias, strict=True)]
+    presos = [
+        max(-meia, min(meia, local)) for local, meia in zip(locais, meias, strict=True)
+    ]
     delta = [local - preso for local, preso in zip(locais, presos, strict=True)]
     distancia = sqrt(sum(d * d for d in delta))
 
@@ -200,8 +206,12 @@ class FioFone:
         dobras = []
 
         for ordem, cadeia in enumerate(self.cadeias):
-            minimo = 2.0 * self._comprimento_do_segmento(ordem) * tuning.FRACAO_MINIMA_DOBRA
-            dobras.extend((a, b, minimo) for a, b in zip(cadeia, cadeia[2:], strict=False))
+            minimo = (
+                2.0 * self._comprimento_do_segmento(ordem) * tuning.FRACAO_MINIMA_DOBRA
+            )
+            dobras.extend(
+                (a, b, minimo) for a, b in zip(cadeia, cadeia[2:], strict=False)
+            )
 
         return dobras
 
@@ -244,7 +254,9 @@ class FioFone:
 
         while self._acumulado >= tuning.PASSO_FIO_S:
             self._acumulado -= tuning.PASSO_FIO_S
-            self._passo_fixo(ancoras, _esc(gravidade, tuning.GRAVIDADE_FIO_U), caixas, capsulas)
+            self._passo_fixo(
+                ancoras, _esc(gravidade, tuning.GRAVIDADE_FIO_U), caixas, capsulas
+            )
 
     def _passo_fixo(
         self,
@@ -267,7 +279,10 @@ class FioFone:
 
     def _salto_grande(self, ancoras: tuple[Vetor3, Vetor3, Vetor3]) -> bool:
         for indice, ordem in self._fixos.items():
-            if _norma(_sub(self.posicoes[indice], ancoras[ordem])) > tuning.SALTO_REINICIO_FIO_U:
+            if (
+                _norma(_sub(self.posicoes[indice], ancoras[ordem]))
+                > tuning.SALTO_REINICIO_FIO_U
+            ):
                 return True
 
         return False
@@ -279,7 +294,9 @@ class FioFone:
         for indice, atual in enumerate(self.posicoes):
             velocidade = _esc(_sub(atual, self._anteriores[indice]), mantida)
             self._anteriores[indice] = atual
-            self.posicoes[indice] = _soma(_soma(atual, velocidade), deslocamento_gravidade)
+            self.posicoes[indice] = _soma(
+                _soma(atual, velocidade), deslocamento_gravidade
+            )
 
     def _prender(self, ancoras: tuple[Vetor3, Vetor3, Vetor3]) -> None:
         for indice, ordem in self._fixos.items():
@@ -293,7 +310,9 @@ class FioFone:
         for a, b, minimo in self._dobras:
             self._corrigir_par(a, b, minimo, tuning.RIGIDEZ_DOBRA, esticar=False)
 
-    def _corrigir_par(self, a: int, b: int, alvo: float, forca: float, *, esticar: bool) -> None:
+    def _corrigir_par(
+        self, a: int, b: int, alvo: float, forca: float, *, esticar: bool
+    ) -> None:
         """Move as duas partículas para a distância ``alvo`` (``esticar``: nos dois sentidos)."""
         diferenca = _sub(self.posicoes[b], self.posicoes[a])
         distancia = _norma(diferenca)
@@ -404,7 +423,12 @@ def _face_do_tubo(
     proximo_canto = (lado + 1) % LADOS_SECAO
     resultado = []
 
-    for anel, canto in ((i, lado), (i, proximo_canto), (i + 1, proximo_canto), (i + 1, lado)):
+    for anel, canto in (
+        (i, lado),
+        (i, proximo_canto),
+        (i + 1, proximo_canto),
+        (i + 1, lado),
+    ):
         u, v = quadros[anel]
         cu, cv = cantos[canto]
         deslocamento = _soma(_esc(u, cu * raio), _esc(v, cv * raio))

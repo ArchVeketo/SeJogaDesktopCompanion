@@ -37,8 +37,8 @@ from sejoga.animacao.primitivas_colisao import (
     penetracao_capsula_capsula,
 )
 from sejoga.nucleo import cinematica as cin
-from sejoga.nucleo.modelo import Model
 from sejoga.nucleo.esqueleto import Rotation3
+from sejoga.nucleo.modelo import Model
 
 Vec3 = cin.Vec3
 
@@ -56,10 +56,13 @@ COMPRIMENTO_MAO_U = 0.33
 #: ficam dentro do tronco. Esse trecho estrutural da raiz não conta como colisão.
 MEIA_LARGURA_TRONCO_U = 0.186
 
+
 # --------------------------------------------------------------------------- #
 # Volumes do corpo em repouso (referencial de autoria): (centro, meias-dimensões)
 # --------------------------------------------------------------------------- #
-def _caixa(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) -> CaixaOrientada:
+def _caixa(
+    x0: float, x1: float, y0: float, y1: float, z0: float, z1: float
+) -> CaixaOrientada:
     """Caixa alinhada aos eixos de autoria a partir dos limites medidos."""
     return CaixaOrientada(
         centro=((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2),
@@ -70,7 +73,9 @@ def _caixa(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) -> 
 
 def _espelhada(caixa: CaixaOrientada) -> CaixaOrientada:
     return CaixaOrientada(
-        centro=cin.espelhar_ponto(caixa.centro), eixos=caixa.eixos, meias_dim=caixa.meias_dim
+        centro=cin.espelhar_ponto(caixa.centro),
+        eixos=caixa.eixos,
+        meias_dim=caixa.meias_dim,
     )
 
 
@@ -130,13 +135,19 @@ def raiz_isenta(model: Model) -> float:
     return max(0.0, MEIA_LARGURA_TRONCO_U + RAIO_BRACO_U - x_ombro)
 
 
-def capsulas_do_braco(model: Model, lado: str, pose: dict[str, Rotation3]) -> list[Capsula]:
+def capsulas_do_braco(
+    model: Model, lado: str, pose: dict[str, Rotation3]
+) -> list[Capsula]:
     """Cápsulas da cadeia ombro→cotovelo→punho→ponta dos dedos, sem a raiz isenta."""
     braco, antebraco, mao = _GRUPOS[lado]
     nos = cin.cadeia(model, mao, pose)
     rot_mao, punho = nos[mao]
-    eixo_osso = cin.EIXO_DIREITA if lado == "right" else cin.espelhar_ponto(cin.EIXO_DIREITA)
-    ponta = cin.somar(punho, cin.escalar(cin.aplicar(rot_mao, eixo_osso), COMPRIMENTO_MAO_U))
+    eixo_osso = (
+        cin.EIXO_DIREITA if lado == "right" else cin.espelhar_ponto(cin.EIXO_DIREITA)
+    )
+    ponta = cin.somar(
+        punho, cin.escalar(cin.aplicar(rot_mao, eixo_osso), COMPRIMENTO_MAO_U)
+    )
     pontos = [nos[braco][1], nos[antebraco][1], punho, ponta]
     restante = raiz_isenta(model)
     capsulas: list[Capsula] = []
@@ -168,7 +179,10 @@ def _longe(capsula: Capsula, caixa: CaixaOrientada) -> bool:
 
 
 def penetracao_do_lado(
-    model: Model, lado: str, pose: dict[str, Rotation3], do_outro: list[Capsula] | None = None
+    model: Model,
+    lado: str,
+    pose: dict[str, Rotation3],
+    do_outro: list[Capsula] | None = None,
 ) -> float:
     """Maior penetração (u) das cápsulas do ``lado`` no corpo e no outro braço.
 
@@ -178,7 +192,9 @@ def penetracao_do_lado(
     minhas = capsulas_do_braco(model, lado, pose)
 
     if do_outro is None:
-        do_outro = capsulas_do_braco(model, "left" if lado == "right" else "right", pose)
+        do_outro = capsulas_do_braco(
+            model, "left" if lado == "right" else "right", pose
+        )
     maior = 0.0
 
     for capsula in minhas:
@@ -207,14 +223,21 @@ def _com_deslocamento(
     soma_ante = Rotation3(0.0, 0.0, dflexao)
 
     if lado == "left":
-        soma_braco, soma_ante = cin.espelhar_rotacao(soma_braco), cin.espelhar_rotacao(soma_ante)
+        soma_braco, soma_ante = (
+            cin.espelhar_rotacao(soma_braco),
+            cin.espelhar_rotacao(soma_ante),
+        )
 
     resultado = dict(pose)
     resultado[braco] = Rotation3(
-        atual_braco.x + soma_braco.x, atual_braco.y + soma_braco.y, atual_braco.z + soma_braco.z
+        atual_braco.x + soma_braco.x,
+        atual_braco.y + soma_braco.y,
+        atual_braco.z + soma_braco.z,
     )
     resultado[antebraco] = Rotation3(
-        atual_ante.x + soma_ante.x, atual_ante.y + soma_ante.y, atual_ante.z + soma_ante.z
+        atual_ante.x + soma_ante.x,
+        atual_ante.y + soma_ante.y,
+        atual_ante.z + soma_ante.z,
     )
 
     return resultado
@@ -227,6 +250,7 @@ class ResolvedorBracos:
     model: Model
 
     def __post_init__(self) -> None:
+        """Valida e normaliza os campos após a criação."""
         self._do_outro: list[Capsula] | None = None
         self._deslocamento: dict[str, list[float]] = {
             "right": [0.0] * GRAUS_DE_LIBERDADE,
@@ -246,18 +270,25 @@ class ResolvedorBracos:
 
         return resultado
 
-    def _penetracao(self, pose: dict[str, Rotation3], lado: str, desloc: list[float]) -> float:
+    def _penetracao(
+        self, pose: dict[str, Rotation3], lado: str, desloc: list[float]
+    ) -> float:
         return penetracao_do_lado(
-            self.model, lado, _com_deslocamento(pose, lado, desloc), do_outro=self._do_outro
+            self.model,
+            lado,
+            _com_deslocamento(pose, lado, desloc),
+            do_outro=self._do_outro,
         )
 
-    def _resolver_lado(self, pose: dict[str, Rotation3], lado: str) -> dict[str, Rotation3]:
+    def _resolver_lado(  # noqa: C901  # TODO convenção: fatiar sem prova visual na GPU arrisca mudar o movimento; lote próprio com caracterização
+        self, pose: dict[str, Rotation3], lado: str
+    ) -> dict[str, Rotation3]:
         desloc = self._deslocamento[lado]
         outro = "left" if lado == "right" else "right"
         self._do_outro = capsulas_do_braco(self.model, outro, pose)
         atual = self._penetracao(pose, lado, desloc)
 
-        for _ in range(ITERACOES_POR_QUADRO):
+        for _ in range(ITERACOES_POR_QUADRO):  # noqa: PLR1702  # TODO convenção: fatiar sem prova visual na GPU arrisca mudar o movimento; lote próprio com caracterização
             if atual <= FOLGA_PENETRACAO_U:
                 break
 
@@ -269,7 +300,10 @@ class ResolvedorBracos:
                         tentativa = list(desloc)
                         tentativa[eixo] = max(
                             -DESLOCAMENTO_MAXIMO_GRAUS,
-                            min(DESLOCAMENTO_MAXIMO_GRAUS, tentativa[eixo] + sinal * passo),
+                            min(
+                                DESLOCAMENTO_MAXIMO_GRAUS,
+                                tentativa[eixo] + sinal * passo,
+                            ),
                         )
                         pen = self._penetracao(pose, lado, tentativa)
 
@@ -287,7 +321,8 @@ class ResolvedorBracos:
 
         if atual <= FOLGA_PENETRACAO_U and any(desloc):
             relaxado = [
-                0.0 if abs(v * RELAXAMENTO_POR_QUADRO) < DESLOCAMENTO_DESPREZIVEL_GRAUS
+                0.0
+                if abs(v * RELAXAMENTO_POR_QUADRO) < DESLOCAMENTO_DESPREZIVEL_GRAUS
                 else v * RELAXAMENTO_POR_QUADRO
                 for v in desloc
             ]

@@ -12,14 +12,14 @@ from __future__ import annotations
 
 from math import cos, radians, sin, tau
 
-from sejoga.animacao import movimento_corpo_tuning as tune
 from sejoga.animacao import locomocao_tuning as loc
+from sejoga.animacao import movimento_corpo_tuning as tune
 from sejoga.animacao import sono_tuning as sono
-from sejoga.animacao.clipes_animacao import amostrar_clipe, ciclo_da_fase
-from sejoga.animacao.movimento_corpo import BodyPose
-from sejoga.animacao.clipes_ocioso import camada_respiracao, sample_idle, sample_track
-from sejoga.animacao.pose_repouso import REPOUSO
 from sejoga.animacao.braco_hpr import braco_hpr_graus
+from sejoga.animacao.clipes_animacao import amostrar_clipe, ciclo_da_fase
+from sejoga.animacao.clipes_ocioso import camada_respiracao, sample_idle, sample_track
+from sejoga.animacao.movimento_corpo import BodyPose
+from sejoga.animacao.pose_repouso import REPOUSO
 from sejoga.nucleo.esqueleto import IdlePersonality, Rotation3
 
 #: Base de repouso (graus) dos grupos de braço, a mesma que ``sample_idle``
@@ -132,9 +132,12 @@ def delta_drag(
     Delta em radianos a ser somado à pose de repouso.
     """
     delta = _delta_drag_bracos(motion, grab_part)
-    delta.update(_delta_dedos(
-        loc.ARRASTE_DEDOS_BASE + loc.ARRASTE_DEDOS_GRIP * max(0.0, min(1.0, drag_intensity))
-    ))
+    delta.update(
+        _delta_dedos(
+            loc.ARRASTE_DEDOS_BASE
+            + loc.ARRASTE_DEDOS_GRIP * max(0.0, min(1.0, drag_intensity))
+        )
+    )
 
     return delta
 
@@ -164,7 +167,9 @@ def delta_soltura(tempo: float, aperto: float) -> dict[str, Rotation3]:
     if tempo >= loc.SOLTURA_DURACAO_S:
         return {}
 
-    inicio = loc.ARRASTE_DEDOS_BASE + loc.ARRASTE_DEDOS_GRIP * max(0.0, min(1.0, aperto))
+    inicio = loc.ARRASTE_DEDOS_BASE + loc.ARRASTE_DEDOS_GRIP * max(
+        0.0, min(1.0, aperto)
+    )
     chaves = (
         (0.0, (0.0, 0.0, inicio)),
         (loc.SOLTURA_ABERTURA_S, (0.0, 0.0, loc.SOLTURA_ABERTURA_GRAUS)),
@@ -196,20 +201,18 @@ def _delta_drag_bracos(motion: BodyPose, grab_part: str) -> dict[str, Rotation3]
         # Pego pela perna/pé: braços e cabeça pendem a favor da gravidade. O
         # alvo da mão (``drag_perna``) recolhe os braços para junto do corpo,
         # ainda mais baixos que o repouso; a oscilação entra aditiva por cima.
-        _CABECA_PENDENTE_X = 22.0
-        _OSCILACAO_PENDENTE = 0.18
 
         delta.update(_delta_braco_ik("drag_perna"))
         delta["head"] = Rotation3(
-            radians(_CABECA_PENDENTE_X),
+            radians(tune.ARRASTE_PENDENTE_CABECA_X),
             0,
-            radians(motion.limb_swing * _OSCILACAO_PENDENTE * 0.4),
+            radians(motion.limb_swing * tune.ARRASTE_PENDENTE_OSCILACAO * 0.4),
         )
         delta["right-arm"] = _somar_z(
-            delta["right-arm"], motion.limb_swing * _OSCILACAO_PENDENTE
+            delta["right-arm"], motion.limb_swing * tune.ARRASTE_PENDENTE_OSCILACAO
         )
         delta["left-arm"] = _somar_z(
-            delta["left-arm"], motion.limb_swing * _OSCILACAO_PENDENTE
+            delta["left-arm"], motion.limb_swing * tune.ARRASTE_PENDENTE_OSCILACAO
         )
     elif grab_part == "right-arm":
         # Pego pelo braço direito: a mão vai para a frente/baixo, puxada.
@@ -225,9 +228,7 @@ def _delta_drag_bracos(motion: BodyPose, grab_part: str) -> dict[str, Rotation3]
         # Pego pelo corpo: braços à frente, equilibrando. Base vinda do alvo de
         # arraste; a física (pitch) e a oscilação somam por cima.
         delta.update(_delta_braco_ik("drag"))
-        delta["head"] = Rotation3(
-            radians(-12), 0, radians(motion.limb_swing * 0.08)
-        )
+        delta["head"] = Rotation3(radians(-12), 0, radians(motion.limb_swing * 0.08))
         delta["right-arm"] = _somar(
             delta["right-arm"], x=-motion.pitch * 0.9, z=motion.limb_swing * 0.25
         )
@@ -251,7 +252,9 @@ def _delta_drag_bracos(motion: BodyPose, grab_part: str) -> dict[str, Rotation3]
     return delta
 
 
-def _somar(rot: Rotation3, *, x: float = 0.0, y: float = 0.0, z: float = 0.0) -> Rotation3:
+def _somar(
+    rot: Rotation3, *, x: float = 0.0, y: float = 0.0, z: float = 0.0
+) -> Rotation3:
     """Soma graus (convertidos) a um ``Rotation3`` em radianos."""
     return Rotation3(rot.x + radians(x), rot.y + radians(y), rot.z + radians(z))
 
@@ -319,7 +322,9 @@ def delta_dance(
     }
 
 
-def delta_fall(t: float, velocity: tuple[float, float] = (0, 0)) -> dict[str, Rotation3]:
+def delta_fall(
+    t: float, velocity: tuple[float, float] = (0, 0)
+) -> dict[str, Rotation3]:
     """Delta aditivo do estado de queda.
 
     Parameters
@@ -338,7 +343,9 @@ def delta_fall(t: float, velocity: tuple[float, float] = (0, 0)) -> dict[str, Ro
     ascending = vy < 0
 
     wind_effect = min(1.0, (abs(vx) + abs(vy)) / loc.QUEDA_VENTO_SATURACAO)
-    head_tilt = -loc.QUEDA_CABECA_INCLINACAO if ascending else loc.QUEDA_CABECA_INCLINACAO
+    head_tilt = (
+        -loc.QUEDA_CABECA_INCLINACAO if ascending else loc.QUEDA_CABECA_INCLINACAO
+    )
 
     # Flail dos braços em z (elevação) e y (azimute), nunca em x (torção). Base:
     # mãos abertas para fora (silhueta aérea), vinda do alvo de queda.
@@ -365,6 +372,7 @@ def delta_fall(t: float, velocity: tuple[float, float] = (0, 0)) -> dict[str, Ro
     delta.update(_delta_dedos(loc.QUEDA_DEDOS_ABERTOS))
 
     return delta
+
 
 def delta_sleep(t: float) -> dict[str, Rotation3]:
     """Delta aditivo do estado de sono.
@@ -448,7 +456,9 @@ def delta_fisica(motion: BodyPose) -> dict[str, Rotation3]:
         return radians(graus if limite is None else max(-limite, min(limite, graus)))
 
     return {
-        "body": Rotation3(_peito(motion.pitch), _peito(motion.yaw), _peito(motion.roll)),
+        "body": Rotation3(
+            _peito(motion.pitch), _peito(motion.yaw), _peito(motion.roll)
+        ),
         "head": Rotation3(
             radians(motion.head_pitch),
             0,

@@ -42,8 +42,8 @@ from math import acos, cos, pi, sin, sqrt
 
 from sejoga.animacao import braco_tuning as tun
 from sejoga.nucleo import cinematica as cin
-from sejoga.nucleo.modelo import Model
 from sejoga.nucleo.esqueleto import Rotation3
+from sejoga.nucleo.modelo import Model
 
 Vec3 = cin.Vec3
 Mat3 = cin.Mat3
@@ -120,7 +120,9 @@ def posicao_mao_para_hpr(
 def _perpendicular(v: Vec3, preferida: Vec3) -> Vec3:
     """Componente de ``preferida`` ⊥ ``v`` (unitária); cai em outro eixo se nula."""
     for candidato in (preferida, cin.EIXO_FRENTE, cin.EIXO_CIMA, cin.EIXO_DIREITA):
-        perp = cin.subtrair(candidato, cin.escalar(v, cin.produto_escalar(candidato, v)))
+        perp = cin.subtrair(
+            candidato, cin.escalar(v, cin.produto_escalar(candidato, v))
+        )
 
         if cin.norma(perp) > tun.EPSILON_DEGENERADO:
             return cin.normalizar(perp)
@@ -160,14 +162,23 @@ def _resolver_direito(
     ``alvo`` e ``polo`` em coordenadas de AUTORIA (x direita, y frente, z cima).
     """
     distancia_pedida = cin.norma(alvo)
-    eixo = cin.normalizar(alvo) if distancia_pedida > tun.EPSILON_DEGENERADO else (0.0, 0.0, -1.0)
+    eixo = (
+        cin.normalizar(alvo)
+        if distancia_pedida > tun.EPSILON_DEGENERADO
+        else (0.0, 0.0, -1.0)
+    )
     distancia = _distancia_limitada(distancia_pedida, upper, forearm)
     punho = cin.escalar(eixo, distancia)
 
     flexao = _flexao_do_cotovelo(distancia, upper, forearm)
-    flexao = max(_radianos(tun.COTOVELO_MIN_GRAUS), min(_radianos(tun.COTOVELO_MAX_GRAUS), flexao))
+    flexao = max(
+        _radianos(tun.COTOVELO_MIN_GRAUS),
+        min(_radianos(tun.COTOVELO_MAX_GRAUS), flexao),
+    )
 
-    ao_longo = (upper * upper - forearm * forearm + distancia * distancia) / (2.0 * distancia)
+    ao_longo = (upper * upper - forearm * forearm + distancia * distancia) / (
+        2.0 * distancia
+    )
     raio = sqrt(max(0.0, upper * upper - ao_longo * ao_longo))
     lateral = _perpendicular(eixo, polo)
     cotovelo = cin.somar(cin.escalar(eixo, ao_longo), cin.escalar(lateral, raio))
@@ -182,7 +193,9 @@ def _resolver_direito(
             cin.subtrair(antebraco_dir, cin.escalar(braco_dir, cos(flexao)))
         )
     else:
-        lado_dobra = cin.escalar(lateral, -1.0)  # reto: dobra do lado oposto ao cotovelo
+        lado_dobra = cin.escalar(
+            lateral, -1.0
+        )  # reto: dobra do lado oposto ao cotovelo
 
     terceiro = cin.produto_vetorial(braco_dir, lado_dobra)
     base: Mat3 = (
@@ -255,7 +268,11 @@ def medir_braco_render(
         antebraco: _para_corpo(cin.matriz_no(model, antebraco, pose)),
         mao: _para_corpo(cin.matriz_no(model, mao, pose)),
         "ponta_mao_rel_ombro": posicao_mao_para_hpr(
-            model, lado, pose.get(braco, Rotation3()), pose.get(antebraco, Rotation3()), pose
+            model,
+            lado,
+            pose.get(braco, Rotation3()),
+            pose.get(antebraco, Rotation3()),
+            pose,
         ),
     }
 

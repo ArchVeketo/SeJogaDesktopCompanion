@@ -36,7 +36,9 @@ def _passo(
     dirs = _por_pose(braco_dir)
     esqs = _por_pose(braco_esq)
     poses = tuple(
-        PoseDanca({"head": cabeca[i], "body": tronco[i], **(extras or {})}, dirs[i], esqs[i])
+        PoseDanca(
+            {"head": cabeca[i], "body": tronco[i], **(extras or {})}, dirs[i], esqs[i]
+        )
         for i in range(4)
     )
 
@@ -170,7 +172,12 @@ def _passo_de_chao(giro: float) -> PassoDanca:
     mãos ficam no apoio: trocar de alvo a cada batida a 145 BPM passava de 250
     mil graus/s^3 de jerk no ombro.
     """
-    cabeca = ((-14.0, 0.0, giro), (-10.0, 0.0, giro), (-10.0, 0.0, giro), (-12.0, 0.0, giro))
+    cabeca = (
+        (-14.0, 0.0, giro),
+        (-10.0, 0.0, giro),
+        (-10.0, 0.0, giro),
+        (-12.0, 0.0, giro),
+    )
     roll = BREAK_TRONCO_ROLL * (1.0 if giro > 0 else -1.0)
     tronco = (BREAK_TRONCO_CHAO, 0.0, roll)
 
@@ -217,7 +224,12 @@ BREAKDANCE: tuple[PassoDanca, ...] = (
     ),
     _passo(
         ((-10.0, 0.0, 6.0), (-6.0, 0.0, 3.0), (-3.0, 0.0, 0.0), (-2.0, 0.0, 0.0)),
-        ((BREAK_TRONCO_CHAO, 0.0, 0.0), (-6.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        (
+            (BREAK_TRONCO_CHAO, 0.0, 0.0),
+            (-6.0, 0.0, 0.0),
+            (-2.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+        ),
         ("apoio_chao", "apoio_chao", "idle", "idle"),
         ("apoio_chao", "apoio_chao", "idle", "idle"),
     ),
@@ -239,4 +251,3 @@ FRASES: dict[str, tuple[PassoDanca, ...]] = {
 def frase_do_estilo(estilo: str) -> tuple[PassoDanca, ...]:
     """Frase (passos de uma batida) do ``estilo`` de dança."""
     return FRASES[estilo]
-

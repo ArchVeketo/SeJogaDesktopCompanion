@@ -35,87 +35,88 @@ RETENCAO_IMPULSO_POR_SEGUNDO = 0.08
 
 
 class Respiracao:
-  """Oscilador lento de respiração suavizado por mola, engine-agnóstico.
+    """Oscilador lento de respiração suavizado por mola, engine-agnóstico.
 
-  A fase avança de forma contígua (``frequencia * dt``), então o seno do
-  oscilador é o alvo base da mola; ``empurrar`` adiciona um impulso que decai
-  sozinho. ``norm`` devolve ``0..1`` (vazio..cheio) e ``centrada`` devolve
-  ``-1..1`` (ao redor do repouso), que é o valor consumido pelo renderer.
-  """
-
-  def __init__(
-    self,
-    frequencia: float = FREQUENCIA_PADRAO,
-    amplitude: float = 1.0,
-    *,
-    rigidez: float = RIGIDEZ_MOLA_PADRAO,
-    amortecimento: float = AMORTECIMENTO_PADRAO,
-  ) -> None:
-    self.frequencia = max(0.0, frequencia)
-    # Amplitude do oscilador base (0..1): escala o quanto o seno ocupa a faixa.
-    self.amplitude = clamp(amplitude, 0.0, 1.0)
-    self._fase = 0.0
-    self._impulso = 0.0
-    self._mola = Spring(rigidez, amortecimento)
-    # Começa no repouso (centrado em 0), não no extremo do seno.
-    self._mola.value = 0.0
-    self._mola.velocity = 0.0
-
-  def _alvo(self) -> float:
-    """Alvo centrado (-1..1) do frame: oscilador lento mais impulso."""
-    oscilador = sin(self._fase) * self.amplitude
-    return clamp(oscilador + self._impulso, -1.0, 1.0)
-
-  def atualizar(self, dt: float) -> float:
-    """Avança a fase e a mola; devolve o valor centrado (-1..1) do frame.
-
-    ``dt`` é o passo de tempo em segundos. A integração da fase e a solução
-    analítica da mola tornam o resultado independente do framerate.
+    A fase avança de forma contígua (``frequencia * dt``), então o seno do
+    oscilador é o alvo base da mola; ``empurrar`` adiciona um impulso que decai
+    sozinho. ``norm`` devolve ``0..1`` (vazio..cheio) e ``centrada`` devolve
+    ``-1..1`` (ao redor do repouso), que é o valor consumido pelo renderer.
     """
-    if dt <= 0.0:
-      return self.centrada
 
-    self._fase = (self._fase + tau * self.frequencia * dt) % tau
-    # Impulso de ``empurrar`` decai exponencialmente de volta ao repouso.
-    self._impulso *= RETENCAO_IMPULSO_POR_SEGUNDO ** dt
-    self._mola.update(dt, self._alvo())
-    return self.centrada
+    def __init__(
+        self,
+        frequencia: float = FREQUENCIA_PADRAO,
+        amplitude: float = 1.0,
+        *,
+        rigidez: float = RIGIDEZ_MOLA_PADRAO,
+        amortecimento: float = AMORTECIMENTO_PADRAO,
+    ) -> None:
+        """Cria o oscilador e a mola da respiração."""
+        self.frequencia = max(0.0, frequencia)
+        # Amplitude do oscilador base (0..1): escala o quanto o seno ocupa a faixa.
+        self.amplitude = clamp(amplitude, 0.0, 1.0)
+        self._fase = 0.0
+        self._impulso = 0.0
+        self._mola = Spring(rigidez, amortecimento)
+        # Começa no repouso (centrado em 0), não no extremo do seno.
+        self._mola.value = 0.0
+        self._mola.velocity = 0.0
 
-  def empurrar(self, quantidade: float) -> None:
-    """Soma um impulso ao alvo da mola para inflar o tórax por evento.
+    def _alvo(self) -> float:
+        """Alvo centrado (-1..1) do frame: oscilador lento mais impulso."""
+        oscilador = sin(self._fase) * self.amplitude
+        return clamp(oscilador + self._impulso, -1.0, 1.0)
 
-    Usado como gancho de eventos (ex.: inspiração antes de um espirro). O
-    impulso decai sozinho em ``atualizar``; valores positivos incham o peito.
-    """
-    self._impulso = clamp(self._impulso + quantidade, -1.0, 1.0)
+    def atualizar(self, dt: float) -> float:
+        """Avança a fase e a mola; devolve o valor centrado (-1..1) do frame.
 
-  @property
-  def impulso_ativo(self) -> bool:
-    """Indica se ainda há impulso de ``empurrar`` em curso (sob demanda).
+        ``dt`` é o passo de tempo em segundos. A integração da fase e a solução
+        analítica da mola tornam o resultado independente do framerate.
+        """
+        if dt <= 0.0:
+            return self.centrada
 
-    Read-only; não altera a API existente. Serve para o controlador só expor
-    a respiração enquanto houver um impulso vivo, deixando o idle parado.
-    """
-    return abs(self._impulso) > 1e-4
+        self._fase = (self._fase + tau * self.frequencia * dt) % tau
+        # Impulso de ``empurrar`` decai exponencialmente de volta ao repouso.
+        self._impulso *= RETENCAO_IMPULSO_POR_SEGUNDO**dt
+        self._mola.update(dt, self._alvo())
+        return self.centrada
 
-  @property
-  def centrada(self) -> float:
-    """Valor suavizado ao redor do repouso, na faixa ``-1..1``."""
-    return clamp(self._mola.value, -1.0, 1.0)
+    def empurrar(self, quantidade: float) -> None:
+        """Soma um impulso ao alvo da mola para inflar o tórax por evento.
 
-  @property
-  def norm(self) -> float:
-    """Valor suavizado em ``0..1`` (0 = vazio, 1 = cheio)."""
-    return (self.centrada + 1.0) * 0.5
+        Usado como gancho de eventos (ex.: inspiração antes de um espirro). O
+        impulso decai sozinho em ``atualizar``; valores positivos incham o peito.
+        """
+        self._impulso = clamp(self._impulso + quantidade, -1.0, 1.0)
 
-  @property
-  def fase(self) -> float:
-    """Fase atual do oscilador em radianos (``0..2*pi``)."""
-    return self._fase
+    @property
+    def impulso_ativo(self) -> bool:
+        """Indica se ainda há impulso de ``empurrar`` em curso (sob demanda).
 
-  def reset(self) -> None:
-    """Fixa a respiração no repouso, zerando fase, impulso e inércia."""
-    self._fase = 0.0
-    self._impulso = 0.0
-    self._mola.value = 0.0
-    self._mola.velocity = 0.0
+        Read-only; não altera a API existente. Serve para o controlador só expor
+        a respiração enquanto houver um impulso vivo, deixando o idle parado.
+        """
+        return abs(self._impulso) > 1e-4
+
+    @property
+    def centrada(self) -> float:
+        """Valor suavizado ao redor do repouso, na faixa ``-1..1``."""
+        return clamp(self._mola.value, -1.0, 1.0)
+
+    @property
+    def norm(self) -> float:
+        """Valor suavizado em ``0..1`` (0 = vazio, 1 = cheio)."""
+        return (self.centrada + 1.0) * 0.5
+
+    @property
+    def fase(self) -> float:
+        """Fase atual do oscilador em radianos (``0..2*pi``)."""
+        return self._fase
+
+    def reset(self) -> None:
+        """Fixa a respiração no repouso, zerando fase, impulso e inércia."""
+        self._fase = 0.0
+        self._impulso = 0.0
+        self._mola.value = 0.0
+        self._mola.velocity = 0.0

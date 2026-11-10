@@ -1,4 +1,5 @@
 """Movimento volumétrico e articulação da porta, sem dependência do engine."""
+
 import math
 
 # --------------------------------------------------------------------------- #
@@ -21,44 +22,68 @@ EXT_EPSILON = 0.001
 
 
 class AppendageMotion:
+    """Movimento dos apêndices que acompanham a abertura da porta."""
+
     def __init__(self):
+        """Inicia os apêndices em repouso."""
         self.extension = 0.0
         self.previous_extension = 0.0
 
     def update(self, dt, door_degrees, actual_door=None):
+        """Avança os apêndices um passo seguindo o ângulo da porta."""
         self.previous_extension = self.extension
         target = max(0.0, min(1.0, (door_degrees - EXT_PORTA_INICIO) / EXT_PORTA_FAIXA))
         if actual_door is not None and target > self.extension:
-            target = min(target, max(0.0, min(1.0,
-                         (actual_door - EXT_PORTA_REAL_INICIO) / EXT_PORTA_REAL_FAIXA)))
+            target = min(
+                target,
+                max(
+                    0.0,
+                    min(
+                        1.0,
+                        (actual_door - EXT_PORTA_REAL_INICIO) / EXT_PORTA_REAL_FAIXA,
+                    ),
+                ),
+            )
         rate = EXT_TAXA_ABRINDO if target > self.extension else EXT_TAXA_FECHANDO
-        self.extension += (target-self.extension) * (1-math.exp(-rate*max(0, min(EXT_DT_MAXIMO, dt))))
-        if abs(target-self.extension) < EXT_EPSILON:
+        self.extension += (target - self.extension) * (
+            1 - math.exp(-rate * max(0, min(EXT_DT_MAXIMO, dt)))
+        )
+        if abs(target - self.extension) < EXT_EPSILON:
             self.extension = target
         return self.extension
 
 
 def tentacle_center(index, u, clock, extent):
-    roots = [(.025, .065, .19), (-.035, .065, .085), (-.02, .065, .16), (.035, .065, .10)]
-    directions = [(.70, .28), (-.48, -.38), (.45, .20), (-.35, -.25)]
+    """Calcula o centro do tentáculo ``index`` na posição ``u`` da curva."""
+    roots = [
+        (0.025, 0.065, 0.19),
+        (-0.035, 0.065, 0.085),
+        (-0.02, 0.065, 0.16),
+        (0.035, 0.065, 0.10),
+    ]
+    directions = [(0.70, 0.28), (-0.48, -0.38), (0.45, 0.20), (-0.35, -0.25)]
     root = roots[index]
     x, z = directions[index]
-    a = (root[0], root[1]+.14, root[2])
-    b = (root[0]+x*.27, root[1]+.34, root[2]+z*.05)
-    end = (root[0]+x*.23, root[1]+.29, root[2]+z*.23)
-    v = 1-u
-    point = [v**3*root[k]+3*v*v*u*a[k]+3*v*u*u*b[k]+u**3*end[k] for k in range(3)]
-    point[0] += math.sin(clock*.85 + index*1.7 + u*3)*.027*u*u
-    point[1] += math.sin(clock*.7 + index + u*4)*.025*u*u
-    point[2] += math.sin(clock*.9 + index*2 + u*3.5)*.026*u*u
-    return tuple(root[k] + (point[k]-root[k])*extent for k in range(3))
+    a = (root[0], root[1] + 0.14, root[2])
+    b = (root[0] + x * 0.27, root[1] + 0.34, root[2] + z * 0.05)
+    end = (root[0] + x * 0.23, root[1] + 0.29, root[2] + z * 0.23)
+    v = 1 - u
+    point = [
+        v**3 * root[k] + 3 * v * v * u * a[k] + 3 * v * u * u * b[k] + u**3 * end[k]
+        for k in range(3)
+    ]
+    point[0] += math.sin(clock * 0.85 + index * 1.7 + u * 3) * 0.027 * u * u
+    point[1] += math.sin(clock * 0.7 + index + u * 4) * 0.025 * u * u
+    point[2] += math.sin(clock * 0.9 + index * 2 + u * 3.5) * 0.026 * u * u
+    return tuple(root[k] + (point[k] - root[k]) * extent for k in range(3))
 
 
 class DoorJoint:
     """Articulação com mola: contatos esféricos impedem fechamento sobre as malhas."""
-    HINGE = (-.125, .15625, .1875)
-    LOW = (.003, -.040, -.2344)
-    HIGH = (.2482, 0.0, .1368)
+
+    HINGE = (-0.125, 0.15625, 0.1875)
+    LOW = (0.003, -0.040, -0.2344)
+    HIGH = (0.2482, 0.0, 0.1368)
     MAX_ANGLE = 135.0
     # Mola da dobradiça: rigidez, atrito e teto de velocidade angular.
     RIGIDEZ = 12.0
@@ -77,44 +102,64 @@ class DoorJoint:
     ASSENTA_VELOCIDADE = 1.0
 
     def __init__(self):
+        """Inicia a porta fechada e parada."""
         self.angle = 0.0
         self.velocity = 0.0
         self.contacts = 0
 
     @classmethod
     def local_point(cls, point, angle):
+        """Leva o ponto para o referencial local da porta no ângulo dado."""
         c, s = math.cos(math.radians(angle)), math.sin(math.radians(angle))
-        x, y, z = (point[k]-cls.HINGE[k] for k in range(3))
-        return (c*x+s*y, -s*x+c*y, z)
+        x, y, z = (point[k] - cls.HINGE[k] for k in range(3))
+        return (c * x + s * y, -s * x + c * y, z)
 
     @classmethod
     def distance(cls, point, angle):
+        """Calcula a distância do ponto à folha da porta no ângulo dado."""
         p = cls.local_point(point, angle)
-        delta = [max(cls.LOW[k]-p[k], 0, p[k]-cls.HIGH[k]) for k in range(3)]
+        delta = [max(cls.LOW[k] - p[k], 0, p[k] - cls.HIGH[k]) for k in range(3)]
         if any(delta):
-            return math.sqrt(sum(v*v for v in delta))
-        return -min(min(p[k]-cls.LOW[k], cls.HIGH[k]-p[k]) for k in range(3))
+            return math.sqrt(sum(v * v for v in delta))
+        return -min(min(p[k] - cls.LOW[k], cls.HIGH[k] - p[k]) for k in range(3))
 
     def update(self, dt, requested, spheres):
+        """Avança a porta rumo ao ângulo pedido sem atravessar as esferas."""
         remaining = max(0.0, min(self.DT_MAXIMO, dt))
         target = max(0.0, min(self.MAX_ANGLE, requested))
-        self.contacts = sum(self.distance(p, self.angle) < radius+self.FOLGA_CONTATO
-                            for p, radius in spheres)
+        self.contacts = sum(
+            self.distance(p, self.angle) < radius + self.FOLGA_CONTATO
+            for p, radius in spheres
+        )
         if self.contacts:
             # Contact changes the spring target, never teleports the leaf. Mesh
             # projection supplies clearance while the door catches up.
-            for candidate in range(math.ceil(self.angle), self.VARREDURA_TETO, self.VARREDURA_PASSO):
-                if all(self.distance(p, candidate) >= radius+self.FOLGA_CONTATO
-                       for p, radius in spheres):
+            for candidate in range(
+                math.ceil(self.angle), self.VARREDURA_TETO, self.VARREDURA_PASSO
+            ):
+                if all(
+                    self.distance(p, candidate) >= radius + self.FOLGA_CONTATO
+                    for p, radius in spheres
+                ):
                     target = max(target, candidate)
                     break
         while remaining > 1e-8:
             step = min(remaining, self.SUBSTEP)
-            self.velocity += ((target-self.angle)*self.RIGIDEZ - self.velocity*self.ATRITO)*step
-            self.velocity = max(-self.VELOCIDADE_MAXIMA, min(self.VELOCIDADE_MAXIMA, self.velocity))
-            self.angle = max(0.0, min(self.MAX_ANGLE, self.angle+self.velocity*step))
+            self.velocity += (
+                (target - self.angle) * self.RIGIDEZ - self.velocity * self.ATRITO
+            ) * step
+            self.velocity = max(
+                -self.VELOCIDADE_MAXIMA, min(self.VELOCIDADE_MAXIMA, self.velocity)
+            )
+            self.angle = max(
+                0.0, min(self.MAX_ANGLE, self.angle + self.velocity * step)
+            )
             remaining -= step
-        if self.angle < self.ASSENTA_ANGULO and abs(self.velocity) < self.ASSENTA_VELOCIDADE and target == 0:
+        if (
+            self.angle < self.ASSENTA_ANGULO
+            and abs(self.velocity) < self.ASSENTA_VELOCIDADE
+            and target == 0
+        ):
             self.angle = self.velocity = 0.0
         return self.angle
 
@@ -122,18 +167,26 @@ class DoorJoint:
         """Afasta o centro da cápsula da caixa finita da porta quando necessário."""
         p = self.local_point(point, self.angle)
         nearest = [max(self.LOW[k], min(self.HIGH[k], p[k])) for k in range(3)]
-        delta = [p[k]-nearest[k] for k in range(3)]
-        distance = math.sqrt(sum(v*v for v in delta))
-        if distance >= radius+self.FOLGA_CONTATO:
+        delta = [p[k] - nearest[k] for k in range(3)]
+        distance = math.sqrt(sum(v * v for v in delta))
+        if distance >= radius + self.FOLGA_CONTATO:
             return point
         if distance > 1e-8:
-            p = [nearest[k]+delta[k]/distance*(radius+self.FOLGA_CONTATO) for k in range(3)]
+            p = [
+                nearest[k] + delta[k] / distance * (radius + self.FOLGA_CONTATO)
+                for k in range(3)
+            ]
         else:
-            choices = [(p[k]-self.LOW[k], k, -1) for k in range(3)]
-            choices += [(self.HIGH[k]-p[k], k, 1) for k in range(3)]
+            choices = [(p[k] - self.LOW[k], k, -1) for k in range(3)]
+            choices += [(self.HIGH[k] - p[k], k, 1) for k in range(3)]
             _, axis, sign = min(choices)
             p = list(p)
-            p[axis] = (self.LOW[axis] if sign < 0 else self.HIGH[axis]) + sign*(radius+self.FOLGA_CONTATO)
+            p[axis] = (self.LOW[axis] if sign < 0 else self.HIGH[axis]) + sign * (
+                radius + self.FOLGA_CONTATO
+            )
         c, s = math.cos(math.radians(self.angle)), math.sin(math.radians(self.angle))
-        return (self.HINGE[0]+c*p[0]-s*p[1], self.HINGE[1]+s*p[0]+c*p[1], self.HINGE[2]+p[2])
-
+        return (
+            self.HINGE[0] + c * p[0] - s * p[1],
+            self.HINGE[1] + s * p[0] + c * p[1],
+            self.HINGE[2] + p[2],
+        )

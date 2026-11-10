@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from math import isfinite
 
-from sejoga.animacao.movimento_corpo import Spring
 from sejoga.animacao.mola_tuning import (
     CADEIA_AMORTECIMENTO,
     CADEIA_ATENUACAO,
     CADEIA_FREQUENCIA,
 )
+from sejoga.animacao.movimento_corpo import Spring
 from sejoga.nucleo.esqueleto import Rotation3
 
 # Cadeias ombro->antebraço->mão->dedos e o espelho do lado esquerdo.
@@ -27,6 +27,7 @@ class JointSpring:
     """Três molas (x/y/z em graus) seguindo um alvo por junta."""
 
     def __init__(self, frequencia: float = 2.2, amortecimento: float = 0.72) -> None:
+        """Cria a mola com frequência e amortecimento dados."""
         self.x = Spring(frequencia, amortecimento)
         self.y = Spring(frequencia, amortecimento)
         self.z = Spring(frequencia, amortecimento)
@@ -43,6 +44,7 @@ class JointSpring:
         return self.valor()
 
     def valor(self) -> Rotation3:
+        """Devolve a rotação atual da mola."""
         return Rotation3(self.x.value, self.y.value, self.z.value)
 
     def definir(self, pose: Rotation3) -> None:
@@ -61,6 +63,7 @@ class SpringPose:
         amortecimento: float = 0.72,
         tensoes: dict[str, tuple[float, float]] | None = None,
     ) -> None:
+        """Cria as molas por grupo com as tensões dadas."""
         self.frequencia = frequencia
         self.amortecimento = amortecimento
         # Tensão por junta (grupo -> (frequência, amortecimento)); juntas fora
@@ -87,10 +90,12 @@ class SpringPose:
         return pose
 
     def definir(self, poses: dict[str, Rotation3]) -> None:
+        """Coloca as molas direto nas poses dadas, sem transição."""
         for grupo, pose in poses.items():
             self._mola(grupo).definir(pose)
 
     def pose(self) -> dict[str, Rotation3]:
+        """Devolve a pose atual de todas as molas."""
         return {grupo: mola.valor() for grupo, mola in self.molas.items()}
 
 
@@ -113,6 +118,7 @@ class LagChain:
         amortecimento: float = CADEIA_AMORTECIMENTO,
         atenuacao: float = CADEIA_ATENUACAO,
     ) -> None:
+        """Cria a cadeia de atraso a partir da configuração dada."""
         self.cadeia = cadeia
         self.elos: dict[str, JointSpring] = {}
         frequencia_elo = frequencia
@@ -131,6 +137,7 @@ class LagChain:
         }
 
     def definir(self, poses: dict[str, Rotation3]) -> None:
+        """Coloca a cadeia direto nas poses dadas, sem transição."""
         for grupo in self.cadeia:
             if grupo in poses:
                 self.elos[grupo].definir(poses[grupo])

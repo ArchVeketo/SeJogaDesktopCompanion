@@ -9,7 +9,7 @@ import pytest
 
 import analise_curvas as aa
 from sejoga.animacao import colisao_bracos as cb
-from sejoga.animacao import gestos_tuning as T
+from sejoga.animacao import gestos_tuning as tuning_gestos
 from sejoga.animacao.controlador_animacao import AnimationController, AnimationState
 from sejoga.nucleo import cinematica as cin
 from sejoga.nucleo.recursos import resolve_model
@@ -36,9 +36,9 @@ CROSSFADE_PADRAO_S = 0.55
 #: PoseResolver suaviza o resultado. Estes tetos protegem contra saltos novos.
 TETO_JERK = {"wave": 6.0e4, "poke": 2.5e6, "stretch": aa.LIMIAR_JERK_TRANCO, "wake": 1.2e4}
 GESTOS = {
-    "wave": (T.ACENO_DURACAO_S, "flourish"),
-    "poke": (T.CUTUCAR_DURACAO_S, "interaction"),
-    "stretch": (T.ALONGAR_DURACAO_S, "flourish"),
+    "wave": (tuning_gestos.ACENO_DURACAO_S, "flourish"),
+    "poke": (tuning_gestos.CUTUCAR_DURACAO_S, "interaction"),
+    "stretch": (tuning_gestos.ALONGAR_DURACAO_S, "flourish"),
     "wake": (1.2, "interaction"),
 }
 
@@ -99,9 +99,9 @@ def test_aceno_nao_hiperestende_o_cotovelo_em_nenhum_quadro():
 
 def test_cutucar_tem_quatro_fases_em_ordem():
     y = _serie(_amostrar("poke"), "right-arm", "y")
-    recuo = round(T.CUTUCAR_RECUO_S * FPS)
-    estocada = ceil((T.CUTUCAR_RECUO_S + T.CUTUCAR_ESTOCADA_S) * FPS)
-    fim_sustentacao = floor((T.CUTUCAR_DURACAO_S - T.CUTUCAR_RECUPERACAO_S) * FPS)
+    recuo = round(tuning_gestos.CUTUCAR_RECUO_S * FPS)
+    estocada = ceil((tuning_gestos.CUTUCAR_RECUO_S + tuning_gestos.CUTUCAR_ESTOCADA_S) * FPS)
+    fim_sustentacao = floor((tuning_gestos.CUTUCAR_DURACAO_S - tuning_gestos.CUTUCAR_RECUPERACAO_S) * FPS)
 
     assert y[recuo] == pytest.approx(min(y))
     assert y[estocada] == pytest.approx(max(y))

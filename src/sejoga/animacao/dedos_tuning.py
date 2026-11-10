@@ -76,12 +76,26 @@ ATRASO_FASE_DEDO_RAD = 0.55
 DESLOCAMENTO_FASE_LADO_RAD = 0.9
 #: Multiplicadores por estado (``AnimationState.value``). Ausente = 1.0.
 ATIVIDADE_POR_ESTADO = {
-    "sleep": 0.4, "drag": 0.7, "walk": 1.5, "run": 2.0, "fall": 2.2,
-    "dance": 2.5, "wave": 3.2, "stretch": 1.8, "peek": 1.5, "hit": 1.5,
+    "sleep": 0.4,
+    "drag": 0.7,
+    "walk": 1.5,
+    "run": 2.0,
+    "fall": 2.2,
+    "dance": 2.5,
+    "wave": 3.2,
+    "stretch": 1.8,
+    "peek": 1.5,
+    "hit": 1.5,
 }
 FREQUENCIA_POR_ESTADO = {
-    "sleep": 0.6, "walk": 1.5, "run": 2.2, "fall": 1.8, "dance": 2.6,
-    "wave": 3.0, "stretch": 1.2, "hit": 2.0,
+    "sleep": 0.6,
+    "walk": 1.5,
+    "run": 2.2,
+    "fall": 1.8,
+    "dance": 2.6,
+    "wave": 3.0,
+    "stretch": 1.2,
+    "hit": 2.0,
 }
 #: Rapidez (1/s) com que o ângulo de cada junta persegue o alvo: absorve trocas
 #: de estado sem salto. Maior = mais seco.

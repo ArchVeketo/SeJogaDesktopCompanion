@@ -19,14 +19,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class MolaCorpo:
-  """Tensão de uma mola de eixo do corpo (frequência e amortecimento).
+    """Tensão de uma mola de eixo do corpo (frequência e amortecimento).
 
-  - ``frequencia``: rigidez da mola em Hz (maior = mais firme/rápido).
-  - ``amortecimento``: 0..1; < 1 dá balanço, perto de 1 assenta seco.
-  """
+    - ``frequencia``: rigidez da mola em Hz (maior = mais firme/rápido).
+    - ``amortecimento``: 0..1; < 1 dá balanço, perto de 1 assenta seco.
+    """
 
-  frequencia: float
-  amortecimento: float
+    frequencia: float
+    amortecimento: float
 
 
 # --------------------------------------------------------------------------- #
@@ -78,10 +78,10 @@ IMPULSO_FORCA_MAX = 2.0
 
 @dataclass(frozen=True, slots=True)
 class FaixaClamp:
-  """Faixa simétrica/assimétrica de clamp (mínimo e máximo)."""
+    """Faixa simétrica/assimétrica de clamp (mínimo e máximo)."""
 
-  minimo: float
-  maximo: float
+    minimo: float
+    maximo: float
 
 
 # --------------------------------------------------------------------------- #
@@ -225,3 +225,15 @@ PEITO_FATOR_PENDURADO = 0.3
 #: no tronco (``FOLGA_EXTRA_CAIXA_U``): o peito não sobe por cima dos braços.
 #: A_CONFIRMAR na GPU (C11).
 PEITO_PENDURADO_MAX_GRAUS = 8.0
+
+# --------------------------------------------------------------------------- #
+# Arraste pendurado (pega por braço/perna): membros pendem para baixo no mundo
+# --------------------------------------------------------------------------- #
+#: Fecha os braços (longe dos ±62 abertos), em graus de ``right-arm.z``.
+ARRASTE_PENDENTE_BRACO_Z = 12.0
+#: Joga os braços "para baixo" no mundo (graus de ``right-arm.x``).
+ARRASTE_PENDENTE_BRACO_X = 18.0
+#: Cabeça pende, olhando para baixo no mundo (graus de ``head.x``).
+ARRASTE_PENDENTE_CABECA_X = 22.0
+#: Resíduo de balanço do membro pendurado, reduzido.
+ARRASTE_PENDENTE_OSCILACAO = 0.18

@@ -24,7 +24,7 @@ from panda3d.core import (
     Vec3,
 )
 
-from sejoga.animacao import dedos_tuning as T
+from sejoga.animacao import dedos_tuning as tuning_dedos
 from sejoga.nucleo import malha_corte as mc
 
 TAG_EIXO = "eixo-dobra"
@@ -38,7 +38,20 @@ _COLUNAS = ("vertex", "normal", "texcoord.0", "tangent")
 
 
 def nome_junta(mesh: int, junta: int) -> str:
+    """Monta o nome do nó da junta ``junta`` do dedo ``mesh``."""
     return NOME_JUNTA.format(mesh=mesh, junta=junta)
+
+
+def _ler_vertice(linha: int, leitores: dict, tem_tangente: bool) -> tuple:
+    """Lê posição, normal, UV e tangente da linha ``linha`` dos dados de vértice."""
+    for leitor in leitores.values():
+        leitor.setRow(linha)
+
+    p = leitores["vertex"].getData3()
+    n = leitores["normal"].getData3()
+    uv = leitores["texcoord.0"].getData2()
+    tan = leitores["tangent"].getData4() if tem_tangente else mc.TANGENTE_PADRAO
+    return (p.x, p.y, p.z, n.x, n.y, n.z, uv.x, uv.y, *tan)
 
 
 def _ler_triangulos(geom_node: GeomNode) -> list[mc.Triangulo]:
@@ -57,26 +70,18 @@ def _ler_triangulos(geom_node: GeomNode) -> list[mc.Triangulo]:
         primitiva = geom.getPrimitive(i).decompose()
 
         for inicio in range(0, primitiva.getNumVertices(), 3):
-            vertices = []
-
-            for k in range(inicio, inicio + 3):
-                linha = primitiva.getVertex(k)
-
-                for leitor in leitores.values():
-                    leitor.setRow(linha)
-
-                p = leitores["vertex"].getData3()
-                n = leitores["normal"].getData3()
-                uv = leitores["texcoord.0"].getData2()
-                tan = leitores["tangent"].getData4() if tem_tangente else mc.TANGENTE_PADRAO
-                vertices.append((p.x, p.y, p.z, n.x, n.y, n.z, uv.x, uv.y, *tan))
-
+            vertices = [
+                _ler_vertice(primitiva.getVertex(k), leitores, tem_tangente)
+                for k in range(inicio, inicio + 3)
+            ]
             triangulos.append((vertices[0], vertices[1], vertices[2]))
 
     return triangulos
 
 
-def _montar_geom(modelo: Geom, triangulos: list[mc.Triangulo], deslocamento: mc.Vec3) -> Geom:
+def _montar_geom(
+    modelo: Geom, triangulos: list[mc.Triangulo], deslocamento: mc.Vec3
+) -> Geom:
     formato = modelo.getVertexData().getFormat()
     dados = GeomVertexData("dedo", formato, Geom.UHStatic)
     dados.setNumRows(len(triangulos) * 3)
@@ -103,8 +108,11 @@ def _para_tupla(v: Vec3) -> mc.Vec3:
     return (float(v.x), float(v.y), float(v.z))
 
 
-def _fatiar_malha(
-    model_np: NodePath, mesh: int, fracoes: tuple[float, ...], eixo_modelo: mc.Vec3 | None
+def _fatiar_malha(  # noqa: PLR0915  # TODO convenção: fatiar sem prova visual na GPU arrisca mudar o movimento; lote próprio com caracterização
+    model_np: NodePath,
+    mesh: int,
+    fracoes: tuple[float, ...],
+    eixo_modelo: mc.Vec3 | None,
 ) -> mc.Vec3 | None:
     """Troca ``meshN`` pela cadeia de pivôs. Devolve o eixo de dobra no referencial do modelo."""
     malha = model_np.find("**/" + NOME_MALHA.format(mesh=mesh))
@@ -130,9 +138,9 @@ def _fatiar_malha(
         direcao,
         eixo,
         fracoes,
-        T.ANGULO_PROJETO_SOBREPOSICAO_GRAUS,
-        T.FRACAO_MAXIMA_SOBREPOSICAO,
-        T.FRACAO_SECAO_DA_RAIZ,
+        tuning_dedos.ANGULO_PROJETO_SOBREPOSICAO_GRAUS,
+        tuning_dedos.FRACAO_MAXIMA_SOBREPOSICAO,
+        tuning_dedos.FRACAO_SECAO_DA_RAIZ,
     )
     modelo = geom_node.getGeom(0)
     estado = geom_node.getGeomState(0)
@@ -167,6 +175,7 @@ def pivos_da_cadeia(raiz: NodePath, mesh: int) -> list[tuple[NodePath, Vec3]]:
 
 
 def girar_pivo(pivo: NodePath, eixo: Vec3, graus: float) -> None:
+    """Gira o pivô em ``graus`` em torno do eixo dado."""
     rotacao = Quat()
     rotacao.setFromAxisAngle(graus, eixo)
     pivo.setQuat(rotacao)
@@ -174,14 +183,20 @@ def girar_pivo(pivo: NodePath, eixo: Vec3, graus: float) -> None:
 
 def fatiar_dedos(model_np: NodePath) -> None:
     """Fatia os 5 dedos de cada mão (polegar por último, com o eixo do indicador)."""
-    for meshes in (T.MESH_DEDOS_DIREITA, T.MESH_DEDOS_ESQUERDA):
+    for meshes in (tuning_dedos.MESH_DEDOS_DIREITA, tuning_dedos.MESH_DEDOS_ESQUERDA):
         eixo_mao: mc.Vec3 | None = None
         ordem = [*meshes[INDICE_REFERENCIA_EIXO:], meshes[INDICE_POLEGAR]]
 
         for mesh in ordem:
             polegar = mesh == meshes[INDICE_POLEGAR]
-            fracoes = T.FRACOES_SEGMENTOS_POLEGAR if polegar else T.FRACOES_SEGMENTOS_DEDO
-            resultado = _fatiar_malha(model_np, mesh, fracoes, eixo_mao if polegar else None)
+            fracoes = (
+                tuning_dedos.FRACOES_SEGMENTOS_POLEGAR
+                if polegar
+                else tuning_dedos.FRACOES_SEGMENTOS_DEDO
+            )
+            resultado = _fatiar_malha(
+                model_np, mesh, fracoes, eixo_mao if polegar else None
+            )
 
             if not polegar and eixo_mao is None:
                 eixo_mao = resultado

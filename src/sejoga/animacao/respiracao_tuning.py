@@ -19,18 +19,18 @@ from sejoga.nucleo.esqueleto import IdlePersonality
 
 @dataclass(frozen=True, slots=True)
 class ParametrosRespiracao:
-  """Assinatura de respiração de uma personalidade.
+    """Assinatura de respiração de uma personalidade.
 
-  - ``frequencia``: ciclos por segundo do oscilador lento (maior = respira
-    mais rápido/ofegante; menor = calmo).
-  - ``amplitude``: 0..1; o quanto o peito infla a cada ciclo.
-  - ``bounce``: 0..1; folga de oscilação da mola (menor = assenta seco,
-    maior = sobra um balanço perceptível). Vira ``1 - amortecimento`` na mola.
-  """
+    - ``frequencia``: ciclos por segundo do oscilador lento (maior = respira
+      mais rápido/ofegante; menor = calmo).
+    - ``amplitude``: 0..1; o quanto o peito infla a cada ciclo.
+    - ``bounce``: 0..1; folga de oscilação da mola (menor = assenta seco,
+      maior = sobra um balanço perceptível). Vira ``1 - amortecimento`` na mola.
+    """
 
-  frequencia: float
-  amplitude: float
-  bounce: float
+    frequencia: float
+    amplitude: float
+    bounce: float
 
 
 #: Parâmetro de fallback para personalidade sem entrada explícita. Ritmo calmo
@@ -43,39 +43,57 @@ PADRAO = ParametrosRespiracao(frequencia=0.25, amplitude=1.0, bounce=0.15)
 #: parado/tímido respira devagar e raso; agitado/ritmado respira mais rápido e
 #: fundo, com um pouco mais de balanço.
 RESPIRACAO_POR_PERSONALIDADE: dict[IdlePersonality, ParametrosRespiracao] = {
-  # Calmo: respiração base, lenta e assentada.
-  IdlePersonality.CALM: ParametrosRespiracao(frequencia=0.24, amplitude=0.9, bounce=0.12),
-  # Curioso: um pouco mais atento, respiração levemente mais rápida.
-  IdlePersonality.CURIOUS: ParametrosRespiracao(frequencia=0.30, amplitude=0.85, bounce=0.18),
-  # Brincalhão: agitado, respira rápido e fundo com balanço.
-  IdlePersonality.PLAYFUL: ParametrosRespiracao(frequencia=0.40, amplitude=1.0, bounce=0.28),
-  # Tímido: encolhido, respiração curta e rasa.
-  IdlePersonality.SHY: ParametrosRespiracao(frequencia=0.22, amplitude=0.7, bounce=0.10),
-  # Confiante: peito estufado, respiração ampla e firme.
-  IdlePersonality.CONFIDENT: ParametrosRespiracao(frequencia=0.26, amplitude=1.0, bounce=0.14),
-  # Street: cadência descolada, média e com balanço leve.
-  IdlePersonality.STREET: ParametrosRespiracao(frequencia=0.32, amplitude=0.9, bounce=0.22),
-  # Fighter: pronto para ação, respiração rápida e controlada.
-  IdlePersonality.FIGHTER: ParametrosRespiracao(frequencia=0.38, amplitude=0.95, bounce=0.16),
-  # Rhythm: no compasso, respiração marcada e com balanço.
-  IdlePersonality.RHYTHM: ParametrosRespiracao(frequencia=0.42, amplitude=0.9, bounce=0.30),
-  # Stylish: posado e elegante, respiração ampla e tranquila.
-  IdlePersonality.STYLISH: ParametrosRespiracao(frequencia=0.27, amplitude=0.95, bounce=0.15),
+    # Calmo: respiração base, lenta e assentada.
+    IdlePersonality.CALM: ParametrosRespiracao(
+        frequencia=0.24, amplitude=0.9, bounce=0.12
+    ),
+    # Curioso: um pouco mais atento, respiração levemente mais rápida.
+    IdlePersonality.CURIOUS: ParametrosRespiracao(
+        frequencia=0.30, amplitude=0.85, bounce=0.18
+    ),
+    # Brincalhão: agitado, respira rápido e fundo com balanço.
+    IdlePersonality.PLAYFUL: ParametrosRespiracao(
+        frequencia=0.40, amplitude=1.0, bounce=0.28
+    ),
+    # Tímido: encolhido, respiração curta e rasa.
+    IdlePersonality.SHY: ParametrosRespiracao(
+        frequencia=0.22, amplitude=0.7, bounce=0.10
+    ),
+    # Confiante: peito estufado, respiração ampla e firme.
+    IdlePersonality.CONFIDENT: ParametrosRespiracao(
+        frequencia=0.26, amplitude=1.0, bounce=0.14
+    ),
+    # Street: cadência descolada, média e com balanço leve.
+    IdlePersonality.STREET: ParametrosRespiracao(
+        frequencia=0.32, amplitude=0.9, bounce=0.22
+    ),
+    # Fighter: pronto para ação, respiração rápida e controlada.
+    IdlePersonality.FIGHTER: ParametrosRespiracao(
+        frequencia=0.38, amplitude=0.95, bounce=0.16
+    ),
+    # Rhythm: no compasso, respiração marcada e com balanço.
+    IdlePersonality.RHYTHM: ParametrosRespiracao(
+        frequencia=0.42, amplitude=0.9, bounce=0.30
+    ),
+    # Stylish: posado e elegante, respiração ampla e tranquila.
+    IdlePersonality.STYLISH: ParametrosRespiracao(
+        frequencia=0.27, amplitude=0.95, bounce=0.15
+    ),
 }
 
 
 def parametros_de(personalidade: IdlePersonality | str) -> ParametrosRespiracao:
-  """Devolve os parâmetros da personalidade, ou ``PADRAO`` se desconhecida."""
-  try:
-    chave = IdlePersonality(personalidade)
-  except ValueError:
-    return PADRAO
+    """Devolve os parâmetros da personalidade, ou ``PADRAO`` se desconhecida."""
+    try:
+        chave = IdlePersonality(personalidade)
+    except ValueError:
+        return PADRAO
 
-  return RESPIRACAO_POR_PERSONALIDADE.get(chave, PADRAO)
+    return RESPIRACAO_POR_PERSONALIDADE.get(chave, PADRAO)
 
 
 # Falha cedo se o rig ganhar uma personalidade sem entrada de respiração: a
 # tabela precisa cobrir todas as personalidades de idle.
 _faltando = tuple(p for p in IdlePersonality if p not in RESPIRACAO_POR_PERSONALIDADE)
 if _faltando:
-  raise RuntimeError(f"RESPIRACAO_POR_PERSONALIDADE sem entrada para: {_faltando}")
+    raise RuntimeError(f"RESPIRACAO_POR_PERSONALIDADE sem entrada para: {_faltando}")
