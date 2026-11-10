@@ -37,6 +37,7 @@ from sejoga.animacao.joint_springs import (
     CADEIA_ESQUERDA,
     LagChain,
 )
+from sejoga.animacao.gestos_tuning import ACENO_DURACAO_S, ALONGAR_DURACAO_S, CUTUCAR_DURACAO_S
 from sejoga.animacao.leg_motion import LegMotion
 from sejoga.animacao.pose_resolver import PoseResolver
 from sejoga.animacao.respiracao import Respiracao
@@ -235,11 +236,11 @@ class AnimationController:
         AnimationState.CLICK: 0.5,
         AnimationState.DOUBLE_CLICK: 1.4,
         AnimationState.PET: 1.5,
-        AnimationState.POKE: 0.4,
+        AnimationState.POKE: CUTUCAR_DURACAO_S,
         AnimationState.WAKE: 1.2,
         AnimationState.LAND: 0.45,
-        AnimationState.WAVE: 2.2,
-        AnimationState.STRETCH: 2.8,
+        AnimationState.WAVE: ACENO_DURACAO_S,
+        AnimationState.STRETCH: ALONGAR_DURACAO_S,
         AnimationState.PEEK: 9.0,
         AnimationState.HIT: 0.65,
         # SURPRESA: recuo rápido + retorno no mesmo padrão das outras reações.

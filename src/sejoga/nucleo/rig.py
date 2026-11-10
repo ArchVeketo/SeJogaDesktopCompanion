@@ -398,14 +398,8 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
         rig.set_rotation("body", z=direction * 5.0 * pulse)
         rig.set_rotation("door", y=pulse * (20.0 + 4.0 * sin(t * 20.0)))
     elif kind == "poke":
-        pulse = sin(pi * min(1.0, t / 0.4))
-        rig.set_rotation("body", x=-8.0 * pulse)
-        rig.set_rotation("head", x=-12.0 * pulse, z=8.0 * pulse)
-        # Aponta/cutuca para a frente: parte da base de interação (IK), leva o
-        # ombro à frente (H+ no direito) e estica o cotovelo.
-        rig.set_rotation("right-arm", x=rbx, y=rby + pulse * 55.0, z=right_base)
-        rig.set_rotation("ant-arm", x=rex, z=right_elbow * (1.0 - pulse))
-        rig.set_rotation("door", y=35.0 * pulse)
+        from sejoga.animacao.gestos_reacao import aplicar_cutucar
+        aplicar_cutucar(rig, t, (rbx, rby, right_base), (rex, right_elbow))
     elif kind == "land":
         pulse = sin(pi * min(1.0, t / 0.45))
         rig.set_rotation("body", x=10.0 * pulse)
@@ -453,77 +447,19 @@ def pose_interaction(rig: Rig, kind: str, t: float, direction: float = 0.0, vert
 
 def pose_flourish(rig: Rig, kind: str, t: float) -> None:
     """Aceno, alongamento, espiada e recuperação de impacto."""
-    durations = {"wave": 2.2, "stretch": 2.8, "peek": 9.0, "hit": .65}
+    if kind in ("wave", "stretch"):
+        from sejoga.animacao.gestos_reacao import aplicar_aceno, aplicar_alongar
+        (aplicar_aceno if kind == "wave" else aplicar_alongar)(rig, t)
+        return
+    durations = {"peek": 9.0, "hit": .65}
     phase = min(1.0, max(0.0, t / durations[kind]))
     envelope = sin(phase * pi)
-    # Default dos braços: repouso baixado (IK do alvo idle). Cada ramo ergue a
-    # partir daqui conforme o gesto; antes era z=70 (que, pós-IK, seria quase
-    # overhead e deixava os gestos tortos).
+    # Default dos braços: repouso baixado (IK do alvo idle).
     _repouso_fl = {**braco_hpr_graus("right", "idle"), **braco_hpr_graus("left", "idle")}
     _fl_r, _fl_l = _repouso_fl["right-arm"], _repouso_fl["left-arm"]
-    _fle_r, _fle_l = _repouso_fl["ant-arm"], _repouso_fl["ant-arm2"]
     rig.set_rotation("right-arm", x=_fl_r[0], y=_fl_r[1], z=_fl_r[2])
     rig.set_rotation("left-arm", x=_fl_l[0], y=_fl_l[1], z=_fl_l[2])
-    if kind in ("wave", "stretch"):
-        from sejoga.animacao.idle_clips import sample_track
-        def value(*keys):
-            return sample_track(tuple((at, (v, 0, 0)) for at, v in keys), t)[0]
-        if kind == "wave":
-            # IK: a mão vai para o ALVO do aceno (acima do ombro, à direita) —
-            # os HPR do ombro/cotovelo vêm do solver 3D sobre a geometria real,
-            # não de ângulos diretos. O ``lift`` interpola do repouso ao alvo; o
-            # balanço (``wave``) e o giro do pulso entram aditivos por cima.
-            lift = value((0, 0), (.18, -.04), (.58, 1), (1.28, 1), (1.92, .12), (2.2, 0))
-            wave = value((0, 0), (.56, 0), (.82, 1), (1.08, -.78), (1.34, .78),
-                         (1.58, -.5), (1.82, 0), (2.2, 0))
-            repouso = braco_hpr_graus("right", "idle")
-            aceno = braco_hpr_graus("right", "wave")
-
-            def _interp(grupo: str, eixo: int) -> float:
-                return repouso[grupo][eixo] + (aceno[grupo][eixo] - repouso[grupo][eixo]) * lift
-
-            rig.set_rotation(
-                "right-arm",
-                x=_interp("right-arm", 0),
-                y=_interp("right-arm", 1),
-                z=_interp("right-arm", 2),
-            )
-            rig.set_rotation(
-                "ant-arm",
-                x=_interp("ant-arm", 0),
-                y=_interp("ant-arm", 1),
-                z=_interp("ant-arm", 2) + 7 * wave,
-            )
-            # Braço esquerdo fica em repouso baixado (só o direito acena).
-            rig.set_rotation("left-arm", x=_fl_l[0] + 2 * lift, y=_fl_l[1], z=_fl_l[2])
-            rig.set_rotation("ant-arm2", x=_fle_l[0] - 3 * lift, z=_fle_l[2])
-            # Com o braço na nova orientação de IK (mão acima do ombro), a palma
-            # já aponta para FORA com o pulso neutro — a geometria diagonal fez o
-            # roll de 180° (necessário na pose antiga) virar a palma para DENTRO.
-            # O balanço do aceno (``wave``) oscila o pulso em torno do neutro.
-            rig.set_rotation("hand", x=12 * wave, z=2 * wave)
-            rig.set_rotation("fingers", z=-8 * lift + 3 * wave)
-            rig.set_rotation("body", y=-3 * lift, z=-3 * lift - wave)
-            rig.set_rotation("head", y=5 * lift, z=4 * lift + 2 * wave)
-        else:
-            # Jacket adjustment: natural fidget gesture replacing overhead stretch
-            right = value((0, 0), (.28, -.15), (.82, 1), (1.25, .68), (1.95, 0), (2.8, 0))
-            left = value((0, 0), (.72, 0), (1.35, 1), (1.78, .62), (2.58, 0), (2.8, 0))
-            # Ajuste de jaqueta: ERGUE cada braço em sequência, a partir do
-            # repouso baixado (IK). Medido no grafo de cena (oraculo_cena --eixos): elevação = eixo do nó ROLL
-            # (Z); z NEGATIVO ergue a mão.
-            rig.set_rotation("right-arm", x=_fl_r[0] - 16 * right, y=_fl_r[1], z=_fl_r[2] - 70 * right)
-            rig.set_rotation("left-arm", x=_fl_l[0] - 16 * left, y=_fl_l[1], z=_fl_l[2] + 70 * left)
-            # O cotovelo DOBRA ao ajustar a jaqueta (antes o sinal pedia
-            # hiperextensão, que o clamp do cotovelo zeraria).
-            rig.set_rotation("ant-arm", x=_fle_r[0] - 24 * right, z=_fle_r[2] + 22 * right)
-            rig.set_rotation("ant-arm2", x=_fle_l[0] - 24 * left, z=_fle_l[2] - 22 * left)
-            rig.set_rotation("hand", y=15 * right, z=-8 * right)
-            rig.set_rotation("hand2", y=-15 * left, z=8 * left)
-            # Body rotates slightly as shoulders roll
-            rig.set_rotation("body", y=6 * (right-left), z=3 * (left-right))
-            rig.set_rotation("head", y=-8 * (right-left), x=4 * (right+left))
-    elif kind == "peek":
+    if kind == "peek":
         rig.set_rotation("head", y=sin(t * 2) * 12 * envelope, z=5 * envelope)
         opening = min(1.0, t / 2.5, max(0.0, (9.0-t) / 2.5))
         opening = opening*opening*(3-2*opening)
