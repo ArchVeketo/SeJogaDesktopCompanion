@@ -14,8 +14,18 @@ from math import cos, radians, sin, tau
 
 from sejoga.animacao import body_motion_tuning as tune
 from sejoga.animacao.body_motion import BodyPose
+from sejoga.animacao.idle_clips import camada_respiracao, sample_idle
 from sejoga.animacao.rig_base import REPOUSO
 from sejoga.nucleo.rig import IdlePersonality, Rotation3, braco_hpr_graus
+
+#: Base de repouso (graus) dos grupos de braço, a mesma que ``sample_idle``
+#: usa por baixo das frases; subtraída para obter o delta do idle.
+_BASE_REPOUSO_GRAUS = {
+    "right-arm": (REPOUSO.BRACO_X, REPOUSO.BRACO_Y, REPOUSO.BRACO_Z),
+    "left-arm": (REPOUSO.BRACO_X, -REPOUSO.BRACO_Y, -REPOUSO.BRACO_Z),
+    "ant-arm": (REPOUSO.ANTEBRACO_X, 0.0, REPOUSO.ANTEBRACO_Z),
+    "ant-arm2": (REPOUSO.ANTEBRACO_X, 0.0, -REPOUSO.ANTEBRACO_Z),
+}
 
 
 def _delta_braco_ik(nome_alvo: str) -> dict[str, Rotation3]:
@@ -68,99 +78,18 @@ def delta_idle(
     -------
     Delta em radianos a ser somado à pose de repouso.
     """
-    from sejoga.animacao.idle_clips import (
-        CLIPS,
-        camada_respiracao,
-        sample_idle,
-    )
-
+    # sample_idle devolve pose absoluta em graus; subtraímos a base de repouso
+    # para obter só o delta. A respiração entra uma única vez, abaixo.
+    pose_absoluta = sample_idle(personality.value, t, 0.0, 1.0)
     delta: dict[str, Rotation3] = {}
 
-    # Oscilação base presente em todas as personalidades
-    sway_body_x = sin(t * 0.8) * 0.7
-    sway_body_z = -1.5
-    sway_head_y = sin(t * 0.36) * 2
-    sway_head_z = 1.5
-
-    if personality.value in CLIPS:
-        # Personalidades com clips autorais: sample_idle devolve pose absoluta em
-        # graus. Subtraímos a base de repouso para obter apenas o delta.
-        pose_absoluta = sample_idle(personality.value, t, respiracao, 1.0)
-        for grupo, (x, y, z) in pose_absoluta.items():
-            # A base de repouso em graus para comparação
-            if grupo == "right-arm":
-                base = (REPOUSO.BRACO_X, REPOUSO.BRACO_Y, REPOUSO.BRACO_Z)
-            elif grupo == "left-arm":
-                base = (REPOUSO.BRACO_X, -REPOUSO.BRACO_Y, -REPOUSO.BRACO_Z)
-            elif grupo == "ant-arm":
-                base = (REPOUSO.ANTEBRACO_X, 0, REPOUSO.ANTEBRACO_Z)
-            elif grupo == "ant-arm2":
-                base = (REPOUSO.ANTEBRACO_X, 0, -REPOUSO.ANTEBRACO_Z)
-            else:
-                base = (0, 0, 0)
-
-            # Delta = pose autorizada - base de repouso, em radianos
-            delta[grupo] = Rotation3(
-                radians(x - base[0]),
-                radians(y - base[1]),
-                radians(z - base[2]),
-            )
-    else:
-        # Personalidades fallback (calm, curious, playful, shy, confident)
-        # usam a lógica legada de pose_idle mas convertida em deltas.
-        delta["body"] = Rotation3(radians(sway_body_x), 0, radians(sway_body_z))
-        delta["head"] = Rotation3(0, radians(sway_head_y), radians(sway_head_z))
-
-        # Oscilação sutil dos braços
-        breath = sin(t * 0.72)
-        sway = sin(t * 0.42)
-
-        if personality == IdlePersonality.CURIOUS:
-            look = sin(t * 0.43)
-            tilt = sin(t * 0.31)
-            delta["body"] = Rotation3(
-                radians(breath * 0.9), radians(sway * 1.5), radians(tilt * 1.2)
-            )
-            delta["head"] = Rotation3(
-                radians(-3.0 + sin(t * 0.62) * 1.5),
-                radians(look * 16.0),
-                radians(tilt * 8.0),
-            )
-            delta["door"] = Rotation3(0, radians(max(0.0, sin(t * 0.28)) * 3.0), 0)
-            # Curiosa: um braço um pouco mais aberto (delta negativo no Z)
-            delta["right-arm"] = Rotation3(
-                radians(sin(t * 0.43) * 3.0), 0, radians(-20.0)
-            )
-            delta["left-arm"] = Rotation3(
-                radians(sin(t * 0.43 + 0.4) * 2.5), 0, 0
-            )
-            delta["ant-arm"] = Rotation3(
-                radians(sin(t * 0.48) * 4.5), 0, radians(tilt * 5.0)
-            )
-            delta["ant-arm2"] = Rotation3(
-                radians(sin(t * 0.48 + 0.5) * 3.5), 0, radians(-tilt * 4.0)
-            )
-        elif personality == IdlePersonality.PLAYFUL:
-            bounce = sin(t * 1.12)
-            compression = (1.0 - sin(t * 2.24 + 1.5707963268)) * 0.5
-            delta["body"] = Rotation3(
-                radians(compression * 2.2),
-                radians(sway * 2.2),
-                radians(bounce * 2.2),
-            )
-            delta["head"] = Rotation3(
-                radians(-compression * 1.8),
-                radians(sin(t * 0.72) * 6.0),
-                radians(bounce * 3.0),
-            )
-            delta["door"] = Rotation3(0, radians(max(0.0, sin(t * 0.28)) * 3.0), 0)
-            arm_bounce = sin(t * 1.12 + 0.6)
-            delta["right-arm"] = Rotation3(
-                radians(bounce * 6.0), 0, radians(-14.0 + bounce * 5.0)
-            )
-            delta["left-arm"] = Rotation3(
-                radians(bounce * 6.0), 0, radians(2.0 - arm_bounce * 5.0)
-            )
+    for grupo, (x, y, z) in pose_absoluta.items():
+        base = _BASE_REPOUSO_GRAUS.get(grupo, (0.0, 0.0, 0.0))
+        delta[grupo] = Rotation3(
+            radians(x - base[0]),
+            radians(y - base[1]),
+            radians(z - base[2]),
+        )
 
     # Respiração sob demanda (adicional sobre o delta de personalidade)
     if respiracao:
