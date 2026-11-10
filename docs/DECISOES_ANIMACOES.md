@@ -63,3 +63,44 @@ Quem acrescentar uma animação nova deve incluir uma seção aqui.
 - Não verificado: o sinal visual de "ombro caído" via `right-arm.z` e a leitura
   dos dedos relaxados. O alvo é o de `ALVO_SLEEP` somado a 3°; se a mão atravessar
   o corpo na GPU, reduzir `SONO_OMBRO_CAIDO`.
+
+## Locomoção, arraste e queda
+- Constantes em `animacao/locomocao_tuning.py`. A fase da passada é única:
+  `AnimationController` passa `leg_motion.phase` a `delta_walk(fase, run)`, então
+  braços e pernas partilham o mesmo relógio (antes o braço usava 3 rad/s
+  próprios).
+- **Por que `y` e não `x`:** `x` é a torção do braço no próprio eixo e não
+  balança o braço; frente/trás é o azimute `y`. O balanço antigo em `x` saiu.
+- **Contrafase (sinal provado no grafo de cena):** `setP(+a)` no nó
+  `left-hip-pivot` leva o pé para +Y (frente de autoria; verificado no Panda: pé
+  em (0, 0.5, -0.87) para a=30) e `LegPose.left = +sin(fase)`. Perna esquerda à
+  frente implica braço direito à frente (`y` positivo).
+  `SINAL_BRACO_COM_PERNA = +1`. Não provado: que o `model_np` do renderer
+  coincide com o referencial de autoria de `cinematica`. Se na GPU o braço vier
+  junto da perna, trocar o sinal (C42).
+- **`anim_clips.py` está vivo:** reescrito como deltas sobre `REPOUSO`, é a
+  única definição do balanço, amostrada por `delta_walk` via `ciclo_da_fase`.
+  `rig.pose_walk` (caminho legado, descartado nos estados migrados) soma o mesmo
+  clipe ao repouso. Sem ângulos absolutos da convenção antiga.
+- **Elevação `z` em fase com `y`** (o braço sobe ao ir à frente e desce ao
+  voltar), não em quadratura: o easing quíntico para em cada key e a quadratura
+  obrigaria o `y` a parar no cruzamento do zero. Espelho e contrafase se
+  cancelam, então os dois braços têm o mesmo delta `y`/`z`.
+- Cotovelo (`ant-arm.z`) flexiona mais com o braço à frente, sempre >= 0
+  (`ant-arm2.z` <= 0). O tronco contra-gira (`body.y`, sinal A_CONFIRMAR) e
+  inclina na corrida; a cabeça faz contra-giro suave e quique a 2x a frequência
+  (track `head:quique`; o rótulo é somado em `head`).
+- **Jerk de ciclos rápidos:** a passada (1,35 Hz caminhada, 2,2 Hz corrida)
+  passa de `LIMIAR_JERK_TRANCO` (8.000) por natureza: uma senóide de 14 graus já
+  dá ~8.500. O teste de locomoção compara com o jerk do próprio easing
+  (60*delta/T^3 por trecho, margem 1,5) e exige zero `LOOP`.
+- **Arraste:** termos `z` (roll/limb_swing) e ramos por `grab_part` intactos.
+  Somam-se dedos em garra (`fingers.z` = 8 + 24*intensidade, `fingers2`
+  espelhado) e a soltura (`delta_soltura`: abre até -22 graus em 0,22 s, assenta
+  em 4 e fecha em 0 aos 0,9 s), somada pelo controlador fora do estado DRAG.
+- **Queda:** flail de `x` (torção) para `z`/`y` com espelho (`z` e `y` invertem
+  à esquerda); cotovelo só flexiona (`flail^2`, sem a quina de `abs`); dedos
+  abertos (-10 graus, espelhado); leve tumble de `body.z` por velocidade
+  horizontal. Pernas e `delta_fisica` intactos.
+- Não verificado (só GPU): sentido da contrafase, giro do tronco, leitura dos
+  dedos de arraste/soltura/queda, transição fall -> land -> idle.
