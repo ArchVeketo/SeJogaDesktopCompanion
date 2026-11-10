@@ -15,9 +15,9 @@ from math import radians
 import pytest
 
 from sejoga.nucleo import cinematica as cin
-from sejoga.nucleo.recursos import resolve_model
-from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.esqueleto import ALL_GROUPS, Rotation3
+from sejoga.nucleo.modelo import load_model
+from sejoga.nucleo.recursos import resolve_model
 
 # Qt ANTES do Panda3D no mesmo processo (senão o QtCore carregado depois
 # quebra com access violation nos testes de UI da mesma sessão do pytest).
@@ -76,7 +76,9 @@ def _matriz_panda(no, referencia):
 
 def _pose_aleatoria(rng):
     return {
-        g: Rotation3(*(radians(rng.uniform(-AMPLITUDE_GRAUS, AMPLITUDE_GRAUS)) for _ in range(3)))
+        g: Rotation3(
+            *(radians(rng.uniform(-AMPLITUDE_GRAUS, AMPLITUDE_GRAUS)) for _ in range(3))
+        )
         for g in ALL_GROUPS
     }
 
@@ -134,7 +136,9 @@ def test_espelho_x_menos_y_menos_z_gera_imagem_espelhada_no_plano_sagital(cena):
     rng = random.Random(SEMENTE)
 
     for _ in range(POSES_ALEATORIAS):
-        x, y, z = (radians(rng.uniform(-AMPLITUDE_GRAUS, AMPLITUDE_GRAUS)) for _ in range(3))
+        x, y, z = (
+            radians(rng.uniform(-AMPLITUDE_GRAUS, AMPLITUDE_GRAUS)) for _ in range(3)
+        )
         direito = Rotation3(x, y, z)
         pose_dir = {"right-arm": direito, "ant-arm": Rotation3(x, 0.0, z)}
         pose_esq = {

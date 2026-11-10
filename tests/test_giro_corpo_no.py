@@ -13,6 +13,7 @@ que já funciona. Também NÃO importamos ``Panda3DRenderer`` (puxa simplepbr/GP
 reproduzimos a MESMA fiação e a MESMA transformação translate-rotate-translate
 de ``Panda3DRenderer._aplicar_giro_corpo``, mantendo o teste leve e estável.
 """
+
 from sejoga.animacao.movimento_corpo import GiroCorpo
 
 # Correção de export espelhada de ``Panda3DRenderer.MODEL_FACING_HEADING``: a
@@ -49,10 +50,10 @@ def _girar(grafo, dt, *, direcao_olhar=0.0, angulo_pedido=None, dragging=False):
     pedido = None if dragging else angulo_pedido
     angulo = grafo["giro"].update(dt, direcao_olhar=olhar, angulo_pedido=pedido)
     body_facing = grafo["body_facing"]
-    if abs(angulo) < .01:
+    if abs(angulo) < 0.01:
         body_facing.setMat(Mat4.identMat())
         return
-    pivot = body_facing.getRelativePoint(grafo["model_np"], Point3(0, 0, .44))
+    pivot = body_facing.getRelativePoint(grafo["model_np"], Point3(0, 0, 0.44))
     rotacao = TransformState.makeHpr(Vec3(angulo, 0, 0)).getMat()
     body_facing.setMat(Mat4.translateMat(-pivot) * rotacao * Mat4.translateMat(pivot))
 
@@ -93,7 +94,7 @@ def test_giro_em_torno_do_centro_preserva_a_altura_do_pivo():
     from panda3d.core import Point3
 
     grafo = _novo_grafo()
-    centro = Point3(0, 0, .44)
+    centro = Point3(0, 0, 0.44)
     antes = grafo["model_np"].getRelativePoint(grafo["body_facing"], centro)
     _assentar(grafo, angulo_pedido=GiroCorpo.LIMITE_GRAUS)
     depois = grafo["model_np"].getRelativePoint(grafo["body_facing"], centro)
@@ -106,4 +107,4 @@ def test_giro_durante_arraste_relaxa_para_zero():
     _assentar(grafo, direcao_olhar=1.0)  # vira para o lado primeiro
     assert grafo["giro"].angulo != 0
     _assentar(grafo, direcao_olhar=1.0, dragging=True)  # arraste zera o giro
-    assert abs(grafo["giro"].angulo) < .01
+    assert abs(grafo["giro"].angulo) < 0.01

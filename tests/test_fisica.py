@@ -1,4 +1,5 @@
 """Regressões de arremesso e contatos com o Pymunk real (Windows)."""
+
 import math
 import sys
 from unittest.mock import patch
@@ -97,7 +98,7 @@ def test_shelf_lands_from_above_and_body_passes_from_below():
     p.set_position(300, 500)
     p.set_gravity(False)
     p.body.velocity = (0, -600)
-    advance(p, .4)
+    advance(p, 0.4)
     assert p.body.position.y < 350
 
 
@@ -142,7 +143,7 @@ def test_walking_off_support_keeps_gravity_and_does_not_walk_in_air():
     p.settings.physics.friction = 0
     p.shape.friction = 0
     p.body.velocity = (1200, 0)
-    advance(p, .3)
+    advance(p, 0.3)
     assert not p.state.grounded
     assert p.state.gravity_active
     assert p.state.on_shelf is None
@@ -150,12 +151,22 @@ def test_walking_off_support_keeps_gravity_and_does_not_walk_in_air():
 
 def test_only_exposed_parts_of_background_window_are_shelves():
     from sejoga.desktop.fisica import get_all_shelves
+
     bounds = {101: (400, 100, 600, 600), 102: (100, 300, 900, 700)}
+
     def enumerate_windows(callback, arg):
         for hwnd in bounds:
             callback(hwnd, arg)
-    with patch("sejoga.desktop.fisica.win32gui.EnumWindows", side_effect=enumerate_windows), \
-         patch("sejoga.desktop.fisica.is_valid_shelf", return_value=True), \
-         patch("sejoga.desktop.fisica.frame_bounds", side_effect=bounds.get):
+
+    with (
+        patch(
+            "sejoga.desktop.fisica.win32gui.EnumWindows", side_effect=enumerate_windows
+        ),
+        patch("sejoga.desktop.fisica.is_valid_shelf", return_value=True),
+        patch("sejoga.desktop.fisica.frame_bounds", side_effect=bounds.get),
+    ):
         shelves = get_all_shelves(0, 0)
-    assert [(s.left, s.right) for s in shelves if s.hwnd == 102] == [(100, 400), (600, 900)]
+    assert [(s.left, s.right) for s in shelves if s.hwnd == 102] == [
+        (100, 400),
+        (600, 900),
+    ]

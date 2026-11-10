@@ -47,8 +47,17 @@ def test_salvar_e_carregar_ida_e_volta(tmp_path):
 def test_carregar_ignora_lixo():
     estado = ConfirmacaoPoses()
 
-    assert estado.carregar_dict({"respostas": {"inexistente": {"resposta": "correto"},
-                                               "aceno": {"resposta": "talvez"}}}) == 0
+    assert (
+        estado.carregar_dict(
+            {
+                "respostas": {
+                    "inexistente": {"resposta": "correto"},
+                    "aceno": {"resposta": "talvez"},
+                }
+            }
+        )
+        == 0
+    )
 
 
 def test_selecionar_pose_desconhecida_falha():

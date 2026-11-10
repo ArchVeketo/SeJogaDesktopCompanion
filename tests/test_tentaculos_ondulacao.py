@@ -1,4 +1,5 @@
 """Ondulação dos tentáculos: onda da base à ponta, por temperamento."""
+
 import math
 import random
 
@@ -21,7 +22,7 @@ from sejoga.tentaculos.sistema_tentaculos import (
     _base_frente,
 )
 
-ESCALA = .004
+ESCALA = 0.004
 QUADROS_MEDICAO = 270  # 4,5 s, dentro dos 4,8 s do estado curioso
 QUADROS_ASSENTAR = 90  # descarta o crescimento inicial
 QUADROS_ANTES_DE_RECOLHER = 120  # 2 s, menos que os 4,8 s do estado curioso
@@ -30,7 +31,7 @@ PASSO = 1 / 60
 POSICAO_TESTE = 0.7
 TEMPO_TESTE = 1.3
 TOLERANCIA = 1e-9
-PITCH_FRENTE = Vec3(0, .6, .8)
+PITCH_FRENTE = Vec3(0, 0.6, 0.8)
 FRENTE_PARA_CIMA = Vec3(0, 0, 1)
 
 
@@ -40,8 +41,12 @@ FRENTE_PADRAO = Vec3(0, 1, 0)
 def _diretor(frente=FRENTE_PADRAO, semente=1):
     rig = Rig(rest={name: Rotation3() for name in ALL_GROUPS})
     raiz = NodePath("raiz")
-    pool = TentaclePool(rig, raiz, raiz, [Vec3(0)], rng=random.Random(semente), unit_scale=ESCALA)
-    diretor = TentacleDirector(pool, rig, raiz, raiz, None, rng=random.Random(semente + 1))
+    pool = TentaclePool(
+        rig, raiz, raiz, [Vec3(0)], rng=random.Random(semente), unit_scale=ESCALA
+    )
+    diretor = TentacleDirector(
+        pool, rig, raiz, raiz, None, rng=random.Random(semente + 1)
+    )
     for tentaculo in pool.tentacles:
         tentaculo.reference_front = Vec3(frente)
     return diretor, pool
@@ -64,19 +69,25 @@ def test_base_nao_se_move():
 def test_onda_viaja_da_base_para_a_ponta():
     tuning = ONDULACAO_AGITADA
     atraso = POSICAO_TESTE / (tuning.frequencia_hz * tuning.comprimento_onda)
-    envelope = POSICAO_TESTE ** tuning.expoente_envelope
+    envelope = POSICAO_TESTE**tuning.expoente_envelope
     na_base = math.sin(math.tau * tuning.frequencia_hz * TEMPO_TESTE)
     lateral, _ = deslocamento_ondulante(tuning, POSICAO_TESTE, TEMPO_TESTE + atraso)
-    assert lateral == pytest.approx(tuning.amplitude_lateral_px * envelope * na_base, abs=TOLERANCIA)
+    assert lateral == pytest.approx(
+        tuning.amplitude_lateral_px * envelope * na_base, abs=TOLERANCIA
+    )
 
 
 def test_atraso_de_fase_por_segmento_soma_o_comprimento_de_onda():
     tuning = ONDULACAO_CALMA
-    total = atraso_de_fase_por_segmento(tuning, DEFAULT_SEGMENTS) * (DEFAULT_SEGMENTS - 1)
+    total = atraso_de_fase_por_segmento(tuning, DEFAULT_SEGMENTS) * (
+        DEFAULT_SEGMENTS - 1
+    )
     assert total == pytest.approx(math.tau / tuning.comprimento_onda)
 
 
-@pytest.mark.parametrize("frente", [Vec3(0, 1, 0), Vec3(0, -1, 0), PITCH_FRENTE, FRENTE_PARA_CIMA])
+@pytest.mark.parametrize(
+    "frente", [Vec3(0, 1, 0), Vec3(0, -1, 0), PITCH_FRENTE, FRENTE_PARA_CIMA]
+)
 def test_base_da_frente_e_ortonormal(frente):
     _, pool = _diretor(frente)
     lateral, f, cima = _base_frente(pool.tentacles[0])
@@ -101,7 +112,9 @@ def _amplitude_lateral_da_ponta(personalidade):
 
 
 def test_agitado_balanca_mais_a_ponta_que_o_calmo():
-    assert _amplitude_lateral_da_ponta(IdlePersonality.PLAYFUL) > _amplitude_lateral_da_ponta(IdlePersonality.CALM)
+    assert _amplitude_lateral_da_ponta(
+        IdlePersonality.PLAYFUL
+    ) > _amplitude_lateral_da_ponta(IdlePersonality.CALM)
 
 
 def test_personalidade_troca_o_tuning_do_tentaculo():
@@ -120,7 +133,10 @@ def test_corpo_continua_ondulando_ao_recolher():
     antes = [Vec3(s.pos) for s in ativo.segments]
     diretor.update(PASSO, 0, IdlePersonality.PLAYFUL)
     assert ativo.state == TentacleState.RETRACTING
-    assert any((a - s.pos).lengthSquared() > 0 for a, s in zip(antes, ativo.segments, strict=True))
+    assert any(
+        (a - s.pos).lengthSquared() > 0
+        for a, s in zip(antes, ativo.segments, strict=True)
+    )
 
 
 def test_ramo_burst_espirra_sem_erro_e_passa_da_porta():

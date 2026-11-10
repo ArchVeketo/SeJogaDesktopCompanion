@@ -22,9 +22,9 @@ core = pytest.importorskip("panda3d.core", reason="Panda3D indisponível")
 gltf = pytest.importorskip("gltf", reason="panda3d-gltf indisponível")
 
 from sejoga.animacao.danca_tuning import FLOOR_ROLL_GRAUS, PIVO_QUADRIL_Z  # noqa: E402
-from sejoga.nucleo.recursos import resolve_model  # noqa: E402
 from sejoga.animacao.rig_flexivel import FlexibleRig, no_de_facing  # noqa: E402
 from sejoga.nucleo.esqueleto import ALL_GROUPS  # noqa: E402
+from sejoga.nucleo.recursos import resolve_model  # noqa: E402
 from sejoga.render.renderizador import Panda3DRenderer  # noqa: E402
 
 #: Ângulo de teste (graus) e deslocamento mínimo (u) considerado movimento.
@@ -44,10 +44,19 @@ def cena():
     modelo.reparentTo(suspensao)
     contorno = core.NodePath(gltf.load_model(caminho))
     contorno.reparentTo(suspensao)
-    nos = {g: modelo.find(f"**/{g}") for g in ALL_GROUPS if not modelo.find(f"**/{g}").isEmpty()}
+    nos = {
+        g: modelo.find(f"**/{g}")
+        for g in ALL_GROUPS
+        if not modelo.find(f"**/{g}").isEmpty()
+    }
     renderer = SimpleNamespace(
-        model_np=modelo, outline_np=contorno, _rig_nodes=nos,
-        _rig_base_pos={}, _rig_base_hpr={}, _rig_base_scale={}, _rig_base_mat={},
+        model_np=modelo,
+        outline_np=contorno,
+        _rig_nodes=nos,
+        _rig_base_pos={},
+        _rig_base_hpr={},
+        _rig_base_scale={},
+        _rig_base_mat={},
     )
     rig = FlexibleRig(renderer)
 
@@ -127,7 +136,9 @@ def test_ombros_atrasam_para_o_mesmo_lado(cena):
     assert direito.getP() == pytest.approx(0.0)
 
 
-def test_giro_no_quadril_com_roll_positivo_tomba_o_topo_para_a_direita_e_prende_o_quadril(cena):
+def test_giro_no_quadril_com_roll_positivo_tomba_o_topo_para_a_direita_e_prende_o_quadril(
+    cena,
+):
     renderer, _rig, suspensao = cena
     renderer._suspension_pivot = suspensao
     renderer._rotacao_no_quadro_de_autoria = partial(

@@ -1,4 +1,5 @@
 """Contratos dos clipes de locomoção descritos como deltas (graus)."""
+
 import pytest
 
 from sejoga.animacao import locomocao_tuning as loc
@@ -63,7 +64,9 @@ def test_amostragem_e_ciclica_e_devolve_rotacoes():
     ciclo = amostrar_clipe("walk", 1.0)
     assert inicio == ciclo
     rot = amostrar_clipe_rotacoes("walk", 0.25)
-    assert rot["left-arm"].y == pytest.approx(amostrar_clipe("walk", 0.25)["left-arm"][1])
+    assert rot["left-arm"].y == pytest.approx(
+        amostrar_clipe("walk", 0.25)["left-arm"][1]
+    )
 
 
 def test_cabeca_soma_quique_e_contragiro_na_mesma_junta():

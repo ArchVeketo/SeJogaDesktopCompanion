@@ -74,16 +74,25 @@ def _volume(triangulos):
 
 def _cortar(angulo_projeto):
     return mc.cortar_cadeia(
-        _caixa(), DIRECAO, EIXO, FRACOES, angulo_projeto,
-        tuning_dedos.FRACAO_MAXIMA_SOBREPOSICAO, tuning_dedos.FRACAO_SECAO_DA_RAIZ,
+        _caixa(),
+        DIRECAO,
+        EIXO,
+        FRACOES,
+        angulo_projeto,
+        tuning_dedos.FRACAO_MAXIMA_SOBREPOSICAO,
+        tuning_dedos.FRACAO_SECAO_DA_RAIZ,
     )
 
 
 def _sem_tampas(triangulos):
     """Triângulos da superfície ORIGINAL (tampas têm normal ±direção e x interno)."""
     return [
-        t for t in triangulos
-        if not (abs(t[0][3]) == 1.0 and all(TOLERANCIA < v[0] < COMPRIMENTO - TOLERANCIA for v in t))
+        t
+        for t in triangulos
+        if not (
+            abs(t[0][3]) == 1.0
+            and all(TOLERANCIA < v[0] < COMPRIMENTO - TOLERANCIA for v in t)
+        )
     ]
 
 
@@ -142,15 +151,20 @@ def test_sobreposicao_tampa_a_cunha_externa_ate_o_angulo_de_projeto():
         p_s, p_c = meia * sin(theta), meia * cos(theta)
         passo = (p_c - meia) / sin(theta)
         cruzamento = p_s + passo * cos(theta)
-        e = mc.sobreposicao(ESPESSURA, graus, 1.0, tuning_dedos.FRACAO_MAXIMA_SOBREPOSICAO)
+        e = mc.sobreposicao(
+            ESPESSURA, graus, 1.0, tuning_dedos.FRACAO_MAXIMA_SOBREPOSICAO
+        )
         assert isclose(cruzamento, meia * tan(theta / 2), abs_tol=1e-12)
         assert e >= cruzamento - 1e-12
 
 
 def test_pivos_ficam_no_centro_da_secao_de_cada_junta():
     segmentos = _cortar(tuning_dedos.ANGULO_PROJETO_SOBREPOSICAO_GRAUS)
-    juntas = [tuning_dedos.FRACAO_SECAO_DA_RAIZ * COMPRIMENTO, FRACOES[0] * COMPRIMENTO,
-              (FRACOES[0] + FRACOES[1]) * COMPRIMENTO]
+    juntas = [
+        tuning_dedos.FRACAO_SECAO_DA_RAIZ * COMPRIMENTO,
+        FRACOES[0] * COMPRIMENTO,
+        (FRACOES[0] + FRACOES[1]) * COMPRIMENTO,
+    ]
 
     for segmento, s in zip(segmentos, juntas, strict=True):
         assert segmento.pivo == pytest.approx((s, 0.0, 0.0), abs=1e-9)
@@ -174,7 +188,11 @@ def test_numero_de_juntas():
 
 @pytest.mark.parametrize("dedo", range(5))
 def test_gesto_fecha_todas_as_juntas_dentro_dos_limites(dedo):
-    limites = tuning_dedos.LIMITES_JUNTA_POLEGAR_GRAUS if dedo == 0 else tuning_dedos.LIMITES_JUNTA_DEDO_GRAUS
+    limites = (
+        tuning_dedos.LIMITES_JUNTA_POLEGAR_GRAUS
+        if dedo == 0
+        else tuning_dedos.LIMITES_JUNTA_DEDO_GRAUS
+    )
     aberto = cascata.angulos_juntas(dedo, 1, 0.0, "idle", 0.0, 0.0)
     fechado = cascata.angulos_juntas(dedo, 1, 0.0, "thumbs_up", 0.0, 80.0)
 
@@ -185,7 +203,9 @@ def test_gesto_fecha_todas_as_juntas_dentro_dos_limites(dedo):
 
 def test_movimento_secundario_vivo_no_idle_e_some_com_gesto_firme():
     def amostras(flexao):
-        return {cascata.angulos_juntas(2, 1, t / 10, "idle", 0.0, flexao) for t in range(40)}
+        return {
+            cascata.angulos_juntas(2, 1, t / 10, "idle", 0.0, flexao) for t in range(40)
+        }
 
     assert len(amostras(0.0)) > 1
     assert len(amostras(tuning_dedos.FLEXAO_GESTO_REFERENCIA_GRAUS)) == 1
@@ -234,14 +254,21 @@ def test_recorte_do_asset_real_fecha_cada_segmento_sem_buraco():
     core.loadPrcFileData("", "window-type none\naudio-library-name null")
     raiz = core.NodePath(gltf.load_model(str(resolve_model())))
 
-    for dedo, mesh in enumerate(tuning_dedos.MESH_DEDOS_DIREITA + tuning_dedos.MESH_DEDOS_ESQUERDA):
+    for dedo, mesh in enumerate(
+        tuning_dedos.MESH_DEDOS_DIREITA + tuning_dedos.MESH_DEDOS_ESQUERDA
+    ):
         triangulos = dm._ler_triangulos(raiz.find(f"**/mesh{mesh}").node())
         pontos = [(v[0], v[1], v[2]) for t in triangulos for v in t]
         direcao = mc.eixo_principal(pontos)
         fracoes = tuning_dedos.FRACOES_SEGMENTOS_POLEGAR if dedo % 5 == 0 else FRACOES
         segmentos = mc.cortar_cadeia(
-            triangulos, direcao, mc.eixo_de_flexao(direcao), fracoes, 0.0,
-            tuning_dedos.FRACAO_MAXIMA_SOBREPOSICAO, tuning_dedos.FRACAO_SECAO_DA_RAIZ,
+            triangulos,
+            direcao,
+            mc.eixo_de_flexao(direcao),
+            fracoes,
+            0.0,
+            tuning_dedos.FRACAO_MAXIMA_SOBREPOSICAO,
+            tuning_dedos.FRACAO_SECAO_DA_RAIZ,
         )
         volumes = [abs(_volume(s.triangulos)) for s in segmentos]
         assert all(v > 0 for v in volumes), mesh
@@ -251,8 +278,8 @@ def test_recorte_do_asset_real_fecha_cada_segmento_sem_buraco():
 def test_fk_da_cadeia_iguala_o_panda_e_espelha():
     pytest.importorskip("panda3d.core", reason="Panda3D indisponível")
     pytest.importorskip("gltf", reason="panda3d-gltf indisponível")
-    from sejoga.nucleo.recursos import resolve_model
     from sejoga.nucleo.modelo import load_model
+    from sejoga.nucleo.recursos import resolve_model
 
     medidas = _oraculo().medir_dedos(load_model(resolve_model()))
     assert len(medidas) == 10

@@ -4,7 +4,9 @@ from sejoga.animacao.interacao_mouse import MouseInteraction
 
 
 def kinds(mouse, position=(100, 100), buttons=(), **kwargs):
-    return [event.kind for event in mouse.update(position, frozenset(buttons), **kwargs)]
+    return [
+        event.kind for event in mouse.update(position, frozenset(buttons), **kwargs)
+    ]
 
 
 def test_external_press_never_becomes_drag_or_click():
@@ -25,7 +27,11 @@ def test_click_tolerates_small_hand_movement():
 def test_drag_continues_and_ends_outside_without_click():
     mouse = MouseInteraction()
     kinds(mouse, buttons=("left",), hit=True)
-    assert kinds(mouse, (130, 100), ("left",), hit=False) == ["hover_exit", "drag_start", "drag_move"]
+    assert kinds(mouse, (130, 100), ("left",), hit=False) == [
+        "hover_exit",
+        "drag_start",
+        "drag_move",
+    ]
     assert kinds(mouse, (230, 100), hit=False) == ["drag_end"]
     assert not mouse.dragging
     assert not mouse.has_press
@@ -41,7 +47,10 @@ def test_cancel_hidden_overlay_requires_new_press():
     mouse = MouseInteraction()
     kinds(mouse, buttons=("left",), hit=True)
     kinds(mouse, (130, 100), ("left",), hit=True)
-    assert kinds(mouse, (130, 100), ("left",), hit=True, enabled=False) == ["hover_exit", "drag_cancel"]
+    assert kinds(mouse, (130, 100), ("left",), hit=True, enabled=False) == [
+        "hover_exit",
+        "drag_cancel",
+    ]
     assert kinds(mouse, (130, 100), ("left",), hit=True) == ["hover_enter"]
     assert kinds(mouse, (130, 100), hit=True) == []
 
@@ -76,13 +85,13 @@ def test_secondary_button_during_drag_does_not_trigger_pet_on_release():
 
 
 def test_owned_double_click_uses_time_and_distance_thresholds():
-    mouse = MouseInteraction(double_click_seconds=.4, double_click_distance=5)
+    mouse = MouseInteraction(double_click_seconds=0.4, double_click_distance=5)
     kinds(mouse, buttons=("left",), hit=True, now=0)
-    assert kinds(mouse, hit=True, now=.05) == ["poke"]
-    kinds(mouse, (102, 100), ("left",), hit=True, now=.15)
-    assert kinds(mouse, (102, 100), hit=True, now=.20) == ["double_click"]
-    kinds(mouse, buttons=("left",), hit=True, now=.25)
-    assert kinds(mouse, hit=True, now=.30) == ["poke"]
+    assert kinds(mouse, hit=True, now=0.05) == ["poke"]
+    kinds(mouse, (102, 100), ("left",), hit=True, now=0.15)
+    assert kinds(mouse, (102, 100), hit=True, now=0.20) == ["double_click"]
+    kinds(mouse, buttons=("left",), hit=True, now=0.25)
+    assert kinds(mouse, hit=True, now=0.30) == ["poke"]
     kinds(mouse, buttons=("left",), hit=True, now=1)
     assert kinds(mouse, hit=True, now=1.05) == ["poke"]
     kinds(mouse, (120, 100), ("left",), hit=True, now=1.1)
@@ -92,11 +101,11 @@ def test_owned_double_click_uses_time_and_distance_thresholds():
 def test_drag_or_external_press_cannot_complete_double_click():
     mouse = MouseInteraction()
     kinds(mouse, buttons=("left",), hit=True, now=0)
-    kinds(mouse, hit=True, now=.02)
-    kinds(mouse, buttons=("left",), hit=False, now=.04)
-    kinds(mouse, hit=True, now=.06)
-    kinds(mouse, buttons=("left",), hit=True, now=.08)
-    assert kinds(mouse, hit=True, now=.10) == ["poke"]
-    kinds(mouse, buttons=("left",), hit=True, now=.12)
-    kinds(mouse, (160, 100), ("left",), hit=True, now=.14)
-    assert kinds(mouse, (160, 100), hit=True, now=.16) == ["drag_end"]
+    kinds(mouse, hit=True, now=0.02)
+    kinds(mouse, buttons=("left",), hit=False, now=0.04)
+    kinds(mouse, hit=True, now=0.06)
+    kinds(mouse, buttons=("left",), hit=True, now=0.08)
+    assert kinds(mouse, hit=True, now=0.10) == ["poke"]
+    kinds(mouse, buttons=("left",), hit=True, now=0.12)
+    kinds(mouse, (160, 100), ("left",), hit=True, now=0.14)
+    assert kinds(mouse, (160, 100), hit=True, now=0.16) == ["drag_end"]

@@ -1,3 +1,5 @@
+"""Testa o controlador de animação: estados, reações e transições."""
+
 import math
 from itertools import pairwise
 
@@ -12,6 +14,7 @@ def controller():
 
 def test_controller_starts_in_composed_idle_pose_not_t_pose():
     from math import degrees
+
     animation = controller()
     pose = animation.update(1 / 60)
     # Medido pela FK do grafo de cena: não é T-pose (punho abaixo do ombro e à
@@ -30,10 +33,10 @@ def test_hover_reaches_toward_the_cursor_without_flapping_both_arms():
         base_pose = neutral.update(1 / 60)
     animation = controller()
     for _ in range(40):
-        pose = animation.update(1 / 60, hovered=True, look_direction=.8)
+        pose = animation.update(1 / 60, hovered=True, look_direction=0.8)
     assert animation.state == AnimationState.HOVER
     assert pose["left-arm"].z > pose["right-arm"].z * -1
-    assert pose["left-arm"].z - base_pose["left-arm"].z > .2
+    assert pose["left-arm"].z - base_pose["left-arm"].z > 0.2
 
 
 def test_hover_keeps_personality_phrase_and_arm_motion():
@@ -41,7 +44,7 @@ def test_hover_keeps_personality_phrase_and_arm_motion():
     animation.set_idle_personality("fighter")
     samples = []
     for frame in range(180):
-        pose = animation.update(1/60, hovered=True, look_direction=.5)
+        pose = animation.update(1 / 60, hovered=True, look_direction=0.5)
         if frame > 60:
             samples.append(pose["right-arm"])
     assert animation.state == AnimationState.HOVER
@@ -55,10 +58,11 @@ def test_hover_keeps_personality_phrase_and_arm_motion():
 
 def test_fall_pose_uses_velocity_not_application_uptime():
     from sejoga.animacao.poses_base import pose_thrown
+
     animation = controller()
-    pose_thrown(animation.rig, .7, (0, -600))
+    pose_thrown(animation.rig, 0.7, (0, -600))
     ascending = animation.rig.pose()
-    pose_thrown(animation.rig, .7, (0, 600))
+    pose_thrown(animation.rig, 0.7, (0, 600))
     descending = animation.rig.pose()
     assert ascending["head"].x < descending["head"].x
     # Convenção medida no grafo de cena (não confirmada na GPU): a elevação é o ROLL (Z); o balanço aéreo (air_sway) a
@@ -78,7 +82,7 @@ def test_wave_turns_palm_out_and_keeps_elbow_bent():
     from sejoga.animacao.poses_base import pose_flourish
 
     animation = controller()
-    pose_flourish(animation.rig, "wave", .95)
+    pose_flourish(animation.rig, "wave", 0.95)
     pose = animation.rig.pose()
 
     # FK do grafo de cena: no pico do aceno o punho fica acima do ombro e o
@@ -93,6 +97,7 @@ def test_walk_and_drag_poses_have_counterbalanced_arms():
     from math import degrees
 
     from sejoga.animacao.poses_base import pose_drag, pose_walk
+
     animation = controller()
     pose_walk(animation.rig, 0.0)
     walk_left = degrees(animation.rig.current["left-arm"].y)
@@ -102,9 +107,9 @@ def test_walk_and_drag_poses_have_counterbalanced_arms():
     # Convenção medida no grafo de cena (não confirmada na GPU): o arraste estende o braço para a FRENTE pela
     # PROFUNDIDADE (Y/heading), não pela elevação (Z): cada direção avança um
     # lado diferente.
-    pose_drag(animation.rig, 0, direction=1, drag_intensity=.8)
+    pose_drag(animation.rig, 0, direction=1, drag_intensity=0.8)
     right_drag = animation.rig.pose()
-    pose_drag(animation.rig, 0, direction=-1, drag_intensity=.8)
+    pose_drag(animation.rig, 0, direction=-1, drag_intensity=0.8)
     left_drag = animation.rig.pose()
     assert right_drag["left-arm"].y != left_drag["left-arm"].y
     assert right_drag["right-arm"].y != left_drag["right-arm"].y
@@ -126,8 +131,8 @@ def test_raised_arm_survives_the_resolver_clamp_in_the_live_pipeline():
     # Convenção medida no grafo de cena (não confirmada na GPU): braço reto para CIMA = ELEVAÇÃO ROLL Z≈-90° (z negativo
     # ergue), não o heading. O clamp de elevação deve deixar passar a pose
     # erguida sem rebaixá-la (o espelho usa Z simétrico).
-    alvo["right-arm"] = Rotation3(z=math.radians(-90.0))   # reto para cima
-    alvo["left-arm"] = Rotation3(z=math.radians(90.0))     # espelho
+    alvo["right-arm"] = Rotation3(z=math.radians(-90.0))  # reto para cima
+    alvo["left-arm"] = Rotation3(z=math.radians(90.0))  # espelho
     resolvida = None
     for _ in range(120):
         resolvida = animation.pose_resolver.resolver(1 / 60, alvo)
@@ -160,21 +165,22 @@ def test_wave_reaches_renderer_raised_end_to_end():
 
 def test_leg_steps_alternate_and_airborne_pose_settles():
     from sejoga.animacao.movimento_pernas import LegMotion
+
     legs = LegMotion()
-    poses = [legs.update(1/60, "walk", (200, 0)) for _ in range(120)]
+    poses = [legs.update(1 / 60, "walk", (200, 0)) for _ in range(120)]
     assert any(p.left > 5 and p.right < -5 for p in poses)
     assert any(p.right > 5 and p.left < -5 for p in poses)
     for _ in range(60):
-        ascending = legs.update(1/60, "fall", (0, -300))
+        ascending = legs.update(1 / 60, "fall", (0, -300))
     for _ in range(60):
-        descending = legs.update(1/60, "fall", (0, 300))
+        descending = legs.update(1 / 60, "fall", (0, 300))
     assert ascending.left_knee > 15
     assert descending.left_knee > ascending.left_knee
-    fall_steps = [legs.update(1/60, "fall", (120, 300)).left for _ in range(120)]
+    fall_steps = [legs.update(1 / 60, "fall", (120, 300)).left for _ in range(120)]
     assert max(fall_steps) - min(fall_steps) > 4
     for _ in range(120):
-        rest = legs.update(1/60, "idle")
-    assert abs(rest.left) < .001 and rest.left_knee < .001
+        rest = legs.update(1 / 60, "idle")
+    assert abs(rest.left) < 0.001 and rest.left_knee < 0.001
 
 
 def _arraste_por(part):
@@ -182,7 +188,7 @@ def _arraste_por(part):
     animation = controller()
     pose = None
     for _ in range(240):
-        pose = animation.update(1/60, dragging=True, grab_part=part)
+        pose = animation.update(1 / 60, dragging=True, grab_part=part)
     assert animation.state == AnimationState.DRAG
     return pose
 
@@ -193,7 +199,7 @@ def test_arraste_por_perna_pendura_bracos_e_cabeca():
     # Pego pela perna/pé: braços e cabeça pendem. FK do grafo de cena: punhos
     # abaixo do ombro nos dois lados (o mais baixo que o corpo permite, ver
     # arm_targets: o short impede baixar mais sem atravessar).
-    for part in ('legs', 'left-feet', 'right-feet'):
+    for part in ("legs", "left-feet", "right-feet"):
         pose = _arraste_por(part)
         assert punho(pose, "right")[1] < 0.0, part
         assert punho(pose, "left")[1] < 0.0, part
@@ -204,9 +210,9 @@ def test_arraste_por_perna_pendura_bracos_e_cabeca():
 def test_arraste_por_perna_difere_de_corpo_e_braco():
     from math import degrees
 
-    perna = _arraste_por('legs')
-    corpo = _arraste_por('body')
-    braco = _arraste_por('right-arm')
+    perna = _arraste_por("legs")
+    corpo = _arraste_por("body")
+    braco = _arraste_por("right-arm")
     # FK do grafo de cena: pego pela perna os punhos ficam mais BAIXOS que no
     # arraste pelo corpo (que leva as mãos à frente para se equilibrar).
     assert punho(perna, "right")[1] < punho(corpo, "right")[1]
@@ -263,8 +269,14 @@ def test_hover_tracks_cursor_and_exits_smoothly():
     # remains alive, with no visible discontinuity at the state boundary.
     for group, rotation in pose.items():
         before = previous_pose[group]
-        assert max(abs(rotation.x-before.x), abs(rotation.y-before.y),
-                   abs(rotation.z-before.z)) < .01
+        assert (
+            max(
+                abs(rotation.x - before.x),
+                abs(rotation.y - before.y),
+                abs(rotation.z - before.z),
+            )
+            < 0.01
+        )
 
 
 def test_landing_reaction_finishes_and_returns_to_idle():
@@ -279,22 +291,25 @@ def test_landing_reaction_finishes_and_returns_to_idle():
 
 def test_music_preferences_disable_and_enable_dance():
     animation = controller()
-    animation.update(.1, music_playing=True, music_intensity=.5, dance_chance=0)
+    animation.update(0.1, music_playing=True, music_intensity=0.5, dance_chance=0)
     assert animation.state == AnimationState.IDLE
-    animation.update(.1, music_playing=True, music_intensity=.5, react_to_beat=False)
+    animation.update(0.1, music_playing=True, music_intensity=0.5, react_to_beat=False)
     assert animation.state == AnimationState.IDLE
-    animation.update(.1, music_playing=True, music_intensity=.5)
+    animation.update(0.1, music_playing=True, music_intensity=0.5)
     assert animation.state == AnimationState.DANCE
-    animation.update(.1, music_playing=False)
+    animation.update(0.1, music_playing=False)
     assert animation.state == AnimationState.IDLE
 
 
 def test_music_probability_is_not_sampled_every_frame():
     from unittest.mock import Mock
+
     animation = controller()
-    animation._dance_rng.random = Mock(return_value=.9)
+    animation._dance_rng.random = Mock(return_value=0.9)
     for _ in range(60):
-        animation.update(.016, music_playing=True, music_intensity=.5, dance_chance=.35)
+        animation.update(
+            0.016, music_playing=True, music_intensity=0.5, dance_chance=0.35
+        )
     assert animation.state == AnimationState.IDLE
     assert animation._dance_rng.random.call_count == 1
 
@@ -302,23 +317,27 @@ def test_music_probability_is_not_sampled_every_frame():
 def test_airborne_motion_never_selects_walk_or_run():
     animation = controller()
     for speed in (150, 500, 1500):
-        animation.update(.1, grounded=False, velocity=(speed, 0))
+        animation.update(0.1, grounded=False, velocity=(speed, 0))
         assert animation.state == AnimationState.FALL
 
 
 def test_hover_tracks_both_axes_and_new_reactions_generate_distinct_poses():
     animation = controller()
     for _ in range(10):
-        pose = animation.update(.1, hovered=True, look_direction=-1, look_vertical=1)
+        pose = animation.update(0.1, hovered=True, look_direction=-1, look_vertical=1)
     assert pose["head"].x < 0 and pose["head"].y < 0
     frames = []
     for kind in ("wave", "stretch", "peek", "hit"):
         other = controller()
         other.interact(kind)
         for _ in range(5):
-            pose = other.update(.1)
+            pose = other.update(0.1)
         frames.append(tuple(pose.values()))
-        assert other.appendage_remaining > 0 if kind == 'peek' else other.state.value == kind
+        assert (
+            other.appendage_remaining > 0
+            if kind == "peek"
+            else other.state.value == kind
+        )
     assert len(set(frames)) == 4
 
 
@@ -329,42 +348,42 @@ def test_tentacle_peeks_are_rare_but_manual_peek_remains_available():
     starts = []
     previous = None
     for frame in range(1800):
-        animation.update(.1)
+        animation.update(0.1)
         if animation.appendage_remaining > 0 and not previous:
-            starts.append(frame/10)
+            starts.append(frame / 10)
         previous = animation.appendage_remaining > 0
     assert starts and starts[0] >= 59.9
-    assert all(b-a >= 60 for a,b in pairwise(starts))
+    assert all(b - a >= 60 for a, b in pairwise(starts))
     other = controller()
     other.interact("peek")
-    other.update(.1)
+    other.update(0.1)
     assert other.appendage_remaining > 0
 
 
 def test_dance_keeps_body_animation_while_peeking_and_ignores_ambient_wave():
     animation = controller()
     for _ in range(60):
-        animation.update(1/60, music_playing=True, music_intensity=.5)
-    animation.interact('peek')
-    animation.interact('wave')
+        animation.update(1 / 60, music_playing=True, music_intensity=0.5)
+    animation.interact("peek")
+    animation.interact("wave")
     samples = []
     for _ in range(120):
-        pose = animation.update(1/60, music_playing=True, music_intensity=.5)
+        pose = animation.update(1 / 60, music_playing=True, music_intensity=0.5)
         assert animation.state == AnimationState.DANCE
         assert animation.appendage_remaining > 0
-        samples.append(pose['head'])
+        samples.append(pose["head"])
     assert len(set(samples)) > 100
 
 
 def test_silent_dance_preview_expires_without_restarting_itself():
     animation = controller()
-    animation.preview_dance('rock')
+    animation.preview_dance("rock")
     for _ in range(120):
-        animation.update(1/60)
+        animation.update(1 / 60)
     assert animation.state == AnimationState.DANCE
-    assert animation.dance_motion.style == 'rock'
+    assert animation.dance_motion.style == "rock"
     for _ in range(900):
-        animation.update(1/60)
+        animation.update(1 / 60)
     assert animation._dance_preview_remaining == 0
     assert animation.state != AnimationState.DANCE
 
@@ -373,6 +392,7 @@ def test_crossfade_por_junta_deixa_a_ponta_balancar_mais_que_a_ancora():
     from math import isfinite
 
     from sejoga.nucleo.esqueleto import Rotation3
+
     animation = controller()
     # Estabiliza em idle por muitos frames: o regime estável deixa cada junta
     # com a sua tensão da tabela (sem uniformizar a frequência).
@@ -400,21 +420,21 @@ def test_crossfade_por_junta_deixa_a_ponta_balancar_mais_que_a_ancora():
 def test_double_click_interrupts_single_click_then_recovers():
     animation = controller()
     animation.interact("click")
-    animation.update(.1)
+    animation.update(0.1)
     animation.interact("double_click")
     assert animation.body_motion.pitch.velocity < 0
     for _ in range(6):
-        pose = animation.update(.1)
+        pose = animation.update(0.1)
     assert animation.state == AnimationState.DOUBLE_CLICK
     assert pose["hand"].z != 0 and pose["ant-arm"].x != 0
     for _ in range(10):
-        animation.update(.1)
+        animation.update(0.1)
     assert animation.state == AnimationState.IDLE
 
 
 def test_surprise_reaction_fires_and_expires_like_the_others():
     animation = controller()
-    animation.interact("surprise", direction=.8, strength=1.0)
+    animation.interact("surprise", direction=0.8, strength=1.0)
     animation.update(0.1)
     assert animation.state == AnimationState.SURPRISE
     # Expira dentro da sua janela (0.7 s) e volta ao idle, como as demais.
@@ -427,6 +447,7 @@ def test_surprise_pose_recoils_body_and_turns_head_toward_stimulus():
     from math import degrees
 
     from sejoga.animacao.poses_base import pose_interaction
+
     animation = controller()
     # Estímulo à direita: a cabeça gira para o lado (y>0) e o tronco recua (x<0).
     pose_interaction(animation.rig, "surprise", 0.35, direction=1.0, vertical=0.0)

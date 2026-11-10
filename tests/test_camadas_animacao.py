@@ -1,4 +1,5 @@
 """Contratos das camadas aditivas e do mixer."""
+
 import pytest
 
 from sejoga.animacao.camadas_animacao import (
@@ -23,8 +24,11 @@ def test_soma_aditiva_por_junta():
 
 def test_mascara_restringe_grupos_afetados():
     camadas = [
-        CamadaAnim("interacao", {"body": Rotation3(10, 0, 0), "head": Rotation3(10, 0, 0)},
-                   mascara=frozenset({"head"})),
+        CamadaAnim(
+            "interacao",
+            {"body": Rotation3(10, 0, 0), "head": Rotation3(10, 0, 0)},
+            mascara=frozenset({"head"}),
+        ),
     ]
     resultado = MixerCamadas.compor(camadas)
     assert "body" not in resultado
@@ -47,14 +51,18 @@ def test_peso_fracionario_escala_a_contribuicao():
 
 def test_ordem_de_prioridade_e_deterministica():
     # Mesmo passando fora de ordem, a composição segue ORDEM_PRIORIDADE.
-    direta = MixerCamadas.compor([
-        CamadaAnim("base", {"body": Rotation3(1, 0, 0)}),
-        CamadaAnim("fisica", {"body": Rotation3(0, 0, 1)}),
-    ])
-    invertida = MixerCamadas.compor([
-        CamadaAnim("fisica", {"body": Rotation3(0, 0, 1)}),
-        CamadaAnim("base", {"body": Rotation3(1, 0, 0)}),
-    ])
+    direta = MixerCamadas.compor(
+        [
+            CamadaAnim("base", {"body": Rotation3(1, 0, 0)}),
+            CamadaAnim("fisica", {"body": Rotation3(0, 0, 1)}),
+        ]
+    )
+    invertida = MixerCamadas.compor(
+        [
+            CamadaAnim("fisica", {"body": Rotation3(0, 0, 1)}),
+            CamadaAnim("base", {"body": Rotation3(1, 0, 0)}),
+        ]
+    )
     assert direta == invertida == {"body": Rotation3(1, 0, 1)}
 
 
@@ -135,11 +143,13 @@ def test_layer_stack_compor_sobre_base_de_repouso():
     assert "right-arm" in base
 
     # Adiciona camada de estado
-    stack.set_camada(CamadaDelta(
-        nome="estado",
-        prioridade=Prioridade.ESTADO,
-        delta={"body": Rotation3(0.1, 0, 0)},
-    ))
+    stack.set_camada(
+        CamadaDelta(
+            nome="estado",
+            prioridade=Prioridade.ESTADO,
+            delta={"body": Rotation3(0.1, 0, 0)},
+        )
+    )
     resultado = stack.compor()
     assert resultado["body"].x == pytest.approx(base["body"].x + 0.1)
 
@@ -149,16 +159,20 @@ def test_layer_stack_ordem_de_prioridade():
     stack = LayerStack()
 
     # Camadas em ordem reversa de prioridade
-    stack.set_camada(CamadaDelta(
-        nome="fisica",
-        prioridade=Prioridade.FISICA,
-        delta={"body": Rotation3(0.3, 0, 0)},
-    ))
-    stack.set_camada(CamadaDelta(
-        nome="estado",
-        prioridade=Prioridade.ESTADO,
-        delta={"body": Rotation3(0.1, 0, 0)},
-    ))
+    stack.set_camada(
+        CamadaDelta(
+            nome="fisica",
+            prioridade=Prioridade.FISICA,
+            delta={"body": Rotation3(0.3, 0, 0)},
+        )
+    )
+    stack.set_camada(
+        CamadaDelta(
+            nome="estado",
+            prioridade=Prioridade.ESTADO,
+            delta={"body": Rotation3(0.1, 0, 0)},
+        )
+    )
 
     base = stack._base["body"]
     resultado = stack.compor()
@@ -171,11 +185,13 @@ def test_layer_stack_remove_camada():
     """LayerStack.remove_camada elimina a contribuição da camada."""
     stack = LayerStack()
 
-    stack.set_camada(CamadaDelta(
-        nome="reacao",
-        prioridade=Prioridade.REACAO,
-        delta={"body": Rotation3(1.0, 0, 0)},
-    ))
+    stack.set_camada(
+        CamadaDelta(
+            nome="reacao",
+            prioridade=Prioridade.REACAO,
+            delta={"body": Rotation3(1.0, 0, 0)},
+        )
+    )
 
     com_reacao = stack.compor()
     stack.remove_camada("reacao")
@@ -189,18 +205,22 @@ def test_layer_stack_set_camada_substitui():
     """LayerStack.set_camada substitui camada existente com mesmo nome."""
     stack = LayerStack()
 
-    stack.set_camada(CamadaDelta(
-        nome="estado",
-        prioridade=Prioridade.ESTADO,
-        delta={"body": Rotation3(0.1, 0, 0)},
-    ))
+    stack.set_camada(
+        CamadaDelta(
+            nome="estado",
+            prioridade=Prioridade.ESTADO,
+            delta={"body": Rotation3(0.1, 0, 0)},
+        )
+    )
     primeiro = stack.compor()
 
-    stack.set_camada(CamadaDelta(
-        nome="estado",
-        prioridade=Prioridade.ESTADO,
-        delta={"body": Rotation3(0.5, 0, 0)},
-    ))
+    stack.set_camada(
+        CamadaDelta(
+            nome="estado",
+            prioridade=Prioridade.ESTADO,
+            delta={"body": Rotation3(0.5, 0, 0)},
+        )
+    )
     segundo = stack.compor()
 
     # Só o segundo delta está presente, não a soma dos dois

@@ -18,10 +18,24 @@ from sejoga.animacao.poses_base import pose_idle, pose_sleep
 from sejoga.nucleo.esqueleto import ALL_GROUPS, IdlePersonality, Rig, Rotation3
 
 #: Gestos/estilos assimétricos por definição (não entram no contrato de espelho).
-ASSIMETRIAS_INTENCIONAIS = frozenset({
-    "wave", "thumbs_up", "finger_gun", "hang_loose", "rock", "walk", "run",
-    "street", "fighter", "rhythm", "stylish", "curious", "playful", "confident",
-})
+ASSIMETRIAS_INTENCIONAIS = frozenset(
+    {
+        "wave",
+        "thumbs_up",
+        "finger_gun",
+        "hang_loose",
+        "rock",
+        "walk",
+        "run",
+        "street",
+        "fighter",
+        "rhythm",
+        "stylish",
+        "curious",
+        "playful",
+        "confident",
+    }
+)
 #: Tolerância (u) da posição do punho espelhado.
 TOLERANCIA_U = 1e-6
 #: Instantes amostrados (s).
@@ -52,15 +66,20 @@ def test_sono_e_espelhado():
         assert _espelhado(rig.pose()), t
 
 
-@pytest.mark.parametrize("delta_de", [lambda t: delta_dance(t, 0.8), lambda t: delta_fall(t, (0, 400))])
+@pytest.mark.parametrize(
+    "delta_de", [lambda t: delta_dance(t, 0.8), lambda t: delta_fall(t, (0, 400))]
+)
 def test_deltas_simetricos_preservam_o_espelho(delta_de):
     base = pose_repouso()
 
     for t in INSTANTES:
         delta = delta_de(t)
         pose = {
-            g: Rotation3(r.x + delta.get(g, Rotation3()).x, r.y + delta.get(g, Rotation3()).y,
-                         r.z + delta.get(g, Rotation3()).z)
+            g: Rotation3(
+                r.x + delta.get(g, Rotation3()).x,
+                r.y + delta.get(g, Rotation3()).y,
+                r.z + delta.get(g, Rotation3()).z,
+            )
             for g, r in base.items()
         }
         assert _espelhado(pose), t

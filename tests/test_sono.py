@@ -20,8 +20,7 @@ _LIMITE_CORPO = 12.0
 def _amostrar(t: float) -> dict[str, tuple[float, float, float]]:
     """Delta de sono em graus por grupo."""
     return {
-        g: (degrees(r.x), degrees(r.y), degrees(r.z))
-        for g, r in delta_sleep(t).items()
+        g: (degrees(r.x), degrees(r.y), degrees(r.z)) for g, r in delta_sleep(t).items()
     }
 
 

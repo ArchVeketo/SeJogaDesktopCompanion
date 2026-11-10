@@ -1,29 +1,38 @@
 """Contratos das molas por junta e da cadeia de atraso."""
+
 from math import isfinite
 
 import pytest
 
+from sejoga.animacao.mola_tuning import amortecimento_de, frequencia_de
 from sejoga.animacao.molas_juntas import (
     CADEIA_DIREITA,
     JointSpring,
     LagChain,
     SpringPose,
 )
-from sejoga.animacao.mola_tuning import amortecimento_de, frequencia_de
 from sejoga.nucleo.esqueleto import Rotation3
 
 
 def test_joint_spring_response_is_frame_rate_independent():
     resultados = []
     for rate in (30, 60, 120):
-        mola = JointSpring(1.65, .52)
+        mola = JointSpring(1.65, 0.52)
         for _ in range(rate):
             mola.atualizar(1 / rate, Rotation3(17, -11, 5))
         for _ in range(rate * 2):
             mola.atualizar(1 / rate, Rotation3())
         valor = mola.valor()
-        resultados.append((valor.x, valor.y, valor.z,
-                           mola.x.velocity, mola.y.velocity, mola.z.velocity))
+        resultados.append(
+            (
+                valor.x,
+                valor.y,
+                valor.z,
+                mola.x.velocity,
+                mola.y.velocity,
+                mola.z.velocity,
+            )
+        )
     for resultado in resultados[1:]:
         assert resultado == pytest.approx(resultados[0], abs=1e-10)
 
@@ -36,7 +45,9 @@ def test_lag_chain_hand_trails_the_arm_on_a_step():
     poses = [cadeia.atualizar(1 / 60, alvo) for _ in range(6)]
     final = poses[-1]
     # Braço lidera, antebraço atrás dele, mão atrás do antebraço, dedos por último.
-    assert final["right-arm"].x > final["ant-arm"].x > final["hand"].x > final["fingers"].x
+    assert (
+        final["right-arm"].x > final["ant-arm"].x > final["hand"].x > final["fingers"].x
+    )
     assert final["fingers"].x >= 0
 
 
@@ -61,8 +72,8 @@ def test_lag_chain_converges_to_target_and_stays_finite():
         rotacao = pose[grupo]
         for eixo in (rotacao.x, rotacao.y, rotacao.z):
             assert isfinite(eixo)
-        assert rotacao.x == pytest.approx(25, abs=.5)
-        assert rotacao.z == pytest.approx(-15, abs=.5)
+        assert rotacao.x == pytest.approx(25, abs=0.5)
+        assert rotacao.z == pytest.approx(-15, abs=0.5)
 
 
 def test_spring_pose_follows_per_joint_targets_and_can_be_reset():
@@ -70,8 +81,8 @@ def test_spring_pose_follows_per_joint_targets_and_can_be_reset():
     alvos = {"body": Rotation3(5, 0, 2), "head": Rotation3(-3, 8, 0)}
     for _ in range(600):
         pose = pose_molas.atualizar(1 / 60, alvos)
-    assert pose["body"].x == pytest.approx(5, abs=.5)
-    assert pose["head"].y == pytest.approx(8, abs=.5)
+    assert pose["body"].x == pytest.approx(5, abs=0.5)
+    assert pose["head"].y == pytest.approx(8, abs=0.5)
     pose_molas.definir({"body": Rotation3(90, 0, 0)})
     assert pose_molas.pose()["body"].x == pytest.approx(90)
     assert pose_molas.molas["body"].x.velocity == 0.0
@@ -100,10 +111,16 @@ def test_spring_pose_por_junta_e_independente_de_framerate():
         amostra = []
         for grupo in alvos:
             mola = pose_molas.molas[grupo]
-            amostra.extend((
-                mola.x.value, mola.y.value, mola.z.value,
-                mola.x.velocity, mola.y.velocity, mola.z.velocity,
-            ))
+            amostra.extend(
+                (
+                    mola.x.value,
+                    mola.y.value,
+                    mola.z.value,
+                    mola.x.velocity,
+                    mola.y.velocity,
+                    mola.z.velocity,
+                )
+            )
         resultados.append(amostra)
     for resultado in resultados[1:]:
         assert resultado == pytest.approx(resultados[0], abs=1e-10)

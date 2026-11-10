@@ -9,12 +9,12 @@ import pytest
 from sejoga.animacao import braco_tuning as bt
 from sejoga.animacao import colisao_bracos as cb
 from sejoga.animacao import danca_tuning as tune
+from sejoga.animacao.braco_hpr import braco_hpr_graus
 from sejoga.animacao.danca_frases_tuning import FRASES
 from sejoga.animacao.poses_danca import PassoDanca, PoseDanca, amostrar_passo
-from sejoga.nucleo.recursos import resolve_model
-from sejoga.nucleo.modelo import load_model
-from sejoga.animacao.braco_hpr import braco_hpr_graus
 from sejoga.nucleo.esqueleto import Rotation3
+from sejoga.nucleo.modelo import load_model
+from sejoga.nucleo.recursos import resolve_model
 
 #: Tolerância (graus) de comparação entre amostras.
 TOLERANCIA_GRAUS = 1e-6
@@ -29,7 +29,9 @@ POP_MAXIMO_GRAUS = 0.5
 GRUPOS_BRACO = ("right-arm", "left-arm", "ant-arm", "ant-arm2")
 
 
-def _varrer(frase: tuple[PassoDanca, ...]) -> list[dict[str, tuple[float, float, float]]]:
+def _varrer(
+    frase: tuple[PassoDanca, ...],
+) -> list[dict[str, tuple[float, float, float]]]:
     """Amostras da frase inteira, passo a passo, fechando no primeiro passo."""
     amostras = []
     for i, passo in enumerate(frase):
@@ -64,7 +66,9 @@ def test_amostrar_passo_no_onset_devolve_a_pose_de_acento():
     pose = amostrar_passo(passo, 0.0)
 
     assert pose["head"] == pytest.approx((-14.0, 0.0, 0.0), abs=TOLERANCIA_GRAUS)
-    assert pose["right-arm"] == pytest.approx(braco_hpr_graus("right", "idle")["right-arm"])
+    assert pose["right-arm"] == pytest.approx(
+        braco_hpr_graus("right", "idle")["right-arm"]
+    )
 
 
 def test_amostrar_passo_em_cada_pose_chave_devolve_a_pose_declarada():
@@ -73,7 +77,9 @@ def test_amostrar_passo_em_cada_pose_chave_devolve_a_pose_declarada():
     for u, pose_chave in zip(tune.U_POSES, passo.poses, strict=True):
         pose = amostrar_passo(passo, u)
 
-        assert pose["head"] == pytest.approx(pose_chave.corpo["head"], abs=TOLERANCIA_GRAUS)
+        assert pose["head"] == pytest.approx(
+            pose_chave.corpo["head"], abs=TOLERANCIA_GRAUS
+        )
         esperado = braco_hpr_graus("right", pose_chave.braco_dir)["ant-arm"]
         assert pose["ant-arm"] == pytest.approx(esperado, abs=TOLERANCIA_GRAUS)
 
@@ -81,7 +87,10 @@ def test_amostrar_passo_em_cada_pose_chave_devolve_a_pose_declarada():
 def test_amostrar_passo_fecha_no_acento_do_proximo_passo():
     passo = _passo_de_teste()
     proximo = PassoDanca(
-        tuple(PoseDanca({"head": (-9.0, 3.0, 0.0)}, "contrapeso", "contrapeso") for _ in range(4))
+        tuple(
+            PoseDanca({"head": (-9.0, 3.0, 0.0)}, "contrapeso", "contrapeso")
+            for _ in range(4)
+        )
     )
 
     final = amostrar_passo(passo, 1.0, proximo)
@@ -153,7 +162,9 @@ def test_frase_mantem_bracos_dentro_dos_clamps_do_resolvedor(estilo):
     for amostra in _varrer(FRASES[estilo]):
         for grupo in ("right-arm", "left-arm"):
             _, azimute, elevacao = amostra[grupo]
-            assert bt.OMBRO_ELEVACAO_MIN_GRAUS <= elevacao <= bt.OMBRO_ELEVACAO_MAX_GRAUS
+            assert (
+                bt.OMBRO_ELEVACAO_MIN_GRAUS <= elevacao <= bt.OMBRO_ELEVACAO_MAX_GRAUS
+            )
             assert bt.OMBRO_AZIMUTE_MIN_GRAUS <= azimute <= bt.OMBRO_AZIMUTE_MAX_GRAUS
         assert amostra["ant-arm"][2] <= bt.COTOVELO_MAX_GRAUS
 
@@ -162,7 +173,8 @@ def test_frase_mantem_bracos_dentro_dos_clamps_do_resolvedor(estilo):
 def test_frase_nao_atravessa_o_corpo_com_o_modelo_real(modelo, estilo):
     for amostra in _varrer(FRASES[estilo]):
         pose = {
-            grupo: Rotation3(*(radians(v) for v in amostra[grupo])) for grupo in GRUPOS_BRACO
+            grupo: Rotation3(*(radians(v) for v in amostra[grupo]))
+            for grupo in GRUPOS_BRACO
         }
         for lado in ("right", "left"):
             assert cb.penetracao_do_lado(modelo, lado, pose) <= (
@@ -173,13 +185,19 @@ def test_frase_nao_atravessa_o_corpo_com_o_modelo_real(modelo, estilo):
 def test_rock_no_acento_tem_braco_direito_em_chifre_e_esquerdo_baixo():
     pose = amostrar_passo(FRASES["rock"][0], 0.0)
 
-    assert pose["right-arm"] == pytest.approx(braco_hpr_graus("right", "chifre")["right-arm"])
-    assert pose["left-arm"] == pytest.approx(braco_hpr_graus("left", "idle")["left-arm"])
+    assert pose["right-arm"] == pytest.approx(
+        braco_hpr_graus("right", "chifre")["right-arm"]
+    )
+    assert pose["left-arm"] == pytest.approx(
+        braco_hpr_graus("left", "idle")["left-arm"]
+    )
 
 
 @pytest.mark.parametrize("passo", range(2))
 def test_rock_marca_o_headbang_para_baixo_no_acento(passo):
-    cabecas = [amostrar_passo(FRASES["rock"][passo], k / 20)["head"][0] for k in range(20)]
+    cabecas = [
+        amostrar_passo(FRASES["rock"][passo], k / 20)["head"][0] for k in range(20)
+    ]
 
     assert cabecas[0] == min(cabecas)
     assert cabecas[0] < 0.0
@@ -199,9 +217,15 @@ def test_hip_hop_estende_o_braco_oposto_ao_lado_carregado():
     esquerdo = amostrar_passo(frase[1], 0.0)
     direito = amostrar_passo(frase[5], 0.0)
 
-    assert esquerdo["left-arm"] == pytest.approx(braco_hpr_graus("left", "contrapeso")["left-arm"])
-    assert esquerdo["right-arm"] == pytest.approx(braco_hpr_graus("right", "idle")["right-arm"])
-    assert direito["right-arm"] == pytest.approx(braco_hpr_graus("right", "contrapeso")["right-arm"])
+    assert esquerdo["left-arm"] == pytest.approx(
+        braco_hpr_graus("left", "contrapeso")["left-arm"]
+    )
+    assert esquerdo["right-arm"] == pytest.approx(
+        braco_hpr_graus("right", "idle")["right-arm"]
+    )
+    assert direito["right-arm"] == pytest.approx(
+        braco_hpr_graus("right", "contrapeso")["right-arm"]
+    )
 
 
 def test_breakdance_tem_dezesseis_batidas_com_maos_plantadas_no_chao():
@@ -210,7 +234,9 @@ def test_breakdance_tem_dezesseis_batidas_com_maos_plantadas_no_chao():
 
     assert len(frase) == 16
     for batida in range(6, 14):
-        assert amostrar_passo(frase[batida], 0.5)["right-arm"] == pytest.approx(apoio), batida
+        assert amostrar_passo(frase[batida], 0.5)["right-arm"] == pytest.approx(
+            apoio
+        ), batida
 
 
 def test_breakdance_comeca_e_termina_com_os_bracos_no_repouso():
@@ -218,7 +244,9 @@ def test_breakdance_comeca_e_termina_com_os_bracos_no_repouso():
     repouso = braco_hpr_graus("right", "idle")["right-arm"]
 
     assert amostrar_passo(frase[0], 0.0)["right-arm"] == pytest.approx(repouso)
-    assert amostrar_passo(frase[15], 0.9, frase[0])["right-arm"] == pytest.approx(repouso)
+    assert amostrar_passo(frase[15], 0.9, frase[0])["right-arm"] == pytest.approx(
+        repouso
+    )
 
 
 def test_breakdance_acompanha_as_fases_de_floor_do_dance_motion():

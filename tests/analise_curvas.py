@@ -26,6 +26,8 @@ Amostrador = Callable[[float], dict[str, tuple[float, float, float]]]
 
 @dataclass(frozen=True)
 class ClipeAnalisavel:
+    """Clipe amostrável por tempo, com duração e laço."""
+
     nome: str
     amostrar: Amostrador
     duracao: float
@@ -34,6 +36,8 @@ class ClipeAnalisavel:
 
 @dataclass
 class SerieEixo:
+    """Série de um eixo de um grupo amostrada no tempo."""
+
     angulo: list[float]
     velocidade: list[float]
     jerk: list[float]
@@ -41,6 +45,8 @@ class SerieEixo:
 
 @dataclass(frozen=True)
 class Constatacao:
+    """Constatação da análise de curva (tranco, salto ou pausa)."""
+
     categoria: str
     grupo: str
     eixo: str
@@ -106,9 +112,14 @@ def analisar(clipe: ClipeAnalisavel) -> list[Constatacao]:
             pior_jerk = max((abs(j) for j in serie.jerk), default=0.0)
 
             if pior_jerk >= LIMIAR_JERK_TRANCO:
-                achados.append(Constatacao(
-                    "SUAVIDADE", grupo, eixo, f"tranco: pico de jerk {pior_jerk:,.0f}"
-                ))
+                achados.append(
+                    Constatacao(
+                        "SUAVIDADE",
+                        grupo,
+                        eixo,
+                        f"tranco: pico de jerk {pior_jerk:,.0f}",
+                    )
+                )
 
             if not clipe.loop:
                 continue
@@ -117,9 +128,13 @@ def analisar(clipe: ClipeAnalisavel) -> list[Constatacao]:
             salto_vel = abs(serie.velocidade[-1] - serie.velocidade[0])
 
             if salto_pos >= LIMIAR_POP_POSICAO or salto_vel >= LIMIAR_POP_VELOCIDADE:
-                achados.append(Constatacao(
-                    "LOOP", grupo, eixo,
-                    f"pop no fechamento: {salto_pos:.2f} graus, {salto_vel:.1f} graus/s",
-                ))
+                achados.append(
+                    Constatacao(
+                        "LOOP",
+                        grupo,
+                        eixo,
+                        f"pop no fechamento: {salto_pos:.2f} graus, {salto_vel:.1f} graus/s",
+                    )
+                )
 
     return achados

@@ -1,3 +1,5 @@
+"""Testa a coreografia da dança."""
+
 from itertools import pairwise
 from math import degrees, tau
 
@@ -50,28 +52,29 @@ def _contribuicoes(estilo: str) -> list[dict[str, Rotation3]]:
 
 def test_styles_follow_sustained_energy_and_bass_not_single_peak():
     dance = DanceMotion()
-    dance.update(.02, 1, 1, 120, True)
-    assert dance.style == 'head_bob'
+    dance.update(0.02, 1, 1, 120, True)
+    assert dance.style == "head_bob"
 
     for _ in range(600):
-        dance.update(1/60, .5, .3, 95)
-    assert dance.style == 'hip_hop'
+        dance.update(1 / 60, 0.5, 0.3, 95)
+    assert dance.style == "hip_hop"
     for _ in range(600):
-        dance.update(1/60, .95, .7, 150)
-    assert dance.style == 'breakdance'
+        dance.update(1 / 60, 0.95, 0.7, 150)
+    assert dance.style == "breakdance"
     for _ in range(600):
-        dance.update(1/60, .08, .01, 75)
-    assert dance.style == 'head_bob'
+        dance.update(1 / 60, 0.08, 0.01, 75)
+    assert dance.style == "head_bob"
 
 
 def test_shared_phase_keeps_leg_targets_independent_of_internal_clock():
     from sejoga.animacao.movimento_pernas import LegMotion
+
     first, second = LegMotion(), LegMotion()
     second.phase = 50
     for i in range(120):
-        phase = i/60*6.28
-        a = first.update(1/60, 'dance', dance_phase=phase, dance_strength=.2)
-        b = second.update(1/60, 'dance', dance_phase=phase, dance_strength=.2)
+        phase = i / 60 * 6.28
+        a = first.update(1 / 60, "dance", dance_phase=phase, dance_strength=0.2)
+        b = second.update(1 / 60, "dance", dance_phase=phase, dance_strength=0.2)
         assert a == b
 
 
@@ -82,7 +85,9 @@ def test_danca_por_passos_nao_passa_do_teto_de_jerk_do_estilo(estilo):
     def amostrar(t: float):
         quadro = quadros[min(len(quadros) - 1, round(t * FPS))]
 
-        return {g: (degrees(r.x), degrees(r.y), degrees(r.z)) for g, r in quadro.items()}
+        return {
+            g: (degrees(r.x), degrees(r.y), degrees(r.z)) for g, r in quadro.items()
+        }
 
     clipe = aa.ClipeAnalisavel(estilo, amostrar, duracao=DURACAO_S - 0.1, loop=False)
     for grupo, trio in aa.amostrar_clipe(clipe).items():
@@ -98,8 +103,12 @@ def test_danca_por_passos_nao_tem_salto_entre_quadros(estilo):
     for anterior, atual in pairwise(quadros):
         for grupo, rot in atual.items():
             for eixo in "xyz":
-                delta = degrees(abs(getattr(rot, eixo) - getattr(anterior[grupo], eixo)))
-                assert delta < SALTO_MAXIMO_GRAUS, f"{estilo}.{grupo}.{eixo}: {delta:.1f}"
+                delta = degrees(
+                    abs(getattr(rot, eixo) - getattr(anterior[grupo], eixo))
+                )
+                assert delta < SALTO_MAXIMO_GRAUS, (
+                    f"{estilo}.{grupo}.{eixo}: {delta:.1f}"
+                )
 
 
 def _passo_em(estilo: str, bpm: float, batidas: float) -> int:
@@ -131,7 +140,11 @@ def test_rock_flexiona_os_joelhos_mais_no_onset_do_que_no_contratempo():
         pernas = LegMotion()
         for _ in range(120):
             pose = pernas.update(
-                1 / FPS, "dance", dance_phase=fase, dance_strength=1.0, dance_style="rock"
+                1 / FPS,
+                "dance",
+                dance_phase=fase,
+                dance_strength=1.0,
+                dance_style="rock",
             )
 
         return pose.left_knee

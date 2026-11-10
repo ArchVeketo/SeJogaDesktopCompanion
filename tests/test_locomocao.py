@@ -8,17 +8,17 @@ from math import degrees, tau
 import pytest
 
 import analise_curvas as aa
-from sejoga.animacao import controlador_animacao as modulo_animacao
 from sejoga.animacao import colisao_bracos as cb
+from sejoga.animacao import controlador_animacao as modulo_animacao
 from sejoga.animacao.clipes_animacao import CLIPES
 from sejoga.animacao.controlador_animacao import AnimationController, AnimationState
-from sejoga.animacao.movimento_corpo import BodyPose
 from sejoga.animacao.estados_delta import delta_drag, delta_fall, delta_walk
+from sejoga.animacao.movimento_corpo import BodyPose
 from sejoga.animacao.movimento_pernas import FASE_CAMINHADA, FASE_CORRIDA
 from sejoga.animacao.pose_repouso import pose_repouso
-from sejoga.nucleo.recursos import resolve_model
-from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig, Rotation3
+from sejoga.nucleo.modelo import load_model
+from sejoga.nucleo.recursos import resolve_model
 
 FPS = 60.0
 QUADROS_AQUECIMENTO = 30
@@ -59,13 +59,17 @@ def test_walk_usa_a_fase_de_passada_das_pernas(monkeypatch):
 
 def _trechos_do_clipe(nome: str, frequencia: float):
     """(grupo, eixo, pico de jerk quíntico) de cada trecho de cada track."""
-    for chave, keys in CLIPES[nome].tracks.items():
+    for chave, keys in CLIPES[nome].tracks.items():  # noqa: PLR1702  # TODO convenção: teste de cenário longo; dividir em lote próprio
         grupo = chave.split(":")[0]
         for (t0, v0), (t1, v1) in pairwise(keys):
             duracao = (t1 - t0) / frequencia
             for eixo, (a, b) in zip("xyz", zip(v0, v1, strict=True), strict=True):
                 if a != b:
-                    yield grupo, eixo, COEFICIENTE_JERK_QUINTICO * abs(b - a) / duracao**3
+                    yield (
+                        grupo,
+                        eixo,
+                        COEFICIENTE_JERK_QUINTICO * abs(b - a) / duracao**3,
+                    )
 
 
 def _limite_de_jerk(nome: str, frequencia: float) -> dict[tuple[str, str], float]:
@@ -100,7 +104,9 @@ def test_ciclo_de_passada_fecha_sem_pop_nem_tranco_alem_do_projeto(
         for eixo, serie in zip("xyz", trio, strict=True):
             pico = max(abs(j) for j in serie.jerk)
             teto = limites.get((grupo, eixo), 0.0) * MARGEM_JERK
-            assert pico <= teto + 1e-6, f"{nome}.{grupo}.{eixo}: {pico:.0f} > {teto:.0f}"
+            assert pico <= teto + 1e-6, (
+                f"{nome}.{grupo}.{eixo}: {pico:.0f} > {teto:.0f}"
+            )
 
 
 def _compor(delta: dict[str, Rotation3]) -> dict[str, Rotation3]:
@@ -153,7 +159,6 @@ def test_arraste_nao_atravessa_o_corpo(modelo, parte):
         _sem_atravessar(modelo, delta_drag(movimento, parte, 1.0))
 
 
-
 @pytest.mark.parametrize("velocidade", [(0, 800), (600, -300)])
 def test_queda_sem_tranco_em_cinco_segundos(velocidade):
     def amostrar(t: float):
@@ -167,7 +172,10 @@ def test_queda_sem_tranco_em_cinco_segundos(velocidade):
     for grupo, trio in aa.amostrar_clipe(clipe).items():
         for eixo, serie in zip("xyz", trio, strict=True):
             pico = max(abs(j) for j in serie.jerk[BORDA_DETECTOR:-BORDA_DETECTOR])
-            if aa.amplitude(serie) >= aa.AMPLITUDE_MINIMA_ATIVA and pico >= aa.LIMIAR_JERK_TRANCO:
+            if (
+                aa.amplitude(serie) >= aa.AMPLITUDE_MINIMA_ATIVA
+                and pico >= aa.LIMIAR_JERK_TRANCO
+            ):
                 trancos.append(f"{grupo}.{eixo} {pico:.0f}")
 
     assert trancos == []

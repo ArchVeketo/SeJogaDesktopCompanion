@@ -1,7 +1,7 @@
 """Testes para as funções delta de cada estado de animação."""
+
 import pytest
 
-from sejoga.animacao.movimento_corpo import BodyPose
 from sejoga.animacao.estados_delta import (
     delta_drag,
     delta_fall,
@@ -10,6 +10,7 @@ from sejoga.animacao.estados_delta import (
     delta_sleep,
     delta_walk,
 )
+from sejoga.animacao.movimento_corpo import BodyPose
 from sejoga.animacao.pose_repouso import pose_repouso
 from sejoga.nucleo.esqueleto import IdlePersonality, Rotation3
 
@@ -59,8 +60,11 @@ def test_delta_drag_perna_recolhe_bracos():
     delta = delta_drag(motion, "legs")
     base = pose_repouso()
     composta = {
-        g: Rotation3(r.x + delta.get(g, Rotation3()).x, r.y + delta.get(g, Rotation3()).y,
-                     r.z + delta.get(g, Rotation3()).z)
+        g: Rotation3(
+            r.x + delta.get(g, Rotation3()).x,
+            r.y + delta.get(g, Rotation3()).y,
+            r.z + delta.get(g, Rotation3()).z,
+        )
         for g, r in base.items()
     }
 
@@ -68,6 +72,7 @@ def test_delta_drag_perna_recolhe_bracos():
     # ficam no máximo na altura do repouso, nunca acima.
     for lado in ("right", "left"):
         assert punho(composta, lado)[1] <= punho(base, lado)[1] + 1e-6, lado
+
 
 def test_delta_drag_fecha_dedos_com_a_intensidade_e_espelha():
     """Os dedos fecham com a intensidade do arraste; fingers2 usa o espelho."""
@@ -147,6 +152,7 @@ def test_delta_fall_reage_a_velocidade():
     # Cabeça deve ter inclinação diferente subindo vs descendo
     assert subindo["head"].x != descendo["head"].x
 
+
 def test_delta_fall_flail_em_z_e_y_sem_torcao_e_espelhado():
     """A queda balança por z/y; a torção x dos braços é só a base de IK."""
     from math import radians
@@ -189,6 +195,7 @@ def test_delta_fisica_aplica_motion_ao_corpo():
 
     # Valores devem corresponder (convertidos para radianos)
     from math import radians
+
     assert delta["body"].z == pytest.approx(radians(10))
     assert delta["body"].x == pytest.approx(radians(-5))
     assert delta["body"].y == pytest.approx(radians(3))
@@ -230,6 +237,7 @@ def test_delta_idle_respiracao_afeta_corpo():
     if "body" in sem_respiracao and "body" in com_respiracao:
         assert sem_respiracao["body"].x != com_respiracao["body"].x
 
+
 def test_delta_fisica_peito_pendurado_tem_balanco_limitado():
     """Pendurado o renderer já gira o corpo: o peito só soma fração do giro e limitada."""
     from math import degrees
@@ -248,7 +256,9 @@ def test_delta_fisica_peito_limiar_igual_ao_do_renderer():
     from sejoga.animacao import movimento_corpo_tuning as tune
 
     abaixo = delta_fisica(BodyPose(roll=10.0, hanging=tune.PENDURADO_LIMIAR))["body"]
-    acima = delta_fisica(BodyPose(roll=10.0, hanging=tune.PENDURADO_LIMIAR + 0.01))["body"]
+    acima = delta_fisica(BodyPose(roll=10.0, hanging=tune.PENDURADO_LIMIAR + 0.01))[
+        "body"
+    ]
     assert abaixo.z > acima.z
 
 
@@ -271,14 +281,16 @@ def test_delta_idle_fecha_a_frase_sem_pop(personalidade):
     for grupo, rot in antes.items():
         for eixo in "xyz":
             salto = degrees(abs(getattr(rot, eixo) - getattr(depois[grupo], eixo)))
-            assert salto < 0.5, f"{personalidade.value}.{grupo}.{eixo} saltou {salto:.2f}"
+            assert salto < 0.5, (
+                f"{personalidade.value}.{grupo}.{eixo} saltou {salto:.2f}"
+            )
 
 
 def test_delta_idle_nove_personalidades_distintas():
     """As nove personalidades produzem deltas diferentes entre si."""
     for t in (0.0, 2.5, 5.0):
         deltas = [delta_idle(t, p) for p in IdlePersonality]
-        assert all(a != b for i, a in enumerate(deltas) for b in deltas[i + 1:]), t
+        assert all(a != b for i, a in enumerate(deltas) for b in deltas[i + 1 :]), t
 
 
 @pytest.mark.parametrize("personalidade", list(IdlePersonality))

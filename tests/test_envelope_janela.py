@@ -23,7 +23,6 @@ BASE = 480
 
 def _rodar_sequencia(necessarios, *, dt=1.0 / 60, dragging=False, base=BASE):
     """Aplica uma sequência de necessidades e devolve os tamanhos escolhidos."""
-
     estado = EstadoEnvelope()
     atual = base
     tamanhos = []
@@ -117,8 +116,13 @@ def test_arraste_por_pe_fixa_degrau_sem_pular():
     tamanhos = []
     for necessario in necessarios:
         atual = escolher_tamanho(
-            necessario, atual, BASE, estado, 1.0 / 60,
-            dragging=True, fixar_degrau=True,
+            necessario,
+            atual,
+            BASE,
+            estado,
+            1.0 / 60,
+            dragging=True,
+            fixar_degrau=True,
         )
         tamanhos.append(atual)
 
@@ -135,8 +139,13 @@ def test_arraste_por_pe_sobe_uma_vez_se_exceder_e_estabiliza():
     for i in range(120):
         necessario = 1500 if i % 3 == 0 else 900
         atual = escolher_tamanho(
-            necessario, atual, BASE, estado, 1.0 / 60,
-            dragging=True, fixar_degrau=True,
+            necessario,
+            atual,
+            BASE,
+            estado,
+            1.0 / 60,
+            dragging=True,
+            fixar_degrau=True,
         )
         tamanhos.append(atual)
 

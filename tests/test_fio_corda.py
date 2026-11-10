@@ -48,7 +48,8 @@ def test_fio_fone_assentado_respeita_comprimento_dos_segmentos() -> None:
         pontos = [fio.posicoes[i] for i in cadeia]
         total = sum(_distancia(a, b) for a, b in pairwise(pontos))
         esperado = (
-            tuning.COMPRIMENTO_HASTE_U if cadeia[0] == 2 * tuning.SEGMENTOS_RAMO_ORELHA
+            tuning.COMPRIMENTO_HASTE_U
+            if cadeia[0] == 2 * tuning.SEGMENTOS_RAMO_ORELHA
             else tuning.COMPRIMENTO_RAMO_ORELHA_U
         )
         assert abs(total - esperado) < esperado * 0.1
@@ -61,11 +62,15 @@ def test_fio_fone_assentado_duas_vezes_fica_parado() -> None:
 
     fio.atualizar(1 / 60, ANCORAS, BAIXO, [], [])
 
-    assert max(_distancia(a, b) for a, b in zip(antes, fio.posicoes, strict=True)) < 1e-3
+    assert (
+        max(_distancia(a, b) for a, b in zip(antes, fio.posicoes, strict=True)) < 1e-3
+    )
 
 
 def test_fio_fone_com_caixa_no_caminho_nao_entra_na_caixa() -> None:
-    caixa = CaixaOrientada(centro=(0.0, 0.0, 0.5), eixos=EIXOS, meias_dim=(0.08, 0.2, 0.1))
+    caixa = CaixaOrientada(
+        centro=(0.0, 0.0, 0.5), eixos=EIXOS, meias_dim=(0.08, 0.2, 0.1)
+    )
 
     fio = _assentada([caixa])
 
@@ -102,7 +107,9 @@ def test_empurrar_ponto_de_capsula_ponto_dentro_sai_na_folga() -> None:
 
 
 def test_empurrar_ponto_de_caixa_ponto_dentro_sai_pela_face_mais_proxima() -> None:
-    caixa = CaixaOrientada(centro=(0.0, 0.0, 0.0), eixos=EIXOS, meias_dim=(1.0, 1.0, 0.1))
+    caixa = CaixaOrientada(
+        centro=(0.0, 0.0, 0.0), eixos=EIXOS, meias_dim=(1.0, 1.0, 0.1)
+    )
 
     saida = empurrar_ponto_de_caixa((0.2, 0.3, 0.05), caixa, 0.02)
 
@@ -111,12 +118,16 @@ def test_empurrar_ponto_de_caixa_ponto_dentro_sai_pela_face_mais_proxima() -> No
 
 
 def test_empurrar_ponto_de_caixa_ponto_longe_nao_mexe() -> None:
-    caixa = CaixaOrientada(centro=(0.0, 0.0, 0.0), eixos=EIXOS, meias_dim=(1.0, 1.0, 1.0))
+    caixa = CaixaOrientada(
+        centro=(0.0, 0.0, 0.0), eixos=EIXOS, meias_dim=(1.0, 1.0, 1.0)
+    )
 
     assert empurrar_ponto_de_caixa((3.0, 0.0, 0.0), caixa, 0.02) == (3.0, 0.0, 0.0)
 
 
-def test_construir_tubo_faces_apontam_para_fora_e_tem_triangulos_anti_horarios() -> None:
+def test_construir_tubo_faces_apontam_para_fora_e_tem_triangulos_anti_horarios() -> (
+    None
+):
     pontos = [(0.0, 0.0, 1.0 - 0.1 * i) for i in range(4)]
     vertices, normais = construir_tubo(pontos, (0.0, -1.0, 0.0), 0.02)
     triangulos = indices_dos_tubos([len(pontos)])

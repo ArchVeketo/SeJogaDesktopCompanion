@@ -11,8 +11,8 @@ from __future__ import annotations
 from functools import lru_cache
 
 from sejoga.animacao import ik_bracos
-from sejoga.nucleo.recursos import resolve_model
 from sejoga.nucleo.modelo import Model, load_model
+from sejoga.nucleo.recursos import resolve_model
 
 
 @lru_cache(maxsize=1)
@@ -22,6 +22,10 @@ def modelo() -> Model:
 
 def punho(pose, lado: str = "right") -> tuple[float, float, float]:
     """Punho relativo ao ombro ``(direita, cima, frente)`` para a pose."""
-    braco, antebraco = ("right-arm", "ant-arm") if lado == "right" else ("left-arm", "ant-arm2")
+    braco, antebraco = (
+        ("right-arm", "ant-arm") if lado == "right" else ("left-arm", "ant-arm2")
+    )
 
-    return ik_bracos.posicao_mao_para_hpr(modelo(), lado, pose[braco], pose[antebraco], pose)
+    return ik_bracos.posicao_mao_para_hpr(
+        modelo(), lado, pose[braco], pose[antebraco], pose
+    )

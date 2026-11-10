@@ -12,13 +12,13 @@ from math import radians
 
 import pytest
 
-from sejoga.animacao import ik_bracos
 from sejoga.animacao import colisao_bracos as cb
+from sejoga.animacao import ik_bracos
 from sejoga.animacao.alvos_bracos import ALVOS
 from sejoga.animacao.resolvedor_poses import PoseResolver
-from sejoga.nucleo.recursos import resolve_model
-from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.esqueleto import Rotation3
+from sejoga.nucleo.modelo import load_model
+from sejoga.nucleo.recursos import resolve_model
 
 #: Quadros dados ao resolvedor para corrigir e para relaxar.
 QUADROS_CORRECAO = 60
@@ -103,7 +103,7 @@ def test_vertices_das_malhas_do_braco_nao_entram_no_tronco(modelo):
     # Mais fundo que a meia-espessura = o NÚCLEO do braço entrou no volume.
     limite = cb.MEIA_ESPESSURA_BRACO_U + cb.FOLGA_PENETRACAO_U
 
-    for nome in sorted(ALVOS):
+    for nome in sorted(ALVOS):  # noqa: PLR1702  # TODO convenção: teste de cenário longo; dividir em lote próprio
         pose = _pose_simetrica(modelo, nome)
 
         for grupo, rot in pose.items():

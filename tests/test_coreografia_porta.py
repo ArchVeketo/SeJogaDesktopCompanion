@@ -37,40 +37,74 @@ def test_angulo_empurrado_so_comeca_apos_o_contato_e_chega_ao_final():
     assert 0.0 < coreo.angulo_empurrado(meio, final) < final
 
 
-def test_ciclo_completo_abrir_esquecer_puxar_fechar():
+def test_ciclo_completo_abrir_esquecer_puxar_fechar():  # noqa: PLR0915  # TODO convenção: teste de cenário longo; dividir em lote próprio
     coreografia = coreo.CoreografiaPorta()
     coreografia.iniciar_empurrao()
     final = coreo.SAIDA_CALMA.angulo_empurrao_graus
     passo = coreografia.avancar(
-        DT, revelacao_atuador=coreo.REVELACAO_FIM_EMPURRAO, angulo_porta=0.0,
-        ha_ativos=True, angulo_empurrao=final,
+        DT,
+        revelacao_atuador=coreo.REVELACAO_FIM_EMPURRAO,
+        angulo_porta=0.0,
+        ha_ativos=True,
+        angulo_empurrao=final,
     )
     assert passo.fim_empurrao and passo.angulo_porta == final
     assert coreografia.fase is coreo.FasePorta.ABERTA
 
     # Com tentáculos fora a porta fica livre; ao entrarem todos, ela é esquecida aberta.
-    assert _rodar(coreografia, 3, revelacao_atuador=0.0, angulo_porta=ANGULO_ABERTO,
-                  ha_ativos=True, angulo_empurrao=0.0)[-1].angulo_porta is None
-    coreografia.avancar(DT, revelacao_atuador=0.0, angulo_porta=ANGULO_ABERTO,
-                        ha_ativos=False, angulo_empurrao=0.0)
+    assert (
+        _rodar(
+            coreografia,
+            3,
+            revelacao_atuador=0.0,
+            angulo_porta=ANGULO_ABERTO,
+            ha_ativos=True,
+            angulo_empurrao=0.0,
+        )[-1].angulo_porta
+        is None
+    )
+    coreografia.avancar(
+        DT,
+        revelacao_atuador=0.0,
+        angulo_porta=ANGULO_ABERTO,
+        ha_ativos=False,
+        angulo_empurrao=0.0,
+    )
     assert coreografia.fase is coreo.FasePorta.ESQUECIDA
 
     quadros_esquecimento = int(coreo.ATRASO_ESQUECIMENTO_S / DT) + 2
-    passos = _rodar(coreografia, quadros_esquecimento, revelacao_atuador=0.0,
-                    angulo_porta=ANGULO_ABERTO, ha_ativos=False, angulo_empurrao=0.0)
+    passos = _rodar(
+        coreografia,
+        quadros_esquecimento,
+        revelacao_atuador=0.0,
+        angulo_porta=ANGULO_ABERTO,
+        ha_ativos=False,
+        angulo_empurrao=0.0,
+    )
     assert all(p.angulo_porta == ANGULO_ABERTO for p in passos)
     assert sum(p.chamar_puxador for p in passos) == 1
     assert coreografia.fase is coreo.FasePorta.ALCANCANDO
 
-    _rodar(coreografia, int(coreo.TEMPO_ALCANCE_PUXAO_S / DT) + 2, revelacao_atuador=1.0,
-           angulo_porta=ANGULO_ABERTO, ha_ativos=True, angulo_empurrao=0.0)
+    _rodar(
+        coreografia,
+        int(coreo.TEMPO_ALCANCE_PUXAO_S / DT) + 2,
+        revelacao_atuador=1.0,
+        angulo_porta=ANGULO_ABERTO,
+        ha_ativos=True,
+        angulo_empurrao=0.0,
+    )
     assert coreografia.fase is coreo.FasePorta.PUXANDO
 
     angulo = ANGULO_ABERTO
     soltou = False
     for _ in range(int(ANGULO_ABERTO / (coreo.VELOCIDADE_PUXAO_GRAUS_S * DT)) + 3):
-        passo = coreografia.avancar(DT, revelacao_atuador=1.0, angulo_porta=angulo,
-                                    ha_ativos=True, angulo_empurrao=0.0)
+        passo = coreografia.avancar(
+            DT,
+            revelacao_atuador=1.0,
+            angulo_porta=angulo,
+            ha_ativos=True,
+            angulo_empurrao=0.0,
+        )
         assert passo.angulo_porta < angulo
         angulo = passo.angulo_porta
         if passo.soltar_puxador:
@@ -80,9 +114,20 @@ def test_ciclo_completo_abrir_esquecer_puxar_fechar():
     assert coreografia.fase is coreo.FasePorta.VOLTANDO
 
     # A porta termina de fechar; a fase só acaba com o puxador já recolhido.
-    for _ in range(int(coreo.ANGULO_SOLTAR_PUXAO_GRAUS / (coreo.VELOCIDADE_FECHAR_FINAL_GRAUS_S * DT)) + 3):
-        passo = coreografia.avancar(DT, revelacao_atuador=0.0, angulo_porta=angulo,
-                                    ha_ativos=False, angulo_empurrao=0.0)
+    for _ in range(
+        int(
+            coreo.ANGULO_SOLTAR_PUXAO_GRAUS
+            / (coreo.VELOCIDADE_FECHAR_FINAL_GRAUS_S * DT)
+        )
+        + 3
+    ):
+        passo = coreografia.avancar(
+            DT,
+            revelacao_atuador=0.0,
+            angulo_porta=angulo,
+            ha_ativos=False,
+            angulo_empurrao=0.0,
+        )
         angulo = passo.angulo_porta if passo.angulo_porta is not None else 0.0
     assert coreografia.fase is coreo.FasePorta.FECHADA
 
@@ -95,7 +140,12 @@ def test_cancelar_devolve_a_porta_ao_comportamento_normal():
     coreografia = coreo.CoreografiaPorta()
     coreografia.iniciar_empurrao()
     coreografia.cancelar()
-    passo = coreografia.avancar(DT, revelacao_atuador=1.0, angulo_porta=0.0,
-                                ha_ativos=True, angulo_empurrao=60.0)
+    passo = coreografia.avancar(
+        DT,
+        revelacao_atuador=1.0,
+        angulo_porta=0.0,
+        ha_ativos=True,
+        angulo_empurrao=60.0,
+    )
     assert coreografia.fase is coreo.FasePorta.FECHADA
     assert passo.angulo_porta is None

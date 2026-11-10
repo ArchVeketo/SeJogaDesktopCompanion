@@ -1,3 +1,5 @@
+"""Testa a atenção ao cursor sob hover."""
+
 from sejoga.animacao.atencao_hover import HoverAttention
 
 

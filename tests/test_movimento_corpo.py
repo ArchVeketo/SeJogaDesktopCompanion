@@ -1,3 +1,5 @@
+"""Testa as molas do corpo."""
+
 from math import isfinite
 
 import pytest
@@ -8,7 +10,7 @@ from sejoga.animacao.movimento_corpo import BodyMotion, GiroCorpo, Spring
 def test_spring_response_is_frame_rate_independent():
     results = []
     for rate in (30, 60, 120):
-        spring = Spring(1.65, .52)
+        spring = Spring(1.65, 0.52)
         for _ in range(rate):
             spring.update(1 / rate, 17)
         for _ in range(rate * 2):
@@ -32,13 +34,13 @@ def test_drag_sways_on_velocity_reversal_and_settles_after_release():
     assert abs(pose.roll - before) < 3
     for _ in range(300):
         pose = body.update(1 / 60, pointer=(0, 0))
-    assert abs(pose.roll) < .01 and pose.hanging < .001
+    assert abs(pose.roll) < 0.01 and pose.hanging < 0.001
 
 
 def test_entering_hover_after_external_mouse_movement_does_not_kick_body():
     body = BodyMotion()
-    body.update(.016, pointer=(0, 0))
-    pose = body.update(.016, pointer=(2000, 1000), hovered=True)
+    body.update(0.016, pointer=(0, 0))
+    pose = body.update(0.016, pointer=(2000, 1000), hovered=True)
     assert pose.roll == pose.pitch == 0
     assert body.pointer_velocity == (0, 0)
 
@@ -72,9 +74,13 @@ def test_giro_acompanha_olhar_para_o_lado():
 def test_giro_fica_clampado_no_limite():
     giro = GiroCorpo()
     # Pedido muito além do teto deve ser clampado em ±LIMITE_GRAUS.
-    assert _assentar(giro, angulo_pedido=10_000) == pytest.approx(GiroCorpo.LIMITE_GRAUS)
+    assert _assentar(giro, angulo_pedido=10_000) == pytest.approx(
+        GiroCorpo.LIMITE_GRAUS
+    )
     oposto = GiroCorpo()
-    assert _assentar(oposto, angulo_pedido=-10_000) == pytest.approx(-GiroCorpo.LIMITE_GRAUS)
+    assert _assentar(oposto, angulo_pedido=-10_000) == pytest.approx(
+        -GiroCorpo.LIMITE_GRAUS
+    )
     # Mesmo no transiente da mola o ângulo nunca passa do limite.
     outra = GiroCorpo()
     for _ in range(240):
@@ -96,7 +102,9 @@ def test_giro_suaviza_sem_saltar():
 def test_angulo_pedido_tem_precedencia_sobre_o_olhar():
     giro = GiroCorpo()
     # Olhar para a direita, mas um estado pede giro para a esquerda.
-    assert _assentar(giro, direcao_olhar=1.0, angulo_pedido=-60) == pytest.approx(-60, abs=1e-6)
+    assert _assentar(giro, direcao_olhar=1.0, angulo_pedido=-60) == pytest.approx(
+        -60, abs=1e-6
+    )
 
 
 def test_fonte_do_olhar_zerada_no_uso_normal_mantem_corpo_de_frente():
@@ -108,7 +116,9 @@ def test_fonte_do_olhar_zerada_no_uso_normal_mantem_corpo_de_frente():
     # E um ângulo explícito ainda gira o corpo (gancho de animação/locomoção),
     # mesmo com a fonte do olhar zerada.
     gancho = GiroCorpo()
-    assert _assentar(gancho, direcao_olhar=0.0, angulo_pedido=-60) == pytest.approx(-60, abs=1e-6)
+    assert _assentar(gancho, direcao_olhar=0.0, angulo_pedido=-60) == pytest.approx(
+        -60, abs=1e-6
+    )
 
 
 def test_giro_resposta_independe_da_taxa_de_quadros():
@@ -124,10 +134,10 @@ def test_giro_resposta_independe_da_taxa_de_quadros():
 
 def test_impacts_keep_finite_bounded_motion_and_a_delayed_neck():
     body = BodyMotion()
-    body.impulse('hit', direction=1, strength=2)
+    body.impulse("hit", direction=1, strength=2)
     frames = [body.update(1 / 60) for _ in range(40)]
-    assert any(abs(frame.head_roll) > .1 for frame in frames)
-    assert any(frame.compression > .01 for frame in frames)
+    assert any(abs(frame.head_roll) > 0.1 for frame in frames)
+    assert any(frame.compression > 0.01 for frame in frames)
     for frame in frames:
         assert all(isfinite(value) for value in vars(frame).values())
         assert abs(frame.roll) <= 28 and abs(frame.pitch) <= 16

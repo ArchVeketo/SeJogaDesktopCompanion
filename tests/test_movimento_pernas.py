@@ -1,3 +1,5 @@
+"""Testa a fase e as molas das pernas."""
+
 from sejoga.animacao.movimento_pernas import LegMotion
 
 
