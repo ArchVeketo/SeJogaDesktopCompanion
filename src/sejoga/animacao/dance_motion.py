@@ -1,16 +1,16 @@
-"""Dança guiada por áudio: fraseado por batida/compasso e molas por junta.
+"""Dança guiada por áudio: passos de quatro poses por batida e molas por junta.
 
-A amplitude e os acentos vêm de um envelope por batida (acento no downbeat,
-transições em borda de frase) em vez de ``sin(t)`` cru; o resultado por junta
-é suavizado por molas amortecidas, dando peso e recuperação naturais.
+O estilo escolhido pelo áudio toca uma frase de passos (``dance_frases_tuning``)
+amostrada por ``dance_poses``: o acento cai no onset da batida (u = 0). O
+resultado por junta é suavizado por molas amortecidas, dando peso e recuperação
+naturais.
 """
-from math import exp, floor, sin, tau
+from math import exp, floor, tau
 
 from sejoga.animacao import dance_tuning as tune
-from sejoga.animacao.dance_frases_tuning import FRASES, frase_do_estilo
+from sejoga.animacao.dance_frases_tuning import frase_do_estilo
 from sejoga.animacao.dance_poses import amostrar_passo
 from sejoga.animacao.joint_springs import SpringPose
-from sejoga.animacao.rig_base import REPOUSO
 from sejoga.animacao.spring_tuning import DANCA_AMORTECIMENTO, DANCA_FREQUENCIA
 
 
@@ -81,8 +81,13 @@ class DanceMotion:
             batida /= 2
         return floor(batida) % len(passos), batida % 1
 
-    def _montar_alvo_por_passos(self, rig):
-        """Pose da dança amostrada dos passos de quatro poses do estilo."""
+    def _montar_alvo(self, rig):
+        """Autora a pose crua da dança no rig e devolve o snapshot alvo.
+
+        Compartilhado por apply (que grava no rig) e contribuicao (que apenas
+        lê o resultado suavizado por molas), garantindo o mesmo resultado.
+        Cabeça e tronco escalam com a energia; os braços vão aos alvos de mão.
+        """
         passos = frase_do_estilo(self.style)
         indice, u = self._posicao_na_frase(passos)
         ganho = tune.GANHO_PASSO_BASE+self.energy*tune.GANHO_PASSO_ENERGIA
@@ -90,70 +95,6 @@ class DanceMotion:
         for grupo, (x, y, z) in pose.items():
             rig.set_rotation(grupo, x=x, y=y, z=z)
         rig.set_rotation('door', y=0)
-        return rig.pose()
-
-    def _montar_alvo(self, rig):
-        """Autora a pose crua da dança no rig e devolve o snapshot alvo.
-
-        Compartilhado por apply (que grava no rig) e contribuicao (que apenas
-        lê o resultado suavizado por molas), garantindo o mesmo resultado.
-        """
-        if self.style in FRASES:
-            return self._montar_alvo_por_passos(rig)
-        p = self.phase
-        # Acento vindo do envelope por batida/compasso (downbeat mais forte),
-        # em vez de um pulso derivado só da fase local.
-        local = (p/tau) % 1
-        pulse = (sin(local/tune.PULSO_LARGURA*3.14159265)**2 if local < tune.PULSO_LARGURA else 0)
-        pulse = max(pulse, self.acento)
-        amount = tune.AMOUNT_BASE+self.energy*tune.AMOUNT_ENERGIA
-        lento = p*tune.GROOVE_FASE_LENTA
-        # Torção-base do ombro (IK do repouso): põe a dobradiça do cotovelo à
-        # frente. Os valores dos estilos somam por cima (mesmo sinal nos dois
-        # lados, lei do espelho para x).
-        tx = REPOUSO.BRACO_X
-        rig.set_rotation('door', y=0)
-        if self.style == 'head_bob':
-            rig.set_rotation('head', x=tune.HEADBOB_HEAD_X_BASE-pulse*tune.HEADBOB_HEAD_X_PULSO,
-                             y=tune.HEADBOB_HEAD_Y, z=tune.HEADBOB_HEAD_Z_BASE+sin(p)*tune.HEADBOB_HEAD_Z_SIN)
-            rig.set_rotation('body', x=tune.HEADBOB_BODY_X, y=tune.HEADBOB_BODY_Y, z=tune.HEADBOB_BODY_Z)
-            rig.set_rotation('right-arm', x=tx+tune.HEADBOB_RARM_X, z=tune.HEADBOB_RARM_Z)
-            rig.set_rotation('left-arm', x=tx+tune.HEADBOB_LARM_X, z=tune.HEADBOB_LARM_Z)
-            rig.set_rotation('ant-arm', x=tune.HEADBOB_RANT_X, z=tune.HEADBOB_RANT_Z)
-            rig.set_rotation('ant-arm2', x=tune.HEADBOB_LANT_X, z=tune.HEADBOB_LANT_Z)
-            rig.set_rotation('hand', x=tune.HEADBOB_RHAND_X, z=tune.HEADBOB_RHAND_Z)
-            rig.set_rotation('hand2', x=tune.HEADBOB_LHAND_X, z=tune.HEADBOB_LHAND_Z)
-        elif self.style == 'rock':
-            rig.set_rotation('head', x=tune.ROCK_HEAD_X_BASE-pulse*tune.ROCK_HEAD_X_PULSO, z=tune.ROCK_HEAD_Z)
-            rig.set_rotation('body', x=-pulse*tune.ROCK_BODY_X_PULSO, z=tune.ROCK_BODY_Z)
-            rig.set_rotation('right-arm', x=tx+tune.ROCK_RARM_X, z=tune.ROCK_RARM_Z)
-            rig.set_rotation('ant-arm', x=tune.ROCK_RANT_X, z=tune.ROCK_RANT_Z)
-            rig.set_rotation('hand', x=tune.ROCK_RHAND_X)
-            rig.set_rotation('left-arm', x=tx+tune.ROCK_LARM_X, z=tune.ROCK_LARM_Z)
-            rig.set_rotation('ant-arm2', z=tune.ROCK_LANT_Z)
-        else:
-            power = tune.POTENCIA_BREAKDANCE if self.style == 'breakdance' else tune.POTENCIA_PADRAO
-            rig.set_rotation('body', x=-pulse*tune.GROOVE_BODY_X_PULSO*amount,
-                             z=sin(lento)*tune.GROOVE_BODY_Z_SIN*power*amount,
-                             y=sin(lento)*tune.GROOVE_BODY_Y_SIN*power*amount)
-            rig.set_rotation('head', x=-pulse*tune.GROOVE_HEAD_X_PULSO, z=-sin(lento)*tune.GROOVE_HEAD_Z_SIN)
-            rig.set_rotation('right-arm', x=tx+sin(p)*tune.GROOVE_RARM_X_SIN,
-                             z=tune.GROOVE_RARM_Z_BASE-tune.GROOVE_RARM_Z_PULSO*pulse*power)
-            rig.set_rotation('left-arm', x=tx-sin(p)*tune.GROOVE_LARM_X_SIN,
-                             z=tune.GROOVE_LARM_Z_BASE+tune.GROOVE_LARM_Z_PULSO*(1-pulse)*power)
-        if self.style in ('hip_hop', 'breakdance'):
-            rig.set_rotation('ant-arm', z=tune.GROOVE_RANT_Z_BASE-pulse*tune.GROOVE_RANT_Z_PULSO)
-            rig.set_rotation('ant-arm2', z=tune.GROOVE_LANT_Z_BASE+(1-pulse)*tune.GROOVE_LANT_Z_PULSO)
-        if self.style == 'breakdance':
-            floor = self.floor_amount
-            rig.set_rotation('right-arm', x=tx+tune.BREAK_RARM_X_FLOOR*floor, z=tune.BREAK_RARM_Z_BASE*(1-floor))
-            rig.set_rotation('ant-arm', x=tune.BREAK_RANT_X_FLOOR*floor,
-                             z=tune.BREAK_RANT_Z_BASE*(1-floor)+tune.BREAK_RANT_Z_FLOOR*floor)
-            rig.set_rotation('left-arm', x=tx+tune.BREAK_LARM_X_FLOOR*floor,
-                             z=tune.BREAK_LARM_Z_BASE+tune.BREAK_LARM_Z_FLOOR*floor)
-            rig.set_rotation('ant-arm2', z=tune.BREAK_LANT_Z_BASE+tune.BREAK_LANT_Z_FLOOR*floor)
-            rig.set_rotation('head', x=tune.BREAK_HEAD_X_BASE+tune.BREAK_HEAD_X_FLOOR*floor,
-                             z=tune.BREAK_HEAD_Z_FLOOR*floor)
         return rig.pose()
 
     def _suavizar(self, rig):

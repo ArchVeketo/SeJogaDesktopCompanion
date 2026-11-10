@@ -201,3 +201,27 @@ def test_hip_hop_estende_o_braco_oposto_ao_lado_carregado():
     assert esquerdo["left-arm"] == pytest.approx(braco_hpr_graus("left", "contrapeso")["left-arm"])
     assert esquerdo["right-arm"] == pytest.approx(braco_hpr_graus("right", "idle")["right-arm"])
     assert direito["right-arm"] == pytest.approx(braco_hpr_graus("right", "contrapeso")["right-arm"])
+
+
+def test_breakdance_tem_dezesseis_batidas_com_maos_plantadas_no_chao():
+    frase = FRASES["breakdance"]
+    apoio = braco_hpr_graus("right", "apoio_chao")["right-arm"]
+
+    assert len(frase) == 16
+    for batida in range(6, 14):
+        assert amostrar_passo(frase[batida], 0.5)["right-arm"] == pytest.approx(apoio), batida
+
+
+def test_breakdance_comeca_e_termina_com_os_bracos_no_repouso():
+    frase = FRASES["breakdance"]
+    repouso = braco_hpr_graus("right", "idle")["right-arm"]
+
+    assert amostrar_passo(frase[0], 0.0)["right-arm"] == pytest.approx(repouso)
+    assert amostrar_passo(frase[15], 0.9, frase[0])["right-arm"] == pytest.approx(repouso)
+
+
+def test_breakdance_acompanha_as_fases_de_floor_do_dance_motion():
+    assert tune.FLOOR_INICIO == 4
+    assert tune.FLOOR_INICIO + tune.FLOOR_SUBIDA <= 6
+    assert tune.FLOOR_FIM == 15
+    assert len(FRASES["breakdance"]) == tune.FRASE_BATIDAS

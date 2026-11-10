@@ -556,6 +556,7 @@ void main() {{
         from panda3d.core import Mat4, TransformState
 
         from sejoga.animacao import body_motion_tuning as _tune
+        from sejoga.animacao import dance_tuning as _danca
         dt = getattr(self.showbase.animation_controller, 'delta_time', 1/60)
         self._update_outline_breath(dt, motion)
         self.flexible_rig.update(dt, motion)
@@ -576,7 +577,10 @@ void main() {{
         if not dragging and controller and controller.state == AnimationState.DANCE and controller.dance_motion.style == 'breakdance':
             dance = controller.dance_motion
             ground = self.model_np.getTightBounds(self.model_anchor)[0].z
-            self._suspension_pivot.setHpr(dance.floor_spin, 0, -65*dance.floor_amount)
+            # shortcut: mão não fica fixa no cenário durante o giro; upgrade quando
+            # houver contatos de cena (guia 7.1).
+            self._suspension_pivot.setMat(self._giro_no_quadril(
+                dance.floor_spin, 0, _danca.FLOOR_ROLL_GRAUS*dance.floor_amount))
             moved = self.model_np.getTightBounds(self.model_anchor)[0].z
             self._suspension_pivot.setZ(ground-moved)
             return
@@ -617,6 +621,20 @@ void main() {{
             limit=self.model_np.getScale().x*.60
             correction=max(-limit,min(limit,-distance))*settle
             self._suspension_pivot.setPos(self._suspension_pivot.getPos()+normal*correction)
+
+    def _giro_no_quadril(self, yaw, pitch, roll):
+        """Rotação de autoria (yaw, pitch, roll) em torno do quadril, como matriz.
+
+        Roll positivo tomba o topo para a direita do mascote (convenção de
+        ``_rotacao_no_quadro_de_autoria``); usado pelo breakdance no chão.
+        """
+        from panda3d.core import Mat4
+
+        from sejoga.animacao import dance_tuning as _danca
+        pivot = self._suspension_pivot.getRelativePoint(
+            self.model_np, Point3(0, 0, _danca.PIVO_QUADRIL_Z))
+        rotation = self._rotacao_no_quadro_de_autoria(yaw, pitch, roll)
+        return Mat4.translateMat(-pivot)*rotation*Mat4.translateMat(pivot)
 
     def _rotacao_no_quadro_de_autoria(self, yaw, pitch, roll):
         """Matriz de ``Vec3(yaw, pitch, roll)`` interpretado no referencial de AUTORIA.

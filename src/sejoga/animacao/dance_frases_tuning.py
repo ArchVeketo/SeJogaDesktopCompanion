@@ -9,6 +9,8 @@ inclina para trás (A_CONFIRMAR na GPU, C48). Python puro, sem engine.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from sejoga.animacao.dance_poses import PassoDanca, PoseDanca, Trio
 
 Quatro = tuple[Trio, Trio, Trio, Trio]
@@ -152,11 +154,85 @@ HIP_HOP: tuple[PassoDanca, ...] = (
     ),
 )
 
-#: Frase de cada estilo (preenchida estilo a estilo).
+#: Tronco inclinado para a frente no chão do breakdance (graus em ``body.x``).
+BREAK_TRONCO_CHAO = -10.0
+_BR_TRONCO_CHAO: Trio = (BREAK_TRONCO_CHAO, 0.0, 0.0)
+
+
+#: Roll do tronco (graus) que alterna o lado a cada passo de footwork.
+BREAK_TRONCO_ROLL = 4.0
+
+
+def _passo_de_chao(giro: float) -> PassoDanca:
+    """Passo de footwork: mãos plantadas e a cabeça/tronco trocam de lado.
+
+    ``giro`` é o roll da cabeça em graus (o do tronco segue o mesmo sinal). As
+    mãos ficam no apoio: trocar de alvo a cada batida a 145 BPM passava de 250
+    mil graus/s^3 de jerk no ombro.
+    """
+    cabeca = ((-14.0, 0.0, giro), (-10.0, 0.0, giro), (-10.0, 0.0, giro), (-12.0, 0.0, giro))
+    roll = BREAK_TRONCO_ROLL * (1.0 if giro > 0 else -1.0)
+    tronco = (BREAK_TRONCO_CHAO, 0.0, roll)
+
+    return _passo(cabeca, _fixo(tronco), "apoio_chao", "apoio_chao")
+
+
+def _sem_bracos(passo: PassoDanca) -> PassoDanca:
+    """Cópia do ``passo`` com os dois braços no repouso (``idle``)."""
+    return PassoDanca(
+        tuple(replace(pose, braco_dir="idle", braco_esq="idle") for pose in passo.poses)  # type: ignore[arg-type]  # 4 poses
+    )
+
+
+#: Breakdance: 16 batidas (guia 5.4). Toprock 0-3 (cabeça e tronco do hip hop,
+#: braços no repouso), descida 4-5, footwork 6-12 de mãos plantadas, freeze 13
+#: e subida 14-15. O roll do corpo e o giro vêm de ``DanceMotion.floor_amount``
+#: e ``floor_spin`` (renderer).
+BREAKDANCE: tuple[PassoDanca, ...] = (
+    *(_sem_bracos(passo) for passo in HIP_HOP[:4]),
+    _passo(
+        ((-10.0, 0.0, 0.0), (-14.0, 0.0, 3.0), (-14.0, 0.0, 5.0), (-12.0, 0.0, 5.0)),
+        ((-8.0, 0.0, 0.0), _BR_TRONCO_CHAO, _BR_TRONCO_CHAO, _BR_TRONCO_CHAO),
+        ("idle", "idle", "apoio_chao", "apoio_chao"),
+        ("idle", "idle", "apoio_chao", "apoio_chao"),
+    ),
+    _passo(
+        _fixo((-12.0, 0.0, 5.0)),
+        _fixo(_BR_TRONCO_CHAO),
+        "apoio_chao",
+        "apoio_chao",
+    ),
+    _passo_de_chao(5.0),
+    _passo_de_chao(-5.0),
+    _passo_de_chao(5.0),
+    _passo_de_chao(-5.0),
+    _passo_de_chao(5.0),
+    _passo_de_chao(-5.0),
+    _passo_de_chao(5.0),
+    _passo(
+        _fixo((-10.0, 0.0, 10.0)),
+        _fixo(_BR_TRONCO_CHAO),
+        "apoio_chao",
+        "apoio_chao",
+    ),
+    _passo(
+        ((-10.0, 0.0, 6.0), (-6.0, 0.0, 3.0), (-3.0, 0.0, 0.0), (-2.0, 0.0, 0.0)),
+        ((BREAK_TRONCO_CHAO, 0.0, 0.0), (-6.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        ("apoio_chao", "apoio_chao", "idle", "idle"),
+        ("apoio_chao", "apoio_chao", "idle", "idle"),
+    ),
+    _passo(
+        ((-3.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        _fixo((0.0, 0.0, 0.0)),
+    ),
+)
+
+#: Frase de cada estilo.
 FRASES: dict[str, tuple[PassoDanca, ...]] = {
     "head_bob": HEAD_BOB,
     "rock": ROCK,
     "hip_hop": HIP_HOP,
+    "breakdance": BREAKDANCE,
 }
 
 

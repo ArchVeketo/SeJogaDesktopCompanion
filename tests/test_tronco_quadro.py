@@ -10,6 +10,7 @@ de que arraste e reação em pé não se contradizem.
 from __future__ import annotations
 
 import contextlib
+from functools import partial
 from types import SimpleNamespace
 
 import pytest
@@ -20,6 +21,7 @@ with contextlib.suppress(ImportError):
 core = pytest.importorskip("panda3d.core", reason="Panda3D indisponível")
 gltf = pytest.importorskip("gltf", reason="panda3d-gltf indisponível")
 
+from sejoga.animacao.dance_tuning import FLOOR_ROLL_GRAUS, PIVO_QUADRIL_Z  # noqa: E402
 from sejoga.nucleo.assets import resolve_model  # noqa: E402
 from sejoga.nucleo.flexible_rig import FlexibleRig, no_de_facing  # noqa: E402
 from sejoga.nucleo.rig import ALL_GROUPS  # noqa: E402
@@ -123,3 +125,25 @@ def test_ombros_atrasam_para_o_mesmo_lado(cena):
 
     assert direito.getR() == pytest.approx(esquerdo.getR())
     assert direito.getP() == pytest.approx(0.0)
+
+
+def test_giro_no_quadril_com_roll_positivo_tomba_o_topo_para_a_direita_e_prende_o_quadril(cena):
+    renderer, _rig, suspensao = cena
+    renderer._suspension_pivot = suspensao
+    renderer._rotacao_no_quadro_de_autoria = partial(
+        Panda3DRenderer._rotacao_no_quadro_de_autoria, renderer
+    )
+    mundo = suspensao.getParent()
+    referencia = no_de_facing(renderer.model_np)
+    cabeca = renderer._rig_nodes["head"]
+    quadril = core.Point3(0, 0, PIVO_QUADRIL_Z)
+    topo_antes = mundo.getRelativePoint(cabeca, core.Point3(*TOPO_LOCAL))
+    quadril_antes = mundo.getRelativePoint(renderer.model_np, quadril)
+
+    suspensao.setMat(Panda3DRenderer._giro_no_quadril(renderer, 0, 0, FLOOR_ROLL_GRAUS))
+    topo_depois = mundo.getRelativePoint(cabeca, core.Point3(*TOPO_LOCAL))
+    quadril_depois = mundo.getRelativePoint(renderer.model_np, quadril)
+    delta = referencia.getRelativeVector(mundo, topo_depois - topo_antes)
+
+    assert delta.x > MOVIMENTO_MINIMO
+    assert (quadril_depois - quadril_antes).length() < 1e-4
