@@ -74,24 +74,43 @@ for nome in c.POSES:
 
 
 def main() -> int:
+    """Executa a captura e devolve o código de saída."""
     parser = argparse.ArgumentParser(description="Capturas dos dedos em cadeia.")
     parser.add_argument("--saida", type=Path, required=True)
     args = parser.parse_args()
     args.saida.mkdir(parents=True, exist_ok=True)
     ambiente = dict(os.environ)
-    ambiente.setdefault("SEJOGA_CONFIG_PATH", str(Path(tempfile.gettempdir()) / "sejoga-cap" / "config.toml"))
+    ambiente.setdefault(
+        "SEJOGA_CONFIG_PATH",
+        str(Path(tempfile.gettempdir()) / "sejoga-cap" / "config.toml"),
+    )
     falhas = 0
 
     for vista in VISTAS:
         for contorno in ("com", "sem"):
             processo = subprocess.run(
-                [sys.executable, "-c", _FILHO, str(RAIZ), vista, contorno, str(args.saida)],
-                cwd=RAIZ, env=ambiente, capture_output=True, text=True, timeout=TIMEOUT_S,
+                [
+                    sys.executable,
+                    "-c",
+                    _FILHO,
+                    str(RAIZ),
+                    vista,
+                    contorno,
+                    str(args.saida),
+                ],
+                cwd=RAIZ,
+                env=ambiente,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_S,
             )
 
             if processo.returncode != 0:
                 falhas += 1
-                print(f"FALHOU {vista}/{contorno}: {processo.stderr[-600:]}", file=sys.stderr)
+                print(
+                    f"FALHOU {vista}/{contorno}: {processo.stderr[-600:]}",
+                    file=sys.stderr,
+                )
             else:
                 print(f"ok {vista} contorno-{contorno}")
 

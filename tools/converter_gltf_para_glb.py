@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Converte um glTF 2.0 (com buffer/imagem embutidos em *data URI* base64)
-para um `.glb` binário único.
+"""Converte um glTF 2.0 com data URI base64 em um `.glb` binário único.
+
+O buffer e a imagem vêm embutidos em *data URI* base64 no JSON.
 
 Motivação
 ---------
@@ -51,7 +52,8 @@ def _is_data_uri(uri: str | None) -> bool:
     return uri is not None and uri.startswith("data:")
 
 
-def convert(gltf_path: Path, out_path: Path) -> dict:
+def convert(gltf_path: Path, out_path: Path) -> dict:  # noqa: PLR0915  # TODO convenção: ferramenta de captura/GPU: fatiar sem rodar na GPU arrisca a saída; lote próprio
+    """Converte o glTF em GLB e devolve um resumo."""
     doc = json.loads(gltf_path.read_text(encoding="utf-8"))
 
     buffers = doc.get("buffers", [])
@@ -99,7 +101,9 @@ def convert(gltf_path: Path, out_path: Path) -> dict:
     while len(buf_bytes) % BV_ALIGN:
         buf_bytes += b"\x00"
 
-    json_bytes = json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    json_bytes = json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     while len(json_bytes) % BV_ALIGN:
         json_bytes += b" "
 
@@ -124,6 +128,7 @@ def convert(gltf_path: Path, out_path: Path) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Executa a conversão e devolve o código de saída."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("gltf", type=Path, help="caminho do .gltf de entrada")
     parser.add_argument(

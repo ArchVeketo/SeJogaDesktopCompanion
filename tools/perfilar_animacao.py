@@ -1,4 +1,5 @@
 """Measure real frame cadence and animation CPU cost with an isolated profile."""
+
 import json
 import statistics
 import sys
@@ -10,10 +11,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sejoga import configuracao
 
 
-def main():
+def main():  # noqa: PLR0915  # TODO convenção: ferramenta de captura/GPU: fatiar sem rodar na GPU arrisca a saída; lote próprio
+    """Executa o perfil de animação."""
     profile = Path(tempfile.mkdtemp(prefix="sejoga-animation-profile-"))
     configuracao.default_config_path = lambda: profile / "config.toml"
     from sejoga.render.janela import OverlayApp
+
     settings = configuracao.Settings()
     settings.physics.enabled = False
     settings.music.enabled = False
@@ -26,17 +29,17 @@ def main():
         nonlocal previous
         start = time.perf_counter()
         if previous is not None:
-            intervals.append((start-previous)*1000)
+            intervals.append((start - previous) * 1000)
         previous = start
         original_tick()
-        costs.append((time.perf_counter()-start)*1000)
+        costs.append((time.perf_counter() - start) * 1000)
 
     app._animation_tick = measured_tick
     app.hotkey_manager.close()
     app.taskMgr.remove("mouse-poll")
     app._mouse_hovered = False
     results = {}
-    try:
+    try:  # noqa: PLR1702  # TODO convenção: ferramenta de captura/GPU: fatiar sem rodar na GPU arrisca a saída; lote próprio
         for _ in range(30):
             app.taskMgr.step()
         for name, count in (("idle", 120), ("peek", 480)):
@@ -51,10 +54,10 @@ def main():
                     app.debug_tools.capture_once()
             results[name] = {
                 "updates": len(costs),
-                "fps": round(1000/statistics.mean(intervals), 2),
-                "frame_p95_ms": round(sorted(intervals)[int(len(intervals)*.95)], 2),
+                "fps": round(1000 / statistics.mean(intervals), 2),
+                "frame_p95_ms": round(sorted(intervals)[int(len(intervals) * 0.95)], 2),
                 "animation_mean_ms": round(statistics.mean(costs), 2),
-                "animation_p95_ms": round(sorted(costs)[int(len(costs)*.95)], 2),
+                "animation_p95_ms": round(sorted(costs)[int(len(costs) * 0.95)], 2),
             }
             assert len(costs) == count, "Animation must update once per rendered frame"
         (profile / "timings.json").write_text(json.dumps(results, indent=2))

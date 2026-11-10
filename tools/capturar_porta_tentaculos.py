@@ -8,6 +8,7 @@ movimento (recalibracao-gpu.md, C25 a C32).
 Uso:
     python tools/capturar_porta_tentaculos.py --saida <pasta>
 """
+
 from __future__ import annotations
 
 import argparse
@@ -112,22 +113,44 @@ for linha in fases:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Sequências da coreografia tentáculos x porta.")
+    """Executa a captura e devolve o código de saída."""
+    parser = argparse.ArgumentParser(
+        description="Sequências da coreografia tentáculos x porta."
+    )
     parser.add_argument("--saida", type=Path, required=True)
     args = parser.parse_args()
     args.saida.mkdir(parents=True, exist_ok=True)
     ambiente = dict(os.environ)
-    ambiente.setdefault("SEJOGA_CONFIG_PATH", str(Path(tempfile.gettempdir()) / "sejoga-cap" / "config.toml"))
+    ambiente.setdefault(
+        "SEJOGA_CONFIG_PATH",
+        str(Path(tempfile.gettempdir()) / "sejoga-cap" / "config.toml"),
+    )
     falhas = 0
     for temperamento in TEMPERAMENTOS:
         for vista, modo in [(v, "porta") for v in VISTAS] + [("lado", "espirro")]:
             processo = subprocess.run(
-                [sys.executable, "-c", _FILHO, str(RAIZ), temperamento, vista, str(args.saida), modo],
-                cwd=RAIZ, env=ambiente, capture_output=True, text=True, timeout=TIMEOUT_S,
+                [
+                    sys.executable,
+                    "-c",
+                    _FILHO,
+                    str(RAIZ),
+                    temperamento,
+                    vista,
+                    str(args.saida),
+                    modo,
+                ],
+                cwd=RAIZ,
+                env=ambiente,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_S,
             )
             if processo.returncode != 0:
                 falhas += 1
-                print(f"FALHOU {temperamento}/{vista}: {processo.stderr[-800:]}", file=sys.stderr)
+                print(
+                    f"FALHOU {temperamento}/{vista}: {processo.stderr[-800:]}",
+                    file=sys.stderr,
+                )
             else:
                 print(f"ok {temperamento} {vista}")
                 print("\n".join(processo.stdout.splitlines()[-1:]))

@@ -26,13 +26,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sejoga.animacao import ik_bracos
 from sejoga.animacao import colisao_bracos as cb
+from sejoga.animacao import ik_bracos
 from sejoga.animacao.alvos_bracos import ALVOS
 from sejoga.nucleo import cinematica as cin
-from sejoga.nucleo.recursos import resolve_model
-from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.esqueleto import ALL_GROUPS, Rotation3
+from sejoga.nucleo.modelo import load_model
+from sejoga.nucleo.recursos import resolve_model
 
 #: Ângulo de teste (graus) do mapa de eixos.
 ANGULO_TESTE_GRAUS = 30.0
@@ -46,11 +46,22 @@ ALCANCE_MINIMO_U = 0.1
 
 #: Ponta usada para cada junta (nó filho mais distal, ou a própria origem).
 PONTA_DA_JUNTA = {
-    "right-arm": "hand", "ant-arm": "hand", "hand": "fingers",
-    "left-arm": "hand2", "ant-arm2": "hand2", "hand2": "fingers2",
-    "head": "door", "body": None, "legs": None, "door": None,
-    "left-feet": None, "right-feet": None, "shoulder": None, "shoulder2": None,
-    "fingers": None, "fingers2": None,
+    "right-arm": "hand",
+    "ant-arm": "hand",
+    "hand": "fingers",
+    "left-arm": "hand2",
+    "ant-arm2": "hand2",
+    "hand2": "fingers2",
+    "head": "door",
+    "body": None,
+    "legs": None,
+    "door": None,
+    "left-feet": None,
+    "right-feet": None,
+    "shoulder": None,
+    "shoulder2": None,
+    "fingers": None,
+    "fingers2": None,
 }
 _NOMES_EIXO = (("direita", "esquerda"), ("frente", "trás"), ("cima", "baixo"))
 
@@ -78,6 +89,7 @@ def _ponto_de_teste(modelo, grupo: str, pose) -> cin.Vec3:
 
 
 def mapa_eixos(modelo) -> str:
+    """Gera a tabela do mapa de eixos do grafo de cena."""
     linhas = [
         "| junta | eixo (Rotation3) | +30° move a ponta para | -30° move a ponta para |",
         "|---|---|---|---|",
@@ -96,7 +108,11 @@ def mapa_eixos(modelo) -> str:
                 valores = [0.0, 0.0, 0.0]
                 valores[indice] = math.radians(sinal * ANGULO_TESTE_GRAUS)
                 pose = {grupo: Rotation3(*valores)}
-                celulas.append(_direcao(cin.subtrair(_ponto_de_teste(modelo, grupo, pose), repouso)))
+                celulas.append(
+                    _direcao(
+                        cin.subtrair(_ponto_de_teste(modelo, grupo, pose), repouso)
+                    )
+                )
 
             linhas.append(f"| {grupo} | {eixo} | {celulas[0]} | {celulas[1]} |")
 
@@ -104,6 +120,7 @@ def mapa_eixos(modelo) -> str:
 
 
 def aabbs() -> str:
+    """Gera a tabela das caixas de colisão."""
     from panda3d.core import NodePath, loadPrcFileData
 
     loadPrcFileData("", "window-type none\naudio-library-name null")
@@ -138,12 +155,15 @@ def aabbs() -> str:
 def _pose_simetrica(modelo, alvo, polo) -> dict[str, Rotation3]:
     pose: dict[str, Rotation3] = {}
     pose.update(ik_bracos.braco_para(modelo, "right", alvo, polo))
-    pose.update(ik_bracos.braco_para(modelo, "left", (-alvo[0], alvo[1], alvo[2]), polo))
+    pose.update(
+        ik_bracos.braco_para(modelo, "left", (-alvo[0], alvo[1], alvo[2]), polo)
+    )
 
     return pose
 
 
 def tabela_alvos(modelo) -> str:
+    """Gera a tabela de alvos x punho (FK) x penetração do braço."""
     linhas = [
         "| alvo | pedido (dir, cima, frente) | punho FK | cotovelo FK | penetração |",
         "|---|---|---|---|---|",
@@ -151,9 +171,13 @@ def tabela_alvos(modelo) -> str:
 
     for nome, alvo in ALVOS.items():
         pose = _pose_simetrica(modelo, alvo.alvo, alvo.polo)
-        punho = ik_bracos.posicao_mao_para_hpr(modelo, "right", pose["right-arm"], pose["ant-arm"])
+        punho = ik_bracos.posicao_mao_para_hpr(
+            modelo, "right", pose["right-arm"], pose["ant-arm"]
+        )
         ombro = cin.posicao_no(modelo, "right-arm", pose)
-        cotovelo = cin.autoria_para_alvo(cin.subtrair(cin.posicao_no(modelo, "ant-arm", pose), ombro))
+        cotovelo = cin.autoria_para_alvo(
+            cin.subtrair(cin.posicao_no(modelo, "ant-arm", pose), ombro)
+        )
         pen = cb.penetracao_do_lado(modelo, "right", pose)
         linhas.append(
             f"| {nome} | {_fmt(alvo.alvo)} | {_fmt(punho)} | {_fmt(cotovelo)} | {pen:.3f} |"
@@ -163,6 +187,7 @@ def tabela_alvos(modelo) -> str:
 
 
 def sugerir(modelo) -> str:
+    """Sugere o ponto livre mais próximo para cada alvo."""
     upper, forearm = ik_bracos.comprimentos_braco(modelo)
     alcance = (upper + forearm) * FRACAO_ALCANCE
     passos = int(alcance / PASSO_GRADE_U) + 1
@@ -183,7 +208,9 @@ def sugerir(modelo) -> str:
 
     linhas = [
         f"Pontos livres na grade de {PASSO_GRADE_U} u: {len(livres)}; menor 'cima': "
-        f"{min(c[1] for c in livres):.2f}" if livres else "Nenhum ponto livre.",
+        f"{min(c[1] for c in livres):.2f}"
+        if livres
+        else "Nenhum ponto livre.",
         "",
         "| alvo | atual | livre mais próximo | distância |",
         "|---|---|---|---|",
@@ -195,12 +222,15 @@ def sugerir(modelo) -> str:
 
         alvo_atual = alvo.alvo
         melhor = min(livres, key=lambda c: math.dist(c, alvo_atual))
-        linhas.append(f"| {nome} | {_fmt(alvo.alvo)} | {_fmt(melhor)} | {math.dist(melhor, alvo.alvo):.3f} |")
+        linhas.append(
+            f"| {nome} | {_fmt(alvo.alvo)} | {_fmt(melhor)} | {math.dist(melhor, alvo.alvo):.3f} |"
+        )
 
     return "\n".join(linhas)
 
 
 def tronco() -> str:
+    """Gera a tabela dos eixos do tronco."""
     from panda3d.core import NodePath, loadPrcFileData
 
     loadPrcFileData("", "window-type none\naudio-library-name null")
@@ -216,11 +246,17 @@ def tronco() -> str:
     base = cabeca.getPos(referencia)
     linhas = ["| pivô (relativo ao nó raiz do asset) | cabeça vai para |", "|---|---|"]
 
-    for nome, hpr in (("pitch +10", (0, 10, 0)), ("roll +10", (0, 0, 10)), ("yaw +10", (10, 0, 0))):
+    for nome, hpr in (
+        ("pitch +10", (0, 10, 0)),
+        ("roll +10", (0, 0, 10)),
+        ("yaw +10", (10, 0, 0)),
+    ):
         pivo.setHpr(referencia, *hpr)
         p = cabeca.getPos(referencia)
         delta = (p.x - base.x, p.y - base.y, p.z - base.z)
-        linhas.append(f"| {nome} | {_direcao(delta) if nome != 'yaw +10' else 'gira (rosto)'} |")
+        linhas.append(
+            f"| {nome} | {_direcao(delta) if nome != 'yaw +10' else 'gira (rosto)'} |"
+        )
         pivo.setHpr(referencia, 0, 0, 0)
 
     return "\n".join(linhas)
@@ -232,7 +268,7 @@ FLEXAO_TESTE_DEDO_GRAUS = 30.0
 NOMES_DEDOS = ("polegar", "indicador", "médio", "anelar", "mindinho")
 
 
-def medir_dedos(modelo) -> list[dict]:
+def medir_dedos(modelo) -> list[dict]:  # noqa: PLR0915  # TODO convenção: ferramenta de captura/GPU: fatiar sem rodar na GPU arrisca a saída; lote próprio
     """Por dedo: eixo no referencial do mascote, deslocamento da ponta (FK) e erro contra o Panda.
 
     A FK usa o grupo ``fingers``/``fingers2`` (``cinematica.transformacao_no``) e a
@@ -258,7 +294,10 @@ def medir_dedos(modelo) -> list[dict]:
 
     linhas = []
 
-    for grupo, meshes in (("fingers", tuning_dedos.MESH_DEDOS_DIREITA), ("fingers2", tuning_dedos.MESH_DEDOS_ESQUERDA)):
+    for grupo, meshes in (
+        ("fingers", tuning_dedos.MESH_DEDOS_DIREITA),
+        ("fingers2", tuning_dedos.MESH_DEDOS_ESQUERDA),
+    ):
         no_grupo = raiz.find(f"**/{grupo}")
         rot, origem = cin.transformacao_no(modelo, grupo)
 
@@ -272,7 +311,9 @@ def medir_dedos(modelo) -> list[dict]:
             # Ponto rígido do último segmento (a AABB muda ao girar; o ponto não).
             ponta_no_segmento = ultimo.getRelativePoint(no_grupo, (baixo + alto) * 0.5)
             angulos = (FLEXAO_TESTE_DEDO_GRAUS,) * len(cadeia)
-            repouso = cin.pontos_cadeia_dedo(rot, origem, pivos, eixos, (0.0,) * len(cadeia), ponta)
+            repouso = cin.pontos_cadeia_dedo(
+                rot, origem, pivos, eixos, (0.0,) * len(cadeia), ponta
+            )
             fk = cin.pontos_cadeia_dedo(rot, origem, pivos, eixos, angulos, ponta)
 
             for pivo, eixo in cadeia:
@@ -282,10 +323,16 @@ def medir_dedos(modelo) -> list[dict]:
             panda = [_tupla(p.getPos(referencia)) for p, _ in cadeia]
             panda.append(_tupla(referencia.getRelativePoint(ultimo, ponta_no_segmento)))
             erro = max(math.dist(a, b) for a, b in zip(panda, fk, strict=True))
-            linhas.append({
-                "grupo": grupo, "dedo": dedo, "fk": fk, "repouso": repouso, "erro": erro,
-                "deslocamento": cin.subtrair(fk[-1], repouso[-1]),
-            })
+            linhas.append(
+                {
+                    "grupo": grupo,
+                    "dedo": dedo,
+                    "fk": fk,
+                    "repouso": repouso,
+                    "erro": erro,
+                    "deslocamento": cin.subtrair(fk[-1], repouso[-1]),
+                }
+            )
 
             for pivo, eixo in cadeia:
                 dm.girar_pivo(pivo, eixo, 0.0)
@@ -298,6 +345,7 @@ def _tupla(v) -> cin.Vec3:
 
 
 def tabela_dedos(modelo) -> str:
+    """Gera a tabela dos segmentos dos dedos."""
     linhas = [
         f"| mão | dedo | +{FLEXAO_TESTE_DEDO_GRAUS:.0f}° por junta move a ponta para | erro FK x Panda (u) |",
         "|---|---|---|---|",
@@ -318,19 +366,25 @@ def _fmt(v) -> str:
 
 
 def main() -> int:
+    """Executa o oráculo e devolve o código de saída."""
     parser = argparse.ArgumentParser(description="Oráculo de cena do rig.")
     for flag in ("eixos", "aabbs", "alvos", "sugerir", "tronco", "dedos"):
         parser.add_argument(f"--{flag}", action="store_true")
     parser.add_argument("--saida", type=Path, default=None)
     args = parser.parse_args()
-    todos = not any((args.eixos, args.aabbs, args.alvos, args.sugerir, args.tronco, args.dedos))
+    todos = not any(
+        (args.eixos, args.aabbs, args.alvos, args.sugerir, args.tronco, args.dedos)
+    )
     modelo = load_model(resolve_model())
     blocos = []
 
     if args.eixos or todos:
         blocos.append("## Mapa de eixos (FK = grafo de cena)\n\n" + mapa_eixos(modelo))
     if args.aabbs or todos:
-        blocos.append("## AABBs das malhas (autoria: +X direita, +Y frente, +Z cima)\n\n" + aabbs())
+        blocos.append(
+            "## AABBs das malhas (autoria: +X direita, +Y frente, +Z cima)\n\n"
+            + aabbs()
+        )
     if args.alvos or todos:
         blocos.append("## Alvos de braço x FK x penetração\n\n" + tabela_alvos(modelo))
     if args.sugerir:
@@ -339,9 +393,15 @@ def main() -> int:
         blocos.append("## Tronco (pivô no referencial do asset)\n\n" + tronco())
 
     if args.dedos or todos:
-        blocos.append("## Cadeia dos dedos (FK x pivôs do Panda)\n\n" + tabela_dedos(modelo))
+        blocos.append(
+            "## Cadeia dos dedos (FK x pivôs do Panda)\n\n" + tabela_dedos(modelo)
+        )
 
-    texto = "# Oráculo de cena (gerado por tools/gerar_oraculo_cena.py)\n\n" + "\n\n".join(blocos) + "\n"
+    texto = (
+        "# Oráculo de cena (gerado por tools/gerar_oraculo_cena.py)\n\n"
+        + "\n\n".join(blocos)
+        + "\n"
+    )
 
     if args.saida:
         args.saida.write_text(texto, encoding="utf-8", newline="\n")

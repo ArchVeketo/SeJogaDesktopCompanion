@@ -1,4 +1,4 @@
-"""Capturas do renderer REAL com o mascote arrastado por cada parte (Parte 4).
+r"""Capturas do renderer REAL com o mascote arrastado por cada parte (Parte 4).
 
 Uma captura por parte pega (corpo, perna, braço), de frente e de lado, após o
 ponteiro se mover por ``FRAMES`` quadros. Cada parte sobe um subprocesso (o
@@ -6,7 +6,7 @@ ShowBase abre uma vez por processo). Headless renderiza, mas só o olho do usuá
 numa GPU real valida o resultado (recalibracao-gpu.md, C11 a C14).
 
 Uso:
-    set SEJOGA_CONFIG_PATH=C:\\tmp\\sejoga-cap\\config.toml
+    set SEJOGA_CONFIG_PATH=C:\tmp\sejoga-cap\config.toml
     python tools/capturar_arraste.py --saida <pasta>
 """
 
@@ -67,13 +67,17 @@ app.win.getScreenshot().write(Filename.fromOsSpecific(saida))
 
 
 def main() -> int:
+    """Executa a captura e devolve o código de saída."""
     parser = argparse.ArgumentParser(description="Capturas do arraste por parte.")
     parser.add_argument("--saida", type=Path, required=True)
     parser.add_argument("--rotulo", default="depois")
     args = parser.parse_args()
     args.saida.mkdir(parents=True, exist_ok=True)
     ambiente = dict(os.environ)
-    ambiente.setdefault("SEJOGA_CONFIG_PATH", str(Path(tempfile.gettempdir()) / "sejoga-cap" / "config.toml"))
+    ambiente.setdefault(
+        "SEJOGA_CONFIG_PATH",
+        str(Path(tempfile.gettempdir()) / "sejoga-cap" / "config.toml"),
+    )
     falhas = 0
 
     for parte in PARTES:
@@ -81,12 +85,19 @@ def main() -> int:
             destino = args.saida / f"{args.rotulo}-arraste-{parte}-{camera}.png"
             processo = subprocess.run(
                 [sys.executable, "-c", _FILHO, str(RAIZ), parte, camera, str(destino)],
-                cwd=RAIZ, env=ambiente, capture_output=True, text=True, timeout=TIMEOUT_S,
+                cwd=RAIZ,
+                env=ambiente,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_S,
             )
 
             if processo.returncode != 0 or not destino.exists():
                 falhas += 1
-                print(f"FALHOU {parte}/{camera}: {processo.stderr[-400:]}", file=sys.stderr)
+                print(
+                    f"FALHOU {parte}/{camera}: {processo.stderr[-400:]}",
+                    file=sys.stderr,
+                )
             else:
                 print(destino)
 

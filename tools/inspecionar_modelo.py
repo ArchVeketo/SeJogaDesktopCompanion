@@ -67,6 +67,7 @@ def load_gltf(path: Path) -> dict[str, Any]:
 
 
 def load_bbmodel(path: Path) -> dict[str, Any]:
+    """Carrega o projeto .bbmodel do Blockbench."""
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -86,6 +87,7 @@ def walk_nodes(nodes: list[dict], roots: list[int]) -> list[tuple[int, dict, int
 
 
 def summarize_gltf(doc: dict[str, Any]) -> dict[str, Any]:
+    """Resume nós, malhas e materiais do glTF."""
     nodes = doc.get("nodes", [])
     scene_roots = doc.get("scenes", [{}])[doc.get("scene", 0)].get("nodes", [])
 
@@ -133,6 +135,7 @@ def summarize_gltf(doc: dict[str, Any]) -> dict[str, Any]:
 
 
 def summarize_bbmodel(doc: dict[str, Any]) -> dict[str, Any]:
+    """Resume grupos e elementos do .bbmodel."""
     outliner = doc.get("outliner", [])
 
     def flatten(nodes: list, depth: int = 0):
@@ -162,7 +165,8 @@ def summarize_bbmodel(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915  # TODO convenção: ferramenta de captura/GPU: fatiar sem rodar na GPU arrisca a saída; lote próprio
+    """Executa a inspeção e devolve o código de saída."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", type=Path)
     parser.add_argument("--json", action="store_true", help="saída JSON estruturada")

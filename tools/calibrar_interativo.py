@@ -1,4 +1,4 @@
-"""Calibrador INTERATIVO de eixos do rig (rodar na máquina com GPU/desktop).
+r"""Calibrador INTERATIVO de eixos do rig (rodar na máquina com GPU/desktop).
 
 Abre o mascote ao vivo no renderer REAL (o mesmo do app, já com a orientação de
 frente assada no asset). Você escolhe uma junta, gira um eixo e vê o efeito
@@ -13,7 +13,7 @@ testada); aqui só há janela, teclado e HUD.
 Uso (a partir da raiz do worktree):
     python tools/calibrar_interativo.py
     python tools/calibrar_interativo.py --novo                # ignora o arquivo salvo
-    python tools/calibrar_interativo.py --saida C:\\tmp\\mapa.json
+    python tools/calibrar_interativo.py --saida C:\tmp\mapa.json
     python tools/calibrar_interativo.py --capturar saida.png --teste ombro_dir:z:-45
 
 ``--capturar`` é o modo sem interação: aplica ``junta:eixo:graus``, renderiza e
@@ -26,6 +26,7 @@ MODO CONFIRMAR (Parte 3, recomendado): o mapa de eixos já sai do grafo de cena
 Teclas: 1 correto, 2 errado, 3 pular, v frente/lado, setas navegam, esc salva e
 sai. Respostas em ``confirmacao-parte3.json`` (ver recalibracao-gpu.md).
 """
+
 # Pilota atributos Optional do OverlayApp e troca _animation_tick, igual aos
 # demais tools.
 # mypy: disable-error-code="union-attr, method-assign"
@@ -57,11 +58,17 @@ from sejoga.rig_mapa.confirmacao_poses import ConfirmacaoPoses, Resposta
 # ─────────────────────────────────────────────────────────────────────────────
 # Constantes nomeadas
 # ─────────────────────────────────────────────────────────────────────────────
-PASTA_RAIZ = Path(__file__).resolve().parents[1] / ".agents" / "tasks" / "frente3-animacao"
+PASTA_RAIZ = (
+    Path(__file__).resolve().parents[1] / ".agents" / "tasks" / "frente3-animacao"
+)
 ARQUIVO_JSON_PADRAO = PASTA_RAIZ / "mapa-eixos-CALIBRADO.json"
 ARQUIVO_CONFIRMACAO_PADRAO = PASTA_RAIZ / "confirmacao-parte3.json"
 #: Tecla -> resposta do modo confirmar.
-TECLAS_RESPOSTA: dict[str, Resposta] = {"1": Resposta.CORRETO, "2": Resposta.ERRADO, "3": Resposta.PULADO}
+TECLAS_RESPOSTA: dict[str, Resposta] = {
+    "1": Resposta.CORRETO,
+    "2": Resposta.ERRADO,
+    "3": Resposta.PULADO,
+}
 
 #: Lado (px) da janela do calibrador: maior que o overlay para ver bem o membro.
 TAMANHO_JANELA = 720
@@ -78,8 +85,19 @@ SEGUNDOS_ATE_DORMIR = 600
 #: Estilos de dança e gestos disparáveis pelo modo confirmar.
 ESTILOS_DANCA = ("head_bob", "hip_hop", "rock", "breakdance")
 GESTOS = (
-    "wave", "stretch", "peek", "sneeze", "click", "double_click",
-    "pet", "poke", "hang_loose", "thumbs_up", "finger_gun", "land", "hit",
+    "wave",
+    "stretch",
+    "peek",
+    "sneeze",
+    "click",
+    "double_click",
+    "pet",
+    "poke",
+    "hang_loose",
+    "thumbs_up",
+    "finger_gun",
+    "land",
+    "hit",
 )
 
 #: Passos de giro alternáveis pela tecla ``p``.
@@ -134,7 +152,7 @@ def _sem_acentos(texto: str) -> str:
     return "".join(c for c in base if not unicodedata.combining(c))
 
 
-class RenderIndisponivel(RuntimeError):
+class RenderIndisponivelError(RuntimeError):
     """O renderer não pôde iniciar (sem GPU/driver/desktop)."""
 
 
@@ -142,6 +160,7 @@ class Calibrador:
     """Janela interativa: liga teclado, HUD e pose ao ``EstadoCalibrador``."""
 
     def __init__(self, estado: EstadoCalibrador, saida_json: Path) -> None:
+        """Monta a janela de calibração sobre o estado dado."""
         self.estado = estado
         self.saida_json = saida_json
         self.saida_md = saida_json.with_suffix(".md")
@@ -153,7 +172,7 @@ class Calibrador:
         self._subir()
 
     # ------------------------------------------------------------------ boot
-    def _subir(self) -> None:
+    def _subir(self) -> None:  # noqa: PLR0915  # TODO convenção: ferramenta de captura/GPU: fatiar sem rodar na GPU arrisca a saída; lote próprio
         perfil = _perfil()
         configuracao.default_config_path = lambda: perfil / "config.toml"
 
@@ -164,7 +183,7 @@ class Calibrador:
             from panda3d.core import Filename, TextNode
             from direct.gui.OnscreenText import OnscreenText
         except Exception as exc:  # pragma: no cover - ambiente sem engine
-            raise RenderIndisponivel(str(exc)) from exc
+            raise RenderIndisponivelError(str(exc)) from exc
         # isort: on
         self._Filename = Filename
 
@@ -180,7 +199,7 @@ class Calibrador:
         try:
             self.app = OverlayApp(settings)
         except Exception as exc:  # pragma: no cover - sem GPU
-            raise RenderIndisponivel(str(exc)) from exc
+            raise RenderIndisponivelError(str(exc)) from exc
 
         app = self.app
         app.hotkey_manager.close()
@@ -216,7 +235,12 @@ class Calibrador:
         estilo = (estilo & ~retirar) | win32con.WS_EX_APPWINDOW
         win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, estilo)
         win32gui.SetWindowPos(
-            hwnd, win32con.HWND_NOTOPMOST, JANELA_X, JANELA_Y, 0, 0,
+            hwnd,
+            win32con.HWND_NOTOPMOST,
+            JANELA_X,
+            JANELA_Y,
+            0,
+            0,
             win32con.SWP_FRAMECHANGED | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW,
         )
         # O Windows pode negar o foco; nesse caso o usuário clica na janela.
@@ -224,17 +248,21 @@ class Calibrador:
             win32gui.SetForegroundWindow(hwnd)
 
     # ------------------------------------------------------------------- HUD
-    def _criar_hud(self, OnscreenText, TextNode) -> None:
+    def _criar_hud(self, classe_texto, classe_no_texto) -> None:
         fonte = self._carregar_fonte()
         self._fonte_ok = fonte is not None
         comum = dict(
-            scale=ESCALA_TEXTO, fg=COR_TEXTO, bg=FUNDO_TEXTO,
-            align=TextNode.ALeft, mayChange=True, font=fonte,
+            scale=ESCALA_TEXTO,
+            fg=COR_TEXTO,
+            bg=FUNDO_TEXTO,
+            align=classe_no_texto.ALeft,
+            mayChange=True,
+            font=fonte,
         )
-        self._hud = OnscreenText(
+        self._hud = classe_texto(
             text="", parent=self.app.a2dTopLeft, pos=(MARGEM_X, MARGEM_Y), **comum
         )
-        self._ajuda = OnscreenText(
+        self._ajuda = classe_texto(
             text="", parent=self.app.a2dBottomLeft, pos=(MARGEM_X, 0.35), **comum
         )
 
@@ -271,7 +299,9 @@ class Calibrador:
         # tentáculos em estado nativo válido); a pose desenhada é NEUTRA + o
         # que o calibrador mandou, para isolar o eixo em teste.
         self.animation.update(
-            DT_ANIMACAO, grounded=True, idle_enabled=True,
+            DT_ANIMACAO,
+            grounded=True,
+            idle_enabled=True,
             sleep_after_idle_seconds=SEGUNDOS_ATE_DORMIR,
         )
         pose = {grupo: Rotation3() for grupo in JUNTAS.values()}
@@ -280,7 +310,9 @@ class Calibrador:
         self.renderer.apply_body_motion(
             self.animation.body_motion.snapshot, None, grounded=True, dragging=False
         )
-        self.renderer.update_appendages(DT_ANIMACAO, self.animation.appendage_remaining > 0)
+        self.renderer.update_appendages(
+            DT_ANIMACAO, self.animation.appendage_remaining > 0
+        )
 
     # ---------------------------------------------------------------- teclado
     def _ligar_teclas(self) -> None:
@@ -308,9 +340,11 @@ class Calibrador:
         a("escape", self.encerrar)
 
     def girar(self, sentido: int) -> None:
+        """Gira a junta no eixo atual no sentido dado."""
         self.estado.girar(sentido * PASSOS_GRAUS[self.passo_indice])
 
     def marcar(self, direcao: Direcao) -> None:
+        """Marca a direção observada para o eixo atual."""
         if not self.estado.marcar(direcao):
             return
         self.estado.salvar(self.saida_json, self.saida_md)
@@ -318,29 +352,36 @@ class Calibrador:
             self.pular()
 
     def pular(self) -> None:
+        """Pula o eixo atual sem marcar."""
         if not self.estado.ir_para_proximo_pendente():
             self.estado.mensagem = "Tudo marcado. Enter salva, Esc salva e sai."
 
     def alternar_passo(self) -> None:
+        """Alterna o tamanho do passo de giro."""
         self.passo_indice = (self.passo_indice + 1) % len(PASSOS_GRAUS)
 
     def alternar_guiado(self) -> None:
+        """Liga ou desliga o modo guiado."""
         self.guiado = not self.guiado
         if self.guiado:
             self.estado.ir_para_proximo_pendente(incluir_atual=True)
 
     def alternar_ajuda(self) -> None:
+        """Mostra ou esconde a ajuda."""
         self.mostrar_ajuda = not self.mostrar_ajuda
 
     def alternar_visao(self) -> None:
+        """Alterna o ponto de vista da câmera."""
         self.visao_indice = (self.visao_indice + 1) % len(VISOES)
         self.renderer.set_model_rotation(y=VISOES[self.visao_indice][1])
 
     def salvar(self) -> None:
+        """Salva as marcações no JSON de saída."""
         self.estado.salvar(self.saida_json, self.saida_md)
         self.estado.mensagem = f"Salvo em {self.saida_json.name} e {self.saida_md.name}"
 
     def encerrar(self) -> None:
+        """Salva e encerra a calibração."""
         self.salvar()
         self.sair = True
 
@@ -352,6 +393,7 @@ class Calibrador:
 
     # ------------------------------------------------------------------ laço
     def executar(self) -> None:
+        """Roda o laço da janela de calibração."""
         if self.guiado:
             self.estado.ir_para_proximo_pendente(incluir_atual=True)
         try:
@@ -366,11 +408,14 @@ class Calibrador:
             for _ in range(FRAMES_ESTABILIZACAO):
                 self.app.taskMgr.step()
             destino.parent.mkdir(parents=True, exist_ok=True)
-            self.app.win.getScreenshot().write(self._Filename.fromOsSpecific(str(destino)))
+            self.app.win.getScreenshot().write(
+                self._Filename.fromOsSpecific(str(destino))
+            )
         finally:
             self.fechar()
 
     def fechar(self) -> None:
+        """Fecha a janela de calibração."""
         app = self.app
         app.debug_tools.close()
         app.music_listener.stop()
@@ -419,6 +464,7 @@ class Confirmador(Calibrador):
     """Modo confirmar: mostra as poses reais do app e registra 1/2/3."""
 
     def __init__(self, confirmacao: ConfirmacaoPoses, saida_json: Path) -> None:
+        """Monta a janela de confirmação de poses."""
         self.confirmacao = confirmacao
         self._estado_disparado: str | None = None
         super().__init__(EstadoCalibrador(), saida_json)
@@ -449,9 +495,14 @@ class Confirmador(Calibrador):
         pose = _pilotar(self.animation, estado)
         self.renderer.apply_rig_pose(pose)
         self.renderer.apply_body_motion(
-            self.animation.body_motion.snapshot, None, grounded=True, dragging=estado == "drag"
+            self.animation.body_motion.snapshot,
+            None,
+            grounded=True,
+            dragging=estado == "drag",
         )
-        self.renderer.update_appendages(DT_ANIMACAO, self.animation.appendage_remaining > 0)
+        self.renderer.update_appendages(
+            DT_ANIMACAO, self.animation.appendage_remaining > 0
+        )
 
     def _ligar_teclas(self) -> None:
         a = self.app.accept
@@ -464,14 +515,17 @@ class Confirmador(Calibrador):
         a("escape", self.encerrar)
 
     def responder(self, resposta: Resposta) -> None:
+        """Registra a resposta para a pose atual."""
         self.confirmacao.responder(resposta)
         self.salvar()
 
     def salvar(self) -> None:
+        """Salva as respostas no JSON de saída."""
         self.confirmacao.salvar(self.saida_json)
         self.confirmacao.mensagem = f"Salvo em {self.saida_json.name}"
 
     def executar(self) -> None:
+        """Roda o laço da janela de confirmação."""
         try:
             while not self.sair:
                 self.app.taskMgr.step()
@@ -482,12 +536,15 @@ class Confirmador(Calibrador):
 def _main_confirmar(args) -> int:
     confirmacao = ConfirmacaoPoses()
     if args.saida_confirmacao.is_file() and not args.novo:
-        print(f"{confirmacao.carregar(args.saida_confirmacao)} respostas carregadas", flush=True)
+        print(
+            f"{confirmacao.carregar(args.saida_confirmacao)} respostas carregadas",
+            flush=True,
+        )
     if args.pose:
         confirmacao.selecionar(args.pose)
     try:
         confirmador = Confirmador(confirmacao, args.saida_confirmacao)
-    except RenderIndisponivel as exc:
+    except RenderIndisponivelError as exc:
         print(f"RENDER INDISPONÍVEL: {exc}", file=sys.stderr, flush=True)
         return 1
     if args.capturar:
@@ -507,23 +564,47 @@ def _aplicar_teste(estado: EstadoCalibrador, texto: str) -> None:
         estado.selecionar_eixo(Eixo(eixo))
         estado.definir_valor(float(graus))
     except (ValueError, KeyError) as exc:
-        raise SystemExit(f"--teste inválido ({texto!r}): use junta:eixo:graus. {exc}") from exc
+        raise SystemExit(
+            f"--teste inválido ({texto!r}): use junta:eixo:graus. {exc}"
+        ) from exc
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Calibrador interativo de eixos do rig.")
-    parser.add_argument("--saida", type=Path, default=ARQUIVO_JSON_PADRAO,
-                        help="arquivo JSON do mapa (o .md fica ao lado)")
-    parser.add_argument("--novo", action="store_true",
-                        help="não carrega marcações já salvas")
-    parser.add_argument("--capturar", type=Path, default=None,
-                        help="modo sem interação: salva um PNG do estado e sai")
-    parser.add_argument("--teste", default=None,
-                        help="com --capturar: junta:eixo:graus (ex.: ombro_dir:z:-45)")
-    parser.add_argument("--confirmar", action="store_true",
-                        help="modo confirmar: poses reais do app, teclas 1/2/3")
-    parser.add_argument("--pose", default=None, help="com --confirmar: pose inicial (ex.: aceno)")
-    parser.add_argument("--saida-confirmacao", type=Path, default=ARQUIVO_CONFIRMACAO_PADRAO)
+    """Executa a ferramenta e devolve o código de saída."""
+    parser = argparse.ArgumentParser(
+        description="Calibrador interativo de eixos do rig."
+    )
+    parser.add_argument(
+        "--saida",
+        type=Path,
+        default=ARQUIVO_JSON_PADRAO,
+        help="arquivo JSON do mapa (o .md fica ao lado)",
+    )
+    parser.add_argument(
+        "--novo", action="store_true", help="não carrega marcações já salvas"
+    )
+    parser.add_argument(
+        "--capturar",
+        type=Path,
+        default=None,
+        help="modo sem interação: salva um PNG do estado e sai",
+    )
+    parser.add_argument(
+        "--teste",
+        default=None,
+        help="com --capturar: junta:eixo:graus (ex.: ombro_dir:z:-45)",
+    )
+    parser.add_argument(
+        "--confirmar",
+        action="store_true",
+        help="modo confirmar: poses reais do app, teclas 1/2/3",
+    )
+    parser.add_argument(
+        "--pose", default=None, help="com --confirmar: pose inicial (ex.: aceno)"
+    )
+    parser.add_argument(
+        "--saida-confirmacao", type=Path, default=ARQUIVO_CONFIRMACAO_PADRAO
+    )
     args = parser.parse_args()
 
     if args.confirmar:
@@ -538,7 +619,7 @@ def main() -> int:
 
     try:
         calibrador = Calibrador(estado, args.saida)
-    except RenderIndisponivel as exc:
+    except RenderIndisponivelError as exc:
         print(f"RENDER INDISPONÍVEL: {exc}", file=sys.stderr, flush=True)
         return 1
 
@@ -549,8 +630,10 @@ def main() -> int:
         return 0
 
     calibrador.executar()
-    print(f"mapa salvo em {args.saida} ({estado.total_marcado()}/{estado.total_possivel()})",
-          flush=True)
+    print(
+        f"mapa salvo em {args.saida} ({estado.total_marcado()}/{estado.total_possivel()})",
+        flush=True,
+    )
     return 0
 
 
