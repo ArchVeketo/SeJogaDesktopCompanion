@@ -167,3 +167,18 @@ def test_frase_nao_atravessa_o_corpo_com_o_modelo_real(modelo, estilo):
             assert cb.penetracao_do_lado(modelo, lado, pose) <= (
                 cb.FOLGA_PENETRACAO_U + FOLGA_TRANSICAO_U
             ), (estilo, lado)
+
+
+def test_rock_no_acento_tem_braco_direito_em_chifre_e_esquerdo_baixo():
+    pose = amostrar_passo(FRASES["rock"][0], 0.0)
+
+    assert pose["right-arm"] == pytest.approx(braco_hpr_graus("right", "chifre")["right-arm"])
+    assert pose["left-arm"] == pytest.approx(braco_hpr_graus("left", "idle")["left-arm"])
+
+
+@pytest.mark.parametrize("passo", range(2))
+def test_rock_marca_o_headbang_para_baixo_no_acento(passo):
+    cabecas = [amostrar_passo(FRASES["rock"][passo], k / 20)["head"][0] for k in range(20)]
+
+    assert cabecas[0] == min(cabecas)
+    assert cabecas[0] < 0.0

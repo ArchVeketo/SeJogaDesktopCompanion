@@ -1,6 +1,6 @@
 """Independent hip/knee motion, in degrees; no engine dependencies."""
 from dataclasses import dataclass
-from math import sin, tanh, tau
+from math import cos, sin, tanh, tau
 
 from sejoga.animacao import dance_tuning as dtune
 from sejoga.animacao.body_motion import Spring
@@ -50,6 +50,9 @@ DANCA_PASSO_QUADRIL = 7.0
 DANCA_PASSO_JOELHO = 12.0
 DANCA_PASSO_LIFT = 0.012
 DANCA_HEADBOB = (0.0, -3.0, 2.0, 7.0)       # pose fixa do head_bob
+#: Rock: base larga (pouco passo no quadril) e joelhos que absorvem o headbang.
+DANCA_ROCK_QUADRIL = 4.0
+DANCA_ROCK_JOELHO = 14.0
 DANCA_BREAK_QUADRIL = 8.0
 DANCA_BREAK_QUADRIL_FLOOR = (35.0, 30.0)    # esq, dir
 DANCA_BREAK_JOELHO = (8.0, 20.0, 12.0)      # base, floor_esq, floor_dir
@@ -131,6 +134,10 @@ class LegMotion:
                              max(0,step)*DANCA_PASSO_LIFT, max(0,-step)*DANCA_PASSO_LIFT)
             if dance_style == 'head_bob':
                 target = LegPose(*DANCA_HEADBOB)
+            elif dance_style == 'rock':
+                # cos(fase) vale 1 no onset da batida: o joelho flexiona no acento.
+                absorve = (.5+.5*cos(self.phase))*DANCA_ROCK_JOELHO
+                target = LegPose(step*DANCA_ROCK_QUADRIL, -step*DANCA_ROCK_QUADRIL, absorve, absorve)
             elif dance_style == 'breakdance':
                 beat = self.phase/tau % dtune.FRASE_BATIDAS
                 floor = max(0,min(1,(beat-dtune.FLOOR_INICIO)/dtune.FLOOR_SUBIDA,

@@ -66,7 +66,7 @@ COMPASSO_FASE = BATIDAS_POR_COMPASSO * tau
 #: Fração da batida em que cai cada pose: acento (onset), sustentação,
 #: recuperação e preparação. Depois da preparação o passo segue para o acento
 #: do próximo (u = 1).
-U_POSES = (0.0, 0.35, 0.70, 0.88)
+U_POSES = (0.0, 0.35, 0.70, 0.82)
 #: Ganho de cabeça/tronco = base + energia * ganho (a energia escala o passo).
 GANHO_PASSO_BASE = 0.7
 GANHO_PASSO_ENERGIA = 0.3

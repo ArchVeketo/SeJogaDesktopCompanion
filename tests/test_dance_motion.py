@@ -1,11 +1,13 @@
 from itertools import pairwise
-from math import degrees
+from math import degrees, tau
 
 import pytest
 
 import analise_curvas as aa
+from sejoga.animacao import dance_tuning as tune
 from sejoga.animacao.dance_frases_tuning import FRASES
 from sejoga.animacao.dance_motion import DanceMotion
+from sejoga.animacao.leg_motion import LegMotion
 from sejoga.nucleo.rig import ALL_GROUPS, Rig, Rotation3
 
 FPS = 60.0
@@ -97,3 +99,40 @@ def test_danca_por_passos_nao_tem_salto_entre_quadros(estilo):
             for eixo in "xyz":
                 delta = degrees(abs(getattr(rot, eixo) - getattr(anterior[grupo], eixo)))
                 assert delta < SALTO_MAXIMO_GRAUS, f"{estilo}.{grupo}.{eixo}: {delta:.1f}"
+
+
+def _passo_em(estilo: str, bpm: float, batidas: float) -> int:
+    """Índice do passo da frase após ``batidas`` batidas inteiras no ``bpm``."""
+    danca = DanceMotion()
+    danca.style = estilo
+    danca.tempo = bpm
+    danca.style_beats = batidas
+    danca.phase = batidas * tau
+
+    return danca._posicao_na_frase(FRASES[estilo])[0]
+
+
+def test_rock_acima_do_limite_de_bpm_troca_de_passo_a_cada_duas_batidas():
+    bpm = tune.ROCK_MEIO_TEMPO_BPM + 10
+
+    assert _passo_em("rock", bpm, 0) == _passo_em("rock", bpm, 1)
+    assert _passo_em("rock", bpm, 0) != _passo_em("rock", bpm, 2)
+
+
+def test_rock_abaixo_do_limite_de_bpm_troca_de_passo_a_cada_batida():
+    bpm = tune.ROCK_MEIO_TEMPO_BPM - 10
+
+    assert _passo_em("rock", bpm, 0) != _passo_em("rock", bpm, 1)
+
+
+def test_rock_flexiona_os_joelhos_mais_no_onset_do_que_no_contratempo():
+    def joelho_assentado(fase: float) -> float:
+        pernas = LegMotion()
+        for _ in range(120):
+            pose = pernas.update(
+                1 / FPS, "dance", dance_phase=fase, dance_strength=1.0, dance_style="rock"
+            )
+
+        return pose.left_knee
+
+    assert joelho_assentado(0.0) > joelho_assentado(tau / 2) + 1.0

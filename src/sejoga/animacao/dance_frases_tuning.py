@@ -25,12 +25,17 @@ def _passo(
     tronco: Quatro,
     braco_dir: NomesBraco = "idle",
     braco_esq: NomesBraco = "idle",
+    extras: dict[str, Trio] | None = None,
 ) -> PassoDanca:
-    """Monta um passo a partir de quatro trios de cabeça/tronco e dos braços."""
+    """Monta um passo a partir de quatro trios de cabeça/tronco e dos braços.
+
+    ``extras`` são grupos fixos nas quatro poses (ex.: ``hand`` do rock).
+    """
     dirs = _por_pose(braco_dir)
     esqs = _por_pose(braco_esq)
     poses = tuple(
-        PoseDanca({"head": cabeca[i], "body": tronco[i]}, dirs[i], esqs[i]) for i in range(4)
+        PoseDanca({"head": cabeca[i], "body": tronco[i], **(extras or {})}, dirs[i], esqs[i])
+        for i in range(4)
     )
 
     return PassoDanca(poses)  # type: ignore[arg-type]  # tupla de 4 poses montada acima
@@ -79,9 +84,31 @@ HEAD_BOB: tuple[PassoDanca, ...] = (
     ),
 )
 
+#: Torção do punho direito no rock (graus): vira a palma do chifre para a câmera.
+ROCK_PUNHO_TORCAO = 180.0
+_ROCK_PUNHO = {"hand": (ROCK_PUNHO_TORCAO, 0.0, 0.0)}
+
+#: Rock: 2 batidas. Headbang para baixo (cabeça e tronco) no acento, braço
+#: direito alto com a mão em chifre, esquerdo baixo. Meio-tempo se BPM > 150.
+ROCK: tuple[PassoDanca, ...] = (
+    _passo(
+        ((-26.0, 0.0, 3.0), (-10.0, 0.0, 2.0), (-5.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        ((-7.0, 0.0, 0.0), (-3.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        "chifre",
+        extras=_ROCK_PUNHO,
+    ),
+    _passo(
+        ((-16.0, 0.0, -3.0), (-7.0, 0.0, -2.0), (-3.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        ((-4.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        "chifre",
+        extras=_ROCK_PUNHO,
+    ),
+)
+
 #: Frase de cada estilo (preenchida estilo a estilo).
 FRASES: dict[str, tuple[PassoDanca, ...]] = {
     "head_bob": HEAD_BOB,
+    "rock": ROCK,
 }
 
 
