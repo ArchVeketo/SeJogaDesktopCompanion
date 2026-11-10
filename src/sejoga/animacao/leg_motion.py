@@ -53,6 +53,8 @@ DANCA_HEADBOB = (0.0, -3.0, 2.0, 7.0)       # pose fixa do head_bob
 #: Rock: base larga (pouco passo no quadril) e joelhos que absorvem o headbang.
 DANCA_ROCK_QUADRIL = 4.0
 DANCA_ROCK_JOELHO = 14.0
+#: Hip hop: quique de joelho no onset, somado à transferência de peso do passo.
+DANCA_HIPHOP_JOELHO = 6.0
 DANCA_BREAK_QUADRIL = 8.0
 DANCA_BREAK_QUADRIL_FLOOR = (35.0, 30.0)    # esq, dir
 DANCA_BREAK_JOELHO = (8.0, 20.0, 12.0)      # base, floor_esq, floor_dir
@@ -134,6 +136,10 @@ class LegMotion:
                              max(0,step)*DANCA_PASSO_LIFT, max(0,-step)*DANCA_PASSO_LIFT)
             if dance_style == 'head_bob':
                 target = LegPose(*DANCA_HEADBOB)
+            elif dance_style == 'hip_hop':
+                quique = (.5+.5*cos(self.phase))*DANCA_HIPHOP_JOELHO
+                target = LegPose(target.left, target.right, target.left_knee+quique,
+                                 target.right_knee+quique, target.left_lift, target.right_lift)
             elif dance_style == 'rock':
                 # cos(fase) vale 1 no onset da batida: o joelho flexiona no acento.
                 absorve = (.5+.5*cos(self.phase))*DANCA_ROCK_JOELHO

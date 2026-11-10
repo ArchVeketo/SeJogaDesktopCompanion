@@ -26,7 +26,8 @@ AUDIO_DO_ESTILO = {
 #: acento no onset da batida: o nod/headbang é um golpe por projeto e as molas de
 #: 4,5 Hz só o amortecem. O teto fica abaixo do pior caso do código anterior
 #: (rock 227 mil, hip hop 146 mil, break 60 mil) e protege contra saltos novos.
-TETO_JERK = {"head_bob": 1.0e5, "hip_hop": 1.5e5, "rock": 2.3e5, "breakdance": 1.5e5}
+#: O hip hop sobe um pouco: o ombro troca de alvo (idle <-> contrapeso) em 0,35 batida.
+TETO_JERK = {"head_bob": 1.0e5, "hip_hop": 1.8e5, "rock": 2.3e5, "breakdance": 1.5e5}
 #: Maior variação (graus) de um eixo entre dois quadros de 60 fps.
 SALTO_MAXIMO_GRAUS = 6.0
 

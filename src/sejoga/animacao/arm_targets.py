@@ -91,8 +91,9 @@ ALVO_CRUZADO_ESQ = AlvoBraco(alvo=(0.08, 0.06, 0.16))
 #: fora do alcance de 0.281 u, o ombro está 0.19 u abaixo do topo da cabeça).
 ALVO_CHIFRE = AlvoBraco(alvo=(0.24, 0.08, 0.04))
 
-#: Contrapeso do hip hop: braço estendido para frente-fora, na altura do ombro.
-ALVO_CONTRAPESO = AlvoBraco(alvo=(0.20, 0.0, 0.17))
+#: Contrapeso do hip hop: braço quase estendido (cotovelo ~17 graus) para
+#: frente-fora, na altura do ombro. Mais perto (0.20) dobrava o cotovelo 42 graus.
+ALVO_CONTRAPESO = AlvoBraco(alvo=(0.22, 0.0, 0.17))
 
 #: Apoio de chão do breakdance: mão baixa à frente e para fora (o roll do corpo
 #: no renderer leva a mão ao chão).

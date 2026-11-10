@@ -182,3 +182,22 @@ def test_rock_marca_o_headbang_para_baixo_no_acento(passo):
 
     assert cabecas[0] == min(cabecas)
     assert cabecas[0] < 0.0
+
+
+def test_hip_hop_transfere_o_peso_para_lados_opostos_nas_duas_metades_da_frase():
+    frase = FRASES["hip_hop"]
+    primeira = amostrar_passo(frase[0], 0.0)["body"][2]
+    segunda = amostrar_passo(frase[4], 0.0)["body"][2]
+
+    assert len(frase) == 8
+    assert primeira > 0.0 > segunda
+
+
+def test_hip_hop_estende_o_braco_oposto_ao_lado_carregado():
+    frase = FRASES["hip_hop"]
+    esquerdo = amostrar_passo(frase[1], 0.0)
+    direito = amostrar_passo(frase[5], 0.0)
+
+    assert esquerdo["left-arm"] == pytest.approx(braco_hpr_graus("left", "contrapeso")["left-arm"])
+    assert esquerdo["right-arm"] == pytest.approx(braco_hpr_graus("right", "idle")["right-arm"])
+    assert direito["right-arm"] == pytest.approx(braco_hpr_graus("right", "contrapeso")["right-arm"])

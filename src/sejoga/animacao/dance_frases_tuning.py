@@ -105,10 +105,58 @@ ROCK: tuple[PassoDanca, ...] = (
     ),
 )
 
+#: Hip hop: 8 batidas. Comprimir e transferir o peso, estender o braço oposto,
+#: fechar, pausa; depois o lado oposto com variação (giro de cabeça) e uma pose
+#: legível com os dois braços fora. O contrapeso vai no braço oposto ao lado
+#: carregado; a perna carregada vem de ``leg_motion`` (fase global, A_CONFIRMAR C50).
+HIP_HOP: tuple[PassoDanca, ...] = (
+    _passo(
+        ((-10.0, 0.0, 3.0), (-4.0, 0.0, 2.0), (-2.0, 0.0, 0.0), (3.0, 0.0, 0.0)),
+        ((-6.0, 0.0, 6.0), (-2.0, 0.0, 5.0), (0.0, 0.0, 3.0), (2.0, 0.0, 2.0)),
+        braco_esq=("idle", "idle", "contrapeso", "contrapeso"),
+    ),
+    _passo(
+        ((-6.0, 0.0, 2.0), (-3.0, 0.0, 1.0), (-1.0, 0.0, 0.0), (2.0, 0.0, 0.0)),
+        ((-3.0, 0.0, 5.0), (-1.0, 0.0, 4.0), (0.0, 0.0, 3.0), (0.0, 0.0, 2.0)),
+        braco_esq="contrapeso",
+    ),
+    _passo(
+        ((-8.0, 0.0, 0.0), (-3.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (2.0, 0.0, 0.0)),
+        ((-5.0, 0.0, 2.0), (-2.0, 0.0, 1.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
+        braco_esq=("contrapeso", "idle", "idle", "idle"),
+    ),
+    _passo(
+        ((-2.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        _fixo((0.0, 0.0, 0.0)),
+    ),
+    _passo(
+        ((-10.0, 0.0, -3.0), (-4.0, 0.0, -2.0), (-2.0, 0.0, 0.0), (3.0, 0.0, 0.0)),
+        ((-6.0, 0.0, -6.0), (-2.0, 0.0, -5.0), (0.0, 0.0, -3.0), (2.0, 0.0, -2.0)),
+        braco_dir=("idle", "idle", "contrapeso", "contrapeso"),
+    ),
+    _passo(
+        ((-9.0, 8.0, -2.0), (-4.0, 6.0, -1.0), (-1.0, 3.0, 0.0), (2.0, 0.0, 0.0)),
+        ((-4.0, 0.0, -5.0), (-1.0, 0.0, -4.0), (0.0, 0.0, -3.0), (0.0, 0.0, -2.0)),
+        braco_dir="contrapeso",
+    ),
+    _passo(
+        ((-8.0, 0.0, 0.0), (-3.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (2.0, 0.0, 0.0)),
+        ((-5.0, 0.0, -2.0), (-2.0, 0.0, -1.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
+        braco_dir=("contrapeso", "idle", "idle", "idle"),
+    ),
+    _passo(
+        ((-4.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        ((-3.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        ("contrapeso", "contrapeso", "idle", "idle"),
+        ("contrapeso", "contrapeso", "idle", "idle"),
+    ),
+)
+
 #: Frase de cada estilo (preenchida estilo a estilo).
 FRASES: dict[str, tuple[PassoDanca, ...]] = {
     "head_bob": HEAD_BOB,
     "rock": ROCK,
+    "hip_hop": HIP_HOP,
 }
 
 
