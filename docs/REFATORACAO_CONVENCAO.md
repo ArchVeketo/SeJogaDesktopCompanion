@@ -1,4 +1,4 @@
-# Refatoração para a convenção Python
+﻿# Refatoração para a convenção Python
 
 Registro da refatoração de `src/`, `tests/` e `tools/` para [CONVENCAO_PYTHON.md](CONVENCAO_PYTHON.md), feita na branch `frente3-animacao` sem mudança de comportamento. Docs datados (`SESSION_SUMMARY_2026-11-04`, `MELHORIAS_ANIMACAO_2026-11-04`, `REVISAO_GUIA_DANCA_2026-11-05`) mantêm os nomes da época; use o mapa abaixo para traduzir.
 
@@ -143,3 +143,8 @@ Prefixo `src/sejoga/`.
 | `smoke_native_body.py` | `smoke_corpo_nativo.py` |
 
 Os testes seguem o módulo testado. Por exemplo, `test_animation` virou `test_controlador_animacao`, `test_physics` virou `test_fisica` e `test_settings_dialog` virou `test_interface`. Três testes foram renomeados pelo que testam: `test_grab_parts` virou `test_movimento_corpo_pegas`, `test_installer_shutdown` virou `test_integracao_desktop` e `test_update_package` virou `test_construir_atualizacao`.
+
+## Fechamento
+
+- pytest verde; ruff limpo; mypy com os mesmos 14 erros do baseline.
+- Pendente: `.\build.ps1` nao rodou neste ambiente (modulo PyInstaller ausente no Python 3.12 do usuario). Rodar o build na maquina com PyInstaller e abrir `dist/SeJogaCompanion` para validar na GPU.
