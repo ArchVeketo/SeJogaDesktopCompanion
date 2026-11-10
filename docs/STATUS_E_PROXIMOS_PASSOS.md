@@ -5,6 +5,8 @@
 
 Este é o roadmap canônico do projeto. As listas de próximos passos nos documentos de pesquisa e arquitetura foram escritas antes de várias etapas serem implementadas; consulte esta página para o estado atual.
 
+> **Refatoração de nomes:** os módulos foram renomeados para português conforme [CONVENCAO_PYTHON.md](CONVENCAO_PYTHON.md). Os docs datados citam os nomes antigos; o mapa antigo → novo e as exceções pendentes (`TODO convenção`) estão em [REFATORACAO_CONVENCAO.md](REFATORACAO_CONVENCAO.md).
+
 ## Avaliação do autor — 05/11/2026
 
 O estado atual é um protótipo básico, ainda sem aprovação de qualidade visual, funcionalidade completa ou otimização. Testes técnicos passando não significam aprovação artística das animações.

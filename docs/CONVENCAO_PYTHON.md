@@ -15,7 +15,7 @@ Vale para todo arquivo `.py` em `src/sejoga/`, `tests/` e `tools/`. Código novo
 
 - Pastas e módulos em `snake_case`, em português, com substantivo que diz o que o módulo contém: `cinematica.py`, `colisao_bracos.py`, `coreografia_porta.py`.
 - Módulo de constantes calibráveis termina em `_tuning.py` (`braco_tuning.py`, `chroma_tuning.py`). Módulo de constantes fixas, que não se calibram, termina em `_const.py` (`janela_const.py`).
-- Módulos com nome em inglês (`janela.py`, `renderizador.py`, `movimento_corpo.py`, `sistema_tentaculos.py` e outros) são renomeados para português na refatoração, atualizando todos os imports e o `pyproject.toml`. Exceções: `__init__.py`, `__main__.py`, `conftest.py`.
+- Módulos ficam com nome em português. Os antigos em inglês (`window.py`, `renderer.py`, `body_motion.py`, `tentacle_system.py` e outros) foram renomeados; o mapa antigo → novo está em [REFATORACAO_CONVENCAO.md](REFATORACAO_CONVENCAO.md). Exceções: `__init__.py`, `__main__.py`, `conftest.py`.
 - Scripts em `tools/` começam com verbo e dizem a ação: `calibrar_interativo.py`, `capturar_porta_tentaculos.py`. Os de verificação podem começar com `smoke_`.
 - Testes: um arquivo `tests/test_<modulo>.py` por módulo testado.
 
@@ -60,7 +60,7 @@ Regra do AGENTS.md, que aqui substitui a regra de camadas dos coletores:
 
 - Funções curtas: no máximo 27 comandos (`PLR0915`, `max-statements = 27`), complexidade até 10 (`C901`), aninhamento até 3 níveis (`PLR1702`).
 - Guard clauses: retornar ou levantar exceção cedo, em vez de aninhar `if`.
-- Um comando por linha. O estilo denso de vários comandos na mesma linha (`E701`/`E702`), hoje liberado em `musica/` e `corpo_inferior.py`, é removido na refatoração.
+- Um comando por linha. O estilo denso de vários comandos na mesma linha (`E701`/`E702`), antes liberado em `musica/` e no antigo `lower_body.py`, foi removido na refatoração.
 
 ## Docstrings e comentários
 
