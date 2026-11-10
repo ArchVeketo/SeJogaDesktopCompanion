@@ -80,6 +80,24 @@ ALVO_DRAG_PERNA = AlvoBraco(alvo=(0.23, -0.14, 0.06))
 #: FALL/queda: mãos abertas para fora (o flailing entra aditivo).
 ALVO_FALL = AlvoBraco(alvo=(0.21, -0.02, 0.08))
 
+#: Danças. Cruzar os braços sobre o peito é inviável sem atravessar o corpo
+#: (medido: nenhum alvo com o punho além do ombro em direção ao centro fica
+#: livre), então "cruzado" é o fallback documentado em DECISOES_ANIMACOES.md:
+#: antebraços à frente do peito, mãos próximas, um braço mais à frente que o outro.
+ALVO_CRUZADO_DIR = AlvoBraco(alvo=(0.08, 0.06, 0.22))
+ALVO_CRUZADO_ESQ = AlvoBraco(alvo=(0.08, 0.06, 0.16))
+
+#: Chifre do rock: o ponto livre mais alto e para fora (acima da cabeça fica
+#: fora do alcance de 0.281 u, o ombro está 0.19 u abaixo do topo da cabeça).
+ALVO_CHIFRE = AlvoBraco(alvo=(0.24, 0.08, 0.04))
+
+#: Contrapeso do hip hop: braço estendido para frente-fora, na altura do ombro.
+ALVO_CONTRAPESO = AlvoBraco(alvo=(0.20, 0.0, 0.17))
+
+#: Apoio de chão do breakdance: mão baixa à frente e para fora (o roll do corpo
+#: no renderer leva a mão ao chão).
+ALVO_APOIO_CHAO = AlvoBraco(alvo=(0.22, -0.12, 0.12))
+
 
 #: Registro por nome (facilita consumo e documentação).
 ALVOS: dict[str, AlvoBraco] = {
@@ -93,6 +111,11 @@ ALVOS: dict[str, AlvoBraco] = {
     "thrown": ALVO_THROWN,
     "fall": ALVO_FALL,
     "interaction": ALVO_INTERACTION,
+    "cruzado_dir": ALVO_CRUZADO_DIR,
+    "cruzado_esq": ALVO_CRUZADO_ESQ,
+    "chifre": ALVO_CHIFRE,
+    "contrapeso": ALVO_CONTRAPESO,
+    "apoio_chao": ALVO_APOIO_CHAO,
 }
 
 #: Alvos autorais anteriores (antes da medição de colisão), para o relatório.

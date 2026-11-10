@@ -61,6 +61,19 @@ BATIDAS_POR_COMPASSO = 4
 COMPASSO_FASE = BATIDAS_POR_COMPASSO * tau
 
 # --------------------------------------------------------------------------- #
+# Passos de quatro poses (dance_poses).
+# --------------------------------------------------------------------------- #
+#: Fração da batida em que cai cada pose: acento (onset), sustentação,
+#: recuperação e preparação. Depois da preparação o passo segue para o acento
+#: do próximo (u = 1).
+U_POSES = (0.0, 0.35, 0.70, 0.88)
+#: Ganho de cabeça/tronco = base + energia * ganho (a energia escala o passo).
+GANHO_PASSO_BASE = 0.7
+GANHO_PASSO_ENERGIA = 0.3
+#: Acima deste BPM o rock passa a meio-tempo: um passo a cada duas batidas.
+ROCK_MEIO_TEMPO_BPM = 150.0
+
+# --------------------------------------------------------------------------- #
 # Envelope de acento por batida.
 # --------------------------------------------------------------------------- #
 #: Peso extra do downbeat sobre o acento da batida.
