@@ -15,7 +15,17 @@ from itertools import pairwise
 from panda3d.core import GeomVertexRewriter, NodePath, Quat, Vec3
 
 from sejoga.nucleo.rig import IdlePersonality, Rig
+from sejoga.tentaculos.ondulacao import (
+    FASE_POR_SEMENTE_RAD,
+    ONDULACAO_CALMA,
+    ONDULACAO_POR_TEMPERAMENTO,
+    OndulacaoTuning,
+    deslocamento_ondulante,
+)
 from sejoga.tentaculos.tentacle_constraints import TentacleContacts
+
+# Tolerância ao tratar a base da frente como degenerada (frente quase vertical).
+EPSILON_BASE_FRENTE = 1e-6
 
 # ============================================================
 # Configuração visual / física
@@ -122,6 +132,12 @@ class Tentacle:
     girth_scale: float = 1.0
     speaker_throw: bool = False
 
+    # Ondulação: tuning do temperamento atual, relógio próprio (sem salto ao
+    # recolher) e parâmetros do estado anterior, usados enquanto recolhe.
+    ondulacao: OndulacaoTuning = ONDULACAO_CALMA
+    tempo_onda: float = 0.0
+    params_antes_recolher: dict = field(default_factory=dict)
+
     # Buffers de render reaproveitados entre frames (evita recriar o
     # GeomVertexRewriter e recomputar a curva quando a pose não mudou).
     _vertex_rewriter: GeomVertexRewriter | None = None
@@ -217,10 +233,11 @@ class TentaclePool:
             return
         tentacle.retract_from = [Vec3(segment.pos) for segment in tentacle.segments]
         tentacle.retract_reveal = tentacle.reveal
+        # Mantém alvo e parâmetros: o corpo continua ondulando enquanto entra pela porta.
+        tentacle.params_antes_recolher = dict(tentacle.params)
         tentacle.state = TentacleState.RETRACTING
         tentacle.state_time = 0.0
         tentacle.params = dict(STATE_PARAMS["retracting"])
-        tentacle.target = None
 
     def release_all(self) -> None:
         for t in self.tentacles:
@@ -234,6 +251,7 @@ class TentaclePool:
             t.damper = sp["damper"]
             t.impulse_chance = sp["impulse_chance"]
             t.impulse_strength = sp["impulse_strength"]
+            t.ondulacao = ONDULACAO_POR_TEMPERAMENTO[personality]
 
 
 # ============================================================
@@ -422,7 +440,11 @@ class TentacleDirector:
                 tentacle.state = TentacleState.DORMANT
                 tentacle.params = dict(STATE_PARAMS["dormant"])
                 tentacle.retract_from.clear()
+                tentacle.target = None
                 tentacle.reveal = 0.0
+                return
+            if tentacle.params_antes_recolher:
+                self._atualizar_segmentos(tentacle, dt, tentacle.params_antes_recolher)
             return
 
         # Transições de estado
@@ -434,9 +456,14 @@ class TentacleDirector:
         p = tentacle.params
         reveal_time = max(0.0, min(1.0, tentacle.state_time / (.30 if getattr(tentacle,'speaker_throw',False) else .16 if self.burst else 1.8)))
         tentacle.reveal = reveal_time ** 3 * (10 - 15 * reveal_time + 6 * reveal_time ** 2)
+        self._atualizar_segmentos(tentacle, dt, p)
+
+    def _atualizar_segmentos(self, tentacle: Tentacle, dt: float, p: dict) -> None:
+        """Mola dos segmentos rumo à curva-alvo, com a onda da base à ponta."""
         max_len = p["max_len"]
         reach_speed = p["reach_speed"]
         target_curl = p["curl"]
+        tentacle.tempo_onda += dt
 
         # Spring params
         spring = 190 if getattr(tentacle,'speaker_throw',False) else 380 if self.burst else tentacle.spring
@@ -471,16 +498,24 @@ class TentacleDirector:
                     wave = math.sin(math.pi * t_param) * math.sin(phase)
                     target_pos += (lateral * (.065 * wave) + forward * (.045 * math.cos(phase) * arch)
                                    + up * (.075 * math.sin(phase - .7) * arch))
+                    target_pos += lateral * (math.sin(phase) * 4.0 * tentacle.unit_scale * arch)
+                else:
+                    # Onda serpenteante da base à ponta, no plano da frente da cabeça.
+                    onda_lateral, onda_cima = deslocamento_ondulante(
+                        tentacle.ondulacao, t_param, tentacle.tempo_onda,
+                        tentacle.seed * FASE_POR_SEMENTE_RAD,
+                    )
+                    escala_onda = tentacle.unit_scale * tentacle.length_scale
+                    target_pos += lateral * (onda_lateral * escala_onda) + up * (onda_cima * escala_onda)
                 target_pos += (
-                    lateral * (math.sin(phase) * 4.0 * tentacle.unit_scale * arch)
-                    + forward * (8.0 * tentacle.unit_scale * arch)
+                    forward * (8.0 * tentacle.unit_scale * arch)
                     + up * (12.0 * tentacle.unit_scale * arch)
                 )
             else:
                 target_pos = tentacle.anchor
 
             # Jitter impulsivo (twitch aleatório)
-            if tentacle.state != TentacleState.CURIOUS and self.rng.random() < tentacle.impulse_chance * dt * 60:
+            if tentacle.state not in (TentacleState.CURIOUS, TentacleState.RETRACTING) and self.rng.random() < tentacle.impulse_chance * dt * 60:
                 impulse = Vec3(
                     self.rng.uniform(-1, 1) * tentacle.impulse_strength * tentacle.unit_scale,
                     self.rng.uniform(-1, 1) * tentacle.impulse_strength * tentacle.unit_scale,
@@ -526,6 +561,7 @@ class TentacleDirector:
 
             # Sucker phase para animação visual
             seg.sucker_phase += dt * 3.0
+
     def _separate_tentacles(self):
         # Preserve embedded roots; solve the visible bodies as tapered spheres.
         active = [t for t in self.pool.tentacles
@@ -707,10 +743,21 @@ class TentacleDirector:
 
 
 def _base_frente(tentacle: Tentacle) -> tuple[Vec3, Vec3, Vec3]:
-    """Base (lateral, frente, cima) da cabeça no espaço do modelo."""
+    """Base ortonormal (lateral, frente, cima) da cabeça no espaço do modelo.
+
+    A frente vem do nó da cabeça e pode ter pitch; a lateral sai do eixo Z do
+    modelo e o cima é recalculado para ficar perpendicular à frente.
+    """
     frente = Vec3(tentacle.reference_front)
-    cima = Vec3(0, 0, 1)
-    return frente.cross(cima), frente, cima
+    if frente.lengthSquared() < EPSILON_BASE_FRENTE:
+        frente = Vec3(0, 1, 0)
+    frente.normalize()
+    lateral = frente.cross(Vec3(0, 0, 1))
+    if lateral.lengthSquared() < EPSILON_BASE_FRENTE:
+        # Frente vertical: a lateral do modelo (+X) substitui o produto degenerado.
+        lateral = Vec3(1, 0, 0)
+    lateral.normalize()
+    return lateral, frente, lateral.cross(frente)
 
 
 # ============================================================
