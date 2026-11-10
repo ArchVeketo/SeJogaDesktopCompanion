@@ -90,16 +90,23 @@ def test_colorkey_ausente_carrega_sem_erro(tmp_path):
 
 def test_permission_denied_uses_persistent_fallback(tmp_path, monkeypatch):
     from sejoga import configuracao
+
     primary = tmp_path / "locked" / "config.toml"
     fallback = tmp_path / "fallback" / "config.toml"
     original = configuracao._write_settings
     monkeypatch.delenv("SEJOGA_CONFIG_PATH", raising=False)
-    monkeypatch.setattr(configuracao, "default_config_path", lambda: fallback if fallback.exists() else primary)
+    monkeypatch.setattr(
+        configuracao,
+        "default_config_path",
+        lambda: fallback if fallback.exists() else primary,
+    )
     monkeypatch.setattr(configuracao, "fallback_config_path", lambda: fallback)
+
     def write(path, payload):
         if path == primary:
             raise PermissionError("locked profile")
         original(path, payload)
+
     monkeypatch.setattr(configuracao, "_write_settings", write)
     settings = Settings()
     settings.window.outline_color = "#00FF00"
@@ -121,18 +128,25 @@ def test_save_ignores_stale_shared_temp_file(tmp_path):
 
 def test_locked_profile_directories_use_portable_bundle_profile(tmp_path, monkeypatch):
     from sejoga import configuracao
+
     primary = tmp_path / "local" / "config.toml"
     roaming = tmp_path / "roaming" / "config.toml"
     portable = tmp_path / "bundle" / "user-data" / "config.toml"
     original = configuracao._write_settings
     monkeypatch.delenv("SEJOGA_CONFIG_PATH", raising=False)
-    monkeypatch.setattr(configuracao, "default_config_path", lambda: portable if portable.exists() else primary)
+    monkeypatch.setattr(
+        configuracao,
+        "default_config_path",
+        lambda: portable if portable.exists() else primary,
+    )
     monkeypatch.setattr(configuracao, "fallback_config_path", lambda: roaming)
     monkeypatch.setattr(configuracao, "portable_config_path", lambda: portable)
+
     def write(path, payload):
         if path in (primary, roaming):
             raise PermissionError("locked profile")
         original(path, payload)
+
     monkeypatch.setattr(configuracao, "_write_settings", write)
     settings = Settings()
     settings.window.outline_width = 3.5

@@ -25,9 +25,12 @@ from __future__ import annotations
 
 from math import atan2, cos, degrees, radians, sin, sqrt
 
-from sejoga.nucleo.cinematica_const import EPSILON_DEGENERADO, TORCAO_BASE_ANTEBRACO_GRAUS
-from sejoga.nucleo.modelo import Model
+from sejoga.nucleo.cinematica_const import (
+    EPSILON_DEGENERADO,
+    TORCAO_BASE_ANTEBRACO_GRAUS,
+)
 from sejoga.nucleo.esqueleto import ALL_GROUPS, Rotation3
+from sejoga.nucleo.modelo import Model
 
 Vec3 = tuple[float, float, float]
 #: Matriz 3x3 linha-maior (9 floats), aplicada a vetores coluna.
@@ -77,6 +80,7 @@ def aplicar(m: Mat3, v: Vec3) -> Vec3:
 
 
 def transposta(m: Mat3) -> Mat3:
+    """Devolve a transposta da matriz 3x3."""
     return (m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8])
 
 
@@ -86,22 +90,27 @@ def coluna(m: Mat3, indice: int) -> Vec3:
 
 
 def somar(a: Vec3, b: Vec3) -> Vec3:
+    """Soma dois vetores."""
     return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
 
 
 def subtrair(a: Vec3, b: Vec3) -> Vec3:
+    """Subtrai ``b`` de ``a``."""
     return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
 
 
 def escalar(v: Vec3, k: float) -> Vec3:
+    """Multiplica o vetor pelo escalar ``k``."""
     return (v[0] * k, v[1] * k, v[2] * k)
 
 
 def produto_escalar(a: Vec3, b: Vec3) -> float:
+    """Calcula o produto escalar."""
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 
 
 def produto_vetorial(a: Vec3, b: Vec3) -> Vec3:
+    """Calcula o produto vetorial ``a x b``."""
     return (
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
@@ -110,6 +119,7 @@ def produto_vetorial(a: Vec3, b: Vec3) -> Vec3:
 
 
 def norma(v: Vec3) -> float:
+    """Calcula a norma euclidiana."""
     return sqrt(produto_escalar(v, v))
 
 
@@ -124,16 +134,19 @@ def normalizar(v: Vec3) -> Vec3:
 
 
 def rot_x(p: float) -> Mat3:
+    """Monta a rotação de pitch (radianos) em torno de X."""
     c, s = cos(p), sin(p)
     return (1.0, 0.0, 0.0, 0.0, c, -s, 0.0, s, c)
 
 
 def rot_y(r: float) -> Mat3:
+    """Monta a rotação de roll (radianos) em torno de Y."""
     c, s = cos(r), sin(r)
     return (c, 0.0, s, 0.0, 1.0, 0.0, -s, 0.0, c)
 
 
 def rot_z(h: float) -> Mat3:
+    """Monta a rotação de heading (radianos) em torno de Z."""
     c, s = cos(h), sin(h)
     return (c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0)
 
@@ -193,10 +206,14 @@ def _quat_para_mat3(q: tuple[float, float, float, float]) -> Mat3:
 
 
 #: Cache do repouso por (id do Model, grupo): o Model é imutável (frozen).
-_CACHE_REPOUSO: dict[tuple[int, str], tuple[Model, tuple[str | None, Vec3, tuple[float, float, float]]]] = {}
+_CACHE_REPOUSO: dict[
+    tuple[int, str], tuple[Model, tuple[str | None, Vec3, tuple[float, float, float]]]
+] = {}
 
 
-def _repouso(model: Model, grupo: str) -> tuple[str | None, Vec3, tuple[float, float, float]]:
+def _repouso(
+    model: Model, grupo: str
+) -> tuple[str | None, Vec3, tuple[float, float, float]]:
     """``(pai, translação, hpr_base)`` do grupo, em autoria (radianos)."""
     chave = (id(model), grupo)
     guardado = _CACHE_REPOUSO.get(chave)
@@ -272,11 +289,17 @@ def cadeia(
     return resultado
 
 
-def matriz_no(model: Model, grupo: str, pose: dict[str, Rotation3] | None = None) -> Mat3:
+def matriz_no(
+    model: Model, grupo: str, pose: dict[str, Rotation3] | None = None
+) -> Mat3:
+    """Calcula a matriz mundo do nó para a pose dada."""
     return transformacao_no(model, grupo, pose)[0]
 
 
-def posicao_no(model: Model, grupo: str, pose: dict[str, Rotation3] | None = None) -> Vec3:
+def posicao_no(
+    model: Model, grupo: str, pose: dict[str, Rotation3] | None = None
+) -> Vec3:
+    """Calcula a posição mundo do nó para a pose dada."""
     return transformacao_no(model, grupo, pose)[1]
 
 

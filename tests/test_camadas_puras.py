@@ -49,9 +49,7 @@ def _listar_importados(relativo: str) -> list[str]:
 
 def _marcar(relativos: list[str], violacoes: set[str]) -> list:
     marca = pytest.mark.xfail(strict=True, reason="violação conhecida em refatoração")
-    return [
-        pytest.param(r, marks=marca) if r in violacoes else r for r in relativos
-    ]
+    return [pytest.param(r, marks=marca) if r in violacoes else r for r in relativos]
 
 
 @pytest.mark.parametrize(

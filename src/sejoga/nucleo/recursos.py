@@ -55,10 +55,12 @@ def assets_dir() -> Path:
 
 
 def model_dir() -> Path:
+    """Devolve a pasta dos modelos 3D."""
     return assets_dir() / "model"
 
 
 def brand_dir() -> Path:
+    """Devolve a pasta das imagens da marca."""
     return assets_dir() / "brand"
 
 
@@ -83,4 +85,5 @@ def resolve_model(stem: str = DEFAULT_MODEL_STEM) -> Path:
 
 
 def texture_path(name: str = "Textura.png") -> Path:
+    """Devolve o caminho da textura com o nome dado."""
     return model_dir() / name

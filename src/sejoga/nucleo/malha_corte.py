@@ -58,7 +58,11 @@ def _interpolar(a: Vertice, b: Vertice, t: float) -> Vertice:
 
 
 def _cortar_poligono(
-    poligono: list[Vertice], origem: Vec3, direcao: Vec3, limite: float, manter_acima: bool
+    poligono: list[Vertice],
+    origem: Vec3,
+    direcao: Vec3,
+    limite: float,
+    manter_acima: bool,
 ) -> list[Vertice]:
     """Sutherland-Hodgman contra o plano ``dist == limite``."""
     sinal = 1.0 if manter_acima else -1.0
@@ -86,7 +90,11 @@ def _area2(a: Vertice, b: Vertice, c: Vertice) -> float:
 
 
 def recortar_faixa(
-    triangulos: list[Triangulo], origem: Vec3, direcao: Vec3, s_min: float = -inf, s_max: float = inf
+    triangulos: list[Triangulo],
+    origem: Vec3,
+    direcao: Vec3,
+    s_min: float = -inf,
+    s_max: float = inf,
 ) -> list[Triangulo]:
     """Parte dos triângulos com ``s_min <= dist <= s_max`` (``dist`` ao longo de ``direcao``).
 
@@ -122,7 +130,13 @@ def pontos_no_plano(
         for v in triangulo:
             if abs(_distancia(v, origem, direcao) - s) <= TOLERANCIA_PLANO:
                 p = (v[0], v[1], v[2])
-                vistos[(round(p[0], CASAS_POSICAO_UNICA), round(p[1], CASAS_POSICAO_UNICA), round(p[2], CASAS_POSICAO_UNICA))] = p
+                vistos[
+                    (
+                        round(p[0], CASAS_POSICAO_UNICA),
+                        round(p[1], CASAS_POSICAO_UNICA),
+                        round(p[2], CASAS_POSICAO_UNICA),
+                    )
+                ] = p
 
     return list(vistos.values())
 
@@ -154,14 +168,18 @@ def extensao(pontos: list[Vec3], vetor: Vec3) -> float:
     return max(projecoes) - min(projecoes)
 
 
-def faixa_de_distancias(triangulos: list[Triangulo], origem: Vec3, direcao: Vec3) -> tuple[float, float]:
+def faixa_de_distancias(
+    triangulos: list[Triangulo], origem: Vec3, direcao: Vec3
+) -> tuple[float, float]:
     """``(menor, maior)`` distância dos vértices ao longo de ``direcao``."""
     d = [_distancia(v, origem, direcao) for t in triangulos for v in t]
 
     return min(d), max(d)
 
 
-def uv_da_face(triangulos: list[Triangulo], direcao: Vec3, sinal: float) -> tuple[float, float]:
+def uv_da_face(
+    triangulos: list[Triangulo], direcao: Vec3, sinal: float
+) -> tuple[float, float]:
     """UV médio da face cuja normal mais se alinha a ``sinal * direcao``.
 
     É a cor da "tampa" original do dedo, reaproveitada nas tampas internas.
@@ -170,7 +188,9 @@ def uv_da_face(triangulos: list[Triangulo], direcao: Vec3, sinal: float) -> tupl
 
     for t in triangulos:
         n = t[0][NORMAL]
-        alinhamento = sinal * (n[0] * direcao[0] + n[1] * direcao[1] + n[2] * direcao[2])
+        alinhamento = sinal * (
+            n[0] * direcao[0] + n[1] * direcao[1] + n[2] * direcao[2]
+        )
 
         if alinhamento > melhor:
             melhor = alinhamento
@@ -200,7 +220,11 @@ def tampa_no_plano(
         return []
 
     c = centro(pontos)
-    ajudante = (0.0, 0.0, 1.0) if abs(direcao[2]) < LIMITE_PARALELO_AJUDANTE else (1.0, 0.0, 0.0)
+    ajudante = (
+        (0.0, 0.0, 1.0)
+        if abs(direcao[2]) < LIMITE_PARALELO_AJUDANTE
+        else (1.0, 0.0, 0.0)
+    )
     u1 = _normalizar(_vetorial(ajudante, direcao))
     u2 = _vetorial(direcao, u1)
     pontos.sort(key=lambda p: atan2(_escalar(_sub(p, c), u2), _escalar(_sub(p, c), u1)))
@@ -221,7 +245,10 @@ def tampa_no_plano(
 
 
 def sobreposicao(
-    espessura: float, angulo_projeto_graus: float, comprimento_vizinho: float, fracao_maxima: float
+    espessura: float,
+    angulo_projeto_graus: float,
+    comprimento_vizinho: float,
+    fracao_maxima: float,
 ) -> float:
     """Extensão ``e = (t/2) * tan(θ/2)`` que tampa a cunha externa da junta.
 
@@ -238,14 +265,25 @@ def eixo_principal(pontos: list[Vec3]) -> Vec3:
     Serve para o eixo longo de dedos retos, inclusive o polegar (estendido em Z).
     """
     # Posições únicas: vértices repetidos por triângulo enviesariam a covariância.
-    unicos = list({(round(p[0], CASAS_POSICAO_UNICA), round(p[1], CASAS_POSICAO_UNICA), round(p[2], CASAS_POSICAO_UNICA)): p for p in pontos}.values())
+    unicos = list(
+        {
+            (
+                round(p[0], CASAS_POSICAO_UNICA),
+                round(p[1], CASAS_POSICAO_UNICA),
+                round(p[2], CASAS_POSICAO_UNICA),
+            ): p
+            for p in pontos
+        }.values()
+    )
     c = centro(unicos)
     d = [_sub(p, c) for p in unicos]
     cov = [[sum(v[i] * v[j] for v in d) for j in range(3)] for i in range(3)]
     x: Vec3 = _normalizar(SEMENTE_EIXO_PRINCIPAL)
 
     for _ in range(ITERACOES_EIXO_PRINCIPAL):
-        x = _normalizar(tuple(sum(cov[i][j] * x[j] for j in range(3)) for i in range(3)))  # type: ignore[arg-type]
+        x = _normalizar(
+            tuple(sum(cov[i][j] * x[j] for j in range(3)) for i in range(3))  # type: ignore[arg-type]
+        )
 
     return x
 
@@ -264,7 +302,9 @@ def ortogonalizar(eixo: Vec3, direcao: Vec3) -> Vec3:
     """Componente de ``eixo`` perpendicular a ``direcao`` (unitário)."""
     k = _escalar(eixo, direcao)
 
-    return _normalizar((eixo[0] - k * direcao[0], eixo[1] - k * direcao[1], eixo[2] - k * direcao[2]))
+    return _normalizar(
+        (eixo[0] - k * direcao[0], eixo[1] - k * direcao[1], eixo[2] - k * direcao[2])
+    )
 
 
 def eixo_de_flexao(direcao: Vec3) -> Vec3:
@@ -319,7 +359,9 @@ def cortar_cadeia(
     cima = _normalizar(_vetorial(eixo, direcao))
     espessura = extensao(todos, cima)
     extensoes = [0.0] + [
-        sobreposicao(espessura, angulo_projeto_graus, fins[k] - juntas[k], fracao_maxima)
+        sobreposicao(
+            espessura, angulo_projeto_graus, fins[k] - juntas[k], fracao_maxima
+        )
         for k in range(1, len(fracoes))
     ]
     uv_raiz = uv_da_face(triangulos, direcao, -1.0)

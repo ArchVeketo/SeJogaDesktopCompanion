@@ -61,7 +61,10 @@ def fallback_config_path() -> Path:
     """Perfil persistente alternativo quando a pasta original recusa escrita."""
     from platformdirs import user_config_dir
 
-    return Path(user_config_dir(profile_app_name(), appauthor=False, roaming=True)) / "config.toml"
+    return (
+        Path(user_config_dir(profile_app_name(), appauthor=False, roaming=True))
+        / "config.toml"
+    )
 
 
 def portable_config_path() -> Path | None:
@@ -152,7 +155,7 @@ class MusicSettings(BaseModel):
     react_to_beat: bool = True
     sensitivity: float = Field(default=0.6, ge=0.0, le=1.0)
     dance_chance: float = Field(default=0.35, ge=0.0, le=1.0)
-    dance_style: Literal['auto', 'head_bob', 'hip_hop', 'rock', 'breakdance'] = 'auto'
+    dance_style: Literal["auto", "head_bob", "hip_hop", "rock", "breakdance"] = "auto"
 
 
 class BehaviorSettings(BaseModel):
@@ -160,8 +163,16 @@ class BehaviorSettings(BaseModel):
 
     idle_animation: bool = True
     idle_personality: Literal[
-        "auto", "calm", "curious", "playful", "shy", "confident",
-        "street", "fighter", "rhythm", "stylish",
+        "auto",
+        "calm",
+        "curious",
+        "playful",
+        "shy",
+        "confident",
+        "street",
+        "fighter",
+        "rhythm",
+        "stylish",
     ] = "auto"
     wander: bool = True
     react_to_click: bool = True
@@ -249,7 +260,9 @@ def save_settings(settings: Settings, path: Path | None = None) -> Path:
                 raise
             _write_settings(portable, payload)
             fallback = portable
-        logging.getLogger("sejoga").warning("Configuration moved from %s to %s (permission denied)", path, fallback)
+        logging.getLogger("sejoga").warning(
+            "Configuration moved from %s to %s (permission denied)", path, fallback
+        )
         path = fallback
     return path
 
@@ -257,8 +270,14 @@ def save_settings(settings: Settings, path: Path | None = None) -> Path:
 def _write_settings(path: Path, payload: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # A stale shared .tmp can have different ACLs or belong to another instance.
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                     prefix="config-", suffix=".tmp", delete=False) as stream:
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix="config-",
+        suffix=".tmp",
+        delete=False,
+    ) as stream:
         tmp = Path(stream.name)
         stream.write(payload)
     try:

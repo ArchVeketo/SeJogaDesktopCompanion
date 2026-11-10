@@ -154,3 +154,15 @@ ALONGAR_OMBRO_QUEDA_GRAUS = 6.0
 #: Elevação dos dois braços ao espreguiçar ao acordar (graus de ``right-arm.z``).
 #: Com 70 os braços (cotovelo dobrado) entravam ~0,09 u na cabeça; 30 fica dentro da folga.
 WAKE_BRACO_ELEVACAO = 30.0
+
+# --------------------------------------------------------------------------- #
+# Surpresa (`surprise`), ganhos CALIBRÁVEIS (validar na GPU)
+# --------------------------------------------------------------------------- #
+#: Recuo do tronco (`body.x`, graus) no pico do susto.
+SURPRESA_RECUO = 16.0
+#: Inclinação extra da cabeça para trás (`head.x`, graus).
+SURPRESA_CABECA = 20.0
+#: Leve giro do tronco em direção ao estímulo (`body.y`, graus).
+SURPRESA_GIRO = 18.0
+#: Braços sobem um pouco, em reação de guarda (graus de `right-arm.z`).
+SURPRESA_BRACO = 22.0

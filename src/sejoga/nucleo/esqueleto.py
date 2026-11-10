@@ -41,6 +41,8 @@ ALL_GROUPS = HEAD_GROUPS + BODY_GROUPS + ARM_GROUPS + ARM_SUBGROUPS + FOOT_GROUP
 
 
 class IdlePersonality(StrEnum):
+    """Temperamentos do idle; o valor é a chave usada em clipes e config."""
+
     CALM = "calm"
     CURIOUS = "curious"
     PLAYFUL = "playful"
@@ -74,6 +76,7 @@ class Rig:
 
     @classmethod
     def from_model(cls, model: Model) -> Rig:
+        """Cria o rig com os grupos de ``ALL_GROUPS`` presentes no modelo."""
         rig = cls()
         for group in ALL_GROUPS:
             if model.find(group) is not None:
@@ -83,10 +86,12 @@ class Rig:
 
     @property
     def groups(self) -> tuple[str, ...]:
+        """Devolve os grupos animáveis encontrados."""
         return tuple(self.rest)
 
     @property
     def missing(self) -> tuple[str, ...]:
+        """Devolve os grupos de ``ALL_GROUPS`` ausentes no modelo."""
         return tuple(g for g in ALL_GROUPS if g not in self.rest)
 
     def set_rotation(
@@ -110,4 +115,5 @@ class Rig:
         return dict(self.current)
 
     def reset(self) -> None:
+        """Volta todos os grupos para a pose de repouso."""
         self.current = dict(self.rest)

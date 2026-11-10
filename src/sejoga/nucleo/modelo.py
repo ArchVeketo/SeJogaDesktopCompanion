@@ -114,6 +114,8 @@ def load_gltf_document(path: Path) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True, slots=True)
 class Node:
+    """Nó do glTF com nome, transformação local e filhos."""
+
     index: int
     name: str
     parent: int | None
@@ -127,19 +129,24 @@ class Node:
 
 @dataclass(frozen=True, slots=True)
 class ModelBounds:
+    """Caixa delimitadora do modelo em coordenadas de mundo."""
+
     minimum: Vec3
     maximum: Vec3
 
     @property
     def size(self) -> Vec3:
+        """Devolve as dimensões da caixa."""
         return tuple(self.maximum[i] - self.minimum[i] for i in range(3))  # type: ignore[return-value]
 
     @property
     def center(self) -> Vec3:
+        """Devolve o centro da caixa."""
         return tuple((self.maximum[i] + self.minimum[i]) / 2 for i in range(3))  # type: ignore[return-value]
 
     @property
     def height(self) -> float:
+        """Devolve a altura da caixa."""
         return self.maximum[1] - self.minimum[1]
 
 
@@ -159,6 +166,7 @@ class Model:
     is_skinned: bool
 
     def node(self, index: int) -> Node:
+        """Devolve o nó pelo índice do glTF."""
         return self.nodes[index]
 
     def find(self, name: str) -> Node | None:
@@ -169,9 +177,11 @@ class Model:
         return None
 
     def all_named(self, name: str) -> list[Node]:
+        """Devolve todos os nós com o nome dado."""
         return [n for n in self.nodes if n.name == name]
 
     def named_set(self) -> set[str]:
+        """Devolve o conjunto de nomes de nós do modelo."""
         return {n.name for n in self.nodes if n.name}
 
     def ground_offset(self) -> float:
@@ -223,6 +233,26 @@ def _iter_tree(nodes: list[dict[str, Any]], roots: Iterable[int]):
         yield from walk(root, 0, None)
 
 
+def _expandir_limites(
+    matrix: Mat4, amin: list, amax: list, lo: list[float], hi: list[float]
+) -> None:
+    """Amplia ``lo``/``hi`` com os 8 cantos do accessor transformados."""
+    for corner in (
+        (amin[0], amin[1], amin[2]),
+        (amax[0], amin[1], amin[2]),
+        (amin[0], amax[1], amin[2]),
+        (amax[0], amax[1], amin[2]),
+        (amin[0], amin[1], amax[2]),
+        (amax[0], amin[1], amax[2]),
+        (amin[0], amax[1], amax[2]),
+        (amax[0], amax[1], amax[2]),
+    ):
+        p = _apply(matrix, corner)
+        for i in range(3):
+            lo[i] = min(lo[i], p[i])
+            hi[i] = max(hi[i], p[i])
+
+
 def _compute_bounds(doc: dict[str, Any], world: dict[int, Mat4]) -> ModelBounds:
     accessors = doc.get("accessors", [])
     meshes = doc.get("meshes", [])
@@ -243,20 +273,7 @@ def _compute_bounds(doc: dict[str, Any], world: dict[int, Mat4]) -> ModelBounds:
             if not (isinstance(amin, list) and isinstance(amax, list)):
                 continue
             found = True
-            for corner in (
-                (amin[0], amin[1], amin[2]),
-                (amax[0], amin[1], amin[2]),
-                (amin[0], amax[1], amin[2]),
-                (amax[0], amax[1], amin[2]),
-                (amin[0], amin[1], amax[2]),
-                (amax[0], amin[1], amax[2]),
-                (amin[0], amax[1], amax[2]),
-                (amax[0], amax[1], amax[2]),
-            ):
-                p = _apply(matrix, corner)
-                for i in range(3):
-                    lo[i] = min(lo[i], p[i])
-                    hi[i] = max(hi[i], p[i])
+            _expandir_limites(matrix, amin, amax, lo, hi)
 
     if not found:
         return ModelBounds((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
@@ -312,7 +329,8 @@ def load_model(path: Path) -> Model:
                 vertex_count += int(doc["accessors"][pos].get("count", 0))
 
     animation_names = tuple(
-        str(anim.get("name") or f"anim_{i}") for i, anim in enumerate(doc.get("animations", []))
+        str(anim.get("name") or f"anim_{i}")
+        for i, anim in enumerate(doc.get("animations", []))
     )
 
     return Model(

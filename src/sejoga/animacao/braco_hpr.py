@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from math import degrees
 
+from sejoga.animacao import arm_ik
+from sejoga.animacao.arm_targets import ALVOS
 from sejoga.nucleo.esqueleto import Rotation3
-from sejoga.nucleo.modelo import Model
+from sejoga.nucleo.modelo import Model, load_model
+from sejoga.nucleo.recursos import resolve_model
 
 # --------------------------------------------------------------------------- #
 # IK de braço: resolução preguiçosa do Model + cache dos HPR por alvo de mão
@@ -27,9 +30,6 @@ def _modelo_ik() -> Model:
     global _MODELO_IK_CACHE
 
     if _MODELO_IK_CACHE is None:
-        from sejoga.nucleo.recursos import resolve_model
-        from sejoga.nucleo.modelo import load_model
-
         _MODELO_IK_CACHE = load_model(resolve_model())
 
     return _MODELO_IK_CACHE
@@ -46,8 +46,10 @@ def definir_modelo_ik(model: Model | None) -> None:
     _HPR_ALVO_CACHE.clear()
 
 
-def braco_hpr_graus(lado: str, nome_alvo: str, model: Model | None = None) -> dict[str, tuple[float, float, float]]:
-    """HPR (graus) do braço do ``lado`` para o alvo de mão nomeado em arm_targets.
+def braco_hpr_graus(
+    lado: str, nome_alvo: str, model: Model | None = None
+) -> dict[str, tuple[float, float, float]]:
+    """Devolve o HPR (graus) do braço do ``lado`` para o alvo de mão nomeado em arm_targets.
 
     Devolve ``{grupo: (x_pitch, y_heading, z_roll)}`` em GRAUS, pronto para
     ``rig.set_rotation``. Cacheado por (lado, nome_alvo). O eixo X (torção) fica
@@ -57,9 +59,6 @@ def braco_hpr_graus(lado: str, nome_alvo: str, model: Model | None = None) -> di
     cache = _HPR_ALVO_CACHE.get(chave)
 
     if cache is None:
-        from sejoga.animacao import arm_ik
-        from sejoga.animacao.arm_targets import ALVOS
-
         alvo = ALVOS[nome_alvo]
         m = model if model is not None else _modelo_ik()
         alvo_lado = alvo.alvo if lado == "right" else alvo.alvo_espelhado()
