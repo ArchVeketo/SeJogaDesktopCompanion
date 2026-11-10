@@ -20,9 +20,6 @@ _PROIBIDOS = {
 }
 _PACOTES_PUROS = ("nucleo", "rig_mapa", "animacao")
 _MODULOS_RAIZ_PUROS = ("configuracao.py",)
-# shortcut: violações conhecidas, removidas nos lotes da refatoração.
-_VIOLACOES_ENGINE: set[str] = set()
-_VIOLACOES_NUCLEO: set[str] = set()
 
 
 def _listar_modulos_puros() -> list[str]:
@@ -47,14 +44,7 @@ def _listar_importados(relativo: str) -> list[str]:
     return importados
 
 
-def _marcar(relativos: list[str], violacoes: set[str]) -> list:
-    marca = pytest.mark.xfail(strict=True, reason="violação conhecida em refatoração")
-    return [pytest.param(r, marks=marca) if r in violacoes else r for r in relativos]
-
-
-@pytest.mark.parametrize(
-    "relativo", _marcar(_listar_modulos_puros(), _VIOLACOES_ENGINE)
-)
+@pytest.mark.parametrize("relativo", _listar_modulos_puros())
 def test_modulo_puro_sem_engine_nao_importa_panda_qt_win32(relativo: str) -> None:
     for modulo in _listar_importados(relativo):
         raiz = modulo.lower().split(".")[0]
@@ -65,7 +55,7 @@ def test_modulo_puro_sem_engine_nao_importa_panda_qt_win32(relativo: str) -> Non
 _MODULOS_NUCLEO = [m for m in _listar_modulos_puros() if m.startswith("nucleo/")]
 
 
-@pytest.mark.parametrize("relativo", _marcar(_MODULOS_NUCLEO, _VIOLACOES_NUCLEO))
+@pytest.mark.parametrize("relativo", _MODULOS_NUCLEO)
 def test_modulo_nucleo_camada_base_nao_importa_animacao_nem_rig_mapa(
     relativo: str,
 ) -> None:

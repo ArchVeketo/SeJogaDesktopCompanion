@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 
+from sejoga.animacao.pose_repouso import pose_repouso
 from sejoga.nucleo.esqueleto import Rotation3
 
 # Ordem de prioridade determinística das camadas conhecidas. Camadas com nome
@@ -110,8 +111,6 @@ class LayerStack:
 
     def __init__(self) -> None:
         """Inicia a pilha sem camadas."""
-        from sejoga.animacao.pose_repouso import pose_repouso
-
         self._camadas: dict[str, CamadaDelta] = {}
         self._base = pose_repouso()
 

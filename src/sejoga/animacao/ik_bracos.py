@@ -41,6 +41,7 @@ from __future__ import annotations
 from math import acos, cos, pi, sin, sqrt
 
 from sejoga.animacao import braco_tuning as tun
+from sejoga.animacao.alvos_bracos import ALVO_IDLE
 from sejoga.nucleo import cinematica as cin
 from sejoga.nucleo.esqueleto import Rotation3
 from sejoga.nucleo.modelo import Model
@@ -283,8 +284,6 @@ def pose_repouso_bracos(model: Model) -> dict[str, Rotation3]:
     Os alvos vêm de ``alvos_bracos`` (fonte única). Devolve ``right-arm``/
     ``ant-arm``/``left-arm``/``ant-arm2``.
     """
-    from sejoga.animacao.alvos_bracos import ALVO_IDLE
-
     pose: dict[str, Rotation3] = {}
     pose.update(braco_para(model, "right", ALVO_IDLE.alvo, ALVO_IDLE.polo))
     pose.update(braco_para(model, "left", ALVO_IDLE.alvo_espelhado(), ALVO_IDLE.polo))

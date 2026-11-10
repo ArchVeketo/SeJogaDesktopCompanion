@@ -12,6 +12,7 @@ from enum import StrEnum
 from typing import ClassVar
 
 from sejoga.animacao import movimento_corpo_tuning as tune
+from sejoga.animacao.braco_hpr import braco_hpr_graus
 from sejoga.animacao.camadas_animacao import (
     MASCARA_MUSICA,
     CamadaAnim,
@@ -49,6 +50,7 @@ from sejoga.animacao.poses_base import (
     pose_interaction,
     pose_secondary,
     pose_sleep,
+    pose_sneeze,
     pose_throw_release,
     pose_thrown,
     pose_walk,
@@ -556,8 +558,6 @@ class AnimationController:
         elif self.state == AnimationState.SLEEP:
             pose_sleep(self.rig, self.clock)
         elif self.state.value in ("hang_loose", "thumbs_up", "rock", "finger_gun"):
-            from sejoga.animacao.braco_hpr import braco_hpr_graus
-
             pose_idle(self.rig, self.clock, self.idle_personality)
             # Gesto de mão (hang loose/joinha/rock/finger gun): ergue o braço à
             # frente a partir do alvo de interação (IK) para a mão ficar visível.
@@ -569,8 +569,6 @@ class AnimationController:
             self.rig.set_rotation("hand", x=180, y=0, z=0)
             self.rig.set_rotation("fingers", z=0)
         elif self.state == AnimationState.SNEEZE:
-            from sejoga.animacao.poses_base import pose_sneeze
-
             pose_sneeze(self.rig, self._reaction_time)
         elif self.state in (
             AnimationState.WAVE,

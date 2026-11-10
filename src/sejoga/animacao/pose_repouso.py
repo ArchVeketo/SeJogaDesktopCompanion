@@ -7,6 +7,7 @@ deltas aditivos.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import radians
 
 from sejoga.nucleo.cinematica import espelhar_rotacao
 from sejoga.nucleo.esqueleto import Rotation3
@@ -57,8 +58,6 @@ REPOUSO = RepousoAnatomico()
 
 def pose_repouso() -> dict[str, Rotation3]:
     """Pose anatômica base em radianos. Todos os estados partem daqui."""
-    from math import radians
-
     braco = Rotation3(
         radians(REPOUSO.BRACO_X), radians(REPOUSO.BRACO_Y), radians(REPOUSO.BRACO_Z)
     )
