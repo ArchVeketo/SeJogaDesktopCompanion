@@ -1,4 +1,4 @@
-﻿"""Malha Panda3D da corda do fio do fone (a física está em ``animacao.fio_corda``).
+"""Malha Panda3D da corda do fio do fone (a física está em ``animacao.fio_corda``).
 
 O fio rígido do GLTF (``mesh18``) é ocultado em tempo de execução, sem editar o
 asset, e no lugar entra um tubo de seção quadrada que segue a corda simulada.

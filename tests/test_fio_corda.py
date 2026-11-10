@@ -1,4 +1,4 @@
-﻿"""Testes da corda do fio do fone (lógica pura; o visual só a GPU confirma)."""
+"""Testes da corda do fio do fone (lógica pura; o visual só a GPU confirma)."""
 
 from __future__ import annotations
 

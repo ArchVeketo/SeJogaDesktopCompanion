@@ -1,4 +1,4 @@
-﻿"""Constantes calibráveis da corda do fio do fone (ver ``fio_corda``).
+"""Constantes calibráveis da corda do fio do fone (ver ``fio_corda``).
 
 Unidades em ``u`` (unidades do modelo). Coordenadas ``ANCORA_*`` estão no
 referencial LOCAL do nó do GLTF (x, y, z do asset, y para cima), medidas nos

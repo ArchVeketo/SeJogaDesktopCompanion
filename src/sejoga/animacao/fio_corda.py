@@ -1,4 +1,4 @@
-﻿"""Corda simulada do fio do fone: Verlet com ligações de comprimento.
+"""Corda simulada do fio do fone: Verlet com ligações de comprimento.
 
 O fio tem forma de Y: um ramo sai de cada orelha, os dois se juntam numa
 junção livre no peito e uma haste desce até o aparelho de música na cintura.
