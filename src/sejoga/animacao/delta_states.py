@@ -13,8 +13,9 @@ from __future__ import annotations
 from math import cos, radians, sin, tau
 
 from sejoga.animacao import body_motion_tuning as tune
+from sejoga.animacao import sono_tuning as sono
 from sejoga.animacao.body_motion import BodyPose
-from sejoga.animacao.idle_clips import camada_respiracao, sample_idle
+from sejoga.animacao.idle_clips import camada_respiracao, sample_idle, sample_track
 from sejoga.animacao.rig_base import REPOUSO
 from sejoga.nucleo.rig import IdlePersonality, Rotation3, braco_hpr_graus
 
@@ -307,15 +308,46 @@ def delta_sleep(t: float) -> dict[str, Rotation3]:
     -------
     Delta em radianos a ser somado à pose de repouso.
     """
-    # Respiração lenta de sono
-    breath = sin(t * 0.4) * 2
+    respiracao = sin(tau * sono.SONO_RESPIRACAO_HZ * t)
+    afunda = 0.5 - 0.5 * cos(tau * t / sono.SONO_AFUNDA_PERIODO_S)
+    curl = sono.SONO_DEDOS_CURL + respiracao * sono.SONO_DEDOS_RESPIRACAO
 
     # Braços relaxados junto ao corpo, baixos: vêm do alvo de mão de sono (IK).
     delta = _delta_braco_ik("sleep")
-    delta["body"] = Rotation3(radians(breath), 0, radians(-5))
-    delta["head"] = Rotation3(radians(-15 + breath * 0.5), 0, radians(-10))
+    delta["right-arm"] = _somar_z(delta["right-arm"], sono.SONO_OMBRO_CAIDO)
+    delta["left-arm"] = _somar_z(delta["left-arm"], -sono.SONO_OMBRO_CAIDO)
+    delta["body"] = Rotation3(
+        radians(respiracao * sono.SONO_RESPIRACAO_PEITO),
+        0,
+        radians(sono.SONO_CORPO_Z_BASE + afunda * sono.SONO_AFUNDA_Z),
+    )
+    delta["head"] = Rotation3(
+        radians(
+            sono.SONO_CABECA_X_BASE
+            + respiracao * sono.SONO_RESPIRACAO_CABECA
+            + _cochilo(t)
+        ),
+        0,
+        radians(sono.SONO_CABECA_Z_BASE),
+    )
+    delta["fingers"] = Rotation3(0, 0, radians(curl))
+    delta["fingers2"] = Rotation3(0, 0, radians(-curl))
 
     return delta
+
+
+def _cochilo(t: float) -> float:
+    """Queda rara e suave da cabeça (graus em head.x); 0 fora do cochilo."""
+    chaves = (
+        (0.0, (0.0, 0.0, 0.0)),
+        (sono.SONO_COCHILO_INICIO_S, (0.0, 0.0, 0.0)),
+        (sono.SONO_COCHILO_FUNDO_S, (sono.SONO_COCHILO_GRAUS, 0.0, 0.0)),
+        (sono.SONO_COCHILO_SOLTA_S, (sono.SONO_COCHILO_GRAUS, 0.0, 0.0)),
+        (sono.SONO_COCHILO_VOLTA_S, (0.0, 0.0, 0.0)),
+        (sono.SONO_COCHILO_PERIODO_S, (0.0, 0.0, 0.0)),
+    )
+
+    return sample_track(chaves, t % sono.SONO_COCHILO_PERIODO_S)[0]
 
 
 def delta_fisica(motion: BodyPose) -> dict[str, Rotation3]:

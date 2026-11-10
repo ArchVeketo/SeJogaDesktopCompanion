@@ -40,6 +40,7 @@ from sejoga.animacao.pose_resolver import PoseResolver
 from sejoga.animacao.respiracao import Respiracao
 from sejoga.animacao.respiracao_tuning import parametros_de
 from sejoga.animacao.rig_base import REPOUSO
+from sejoga.animacao.sono_tuning import SONO_TRANSICAO_S
 from sejoga.animacao.spring_tuning import amortecimento_de, frequencia_de
 from sejoga.nucleo.model import Model
 from sejoga.nucleo.rig import (
@@ -427,6 +428,13 @@ class AnimationController:
             self._active_transition_seconds = (min(self.transition_seconds, .22)
                 if next_state in (AnimationState.DRAG, AnimationState.FALL, AnimationState.HIT)
                 else self.transition_seconds)
+
+            if next_state == AnimationState.SLEEP:
+                # Adormecer é lento: crossfade longo para o corpo não cair de uma vez.
+                self._active_transition_seconds = max(
+                    self.transition_seconds, SONO_TRANSICAO_S
+                )
+
             self.pose_resolver.iniciar_transicao(
                 dict(self._pose), transition_seconds=self._active_transition_seconds
             )
