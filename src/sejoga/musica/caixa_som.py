@@ -123,10 +123,12 @@ class MusicSpeaker:
         self.renderer = renderer
         self._measure_character()
 
-        # Dimensões gerais do palco (baseadas no layout das 3 caixas)
-        self.width = 1.25
-        self.height = 0.68
-        self.depth = 0.75
+        # Dimensões gerais do palco (baseadas no layout das 3 caixas em escala grande)
+        STAGE_SCALE = 0.044
+        self.stage_scale = STAGE_SCALE
+        self.width = 2.20
+        self.height = 1.25
+        self.depth = 1.35
         self.final_position = Point3(0.0, 0.05, self.floor_z)
 
         self.root = renderer.model_anchor.attachNewNode("music-speaker")
@@ -144,7 +146,7 @@ class MusicSpeaker:
         self.center_box = _build_bbmodel_node(
             bb_grande_model,
             bb_grande_tex,
-            scale=0.024,
+            scale=STAGE_SCALE,
             name="boombox-center",
         )
         self.center_box.reparentTo(self.geometry)
@@ -157,21 +159,21 @@ class MusicSpeaker:
         self.left_box = _build_bbmodel_node(
             bb_side_model,
             bb_side_tex,
-            scale=0.024,
+            scale=STAGE_SCALE,
             name="boombox-side-left",
         )
         self.left_box.reparentTo(self.geometry)
-        self.left_box.setPos(-0.48, 0.06, 0)
+        self.left_box.setPos(-0.80, 0.12, 0)
         self.left_box.setH(-17.5)
 
         self.right_box = _build_bbmodel_node(
             bb_side_model,
             bb_side_tex,
-            scale=0.024,
+            scale=STAGE_SCALE,
             name="boombox-side-right",
         )
         self.right_box.reparentTo(self.geometry)
-        self.right_box.setPos(0.48, 0.06, 0)
+        self.right_box.setPos(0.80, 0.12, 0)
         self.right_box.setH(15.0)
 
         from sejoga.musica.efeitos_caixa_som import SpeakerEffects
@@ -272,8 +274,14 @@ class MusicSpeaker:
 
         # Posição final: diretamente sob o mascote no head_bob (ele senta em cima);
         # levemente atrás no rock/hip_hop/breakdance para emoldurar o mascote no palco.
-        target_y = 0.16 if style == "head_bob" else 0.38
-        target_pos = Point3(0.0, target_y, self.floor_z - 0.30)
+        if style == "head_bob":
+            target_y = 15 * self.stage_scale - 0.08
+            target_z = (self.floor_z + 0.38) - (27 * self.stage_scale)
+            target_pos = Point3(0.0, target_y, target_z)
+        else:
+            target_y = 15 * self.stage_scale + 0.15
+            target_z = self.floor_z - (16 * self.stage_scale)
+            target_pos = Point3(0.0, target_y, target_z)
 
         u = max(0, min(1, (self.age - 1.35) / 0.65))
         ease = u * u * (3 - 2 * u)
