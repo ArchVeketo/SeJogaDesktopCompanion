@@ -49,6 +49,8 @@ assets/model/*.glb
 # Capturas / debug
 captures/
 *.log
+scratch/
+temp_pytest_run/
 
 # Artefatos de agente / workflows (não versionar)
 .worktrees/
