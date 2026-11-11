@@ -1,12 +1,14 @@
 # Guia técnico para as próximas correções
 
-Este guia reúne as regras necessárias para implementar e verificar os pontos da revisão técnica do SeJoga Desktop Companion. A base é o código auditado na branch `codex/refatoracao`, commit `423f0f8`. Os exemplos descrevem propostas. O comportamento instalado deve ser verificado depois da implementação.
+Este guia reúne as regras necessárias para implementar e verificar os pontos da revisão técnica do SeJoga Desktop Companion. Os casos originais usam a base auditada na branch `codex/refatoracao`, commit `423f0f8`. Use as condições de aceitação também para revisar correções já em andamento.
+
+Na revisão deste documento, a worktree já continha mudanças de código em andamento. Em checagens isoladas dessa versão, o ZIP gerado incluiu os dois modelos das caixas de som e o GLB do Mário declarou 128.987 bytes, exatamente o fim da última região. O código em andamento também passou a encaminhar `--channel` ao launcher e a tratar `ValidationError` na leitura do perfil. A atualização elevada e a inicialização do executável extraído ainda precisam ser exercitadas.
 
 ## 1. Distribuição e atualização
 
 ### O ZIP precisa conter o que a inicialização abre
 
-O PyInstaller gera o runtime completo. O instalador e o ZIP de atualização filtram esse conteúdo por caminhos diferentes. O ZIP hoje remove qualquer arquivo `.bbmodel`. No runtime auditado, `MusicSpeaker` é construído junto ao renderer e abre modelos Blockbench mesmo antes de a primeira música tocar.
+O PyInstaller gera o runtime completo. O instalador e o ZIP de atualização filtram esse conteúdo por caminhos diferentes. Na base auditada, o ZIP removia qualquer arquivo `.bbmodel`. `MusicSpeaker` é construído junto ao renderer e abre modelos Blockbench mesmo antes de a primeira música tocar.
 
 O contrato mínimo da caixa de som inclui estes caminhos relativos à raiz do bundle:
 
@@ -58,7 +60,7 @@ Sequência para `tools/converter_gltf_para_glb.py`:
 3. Registre o tamanho lógico final. Complete o alinhamento físico e calcule o tamanho total do contêiner.
 4. Reabra a saída explícita e confira `offset + comprimento <= byteLength` para cada região. Valide também o tipo de imagem e os tamanhos do cabeçalho e dos chunks.
 
-No asset auditado, o limite lógico precisa cobrir pelo menos 128.987 bytes. Os 73.244 bytes atuais cobrem a geometria anterior à imagem. Para validar o normalizador, abra explicitamente `CAMINHO_SAIDA_GLTF`, pois `resolve_model()` dá preferência a um `.glb` existente. Quando o GLB for derivado, regenere-o a partir do novo glTF.
+No asset auditado, o limite lógico precisa cobrir pelo menos 128.987 bytes. Os 73.244 bytes que a versão original declarava cobriam a geometria anterior à imagem. Para validar o normalizador, abra explicitamente `CAMINHO_SAIDA_GLTF`, pois `resolve_model()` dá preferência a um `.glb` existente. Quando o GLB for derivado, regenere-o a partir do novo glTF.
 
 ### Índices e transforms
 
