@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from math import isclose, radians
+
 import pytest
 
-from sejoga.animacao.controlador_animacao import AnimationController, AnimationState
+from sejoga.animacao.controlador_animacao import AnimationController
 from sejoga.animacao.mola_critica import (
     avancar_mola_critica,
     meia_vida_para_amortecimento,

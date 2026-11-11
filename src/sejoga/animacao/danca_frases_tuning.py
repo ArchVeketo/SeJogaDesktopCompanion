@@ -89,8 +89,7 @@ HEAD_BOB: tuple[PassoDanca, ...] = (
 )
 
 #: Torção do punho direito no rock (graus): vira a palma do chifre para a câmera.
-ROCK_PUNHO_TORCAO = 180.0
-_ROCK_PUNHO = {"hand": (ROCK_PUNHO_TORCAO, 0.0, 0.0)}
+_ROCK_PUNHO = {"hand": (0.0, 0.0, 0.0)}
 
 #: Rock: 2 batidas. Headbang enérgico para baixo (cabeça e tronco) no acento, braço
 #: direito alto com a mão em chifre, esquerdo com atitude. Meio-tempo se BPM > 150.

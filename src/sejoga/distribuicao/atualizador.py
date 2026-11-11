@@ -160,12 +160,16 @@ def version_order(version: str) -> list[int]:
     return [*parsed.release, rank, serial]
 
 
-def parse_manifest(data: dict, current: ReleaseInfo) -> Update | None:
+def parse_manifest(
+    data: dict, current: ReleaseInfo | None, *, channel: str | None = None
+) -> Update | None:
     """Lê o manifesto do canal e devolve a atualização, se for mais nova."""
+    channel = channel or (current.channel if current else None)
     if (
-        data.get("schema_version") != 1
+        channel not in CHANNELS
+        or data.get("schema_version") != 1
         or data.get("architecture") != "windows-x64"
-        or data.get("channel") != current.channel
+        or data.get("channel") != channel
     ):
         raise ValueError("Manifesto incompatível com este canal/plataforma.")
     candidate = ReleaseInfo(data["version"], data["channel"], int(data["build_id"]))
@@ -181,8 +185,8 @@ def parse_manifest(data: dict, current: ReleaseInfo) -> Update | None:
     size = int(data["size"])
     if not re.fullmatch("[0-9a-f]{64}", digest) or not 0 < size <= MAX_INSTALLER_BYTES:
         raise ValueError("Integridade/tamanho do pacote inválidos.")
-    if (
-        Version(candidate.version) <= Version(current.version)
+    if current and (
+        version_order(candidate.version) <= version_order(current.version)
         or candidate.build_id <= current.build_id
     ):
         return None
@@ -197,78 +201,23 @@ def parse_manifest(data: dict, current: ReleaseInfo) -> Update | None:
     )
 
 
-def check_update(current: ReleaseInfo) -> Update | None:
+def check_update(
+    current: ReleaseInfo | None, *, channel: str | None = None
+) -> Update | None:
     """Consulta o feed do canal e devolve a atualização, se houver."""
     from urllib.error import HTTPError
 
-    url = f"https://github.com/{REPOSITORY}/releases/download/updates-{current.channel}/channel.json"
+    channel = channel or (current.channel if current else None)
+    if channel not in CHANNELS:
+        raise ValueError("Canal de atualização inválido.")
+    url = f"https://github.com/{REPOSITORY}/releases/download/updates-{channel}/channel.json"
     try:
         data = json.loads(_read(url, MAX_API_BYTES))
     except HTTPError as error:
         if error.code == 404:
             return None
         raise
-    return parse_manifest(data, current)
-
-
-# Versão base do pacote (pyproject); usada como piso quando não estamos "frozen".
-BASE_VERSION = "0.1.0"
-# Versões-piso válidas por canal para montar a checagem a partir da config.
-# ReleaseInfo valida canal x versão, então cada canal precisa de uma versão compatível.
-_VERSAO_PISO_POR_CANAL = {
-    "release": BASE_VERSION,
-    "prerelease": f"{BASE_VERSION}a1",
-    "nightly": f"{BASE_VERSION}.dev1",
-}
-
-
-def release_para_checagem(channel: str) -> ReleaseInfo:
-    """Monta o ReleaseInfo de checagem a partir do canal escolhido na config.
-
-    Quando "frozen", usa o release instalado (versão/build_id reais) se ele
-    pertencer ao canal pedido; caso contrário parte da versão-piso do canal,
-    de modo que qualquer build publicado no feed seja considerado mais novo.
-    """
-    if channel not in CHANNELS:
-        raise ValueError("Canal de atualização inválido.")
-    instalado = installed_release()
-    if instalado is not None and instalado.channel == channel:
-        return instalado
-    return ReleaseInfo(
-        version=_VERSAO_PISO_POR_CANAL[channel], channel=channel, build_id=0
-    )
-
-
-def reescrever_canal_channel_info(path: Path, channel: str) -> bool:
-    """Reescreve atomicamente o campo ``channel`` de um ``channel-info.json``.
-
-    Mantém os demais campos (``scope`` etc.). Guard clause: se o arquivo não
-    existir (execução em modo fonte/dev), não falha e retorna ``False``.
-    """
-    if channel not in CHANNELS:
-        raise ValueError("Canal de atualização inválido.")
-    if not path.is_file():
-        return False
-    dados = json.loads(path.read_text(encoding="utf-8-sig"))
-    if not isinstance(dados, dict):
-        raise ValueError("channel-info.json inválido.")
-    dados["channel"] = channel
-    conteudo = json.dumps(dados, ensure_ascii=False)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix="channel-info-",
-        suffix=".tmp",
-        delete=False,
-    ) as stream:
-        temporario = Path(stream.name)
-        stream.write(conteudo)
-    try:
-        temporario.replace(path)
-    finally:
-        temporario.unlink(missing_ok=True)
-    return True
+    return parse_manifest(data, current, channel=channel)
 
 
 def installed_launcher() -> Path | None:

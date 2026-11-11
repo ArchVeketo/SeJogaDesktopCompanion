@@ -5,11 +5,11 @@ gesto + movimento secundário, repartidos entre as juntas base, meio e ponta. O
 asset segue intacto; o contorno recebe os mesmos ângulos nos pivôs copiados.
 """
 
-from math import exp
+from math import exp, sin
 
 from sejoga.animacao import dedos_cascata as cascata
 from sejoga.animacao import dedos_tuning as tuning_dedos
-from sejoga.render.dedos_malha import girar_pivo, pivos_da_cadeia
+from sejoga.render.dedos_malha import eixo_abertura, girar_pivo, pivos_da_cadeia
 
 GESTURES = {
     "hang_loose": (0, 75, 75, 75, 0),
@@ -23,13 +23,42 @@ MAOS = (
     (-1, "fingers2", tuning_dedos.MESH_DEDOS_ESQUERDA),
 )
 LADO_DOS_GESTOS = 1
+PEGADAS = {"open_hands": -1.0, "close_fists": 1.0}
 
 
-def _girar_cadeias(cadeias, angulos) -> None:
-    """Aplica os ângulos de junta em cada cadeia de pivôs do dedo."""
+def _girar_cadeias(cadeias, angulos, abertura) -> None:
     for pivos in cadeias:
-        for (pivo, eixo), angulo in zip(pivos, angulos, strict=True):
-            girar_pivo(pivo, eixo, angulo)
+        for (pivo, eixo, normal), angulo in zip(pivos, angulos, strict=True):
+            girar_pivo(pivo, eixo, angulo, abertura, normal)
+
+
+def _aberturas_da_mao(raiz, cadeias):
+    # O lado de cada dedo vem da base da malha em relação ao centro da mão.
+    bases = [pivos[0][0].getPos(raiz) for pivos in cadeias[1:] if pivos]
+    if not bases:
+        return (0.0,) * len(cadeias)
+    centro = sum(bases[1:], bases[0]) / len(bases)
+    aberturas = []
+    for dedo, pivos in enumerate(cadeias):
+        if not pivos:
+            aberturas.append(0.0)
+            continue
+        pivo, eixo, _normal = pivos[0]
+        lateral = raiz.getRelativeVector(pivo, eixo)
+        sinal = 1.0 if lateral.dot(pivo.getPos(raiz) - centro) >= 0 else -1.0
+        aberturas.append(sinal * tuning_dedos.ABERTURA_MAXIMA_GRAUS[dedo])
+    return aberturas
+
+
+def _pegada_natural(estado, relogio, fase_danca, lado, dedo):
+    if estado in PEGADAS:
+        return PEGADAS[estado]
+    atraso = lado * 0.9 + dedo * 0.17
+    if fase_danca is not None:
+        # Alterna abertura e pegada ao longo de dois tempos, com atraso nos dedos.
+        return 0.67 * sin(fase_danca * 0.5 - atraso)
+    amplitude = {"idle": 0.24, "hover": 0.28, "wave": 0.5, "stretch": 0.45}.get(estado, 0.0)
+    return amplitude * sin(relogio * 1.7 - atraso)
 
 
 class FingerGestures:
@@ -44,14 +73,28 @@ class FingerGestures:
         # cadeias[(lado, dedo)] = uma lista de pivôs por raiz (modelo e contorno).
         self.cadeias = {}
         self.angulos = {}
+        self.aberturas = {}
+        self._abertura_maxima = {}
 
         for lado, _grupo, meshes in MAOS:
             for dedo, mesh in enumerate(meshes):
-                self.cadeias[(lado, dedo)] = [
-                    pivos_da_cadeia(raiz, mesh)
+                chave = lado, dedo
+                self.cadeias[chave] = [
+                    [
+                        (pivo, eixo, eixo_abertura(pivo) if junta == 0 else None)
+                        for junta, (pivo, eixo) in enumerate(pivos_da_cadeia(raiz, mesh))
+                    ]
                     for raiz in (renderer.model_np, renderer.outline_np)
                 ]
-                self.angulos[(lado, dedo)] = [0.0] * cascata.numero_de_juntas(dedo)
+                self.angulos[chave] = [0.0] * cascata.numero_de_juntas(dedo)
+                self.aberturas[chave] = 0.0
+            valores = _aberturas_da_mao(
+                renderer.model_np,
+                [self.cadeias[lado, dedo][0] for dedo in range(len(meshes))],
+            )
+            self._abertura_maxima.update(
+                ((lado, dedo), abertura) for dedo, abertura in enumerate(valores)
+            )
 
     def _giro_do_bloco(self, lado, grupo):
         """Giro do nó do bloco (graus), positivo = fechando, para os dois lados."""
@@ -64,7 +107,7 @@ class FingerGestures:
 
         return lado * ((delta + 180.0) % 360.0 - 180.0)
 
-    def update(self, dt, gesture):
+    def update(self, dt, gesture, *, fase_danca=None):
         """Avança o gesto de dedos um passo de ``dt``."""
         passo = max(0.0, min(tuning_dedos.PASSO_MAXIMO_S, dt))
         self.relogio += passo
@@ -94,13 +137,25 @@ class FingerGestures:
 
         for lado, grupo, _meshes in MAOS:
             bloco = self._giro_do_bloco(lado, grupo)
+            self._atualizar_mao(lado, bloco, gesture, fase_danca, passo, blend)
 
-            for dedo in range(len(self.amounts)):
-                gesto = self.amounts[dedo] if lado == LADO_DOS_GESTOS else 0.0
-                alvo = cascata.angulos_juntas(
-                    dedo, lado, self.relogio, gesture, bloco, gesto
+    def _atualizar_mao(self, lado, bloco, estado, fase_danca, passo, blend):
+        for dedo, flexao in enumerate(self.amounts):
+            gesto = flexao if lado == LADO_DOS_GESTOS else 0.0
+            pegada = _pegada_natural(estado, self.relogio, fase_danca, lado, dedo)
+            alvo = cascata.angulos_juntas(
+                dedo, lado, self.relogio, estado, bloco, gesto, pegada=pegada
+            )
+            chave = lado, dedo
+            self.angulos[chave] = cascata.suavizar(self.angulos[chave], alvo, passo)
+            abertura_maxima = self._abertura_maxima[chave]
+            if dedo == 0 and pegada > 0:
+                # O polegar cruza o indicador e pousa sobre o punho.
+                abertura_maxima = -tuning_dedos.OPOSICAO_POLEGAR_GRAUS * (
+                    1 if abertura_maxima >= 0 else -1
                 )
-                chave = (lado, dedo)
-                self.angulos[chave] = cascata.suavizar(self.angulos[chave], alvo, passo)
-
-                _girar_cadeias(self.cadeias[chave], self.angulos[chave])
+                abertura = abertura_maxima * pegada
+            else:
+                abertura = abertura_maxima * max(0.0, -pegada)
+            self.aberturas[chave] += (abertura - self.aberturas[chave]) * blend
+            _girar_cadeias(self.cadeias[chave], self.angulos[chave], self.aberturas[chave])

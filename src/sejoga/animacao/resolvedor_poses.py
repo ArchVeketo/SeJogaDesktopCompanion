@@ -106,7 +106,6 @@ class PoseResolver:
 
         self._resolvedor_bracos: ResolvedorBracos | None = None
 
-        self._transitioning = False
         self._transition_from: dict[str, Rotation3] = {}
         self._just_transitioned = False
         self._transition_seconds = 0.55
@@ -129,7 +128,6 @@ class PoseResolver:
         self._transition_from = dict(pose_atual)
         self._crossfade.definir(pose_atual, preservar_velocidade=True)
         self._just_transitioned = True
-        self._transitioning = True
         self._transition_seconds = max(0.0, transition_seconds)
         self._state_time = 0.0
 

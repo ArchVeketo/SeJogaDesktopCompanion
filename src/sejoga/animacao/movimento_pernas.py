@@ -113,6 +113,7 @@ class LegMotion:
         dance_strength=1.0,
         dance_style="head_bob",
         personality="calm",
+        modo_sono="em_pe",
     ):
         """Avança as pernas um passo e devolve a pose resultante."""
         dt = max(0, min(DT_MAXIMO, dt))
@@ -244,6 +245,11 @@ class LegMotion:
                     bj[0] + floor * bj[1],
                     bj[0] + floor * bj[2],
                 )
+        elif state == "sleep":
+            target = {
+                "sentado": LegPose(-65.0, -65.0, 15.0, 15.0),
+                "deitado": LegPose(-30.0, -22.0, 45.0, 40.0),
+            }.get(modo_sono, LegPose(0.0, 0.0, 4.0, 4.0))
         elif state in ("idle", "hover"):
             shift = max(-1, min(1, sway / IDLE_SWAY_ESCALA))
             target = LegPose(

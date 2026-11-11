@@ -290,3 +290,44 @@ def test_fk_da_cadeia_iguala_o_panda_e_espelha():
     for dedo in range(5):
         dx, dy, dz = por_lado[("fingers", dedo)]
         assert por_lado[("fingers2", dedo)] == pytest.approx((-dx, dy, dz), abs=0.02)
+
+
+@pytest.mark.parametrize("dedo", range(5))
+def test_pegada_alcanca_extensao_e_fechamento(dedo):
+    for lado in (1, -1):
+        aberto = cascata.angulos_juntas(dedo, lado, 1.3, "open_hands", 14, pegada=-1)
+        fechado = cascata.angulos_juntas(dedo, lado, 1.3, "close_fists", -10, pegada=1)
+        assert aberto == pytest.approx((0.0,) * cascata.numero_de_juntas(dedo))
+        assert fechado == pytest.approx(
+            tuning_dedos.CURL_PUNHO_POLEGAR_GRAUS if dedo == 0 else tuning_dedos.CURL_PUNHO_DEDO_GRAUS
+        )
+
+
+def test_leque_afasta_as_pontas_no_asset_real():
+    from types import SimpleNamespace
+
+    core = pytest.importorskip("panda3d.core")
+    gltf = pytest.importorskip("gltf")
+    from sejoga.animacao.gestos_dedos import FingerGestures
+    from sejoga.nucleo.recursos import resolve_model
+    from sejoga.render.dedos_malha import fatiar_dedos
+
+    model = core.NodePath(gltf.load_model(str(resolve_model())))
+    fatiar_dedos(model)
+    outline = model.copyTo(core.NodePath("raiz-contorno"))
+    animator = FingerGestures(SimpleNamespace(
+        model_np=model, outline_np=outline, _rig_nodes={}
+    ))
+
+    for _ in range(60):
+        animator.update(1 / 60, "open_hands")
+
+    for lado in (1, -1):
+        abertos = [animator.cadeias[lado, dedo][0] for dedo in (1, 4)]
+        leque = (abertos[0][-1][0].getPos(model) - abertos[1][-1][0].getPos(model)).length()
+        for modelo, contorno in (animator.cadeias[lado, dedo] for dedo in range(5)):
+            assert modelo[0][0].getQuat().almostEqual(contorno[0][0].getQuat(), 1e-6)
+        for pivos in abertos:
+            pivos[0][0].setQuat(core.Quat.identQuat())
+        reto = (abertos[0][-1][0].getPos(model) - abertos[1][-1][0].getPos(model)).length()
+        assert leque > reto * 1.1

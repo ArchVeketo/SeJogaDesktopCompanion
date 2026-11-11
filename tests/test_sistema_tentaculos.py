@@ -6,6 +6,7 @@ import pytest
 from panda3d.core import NodePath, Vec3
 
 from sejoga.nucleo.esqueleto import ALL_GROUPS, IdlePersonality, Rig, Rotation3
+from sejoga.tentaculos.coreografia_porta import FasePorta
 from sejoga.tentaculos.sistema_tentaculos import (
     TentacleDirector,
     TentaclePool,
@@ -28,18 +29,18 @@ def test_retraction_preserves_volume_then_reaches_dormant_without_restarting():
     director.trigger_curious()
     director._door_current = director._door_requested = 70
     for _ in range(120):
-        director.update(1 / 60, 0, IdlePersonality.CALM)
+        director.update(1 / 60, IdlePersonality.CALM)
     limb = pool.tentacles[0]
     initial = (limb.visible_tip() - limb.anchor).length()
     assert initial > 0.1
     pool.release(limb)
-    director.update(1 / 60, 0, IdlePersonality.CALM)
+    director.update(1 / 60, IdlePersonality.CALM)
     assert (limb.visible_tip() - limb.anchor).length() > initial * 0.99
     previous = initial
     for _ in range(110):
         # Repeated cancellation must not reset the easing clock.
         pool.release(limb)
-        director.update(1 / 60, 0, IdlePersonality.CALM)
+        director.update(1 / 60, IdlePersonality.CALM)
         distance = (limb.visible_tip() - limb.anchor).length()
         assert distance <= previous + 1e-6
         previous = distance
@@ -52,12 +53,12 @@ def test_emergence_waits_for_door_and_root_never_drifts():
     director.trigger_curious()
     limb = pool.tentacles[0]
     for _ in range(10):
-        director.update(1 / 60, 0, IdlePersonality.PLAYFUL)
+        director.update(1 / 60, IdlePersonality.PLAYFUL)
     assert limb.state_time == 0
     director._door_current = 70
     director._door_requested = 70
     for _ in range(120):
-        director.update(1 / 60, 0, IdlePersonality.PLAYFUL)
+        director.update(1 / 60, IdlePersonality.PLAYFUL)
         assert limb.segments[0].pos.almostEqual(limb.anchor, 1e-7)
     assert (limb.segments[-1].pos - limb.anchor).length() > 0.1
 
@@ -68,7 +69,7 @@ def test_door_closing_respects_speed_limit():
     director._door_requested = 0
     for _ in range(240):
         before = director._door_current
-        director.update(1 / 60, 0, IdlePersonality.STREET)
+        director.update(1 / 60, IdlePersonality.STREET)
         assert 0 <= before - director._door_current <= 38 / 60 + 1e-6
     assert director._door_current < 0.01
 
@@ -80,14 +81,28 @@ def test_speaker_throw_releases_limbs_and_allows_pool_reuse():
     limb.target = Vec3(0.4, 0.3, 0.1)
     director._door_current = director._door_requested = 100
     for _ in range(60):
-        director.update(1 / 60, 0, IdlePersonality.CALM)
+        director.update(1 / 60, IdlePersonality.CALM)
     assert limb.reveal > 0.9
     assert limb.speaker_throw
     for _ in range(150):
-        director.update(1 / 60, 0, IdlePersonality.CALM)
+        director.update(1 / 60, IdlePersonality.CALM)
     assert not director.speaker_throw_limbs
     assert not limb.speaker_throw
     assert limb.state == TentacleState.DORMANT
     director.trigger_curious()
     assert limb.state == TentacleState.CURIOUS
     assert not limb.speaker_throw
+
+def test_fim_da_espiada_preserva_puxador_ate_interrupcao():
+    _, director = scene()
+    (puxador,) = director._spawn_curious(1)
+    director._atuador = puxador
+    director.coreografia.fase = FasePorta.PUXANDO
+
+    director.encerrar_espiada(interromper=False)
+    assert director.coreografia.fase == FasePorta.PUXANDO
+    assert puxador.state == TentacleState.CURIOUS
+
+    director.encerrar_espiada(interromper=True)
+    assert director.coreografia.fase == FasePorta.FECHADA
+    assert puxador.state == TentacleState.RETRACTING

@@ -18,9 +18,7 @@ def test_default_reproduz_magenta_historico():
 
 def test_calibracao_magenta_equivale_aos_limiares_antigos():
     config = derivar_chroma("#FF00FF")
-    assert config.calibracao_vermelho == ("min", 128)
-    assert config.calibracao_verde == ("max", 20)
-    assert config.calibracao_azul == ("min", 128)
+    assert config.limites == ((129, 255), (0, 19), (129, 255))
 
 
 def test_pixel_e_chroma_para_magenta():
@@ -38,7 +36,9 @@ def test_cor_configurada_chega_ao_rgb_e_clear():
     assert config.rgb == (0.0, 1.0, 0.0)
     assert config.clear_rgba == (0.0, 1.0, 0.0, 0.0)
     # Verde é o canal alto; vermelho e azul são baixos.
-    assert config.calibracao_verde == ("min", 128)
-    assert config.calibracao_vermelho == ("max", 20)
-    assert config.calibracao_azul == ("max", 20)
+    assert config.limites == ((0, 19), (129, 255), (0, 19))
     assert pixel_e_chroma((5, 230, 5), config)
+
+
+def test_chroma_intermediario():
+    assert pixel_e_chroma((96, 96, 96), derivar_chroma("#606060"))

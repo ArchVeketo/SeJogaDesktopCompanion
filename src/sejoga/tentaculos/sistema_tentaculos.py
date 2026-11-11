@@ -299,7 +299,7 @@ class TentaclePool:
 class TentacleDirector:
     """Comportamento de alto nível: decide o que os tentáculos fazem."""
 
-    def __init__(  # noqa: PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
+    def __init__(  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
         self,
         pool: TentaclePool,
         rig: Rig,
@@ -343,8 +343,8 @@ class TentacleDirector:
         self.speaker_throw_limbs: list[Tentacle] = []
 
         # Cooldowns
-        self._curious_cooldown = 0.0
-        self._curious_interval = self.rng.uniform(60.0, 100.0)
+        # Preserva a sequência das outras coreografias com as sementes existentes.
+        self.rng.uniform(60.0, 100.0)
 
     # ------------------------------------------------------------------
     # API pública
@@ -402,7 +402,7 @@ class TentacleDirector:
                 limb.damper = 27
         self._door_requested = coreo.SAIDA_ESPIRRO.angulo_empurrao_graus
 
-    def update(self, dt: float, idle_time: float, personality: IdlePersonality) -> None:  # noqa: C901, PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
+    def update(self, dt: float, personality: IdlePersonality) -> None:  # noqa: C901, PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
         """Atualiza todos os tentáculos e decide transições."""
         dt = min(dt, 0.05)  # clamp para estabilidade
         if self.speaker_throw_remaining > 0:
@@ -434,13 +434,6 @@ class TentacleDirector:
             if self.swallow_time <= 0:
                 self.swallowing = False
                 self._retract_all()
-
-        # Curious ambient (só se não estiver em estado especial)
-        else:
-            self._curious_cooldown -= dt
-            if self._curious_cooldown <= 0 and idle_time > 10.0:
-                self.trigger_curious()
-                self._curious_cooldown = self.rng.uniform(60.0, 100.0)
 
         # Atualiza cada tentáculo ativo
         for tentacle in self.pool.tentacles:
@@ -480,6 +473,15 @@ class TentacleDirector:
             )
             t.target = self.swallow_target + offset
         self._door_requested = 135.0
+
+    def encerrar_espiada(self, *, interromper: bool) -> None:
+        """Recolhe os curiosos, deixando o atuador concluir o ciclo da porta."""
+        if interromper:
+            self._retract_all()
+            return
+        for tentaculo in self.pool.tentacles:
+            if tentaculo.state is TentacleState.CURIOUS and tentaculo is not self._atuador:
+                self.pool.release(tentaculo)
 
     def _retract_all(self) -> None:
         self._cancelar_coreografia()

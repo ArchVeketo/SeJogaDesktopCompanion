@@ -102,13 +102,17 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
-def _cmd_run(args: argparse.Namespace) -> int:
-    print(
-        "O runtime do companion entra na etapa 2.\n"
-        "Antes disso, valide o modelo com: python -m sejoga inspect\n"
-        "Arquitetura e decisões: docs/ARQUITETURA.md"
-    )
-    return 2
+def run() -> int:
+    """Inicia o runtime do companion."""
+    from sejoga.configuracao import load_settings
+    from sejoga.render.janela import OverlayApp
+
+    OverlayApp(load_settings()).run()
+    return 0
+
+
+def _cmd_run(_args: argparse.Namespace) -> int:
+    return run()
 
 
 def _module_available(name: str) -> bool:

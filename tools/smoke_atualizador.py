@@ -74,7 +74,7 @@ def main():  # noqa: PLR0915  # TODO convenção: ferramenta de captura/GPU: fat
             dialog._action()
             finish_worker(dialog)
         launch.assert_called_once()
-        assert launch.call_args.args[3] == "--update"
+        assert launch.call_args.args[3] == "--update --channel release"
         assert started == [True]
         dialog.close()
 
@@ -122,50 +122,30 @@ def main():  # noqa: PLR0915  # TODO convenção: ferramenta de captura/GPU: fat
         assert "offline" in dialog.status.text()
         dialog.close()
 
-    # Configurações: seletor de canal + buscar -> status -> confirmar, com o
-    # channel-info.json recebendo o canal escolhido ANTES do handoff.
-    settings_pre = Settings()
-    settings_pre.update.channel = "prerelease"
-    channel_info.write_text(
-        json.dumps({"channel": "release", "scope": "machine"}), encoding="utf-8"
-    )
+    # Configurações: o canal selecionado acompanha a busca e o handoff.
+    settings.update.channel = "prerelease"
+    preview = Update("0.2.0rc1", "prerelease", "package.zip", "", "a" * 64, 4096, 2)
     with (
-        patch(
-            "sejoga.distribuicao.atualizador.installed_launcher", return_value=launcher
-        ),
-        patch("sejoga.distribuicao.atualizador.installed_release", return_value=None),
-        patch("sejoga.distribuicao.atualizador.check_update", return_value=update),
+        patch("sejoga.distribuicao.dialogo_atualizacao.installed_launcher", return_value=launcher),
+        patch("sejoga.distribuicao.dialogo_atualizacao.installed_release", return_value=None),
+        patch("sejoga.distribuicao.dialogo_atualizacao.check_update", return_value=preview) as check,
+        patch("win32api.GetFileVersionInfo", return_value={"FileVersionMS": 0x00010001}),
         patch("win32api.ShellExecute") as launch,
+        patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes),
     ):
-        dialog = SettingsDialog(settings_pre)
-
-        def finish_settings(dlg):
-            deadline = time.monotonic() + 5
-            while dlg._buscando_atualizacao and time.monotonic() < deadline:
-                app.processEvents()
-                time.sleep(0.01)
-            app.processEvents()
-            assert not dlg._buscando_atualizacao, (
-                "Settings update search did not finish"
-            )
-
-        with patch.object(
-            QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
-        ):
-            dialog._buscar_atualizacoes()
-            finish_settings(dialog)
-        assert "0.2.0" in dialog.update_status_label.text()
+        dialog = SettingsDialog(settings)
+        dialog._buscar_atualizacoes()
+        shared = dialog._update_dialog
+        finish_worker(shared)
+        check.assert_called_once_with(None, channel="prerelease")
+        assert "0.2.0rc1" in shared.status.text()
+        shared._action()
         launch.assert_called_once()
-        assert launch.call_args.args[3] == "--update"
-        gravado = json.loads(channel_info.read_text(encoding="utf-8-sig"))
-        assert gravado["channel"] == "prerelease", gravado
-        assert gravado["scope"] == "machine", gravado
+        assert launch.call_args.args[3] == "--update --channel prerelease"
+        assert json.loads(channel_info.read_text(encoding="utf-8"))["channel"] == "release"
         dialog.close()
 
-    print(
-        f"PASS: bandeja buscar/status/confirmar, sem-atualizacao, erro; "
-        f"configuracoes canal+handoff reescreve channel-info.json. {profile}"
-    )
+    print(f"PASS: busca, status, confirmação, recusa, erro e handoff por canal. {profile}")
 
 
 if __name__ == "__main__":

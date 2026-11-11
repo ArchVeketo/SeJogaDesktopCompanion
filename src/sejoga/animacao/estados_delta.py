@@ -563,6 +563,114 @@ def _pulso_idle(
     return 0.0
 
 
+def _gesto_punho_idle(t, personality, side, curl):
+    idle_wrist = 0.0
+    if personality == IdlePersonality.CURIOUS and side == 1:
+        reach = _pulso_idle(t, 7.8, 0.65, 0.55, 0.9, offset=1.0)
+        idle_wrist = 15.0 * reach
+        curl -= 5.0 * reach
+    elif personality == IdlePersonality.PLAYFUL and side == 1:
+        flick = _pulso_idle(t, 4.8, 0.18, 0.08, 0.35, offset=0.7)
+        idle_wrist = 10.0 * flick
+        curl -= 8.0 * flick
+    elif personality == IdlePersonality.SHY:
+        fidget = _pulso_idle(t, 6.2, 0.5, 0.2, 0.6, offset=side * 0.8)
+        idle_wrist = side * 4.5 * fidget
+    return idle_wrist, curl
+
+
+def _delta_bracos_secundarios(saida, state, delta_estado, t, personality):
+    sway_scale = {
+        "idle": 2.4,
+        "hover": 2.8,
+        "walk": 4.2,
+        "run": 5.8,
+        "dance": 5.5,
+        "drag": 2.5,
+        "fall": 2.5,
+        "sleep": 0.4,
+    }.get(state, 1.8)
+
+    for upper_arm, forearm, shoulder, hand, fingers, side in (
+        ("right-arm", "ant-arm", "shoulder", "hand", "fingers", 1),
+        ("left-arm", "ant-arm2", "shoulder2", "hand2", "fingers2", -1),
+    ):
+        base_rep = _BASE_REPOUSO_GRAUS[forearm]
+        delta_arm = delta_estado.get(forearm, Rotation3())
+        arm_x = base_rep[0] + degrees(delta_arm.x)
+        arm_z = base_rep[2] + degrees(delta_arm.z)
+
+        saida[shoulder] = Rotation3(
+            radians(max(-4.0, min(4.0, arm_x * 0.14)) + sin(t * 0.9 - side * 0.4) * 1.1),
+            0.0,
+            radians(side * sin(t * 0.75 - side * 0.5) * 1.4),
+        )
+        fase_braco = t * 1.35 - side * 0.85
+        if state in ("idle", "hover"):
+            # Heading no ombro avança o braço; roll no antebraço dobra o cotovelo.
+            saida[upper_arm] = Rotation3(0.0, radians(side * 9.0 * sin(fase_braco)), 0.0)
+            saida[forearm] = Rotation3(
+                radians(3.0 * sin(fase_braco - 0.35)),
+                0.0,
+                radians(side * (3.0 + 9.0 * sin(fase_braco - 0.55))),
+            )
+        wrist_follow = max(-10.0, min(10.0, -arm_z * 0.22))
+        hand_sway = sin(t * 0.58 - side * 0.35) * sway_scale
+        wrist_pitch = -arm_x * 0.24 + sin(t * 0.52 - side * 0.3) * 2.4
+        if state in ("idle", "hover"):
+            wrist_pitch += 7.0 * sin(fase_braco - 0.85)
+        idle_wrist = 0.0
+        amplitude = (
+            7.5
+            if personality in (IdlePersonality.CURIOUS, IdlePersonality.PLAYFUL)
+            else 5.0
+        )
+        curl = 3.0 + sin(t * 0.62 - side * 0.3) * amplitude + wrist_follow * 0.3
+        if state == "idle":
+            idle_wrist, curl = _gesto_punho_idle(t, personality, side, curl)
+        saida[hand] = Rotation3(
+            radians(wrist_pitch),
+            0.0,
+            radians(wrist_follow + side * hand_sway + idle_wrist),
+        )
+        if state not in ("drag", "fall", "sleep"):
+            saida[fingers] = Rotation3(0.0, 0.0, radians(side * curl))
+
+
+def _delta_antenas(saida, micro, t, head_x, head_y, head_z):
+    for lado_sinal, nome_fone, nome_antena in (
+        (1.0, "fone-direito", "antena-direita"),
+        (-1.0, "fone-esquerdo", "antena-esquerda"),
+    ):
+        saida[nome_fone] = Rotation3(
+            radians(-head_x * 0.10),
+            radians(-head_y * 0.08),
+            radians(-head_z * 0.20 + lado_sinal * sin(t * 1.1) * 0.6),
+        )
+        r_ant = micro.get(nome_antena, Rotation3())
+        saida[nome_antena] = Rotation3(
+            radians(-head_x * 0.32) + r_ant.x,
+            radians(-head_y * 0.24) + r_ant.y,
+            radians(-head_z * 0.42) + r_ant.z,
+        )
+
+
+def _delta_coluna(saida, micro, corpo):
+    body_x, body_y, body_z = degrees(corpo.x), degrees(corpo.y), degrees(corpo.z)
+    # 1. Coluna distribuída (cintura -> abdomen -> peitoral) + micro-ruído
+    for nome, fracao in (
+        ("cintura", 0.22),
+        ("abdomen", 0.32),
+        ("peitoral", 0.44),
+    ):
+        r_micro = micro.get(nome, Rotation3())
+        saida[nome] = Rotation3(
+            radians(body_x * fracao) + r_micro.x,
+            radians(body_y * fracao) + r_micro.y,
+            radians(body_z * fracao) + r_micro.z,
+        )
+
+
 def delta_secundario(
     t: float,
     state: str,
@@ -583,22 +691,9 @@ def delta_secundario(
     cabeca = delta_estado.get("head", Rotation3())
     corpo = delta_estado.get("body", Rotation3())
     head_x, head_y, head_z = degrees(cabeca.x), degrees(cabeca.y), degrees(cabeca.z)
-    body_x, body_y, body_z = degrees(corpo.x), degrees(corpo.y), degrees(corpo.z)
-
     saida: dict[str, Rotation3] = {}
 
-    # 1. Coluna distribuída (cintura -> abdomen -> peitoral) + micro-ruído
-    for nome, fracao in (
-        ("cintura", 0.22),
-        ("abdomen", 0.32),
-        ("peitoral", 0.44),
-    ):
-        r_micro = micro.get(nome, Rotation3())
-        saida[nome] = Rotation3(
-            radians(body_x * fracao) + r_micro.x,
-            radians(body_y * fracao) + r_micro.y,
-            radians(body_z * fracao) + r_micro.z,
-        )
+    _delta_coluna(saida, micro, corpo)
 
     # 2. Fones e antenas com contra-balanço em relação à cabeça + micro-ruído
     r_fones = micro.get("fones", Rotation3())
@@ -607,82 +702,6 @@ def delta_secundario(
         radians(-head_y * 0.10) + r_fones.y,
         radians(-head_z * 0.18) + r_fones.z,
     )
-    for lado_sinal, nome_fone, nome_antena in (
-        (1.0, "fone-direito", "antena-direita"),
-        (-1.0, "fone-esquerdo", "antena-esquerda"),
-    ):
-        saida[nome_fone] = Rotation3(
-            radians(-head_x * 0.10),
-            radians(-head_y * 0.08),
-            radians(-head_z * 0.20 + lado_sinal * sin(t * 1.1) * 0.6),
-        )
-        r_ant = micro.get(nome_antena, Rotation3())
-        saida[nome_antena] = Rotation3(
-            radians(-head_x * 0.32) + r_ant.x,
-            radians(-head_y * 0.24) + r_ant.y,
-            radians(-head_z * 0.42) + r_ant.z,
-        )
-
-    # 3. Ombros, cotovelos, punhos e dedos (follow-through secundário)
-    sway_scale = {
-        "idle": 2.4,
-        "hover": 2.8,
-        "walk": 4.2,
-        "run": 5.8,
-        "dance": 5.5,
-        "drag": 2.5,
-        "fall": 2.5,
-        "sleep": 0.4,
-    }.get(state, 1.8)
-
-    for forearm, shoulder, hand, fingers, side in (
-        ("ant-arm", "shoulder", "hand", "fingers", 1),
-        ("ant-arm2", "shoulder2", "hand2", "fingers2", -1),
-    ):
-        base_rep = _BASE_REPOUSO_GRAUS[forearm]
-        delta_arm = delta_estado.get(forearm, Rotation3())
-        arm_x = base_rep[0] + degrees(delta_arm.x)
-        arm_z = base_rep[2] + degrees(delta_arm.z)
-
-        saida[shoulder] = Rotation3(
-            radians(max(-4.0, min(4.0, arm_x * 0.14)) + sin(t * 0.9 - side * 0.4) * 1.1),
-            0.0,
-            radians(side * sin(t * 0.75 - side * 0.5) * 1.4),
-        )
-        if state in ("idle", "hover"):
-            saida[forearm] = Rotation3(
-                radians(sin(t * 0.8 - side * 0.45) * 2.2),
-                0.0,
-                radians(side * sin(t * 0.8 - side * 0.6) * 3.4),
-            )
-        wrist_follow = max(-10.0, min(10.0, -arm_z * 0.22))
-        hand_sway = sin(t * 0.58 - side * 0.35) * sway_scale
-        wrist_pitch = -arm_x * 0.24 + sin(t * 0.52 - side * 0.3) * 2.4
-        idle_wrist = 0.0
-        amplitude = (
-            7.5
-            if personality in (IdlePersonality.CURIOUS, IdlePersonality.PLAYFUL)
-            else 5.0
-        )
-        curl = 12.0 + sin(t * 0.62 - side * 0.3) * amplitude + wrist_follow * 0.3
-        if state == "idle":
-            if personality == IdlePersonality.CURIOUS and side == 1:
-                reach = _pulso_idle(t, 7.8, 0.65, 0.55, 0.9, offset=1.0)
-                idle_wrist += 15.0 * reach
-                curl -= 5.0 * reach
-            elif personality == IdlePersonality.PLAYFUL and side == 1:
-                flick = _pulso_idle(t, 4.8, 0.18, 0.08, 0.35, offset=0.7)
-                idle_wrist += 10.0 * flick
-                curl -= 8.0 * flick
-            elif personality == IdlePersonality.SHY:
-                fidget = _pulso_idle(t, 6.2, 0.5, 0.2, 0.6, offset=side * 0.8)
-                idle_wrist += side * 4.5 * fidget
-        saida[hand] = Rotation3(
-            radians(wrist_pitch),
-            0.0,
-            radians(wrist_follow + side * hand_sway + idle_wrist),
-        )
-        if state not in ("drag", "fall", "sleep"):
-            saida[fingers] = Rotation3(0.0, 0.0, radians(side * curl))
-
+    _delta_antenas(saida, micro, t, head_x, head_y, head_z)
+    _delta_bracos_secundarios(saida, state, delta_estado, t, personality)
     return saida

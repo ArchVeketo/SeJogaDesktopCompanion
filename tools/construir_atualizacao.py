@@ -23,6 +23,14 @@ sys.path.insert(0, str(ROOT / "src"))
 _atualizador = importlib.import_module("sejoga.distribuicao.atualizador")
 
 
+ASSETS_CAIXAS_DE_SOM = {
+    "_internal/assets/assets/boomboxgrande/BoomboxGRANDE.bbmodel",
+    "_internal/assets/assets/BoomboxSIde1.bbmodel",
+    "_internal/assets/assets/boomboxgrande/texture.png",
+    "_internal/assets/assets/texture.png",
+}
+
+
 def build_package(bundle: Path, output: Path, info: ReleaseInfo) -> dict:
     """Empacota o bundle em zip e devolve o manifesto do pacote."""
     if info.build_id <= 0:
@@ -32,6 +40,12 @@ def build_package(bundle: Path, output: Path, info: ReleaseInfo) -> dict:
         or not (bundle / "_internal").is_dir()
     ):
         raise ValueError("Bundle PyInstaller incompleto.")
+    ausentes = sorted(
+        caminho for caminho in ASSETS_CAIXAS_DE_SOM
+        if not (bundle / caminho).is_file() or (bundle / caminho).is_symlink()
+    )
+    if ausentes:
+        raise ValueError(f"Assets das caixas de som ausentes no bundle: {', '.join(ausentes)}")
     output.mkdir(parents=True, exist_ok=True)
     name = f"SeJogaCompanion-{info.channel}-{info.version}-windows-x64.zip"
     target = output / name
@@ -55,7 +69,8 @@ def build_package(bundle: Path, output: Path, info: ReleaseInfo) -> dict:
                 not path.is_file()
                 or path.is_symlink()
                 or "user-data" in (p.lower() for p in relative.parts)
-                or path.suffix.lower() in (".log", ".bbmodel", ".blend", ".psd", ".xcf")
+                or path.suffix.lower() in (".log", ".blend", ".psd", ".xcf")
+                or (path.suffix.lower() == ".bbmodel" and relative.as_posix() not in ASSETS_CAIXAS_DE_SOM)
                 or relative.as_posix().startswith("_internal/assets/raw/")
                 or relative.as_posix() == "release-info.json"
             ):

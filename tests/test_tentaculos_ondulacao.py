@@ -103,7 +103,7 @@ def _amplitude_lateral_da_ponta(personalidade):
     diretor.trigger_curious()
     pontas = []
     for quadro in range(QUADROS_MEDICAO):
-        diretor.update(PASSO, 0, personalidade)
+        diretor.update(PASSO, personalidade)
         for tentaculo in pool.tentacles:
             tentaculo.impulse_chance = 0.0
         if quadro > QUADROS_ASSENTAR:
@@ -119,7 +119,7 @@ def test_agitado_balanca_mais_a_ponta_que_o_calmo():
 
 def test_personalidade_troca_o_tuning_do_tentaculo():
     diretor, pool = _diretor()
-    diretor.update(PASSO, 0, IdlePersonality.PLAYFUL)
+    diretor.update(PASSO, IdlePersonality.PLAYFUL)
     assert pool.tentacles[0].ondulacao is ONDULACAO_AGITADA
 
 
@@ -127,11 +127,11 @@ def test_corpo_continua_ondulando_ao_recolher():
     diretor, pool = _diretor()
     diretor.trigger_curious()
     for _ in range(QUADROS_ANTES_DE_RECOLHER):
-        diretor.update(PASSO, 0, IdlePersonality.PLAYFUL)
+        diretor.update(PASSO, IdlePersonality.PLAYFUL)
     ativo = next(t for t in pool.tentacles if t.state == TentacleState.CURIOUS)
     pool.release(ativo)
     antes = [Vec3(s.pos) for s in ativo.segments]
-    diretor.update(PASSO, 0, IdlePersonality.PLAYFUL)
+    diretor.update(PASSO, IdlePersonality.PLAYFUL)
     assert ativo.state == TentacleState.RETRACTING
     assert any(
         (a - s.pos).lengthSquared() > 0
@@ -143,7 +143,7 @@ def test_ramo_burst_espirra_sem_erro_e_passa_da_porta():
     diretor, pool = _diretor(PITCH_FRENTE)
     diretor.trigger_sneeze()
     for _ in range(QUADROS_BURST):
-        diretor.update(PASSO, 0, IdlePersonality.CALM)
+        diretor.update(PASSO, IdlePersonality.CALM)
     ativos = [t for t in pool.tentacles if t.state != TentacleState.DORMANT]
     assert ativos
     for tentaculo in ativos:

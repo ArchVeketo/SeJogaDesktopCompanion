@@ -26,7 +26,7 @@ def test_pontas_passam_da_porta_na_frente_da_cabeca(frente):
         tentaculo.reference_front = Vec3(frente)
     diretor.trigger_curious()
     for _ in range(QUADROS):
-        diretor.update(1 / 60, 0, IdlePersonality.CALM)
+        diretor.update(1 / 60, IdlePersonality.CALM)
 
     ativos = [t for t in pool.tentacles if t.target is not None]
     assert ativos

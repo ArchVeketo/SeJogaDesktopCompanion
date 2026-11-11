@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import threading
 from collections.abc import Callable
@@ -12,12 +13,11 @@ from PySide6.QtWidgets import QDialog, QLabel, QMessageBox, QPushButton, QVBoxLa
 
 from sejoga.configuracao import Settings, load_settings
 from sejoga.distribuicao.atualizador import (
+    CHANNELS,
     Update,
     check_update,
     installed_launcher,
     installed_release,
-    reescrever_canal_channel_info,
-    release_para_checagem,
 )
 
 
@@ -27,10 +27,10 @@ class UpdateDialog(QDialog):
     completed = Signal(object)
 
     def __init__(
-        self, on_install_started: Callable[[], None], settings: Settings | None = None
+        self, on_install_started: Callable[[], None], settings: Settings | None = None, parent=None
     ):
         """Monta o diálogo e inicia a consulta ao feed."""
-        super().__init__()
+        super().__init__(parent)
         self.setWindowTitle("Atualizações — SeJoga Companion")
         self.setMinimumWidth(420)
         # O canal efetivo vem da config do usuário, não do release-info.json.
@@ -75,16 +75,16 @@ class UpdateDialog(QDialog):
             )
             self.action.setText("Buscar atualizações")
 
-    def _start(self, work: Callable, kind: str) -> None:
+    def _start(self, canal: str) -> None:
         self._busy = True
         self.action.setEnabled(False)
 
         def run():
             try:
-                result = (kind, work())
+                result = (canal, "checked", check_update(self.current, channel=canal))
             except Exception as exc:
                 logging.getLogger("sejoga").warning("Update failed: %s", exc)
-                result = ("error", str(exc))
+                result = (canal, "error", str(exc))
             with contextlib.suppress(RuntimeError):
                 self.completed.emit(result)
 
@@ -97,12 +97,15 @@ class UpdateDialog(QDialog):
             self.status.setText("Buscando atualizações…")
             # O canal da config define qual feed consultar.
             canal = self._canal()
-            self._start(lambda: check_update(release_para_checagem(canal)), "checked")
+            self._start(canal)
         else:
             self._install()
 
     def _install(self) -> None:
-        if self.launcher is None:
+        if self.launcher is None or self.candidate is None:
+            return
+        canal = self.candidate.channel
+        if canal != self._canal() or canal not in CHANNELS:
             return
         answer = QMessageBox.question(
             self,
@@ -115,18 +118,20 @@ class UpdateDialog(QDialog):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if answer != QMessageBox.StandardButton.Yes:
+        if answer != QMessageBox.StandardButton.Yes or canal != self._canal():
             return
-        # Antes do handoff, aponta o channel-info.json do launcher nativo para o
-        # canal escolhido na config (guard clause interno ignora modo fonte/dev).
-        reescrever_canal_channel_info(
-            self.launcher.parent / "channel-info.json", self._canal()
-        )
         import win32api
 
         try:
+            metadata = json.loads(
+                (self.launcher.parent / "channel-info.json").read_text(encoding="utf-8-sig")
+            )
+            if canal != metadata["channel"]:
+                version = win32api.GetFileVersionInfo(str(self.launcher), "\\")
+                if version["FileVersionMS"] < (1 << 16 | 1):
+                    raise ValueError("Instale o launcher mais recente para trocar de canal.")
             win32api.ShellExecute(
-                0, "open", str(self.launcher), "--update", str(self.launcher.parent), 1
+                0, "open", str(self.launcher), f"--update --channel {canal}", str(self.launcher.parent), 1
             )
         except Exception as exc:
             self.status.setText(f"Atualização não iniciada: {exc}")
@@ -137,7 +142,10 @@ class UpdateDialog(QDialog):
     def _completed(self, result) -> None:
         self._busy = False
         self.action.setEnabled(True)
-        kind, value = result
+        canal, kind, value = result
+        if canal != self._canal():
+            self.atualizar_config(self._settings)
+            return
         if kind == "error":
             self.status.setText(f"Não foi possível buscar atualizações: {value}")
         elif kind == "checked":

@@ -80,6 +80,23 @@ class LowerBody:
         ).getMat()
         return extra * local_repouso
 
+    def _matrizes_da_perna(self, dados, pecas, quadril):
+        r = self.renderer
+        finais = {}
+        for nome, local_dobra in pecas:
+            no = r._rig_nodes.get(nome)
+            if no is None:
+                no = r.model_np.find("**/" + nome)
+            if no.isEmpty():
+                continue
+            local = self._local_com_pose(nome, dados["repouso_local"][nome])
+            pai_modelo = no.getParent().getMat(r.model_np)
+            repouso_modelo = local * pai_modelo
+            # A coxa gira em torno do próprio pivô; o resto dobra no joelho.
+            final = repouso_modelo * local_dobra * quadril
+            finais[nome] = (no, repouso_modelo, final)
+        return finais
+
     def apply(self, pose, grounded):
         """Aplica a pose das pernas, mantendo as botas no chão quando apoiado."""
         r = self.renderer
@@ -100,21 +117,12 @@ class LowerBody:
                 (canela, dobra),
                 (bota, dobra),
             )
-            finais = {}
-            for nome, local_dobra in pecas:
-                no = r._rig_nodes.get(nome)
-                if no is None:
-                    no = r.model_np.find("**/" + nome)
-                if no.isEmpty():
-                    continue
-                local = self._local_com_pose(nome, dados["repouso_local"][nome])
-                pai_modelo = no.getParent().getMat(r.model_np)
-                repouso_modelo = local * pai_modelo
-                # A coxa gira em torno do próprio pivô; o resto dobra no joelho.
-                final = repouso_modelo * local_dobra * quadril
-                finais[nome] = (no, repouso_modelo, final)
+            finais = self._matrizes_da_perna(dados, pecas, quadril)
             correcao = Mat4.identMat()
-            if grounded and bota in finais:
+            if (
+                grounded and bota in finais
+                and abs(ang_quadril) < 40.0 and abs(ang_joelho) < 50.0
+            ):
                 # Mantém a sola onde estava em repouso (mais o passo) e leva a
                 # canela/joelho junto, para o short não descolar da bota.
                 no, repouso_modelo, final = finais[bota]

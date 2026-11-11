@@ -38,7 +38,7 @@ def _launcher(tmp_path):
 
 
 def test_confirmar_atualizacao_faz_handoff_e_fecha_o_companion(tmp_path):
-    """Confirmar dispara ShellExecute(--update) e fecha o companion.
+    """Confirmar dispara ShellExecute(--update --channel release) e fecha o companion.
 
     Aceita o diálogo e chama o callback que fecha o companion
     (fecha->barra->reabre).
@@ -64,7 +64,7 @@ def test_confirmar_atualizacao_faz_handoff_e_fecha_o_companion(tmp_path):
         dialog.candidate = Update("0.2.0", "release", "p.zip", "", "a" * 64, 4096, 2)
         dialog._install()
     shell.assert_called_once()
-    assert shell.call_args.args[3] == "--update"
+    assert shell.call_args.args[3] == "--update --channel release"
     assert dialog.result() == QDialog.DialogCode.Accepted
     assert fechou == [True]
     dialog.close()
@@ -133,18 +133,24 @@ def test_settings_dialog_sinaliza_fechamento_no_handoff(tmp_path):
     fechou = []
     with (
         patch(
-            "sejoga.distribuicao.atualizador.installed_launcher", return_value=launcher
+            "sejoga.distribuicao.dialogo_atualizacao.installed_launcher", return_value=launcher
         ),
         patch("win32api.ShellExecute") as shell,
+        patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes),
+        patch.object(UpdateDialog, "_start"),
     ):
         dialog = SettingsDialog(Settings())
         dialog.atualizacao_iniciada.connect(lambda: fechou.append(True))
-        dialog._iniciar_atualizacao("release")
+        dialog._buscar_atualizacoes()
+        update_dialog = dialog._update_dialog
+        update_dialog.candidate = Update("0.2.0", "release", "p.zip", "", "a" * 64, 4096, 2)
+        update_dialog._action()
     shell.assert_called_once()
-    assert shell.call_args.args[3] == "--update"
-    assert dialog.result() == QDialog.DialogCode.Accepted
+    assert shell.call_args.args[3] == "--update --channel release"
+    assert update_dialog.result() == QDialog.DialogCode.Accepted
     assert fechou == [True]
     dialog.close()
+
 
 
 def test_ao_iniciar_atualizacao_chama_quit_app():

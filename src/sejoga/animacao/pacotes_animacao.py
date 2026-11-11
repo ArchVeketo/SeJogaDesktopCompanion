@@ -172,6 +172,23 @@ class PacoteOlharTela:
         self.ativo = False
         self.tempo = 0.0
 
+    def _amostrar_fase(self, t):
+        t1 = DURACAO_FASE_OMBRO_S
+        t2 = t1 + DURACAO_FASE_VIRAR_COSTAS_S
+        t3 = t2 + DURACAO_FASE_OBSERVAR_TELA_S
+        lado = self.lado
+        if t < t1:
+            u = suavizar_quintico(t / t1)
+            return "olhar_ombro", 0.0, False, u, 0.0
+        if t < t2:
+            u = suavizar_quintico((t - t1) / DURACAO_FASE_VIRAR_COSTAS_S)
+            return "virar_costas", lado * 180.0 * u, True, 1.0 - u, 0.0
+        if t < t3:
+            u = (t - t2) / DURACAO_FASE_OBSERVAR_TELA_S
+            return "observar_tela", lado * 180.0, False, 0.0, sin(u * pi)
+        u = suavizar_quintico((t - t3) / DURACAO_FASE_VOLTAR_FRENTE_S)
+        return "voltar_frente", lado * 180.0 * (1.0 - u), True, 0.0, 0.0
+
     def atualizar(self, dt: float, *, interromper: bool = False) -> AmostraOlharTela:
         """Avança o pacote por ``dt`` e devolve a amostra para o controlador."""
         if interromper or not self.ativo:
@@ -180,49 +197,12 @@ class PacoteOlharTela:
 
         self.tempo += max(0.0, dt)
         t = self.tempo
-        s = self.lado
-
-        t1 = DURACAO_FASE_OMBRO_S
-        t2 = t1 + DURACAO_FASE_VIRAR_COSTAS_S
-        t3 = t2 + DURACAO_FASE_OBSERVAR_TELA_S
-        t4 = DURACAO_TOTAL_OLHAR_TELA_S
-
-        if t >= t4:
+        if t >= DURACAO_TOTAL_OLHAR_TELA_S:
             self.interromper()
             return AmostraOlharTela(False, "inativo", None, False, {})
 
-        if t < t1:
-            # Fase 1: Olhar por cima do ombro (nível 2 de §7.2: torção na cadeia)
-            u = suavizar_quintico(t / t1)
-            fase = "olhar_ombro"
-            giro_corpo = 0.0
-            em_passo = False
-            torcao = u
-            curiosidade = 0.0
-        elif t < t2:
-            # Fase 2: Virar de costas com passos enquanto desfaz a torção local
-            u = suavizar_quintico((t - t1) / DURACAO_FASE_VIRAR_COSTAS_S)
-            fase = "virar_costas"
-            giro_corpo = s * 180.0 * u
-            em_passo = True
-            torcao = 1.0 - u
-            curiosidade = 0.0
-        elif t < t3:
-            # Fase 3: De costas observando a tela
-            u = (t - t2) / DURACAO_FASE_OBSERVAR_TELA_S
-            fase = "observar_tela"
-            giro_corpo = s * 180.0
-            em_passo = False
-            torcao = 0.0
-            curiosidade = sin(u * pi)
-        else:
-            # Fase 4: Voltar para a frente com passos
-            u = suavizar_quintico((t - t3) / DURACAO_FASE_VOLTAR_FRENTE_S)
-            fase = "voltar_frente"
-            giro_corpo = s * 180.0 * (1.0 - u)
-            em_passo = True
-            torcao = 0.0
-            curiosidade = 0.0
+        fase, giro_corpo, em_passo, torcao, curiosidade = self._amostrar_fase(t)
+        s = self.lado
 
         # Torção distribuída ("olhar por cima do ombro"): cintura + abdomen + peitoral + head
         osc_obs = sin(t * 2.4) * curiosidade

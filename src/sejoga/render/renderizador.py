@@ -294,7 +294,7 @@ class Panda3DRenderer:
         self.set_visual_scale(self.showbase.settings.window.scale)
 
         self._apply_rig_to_model()
-        from sejoga.animacao.rig_flexivel import FlexibleRig
+        from sejoga.render.rig_flexivel import FlexibleRig
 
         self.flexible_rig = FlexibleRig(self)
 
@@ -638,6 +638,18 @@ void main() {{
             outline_node.setScale(base_scale * fator)
             outline_node.setPos(base_pos + deslocamento)
 
+    def _posicionar_sono(self, modo):
+        if modo == "deitado":
+            ground = self.model_np.getTightBounds(self.model_anchor)[0].z
+            self._suspension_pivot.setMat(self._giro_no_quadril(0, 0, 85.0))
+            moved = self.model_np.getTightBounds(self.model_anchor)[0].z
+            self._suspension_pivot.setZ(ground - moved)
+            return True
+        if modo == "sentado":
+            self._suspension_pivot.setZ(-0.25)
+            return True
+        return False
+
     def apply_body_motion(  # noqa: PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
         self,
         motion,
@@ -677,13 +689,6 @@ void main() {{
         self._suspension_pivot.setMat(Mat4.identMat())
         self._aplicar_giro_corpo(dt, direcao_olhar, angulo_giro_pedido, dragging)
         controller = getattr(self.showbase, "animation_controller", None)
-        head_nod = (
-            not dragging
-            and controller
-            and controller.state == AnimationState.DANCE
-            and controller.dance_motion.style == "head_bob"
-        )
-        settle = self.music_speaker.settle if hasattr(self, "music_speaker") else 0
         self._dance_stage_yaw.update(getattr(controller, "delta_time", 1 / 60), 0.0)
         if (
             not dragging
@@ -702,6 +707,11 @@ void main() {{
             )
             moved = self.model_np.getTightBounds(self.model_anchor)[0].z
             self._suspension_pivot.setZ(ground - moved)
+            return
+        if (
+            not dragging and controller and controller.state == AnimationState.SLEEP
+            and self._posicionar_sono(controller.modo_sono)
+        ):
             return
         if motion.hanging > _tune.PENDURADO_LIMIAR:
             point = Vec3(grab_point) if grab_point is not None else Vec3(0, 0, 0.6)
@@ -788,7 +798,7 @@ void main() {{
         """
         from panda3d.core import Mat4, TransformState
 
-        from sejoga.animacao.rig_flexivel import no_de_facing
+        from sejoga.render.rig_flexivel import no_de_facing
 
         facing = no_de_facing(self.model_np).getMat(self.model_np).getUpper3()
         quadro = Mat4(facing)
@@ -941,14 +951,11 @@ void main() {{
         controller = self.showbase.animation_controller
         dancing = controller.state is not None and controller.state.value == "dance"
         dance = controller.dance_motion
-        gesture = (
-            "rock"
-            if dancing and dance.style == "rock"
-            else controller.state.value
-            if controller.state
-            else None
+        self.finger_gestures.update(
+            dt,
+            controller.state.value if controller.state else None,
+            fase_danca=dance.phase if dancing else None,
         )
-        self.finger_gestures.update(dt, gesture)
         speaker_active = dancing or (
             self.music_speaker.was_dancing
             and getattr(controller, "music_active", False)
@@ -1014,7 +1021,11 @@ void main() {{
             if not self._tentacles_were_visible:
                 self.tentacle_director.trigger_curious()
         elif self._tentacles_were_visible:
-            self.tentacle_director._retract_all()
+            self.tentacle_director.encerrar_espiada(
+                interromper=controller.state in (
+                    AnimationState.DRAG, AnimationState.FALL, AnimationState.SLEEP
+                )
+            )
         active = any(
             t.state != TentacleState.DORMANT for t in self.tentacle_pool.tentacles
         )
@@ -1030,7 +1041,7 @@ void main() {{
         )
         # The animation controller owns ambient timing. Keep updating the door
         # after the last limb is dormant, so it can finish closing smoothly.
-        self.tentacle_director.update(dt, 0.0, controller.idle_personality)
+        self.tentacle_director.update(dt, controller.idle_personality)
         self.tentacle_drips.update(dt, self.tentacle_pool.tentacles)
         self._tentacles_were_visible = visible
         for tentacle in self.tentacle_pool.tentacles:

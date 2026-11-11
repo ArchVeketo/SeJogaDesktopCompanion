@@ -167,7 +167,10 @@ class Model:
 
     def node(self, index: int) -> Node:
         """Devolve o nó pelo índice do glTF."""
-        return self.nodes[index]
+        for node in self.nodes:
+            if node.index == index:
+                return node
+        raise IndexError(index)
 
     def find(self, name: str) -> Node | None:
         """Primeiro nó com ``name`` exato (``None`` se ausente)."""

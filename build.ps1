@@ -15,6 +15,7 @@ $panda3dDir = & $Python -c 'import pathlib, panda3d; print(pathlib.Path(panda3d.
 if ($LASTEXITCODE -ne 0) { throw 'O Python escolhido não possui Panda3D.' }
 
 & $Python -m PyInstaller `
+    --paths src `
     --clean `
     --name SeJogaCompanion `
     --icon "assets\brand\companion.ico" `

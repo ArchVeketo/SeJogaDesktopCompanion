@@ -50,12 +50,15 @@ def angulos_juntas(
     estado: str | None,
     curl_bloco_graus: float,
     flexao_gesto_graus: float = 0.0,
+    *,
+    pegada: float = 0.0,
 ) -> tuple[float, ...]:
     """Ângulo (graus) de cada junta do dedo ``indice_dedo`` (0 = polegar).
 
     ``lado``: +1 direita, -1 esquerda. ``curl_bloco_graus``: giro do nó do bloco
     já com o sinal de "fechar" positivo. ``flexao_gesto_graus``: flexão total
-    pedida por um gesto (0 = sem gesto).
+    pedida por um gesto (0 = sem gesto). A pegada varia de -1 (estendida)
+    a 1 (punho fechado), com 0 mantendo a curvatura natural do dedo.
     """
     pesos, limites, repouso, amplitude = _tabelas(indice_dedo)
     atividade = tuning_dedos.ATIVIDADE_POR_ESTADO.get(
@@ -82,6 +85,12 @@ def angulos_juntas(
         + lado * tuning_dedos.DESLOCAMENTO_FASE_LADO_RAD
     )
     angulos = []
+    pegada = max(-1.0, min(1.0, pegada))
+    punho = (
+        tuning_dedos.CURL_PUNHO_POLEGAR_GRAUS
+        if indice_dedo == INDICE_POLEGAR
+        else tuning_dedos.CURL_PUNHO_DEDO_GRAUS
+    )
 
     for junta, (peso, (minimo, maximo)) in enumerate(zip(pesos, limites, strict=True)):
         natural = repouso[junta] * tuning_dedos.VARIACAO_REPOUSO_POR_DEDO[indice_dedo]
@@ -92,6 +101,8 @@ def angulos_juntas(
         )
         secundario = amplitude[junta] * atividade * sin(fase)
         bruto = natural * (1.0 - domina) + peso * flexao_total + secundario
+        extremo = punho[junta] if pegada > 0 else 0.0
+        bruto += (extremo - bruto) * abs(pegada)
         angulos.append(max(minimo, min(maximo, bruto)))
 
     return tuple(angulos)

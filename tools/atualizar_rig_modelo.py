@@ -23,8 +23,8 @@ from __future__ import annotations
 import argparse
 import copy
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any
 
 RAIZ_PROJETO = Path(__file__).resolve().parents[1]
@@ -39,7 +39,6 @@ from sejoga.nucleo.modelo import (  # noqa: E402
     _node_local_matrix,
     load_model,
 )
-from sejoga.nucleo.recursos import resolve_model  # noqa: E402
 
 CAMINHO_FONTE_GLTF = RAIZ_PROJETO / "assets" / "model" / "projetoMARIO.gltf"
 CAMINHO_SAIDA_GLTF = RAIZ_PROJETO / "assets" / "model" / "mario.gltf"
@@ -98,28 +97,7 @@ def _limpar_nos_vazios_fio(nodes: list[dict[str, Any]]) -> None:
             ]
 
 
-def normalizar_gltf(fonte_raw: dict[str, Any]) -> tuple[dict[str, Any], dict[int, tuple[float, ...]]]:
-    """Transforma ``projetoMARIO.gltf`` em ``mario.gltf`` preservando as matrizes de repouso."""
-    doc = copy.deepcopy(fonte_raw)
-    nodes: list[dict[str, Any]] = doc["nodes"]
-
-    # 1. Remove animações de teste e rotação residual no right-arm ANTES de tirar o snapshot de mundo
-    doc["animations"] = []
-    idx_right_arm = _achar_grupo(nodes, "right-arm")
-    nodes[idx_right_arm].pop("rotation", None)
-
-    # Remove planos vazios (mesh=None, children=None) de 'fio do fone'
-    _limpar_nos_vazios_fio(nodes)
-
-    # Snapshot das matrizes de mundo de todas as 56 malhas antes da normalização de grupos
-    mundo_antes_sem_flip = _matrizes_mundo_malhas(doc)
-    mundo_nos_antes = _matrizes_mundo_por_no(doc)
-
-    # 2. Renomeia nó folha duplicado 'canela-direita' (mesh != None)
-    for n in nodes:
-        if n.get("name") == "canela-direita" and n.get("mesh") is not None:
-            n["name"] = "cuboid_canela_direita"
-
+def _montar_grupo_porta(nodes):
     # 3. Envolve 'Porta' em um grupo 'door' sob 'head' se 'door' ainda não existir
     nomes_grupos = {n.get("name") for n in nodes if n.get("mesh") is None}
     if "door" not in nomes_grupos:
@@ -141,6 +119,8 @@ def normalizar_gltf(fonte_raw: dict[str, Any]) -> tuple[dict[str, Any], dict[int
             filhos_head.append(idx_door)
         nodes[idx_head]["children"] = filhos_head
 
+
+def _espelhar_braco_esquerdo(nodes):
     # 4. Simetriza pivôs do braço esquerdo (left-arm, ant-arm2, hand2, fingers2) e move polegar para hand2
     idx_left_arm = _achar_grupo(nodes, "left-arm")
     idx_shoulder2 = _achar_grupo(nodes, "shoulder2")
@@ -171,7 +151,11 @@ def normalizar_gltf(fonte_raw: dict[str, Any]) -> tuple[dict[str, Any], dict[int
     nodes[idx_ant_arm2]["translation"] = [-0.125, 0.0, 0.0]
     nodes[idx_hand2]["translation"] = [-0.15625, 0.0, 0.0]
     nodes[idx_fingers2]["translation"] = [-0.109375, 0.03125, 0.0]
+    return idx_shoulder2, idx_ant_arm2, idx_hand2, idx_fingers2
 
+
+def _compensar_malhas_braco(doc, nodes, grupos, mundo_nos_antes):
+    idx_shoulder2, idx_ant_arm2, idx_hand2, idx_fingers2 = grupos
     # Recalcula matrizes de mundo dos grupos pais após a simetrização
     mundo_nos_meio = _matrizes_mundo_por_no(doc)
 
@@ -202,6 +186,8 @@ def normalizar_gltf(fonte_raw: dict[str, Any]) -> tuple[dict[str, Any], dict[int
                     round(m_alvo[14] - m_pai[14], 8),
                 ]
 
+
+def _espelhar_perna_esquerda(doc, nodes, mundo_nos_antes):
     # 5. Simetriza pivôs da perna esquerda (coxa-esquerda, canela-esquerda, joelho-esquerdo)
     #    e empurra a rotação de repouso de coxa-esquerda (5 graus em Z) para as malhas filhas
     idx_coxa_dir = _achar_grupo(nodes, "coxa-direita")
@@ -224,27 +210,28 @@ def normalizar_gltf(fonte_raw: dict[str, Any]) -> tuple[dict[str, Any], dict[int
     for idx_pai in (idx_coxa_esq, idx_canela_esq, idx_joelho_esq):
         m_pai = mundo_nos_perna[idx_pai]
         for idx_filho in nodes[idx_pai].get("children", []):
-            if nodes[idx_filho].get("mesh") is not None:
-                m_alvo = mundo_nos_antes[idx_filho]
-                nodes[idx_filho]["translation"] = [
-                    round(m_alvo[12] - m_pai[12], 8),
-                    round(m_alvo[13] - m_pai[13], 8),
-                    round(m_alvo[14] - m_pai[14], 8),
-                ]
-                if rot_coxa_esq is not None and "rotation" not in nodes[idx_filho]:
-                    nodes[idx_filho]["rotation"] = list(rot_coxa_esq)
+            filho = nodes[idx_filho]
+            if filho.get("mesh") is None:
+                continue
+            m_alvo = mundo_nos_antes[idx_filho]
+            filho["translation"] = [round(m_alvo[i] - m_pai[i], 8) for i in (12, 13, 14)]
+            if rot_coxa_esq is not None:
+                filho.setdefault("rotation", list(rot_coxa_esq))
 
+
+
+def _verificar_matrizes(doc, mundo_antes_sem_flip):
     # Verifica invariantes antes de aplicar o wrapper raiz Rota B
     mundo_depois_sem_flip = _matrizes_mundo_malhas(doc)
     assert set(mundo_antes_sem_flip.keys()) == set(mundo_depois_sem_flip.keys())
-    max_erro = 0.0
     for mesh_id, m_a in mundo_antes_sem_flip.items():
         m_d = mundo_depois_sem_flip[mesh_id]
         erro = max(abs(a - b) for a, b in zip(m_a, m_d, strict=True))
-        max_erro = max(max_erro, erro)
         if erro > 1e-6:
             raise AssertionError(f"Matriz de mundo da mesh {mesh_id} divergiu: erro={erro:.2e}")
 
+
+def _orientar_raiz(doc, nodes):
     # 6. Envolve os nós de cena no nó-raiz de orientação frontal Rota B (rotation=[0, 1, 0, 0])
     scene_idx = doc.get("scene", 0)
     raizes_cena = list(doc["scenes"][scene_idx]["nodes"])
@@ -260,6 +247,39 @@ def normalizar_gltf(fonte_raw: dict[str, Any]) -> tuple[dict[str, Any], dict[int
         )
         doc["scenes"][scene_idx]["nodes"] = [idx_raiz]
 
+
+def normalizar_gltf(fonte_raw: dict[str, Any]) -> tuple[dict[str, Any], dict[int, tuple[float, ...]]]:
+    """Transforma ``projetoMARIO.gltf`` em ``mario.gltf`` preservando as matrizes de repouso."""
+    doc = copy.deepcopy(fonte_raw)
+    nodes: list[dict[str, Any]] = doc["nodes"]
+
+    # 1. Remove animações de teste e rotação residual no right-arm ANTES de tirar o snapshot de mundo
+    doc["animations"] = []
+    idx_right_arm = _achar_grupo(nodes, "right-arm")
+    nodes[idx_right_arm].pop("rotation", None)
+
+    # Remove planos vazios (mesh=None, children=None) de 'fio do fone'
+    _limpar_nos_vazios_fio(nodes)
+
+    # Snapshot das matrizes de mundo de todas as 56 malhas antes da normalização de grupos
+    mundo_antes_sem_flip = _matrizes_mundo_malhas(doc)
+    mundo_nos_antes = _matrizes_mundo_por_no(doc)
+
+    # 2. Renomeia nó folha duplicado 'canela-direita' (mesh != None)
+    for n in nodes:
+        if n.get("name") == "canela-direita" and n.get("mesh") is not None:
+            n["name"] = "cuboid_canela_direita"
+
+    _montar_grupo_porta(nodes)
+
+    grupos_braco = _espelhar_braco_esquerdo(nodes)
+
+    _compensar_malhas_braco(doc, nodes, grupos_braco, mundo_nos_antes)
+
+    _espelhar_perna_esquerda(doc, nodes, mundo_nos_antes)
+
+    _verificar_matrizes(doc, mundo_antes_sem_flip)
+    _orientar_raiz(doc, nodes)
     return doc, mundo_antes_sem_flip
 
 
@@ -274,6 +294,7 @@ def verificar_grupos_esqueleto(gltf_data: dict[str, Any]) -> list[str]:
 
 
 def main() -> int:
+    """Normaliza o glTF do rig ou verifica seus grupos."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--verificar",
@@ -311,7 +332,9 @@ def main() -> int:
         f"({len(doc_normalizado['nodes'])} nós, {len(doc_normalizado['meshes'])} malhas)."
     )
 
-    modelo = load_model(resolve_model())
+    modelo = load_model(CAMINHO_SAIDA_GLTF)
+    if CAMINHO_SAIDA_GLTF.with_suffix(".glb").exists():
+        print("Regenere mario.glb com tools/converter_gltf_para_glb.py antes de abrir o app.")
     print(
         f"[OK] Modelo recarregado via load_model: {len(modelo.nodes)} nós, "
         f"{modelo.mesh_count} malhas, {modelo.vertex_count} vértices."

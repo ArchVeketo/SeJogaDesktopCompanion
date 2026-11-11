@@ -24,6 +24,17 @@ def test_package_contains_runtime_metadata_and_never_developer_profiles(tmp_path
     (bundle / "USER-DATA").mkdir()
     (bundle / "USER-DATA/secret.toml").write_text("must not ship")
     (bundle / "_internal/source.blend").write_bytes(b"art-source")
+    (bundle / "_internal/source.bbmodel").write_bytes(b"art-source")
+    assets = (
+        "_internal/assets/assets/BoomboxSIde1.bbmodel",
+        "_internal/assets/assets/boomboxgrande/BoomboxGRANDE.bbmodel",
+        "_internal/assets/assets/boomboxgrande/texture.png",
+        "_internal/assets/assets/texture.png",
+    )
+    for nome in assets:
+        asset = bundle / nome
+        asset.parent.mkdir(parents=True, exist_ok=True)
+        asset.write_bytes(b"runtime asset")
     result = builder.build_package(
         bundle, tmp_path / "output", ReleaseInfo("0.2.0", "release", 2)
     )
@@ -32,6 +43,8 @@ def test_package_contains_runtime_metadata_and_never_developer_profiles(tmp_path
     assert result["size"] == archive.stat().st_size
     with zipfile.ZipFile(archive) as data:
         names = data.namelist()
+        assert set(assets) <= set(names)
+        assert "_internal/source.bbmodel" not in names
         assert "SeJogaCompanion.exe" in names and "_internal/data.bin" in names
         assert not any("user-data" in n.lower() or n.endswith(".blend") for n in names)
         info = json.loads(data.read("release-info.json"))

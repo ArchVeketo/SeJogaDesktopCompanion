@@ -141,6 +141,30 @@ class MalhaFioFone:
     # ------------------------------------------------------------------ #
     # Fio desenhado no asset
     # ------------------------------------------------------------------ #
+    def _ligar_malha_a_corda(self, malha, identidade):
+        para_modelo = malha.getMat(self._model_np)
+        no_geom = malha.node()
+        dados = no_geom.modifyGeom(0).modifyVertexData()
+        leitor = GeomVertexReader(dados, "vertex")
+        leitor_n = GeomVertexReader(dados, "normal")
+        repouso: list[Vec3] = []
+        normais: list[Vec3] = []
+        while not leitor.isAtEnd():
+            repouso.append(Vec3(para_modelo.xformPoint(leitor.getData3())))
+            n = Vec3(para_modelo.xformVec(leitor_n.getData3()))
+            n.normalize()
+            normais.append(n)
+        ligacoes = [_ponto_mais_proximo(p, self._corda_repouso) for p in repouso]
+        # Assa a pose de repouso nos vértices: a peça passa a viver direto
+        # no referencial de model_np (a corda já segue cabeça e corpo).
+        escritor_n = GeomVertexRewriter(dados, "normal")
+        for n in normais:
+            escritor_n.setData3(n)
+        malha.wrtReparentTo(self._model_np)
+        malha.setMat(identidade)
+        malha.setCollideMask(0)
+        return dados, repouso, ligacoes
+
     def _ligar_fio_do_asset(self, contorno_np: NodePath) -> bool:
         """Prende os vértices dos planos de ``fio do fone`` à corda em repouso."""
         grupo = _achar_por_nome(self._model_np, NOME_GRUPO_FIO)
@@ -164,27 +188,7 @@ class MalhaFioFone:
         ]
         identidade = Mat4.identMat()
         for indice, malha in enumerate(malhas):
-            para_modelo = malha.getMat(self._model_np)
-            no_geom = malha.node()
-            dados = no_geom.modifyGeom(0).modifyVertexData()
-            leitor = GeomVertexReader(dados, "vertex")
-            leitor_n = GeomVertexReader(dados, "normal")
-            repouso: list[Vec3] = []
-            normais: list[Vec3] = []
-            while not leitor.isAtEnd():
-                repouso.append(Vec3(para_modelo.xformPoint(leitor.getData3())))
-                n = Vec3(para_modelo.xformVec(leitor_n.getData3()))
-                n.normalize()
-                normais.append(n)
-            ligacoes = [_ponto_mais_proximo(p, self._corda_repouso) for p in repouso]
-            # Assa a pose de repouso nos vértices: a peça passa a viver direto
-            # no referencial de model_np (a corda já segue cabeça e corpo).
-            escritor_n = GeomVertexRewriter(dados, "normal")
-            for n in normais:
-                escritor_n.setData3(n)
-            malha.wrtReparentTo(self._model_np)
-            malha.setMat(identidade)
-            malha.setCollideMask(0)
+            dados, repouso, ligacoes = self._ligar_malha_a_corda(malha, identidade)
             if indice < len(malhas_contorno):
                 contorno = malhas_contorno[indice]
                 contorno.node().modifyGeom(0).setVertexData(dados)

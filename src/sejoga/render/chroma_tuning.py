@@ -43,11 +43,6 @@ CALIBRACAO_VERMELHO_MIN = 128
 CALIBRACAO_VERDE_MAX = 20
 CALIBRACAO_AZUL_MIN = 128
 
-# Fronteira (0-255) que separa um canal "alto" de um canal "baixo" ao derivar
-# os limiares de calibração de uma cor arbitrária. O magenta padrão tem R/B
-# altos (255) e G baixo (0).
-CALIBRACAO_LIMITE_CANAL = 128
-
 # DESPILL (remoção da contaminação do chroma na borda). Os pixels de borda com
 # cobertura MSAA parcial carregam uma fração da cor do chroma misturada à
 # superfície; a normalização por cobertura já remove a maior parte, mas sobra
@@ -75,11 +70,7 @@ class ChromaConfig:
 
     rgb: tuple[float, float, float]
     clear_rgba: tuple[float, float, float, float]
-    # Por canal: ("min", limite) exige valor ACIMA do limite; ("max", limite)
-    # exige valor ABAIXO. Reproduz o teste histórico do magenta.
-    calibracao_vermelho: tuple[str, int]
-    calibracao_verde: tuple[str, int]
-    calibracao_azul: tuple[str, int]
+    limites: tuple[tuple[int, int], ...]
 
 
 def _hex_para_rgb(hex_cor: str) -> tuple[int, int, int]:
@@ -88,16 +79,13 @@ def _hex_para_rgb(hex_cor: str) -> tuple[int, int, int]:
     return tuple(int(limpo[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
 
 
-def _limiar_canal(valor_255: int) -> tuple[str, int]:
-    """Deriva o teste de calibração de um canal a partir do seu valor 0-255.
-
-    Canal alto (>= fronteira) vira ``("min", CALIBRACAO_*_MIN)``; canal baixo
-    vira ``("max", CALIBRACAO_VERDE_MAX)``. Para o magenta padrão isto recria
-    exatamente R>128, G<20, B>128.
-    """
-    if valor_255 >= CALIBRACAO_LIMITE_CANAL:
-        return ("min", CALIBRACAO_VERMELHO_MIN)
-    return ("max", CALIBRACAO_VERDE_MAX)
+def _limites_canal(valor: int) -> tuple[int, int]:
+    if valor == 0:
+        return 0, CALIBRACAO_VERDE_MAX - 1
+    if valor == 255:
+        return CALIBRACAO_VERMELHO_MIN + 1, 255
+    # O tonemap e a conversão sRGB deslocam valores intermediários.
+    return max(0, valor - 96), min(255, valor + 96)
 
 
 def derivar_chroma(hex_cor: str = CHROMA_HEX_PADRAO) -> ChromaConfig:
@@ -111,26 +99,16 @@ def derivar_chroma(hex_cor: str = CHROMA_HEX_PADRAO) -> ChromaConfig:
     return ChromaConfig(
         rgb=rgb,
         clear_rgba=(rgb[0], rgb[1], rgb[2], 0.0),
-        calibracao_vermelho=_limiar_canal(r255),
-        calibracao_verde=_limiar_canal(g255),
-        calibracao_azul=_limiar_canal(b255),
+        limites=tuple(_limites_canal(valor) for valor in (r255, g255, b255))
     )
 
 
 def pixel_e_chroma(rgb_255: tuple[int, int, int], config: ChromaConfig) -> bool:
     """Testa se um pixel 0-255 do framebuffer é o chroma calibrável.
 
-    Aplica os três limiares por canal do ``ChromaConfig`` (min/max). Para o
-    magenta padrão equivale a ``R>128 and G<20 and B>128``.
+    Para o magenta padrão equivale a ``R>128 and G<20 and B>128``.
     """
-    testes = (
-        (rgb_255[0], config.calibracao_vermelho),
-        (rgb_255[1], config.calibracao_verde),
-        (rgb_255[2], config.calibracao_azul),
+    return all(
+        minimo <= valor <= maximo
+        for valor, (minimo, maximo) in zip(rgb_255, config.limites, strict=True)
     )
-    for valor, (modo, limite) in testes:
-        if modo == "min" and not valor > limite:
-            return False
-        if modo == "max" and not valor < limite:
-            return False
-    return True

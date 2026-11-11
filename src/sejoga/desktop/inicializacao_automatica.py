@@ -4,7 +4,7 @@ A fonte de verdade do autostart é um atalho ``SeJoga Companion.lnk`` na pasta
 ``Startup`` do usuário apontando para o ``SeJogaLauncher.exe`` instalado — o
 mesmo alvo dos atalhos do instalador, nunca ``HKCU\...\Run``.
 
-Guard clause no estilo de ``reescrever_canal_channel_info``: em modo fonte/dev
+Em modo fonte/dev
 (sem launcher instalado), ``ativar``/``desativar`` são inertes e retornam
 ``False``; ``esta_ativo`` verifica apenas a existência do atalho.
 

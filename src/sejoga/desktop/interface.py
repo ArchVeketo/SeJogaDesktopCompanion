@@ -9,13 +9,7 @@ import os
 import threading
 from collections.abc import Callable
 from ctypes import wintypes
-from typing import TYPE_CHECKING, ClassVar
-
-if TYPE_CHECKING:
-    from sejoga.distribuicao.atualizador import Update
-
-    # Resultado da busca em thread: ("ok", Update|None) no sucesso ou ("erro", mensagem).
-    ResultadoBusca = tuple[str, "Update | None"] | tuple[str, str]
+from typing import ClassVar
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor
@@ -48,8 +42,6 @@ class SettingsDialog(QDialog):
     # Emitido quando o handoff ao launcher nativo acontece: o companion deve fechar
     # para não ficar renderizando atrás da barra de progresso (fluxo fecha->barra->reabre).
     atualizacao_iniciada = Signal()
-    # Resultado da busca de atualizações feita em thread (ver _buscar_atualizacoes).
-    _busca_concluida = Signal(object)
 
     def __init__(self, settings: Settings):  # noqa: PLR0915  # TODO convenção: fatiar exige validar na GPU/desktop real (layout Qt, física ou áudio); lote próprio
         """Monta o diálogo de configurações com os valores atuais."""
@@ -57,8 +49,7 @@ class SettingsDialog(QDialog):
         self._settings = settings.model_copy(deep=True)
         self.setWindowTitle("Configurações do SeJoga Companion")
         self.setMinimumWidth(const_desktop.DIALOGO_LARGURA_MINIMA)
-        self._buscando_atualizacao = False
-        self._atualizacao_disponivel: object | None = None
+        self._update_dialog = None
 
         self.size_input = QSpinBox()
         self.size_input.setRange(
@@ -195,12 +186,6 @@ class SettingsDialog(QDialog):
         # Botão "Buscar atualizações" + rótulo de status (busca roda em thread).
         self.check_update_button = QPushButton("Buscar atualizações")
         self.check_update_button.clicked.connect(self._buscar_atualizacoes)
-        self.update_status_label = QLabel("")
-        self.update_status_label.setWordWrap(True)
-        self._busca_concluida.connect(self._ao_concluir_busca)
-        update_row = QHBoxLayout()
-        update_row.addWidget(self.check_update_button)
-        update_row.addWidget(self.update_status_label, 1)
 
         # (1) Iniciar com o Windows: estado inicial lido do atalho real na Startup.
         self.autostart_input = QCheckBox("Iniciar com o Windows")
@@ -267,7 +252,7 @@ class SettingsDialog(QDialog):
         form.addRow("Cor do contorno", self.outline_color_button)
         form.addRow("Espessura do contorno", self.outline_width_input)
         form.addRow("Respiração do contorno", self.outline_breath_input)
-        form.addRow("Cor do color key", self.colorkey_color_button)
+        form.addRow("Cor do color key (requer reinício)", self.colorkey_color_button)
         form.addRow(self.physics_input)
         form.addRow(self.idle_input)
         form.addRow("Personalidade", self.personality_input)
@@ -284,7 +269,7 @@ class SettingsDialog(QDialog):
         form.addRow(self.autostart_input)
         form.addRow(self.diagnostic_input)
         form.addRow("Canal de atualização", self.channel_input)
-        form.addRow("Atualizações", update_row)
+        form.addRow("Atualizações", self.check_update_button)
         form.addRow("Nível de log", log_row)
         form.addRow("Pastas", pastas_row)
         form.addRow("Perfil", self.profile_path_label)
@@ -459,96 +444,19 @@ class SettingsDialog(QDialog):
         self.accept()
 
     def _buscar_atualizacoes(self) -> None:
-        """Busca o feed do canal selecionado sem bloquear a UI (thread + Signal)."""
-        if self._buscando_atualizacao:
-            return
-        from sejoga.distribuicao.atualizador import (
-            check_update,
-            installed_launcher,
-            release_para_checagem,
-        )
+        from sejoga.distribuicao.dialogo_atualizacao import UpdateDialog
 
-        if installed_launcher() is None:
-            self.update_status_label.setText(
-                "Instale o SeJoga pelo instalador oficial para buscar atualizações."
+        settings = self._settings.model_copy(deep=True)
+        settings.update.channel = self.channel_input.currentData()
+        if self._update_dialog is None:
+            self._update_dialog = UpdateDialog(
+                self.atualizacao_iniciada.emit, settings, parent=self
             )
-            return
-
-        canal = self.channel_input.currentData()
-        self._buscando_atualizacao = True
-        self._atualizacao_disponivel = None
-        self.check_update_button.setEnabled(False)
-        self.update_status_label.setText("Buscando atualizações…")
-
-        def tarefa() -> None:
-            resultado: ResultadoBusca
-            try:
-                resultado = ("ok", check_update(release_para_checagem(canal)))
-            except Exception as exc:  # degradação graciosa: rede/feed indisponível
-                logging.getLogger("sejoga").warning(
-                    "Busca de atualização falhou: %s", exc
-                )
-                resultado = ("erro", str(exc))
-            with contextlib.suppress(RuntimeError):
-                self._busca_concluida.emit(resultado)
-
-        threading.Thread(target=tarefa, name="sejoga-busca-update", daemon=True).start()
-
-    def _ao_concluir_busca(self, resultado: ResultadoBusca) -> None:
-        self._buscando_atualizacao = False
-        self.check_update_button.setEnabled(True)
-        tipo, valor = resultado
-        canal = self.channel_input.currentData()
-        if tipo == "erro" or isinstance(valor, str):
-            self.update_status_label.setText(f"Erro ao buscar atualizações: {valor}")
-            return
-        if valor is None:
-            self.update_status_label.setText(
-                f"Nenhuma atualização disponível no canal {canal}."
-            )
-            return
-        self._atualizacao_disponivel = valor
-        self.update_status_label.setText(
-            f"Versão {valor.version} disponível no canal {canal}."
-        )
-        resposta = QMessageBox.question(
-            self,
-            "Atualização disponível",
-            f"Versão {valor.version} está disponível no canal {canal}.\n\n"
-            "Deseja atualizar agora? O Mário será fechado e aparecerá apenas uma barra "
-            "de progresso. O Windows pedirá permissão de administrador e o Mário será "
-            "reaberto ao terminar (ou se você cancelar a permissão). "
-            "Suas configurações serão preservadas.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if resposta == QMessageBox.StandardButton.Yes:
-            self._iniciar_atualizacao(canal)
-
-    def _iniciar_atualizacao(self, canal: str) -> None:
-        """Delega ao launcher nativo, apontando o channel-info.json ao canal."""
-        from sejoga.distribuicao.atualizador import (
-            installed_launcher,
-            reescrever_canal_channel_info,
-        )
-
-        launcher = installed_launcher()
-        if launcher is None:
-            return
-        reescrever_canal_channel_info(launcher.parent / "channel-info.json", canal)
-        import win32api
-
-        try:
-            win32api.ShellExecute(
-                0, "open", str(launcher), "--update", str(launcher.parent), 1
-            )
-        except Exception as exc:
-            self.update_status_label.setText(f"Atualização não iniciada: {exc}")
+            self._update_dialog.setModal(True)
         else:
-            # Handoff feito: fecha o diálogo e sinaliza para o companion encerrar.
-            # O launcher assume a barra e reabre o mascote ao terminar.
-            self.accept()
-            self.atualizacao_iniciada.emit()
+            self._update_dialog.atualizar_config(settings)
+        self._update_dialog.show()
+        self._update_dialog._action()
 
 
 _WM_HOTKEY = 0x0312

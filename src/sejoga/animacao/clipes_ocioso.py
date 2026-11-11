@@ -976,6 +976,35 @@ def camada_respiracao(
     }
 
 
+def _aplicar_ritmo(pose, time):
+    # Internal cadence at 100 BPM, not a claim of synchronization to audio.
+    beat = tau * time / 0.6
+    pulse = (1 - cos(beat)) * 0.5
+    groove = sin(beat * 0.5)
+    pose["body"] = (pulse * 2.8, groove * 3.2, sin(beat * 0.25) * 2.8)
+    pose["head"] = (-1.5 + (1 - cos(beat - 0.28)) * 1.4, -groove * 2.5, groove * 1.8)
+    pose["right-arm"] = (
+        REPOUSO_BRACO_X - 4 + sin(beat - 0.45) * 5,
+        REPOUSO_BRACO_Y + groove * 4.0,
+        REPOUSO_BRACO_Z - 8 - pulse * RHYTHM_BRACO_DIR,
+    )
+    pose["left-arm"] = (
+        REPOUSO_BRACO_X - 2 - sin(beat - 0.45) * 5,
+        -REPOUSO_BRACO_Y + groove * 4.0,
+        -REPOUSO_BRACO_Z + 4 + pulse * RHYTHM_BRACO_ESQ,
+    )
+    pose["ant-arm"] = (
+        REPOUSO_ANTEBRACO_X - 4.0,
+        0.0,
+        REPOUSO_ANTEBRACO_Z + pulse * 6.0,
+    )
+    pose["ant-arm2"] = (
+        REPOUSO_ANTEBRACO_X - 4.0,
+        0.0,
+        -REPOUSO_ANTEBRACO_Z - pulse * 6.0,
+    )
+
+
 def sample_idle(
     style: str,
     time: float,
@@ -1069,32 +1098,7 @@ def sample_idle(
             }
         )
     elif style == "rhythm":
-        # Internal cadence at 100 BPM, not a claim of synchronization to audio.
-        beat = tau * time / 0.6
-        pulse = (1 - cos(beat)) * 0.5
-        groove = sin(beat * 0.5)
-        pose["body"] = (pulse * 2.8, groove * 3.2, sin(beat * 0.25) * 2.8)
-        pose["head"] = (-1.5 + (1 - cos(beat - 0.28)) * 1.4, -groove * 2.5, groove * 1.8)
-        pose["right-arm"] = (
-            REPOUSO_BRACO_X - 4 + sin(beat - 0.45) * 5,
-            REPOUSO_BRACO_Y + groove * 4.0,
-            REPOUSO_BRACO_Z - 8 - pulse * RHYTHM_BRACO_DIR,
-        )
-        pose["left-arm"] = (
-            REPOUSO_BRACO_X - 2 - sin(beat - 0.45) * 5,
-            -REPOUSO_BRACO_Y + groove * 4.0,
-            -REPOUSO_BRACO_Z + 4 + pulse * RHYTHM_BRACO_ESQ,
-        )
-        pose["ant-arm"] = (
-            REPOUSO_ANTEBRACO_X - 4.0,
-            0.0,
-            REPOUSO_ANTEBRACO_Z + pulse * 6.0,
-        )
-        pose["ant-arm2"] = (
-            REPOUSO_ANTEBRACO_X - 4.0,
-            0.0,
-            -REPOUSO_ANTEBRACO_Z - pulse * 6.0,
-        )
+        _aplicar_ritmo(pose, time)
     for group, extra in AJUSTE_BASE.get(style, {}).items():
         base = pose.get(group, (0, 0, 0))
         pose[group] = tuple(a + b for a, b in zip(base, extra, strict=True))

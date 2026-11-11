@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import random
 from enum import StrEnum
-from math import degrees, radians
+from math import degrees
 from typing import ClassVar
 
 from sejoga.animacao import movimento_corpo_tuning as tune
@@ -111,6 +111,8 @@ class AnimationState(StrEnum):
     THUMBS_UP = "thumbs_up"
     ROCK = "rock"
     FINGER_GUN = "finger_gun"
+    OPEN_HANDS = "open_hands"
+    CLOSE_FISTS = "close_fists"
     SURPRISE = "surprise"
 
 
@@ -248,7 +250,8 @@ class AnimationController:
             self.orientacao_manual = None
             return
         self.orientacao_manual = OrientacaoCorpo(orientacao)
-        self.pacote_olhar_tela.interromper()
+        if self.orientacao_manual != OrientacaoCorpo.COSTAS:
+            self.pacote_olhar_tela.interromper()
 
     def voltar_ao_plano(self) -> None:
         """Retorna imediatamente ao plano frontal (`perto` e `frente`)."""
@@ -345,6 +348,8 @@ class AnimationController:
             AnimationState(k): 3.2
             for k in ("hang_loose", "thumbs_up", "rock", "finger_gun")
         },
+        AnimationState.OPEN_HANDS: 2.5,
+        AnimationState.CLOSE_FISTS: 2.5,
         AnimationState.SNEEZE: 9.0,
         AnimationState.CLICK: 0.5,
         AnimationState.DOUBLE_CLICK: 1.4,
@@ -382,6 +387,8 @@ class AnimationController:
         self.body_motion.impulse(
             kind, self._look_direction if direction is None else direction, strength
         )
+        if kind == "wake":
+            self._sleep_locked = False
         self._reaction = AnimationState(kind)
         self._reaction_time = 0.0
         self._cooldowns[kind] = self.clock + max(
@@ -489,17 +496,9 @@ class AnimationController:
             self._dance_decision_in = 8.0
             if self._dance_rng.random() < min(1.0, dance_chance):
                 self._dance_remaining = 8.0
-        if (
-            music_playing
-            and react_to_beat
-            and dance_chance > 0
-            and self.state == AnimationState.DANCE
-        ):
-            self._dance_remaining = max(self._dance_remaining, 1.0)
         beat_edge = beat_detected and not self._previous_beat
         self._previous_beat = beat_detected
-        if react_to_beat and beat_edge and self._dance_remaining > 0:
-            pass  # Onsets correct cadence; do not classify quiet audio as loud.
+        # Onsets corrigem a cadência; não classificam áudio baixo como alto.
         self.dance_motion.update(dt, music_intensity, music_bass, music_bpm, beat_edge)
         self._look_direction += (
             max(-1.0, min(1.0, look_direction)) - self._look_direction
@@ -554,7 +553,12 @@ class AnimationController:
         ):
             if self._reaction is not None and (
                 next_state != AnimationState.DANCE
-                or self._reaction in (AnimationState.HIT, AnimationState.SNEEZE)
+                or self._reaction in (
+                    AnimationState.HIT,
+                    AnimationState.SNEEZE,
+                    AnimationState.OPEN_HANDS,
+                    AnimationState.CLOSE_FISTS,
+                )
             ):
                 next_state = self._reaction
             elif hovered and next_state == AnimationState.IDLE:
@@ -665,6 +669,16 @@ class AnimationController:
             self.rig.current = dict(contribuicao_danca)
         elif self.state == AnimationState.SLEEP:
             pose_sleep(self.rig, self.clock, self.modo_sono)
+        elif self.state in (AnimationState.OPEN_HANDS, AnimationState.CLOSE_FISTS):
+            palma_aberta = self.state == AnimationState.OPEN_HANDS
+            for lado, mao, dedos, sinal in (
+                ("right", "hand", "fingers", 1),
+                ("left", "hand2", "fingers2", -1),
+            ):
+                for grupo, (x, y, z) in braco_hpr_graus(lado, "interaction").items():
+                    self.rig.set_rotation(grupo, x=x, y=y, z=z)
+                self.rig.set_rotation(mao, x=36 if palma_aberta else -16, z=sinal * 6)
+                self.rig.set_rotation(dedos)
         elif self.state.value in ("hang_loose", "thumbs_up", "rock", "finger_gun"):
             pose_idle(self.rig, self.clock, self.idle_personality)
             # Gesto de mão (hang loose/joinha/rock/finger gun): ergue o braço à
@@ -787,8 +801,6 @@ class AnimationController:
                 self.rig.set_rotation(
                     "ant-arm2", x=tune.ARRASTE_PENDENTE_BRACO_X * 0.4, z=-_az
                 )
-        if self.appendage_remaining > 0:
-            self.rig.set_rotation("door", y=85)
         target = self.rig.pose()
 
         # ═══════════════════════════════════════════════════════════════════════
@@ -871,10 +883,6 @@ class AnimationController:
             )
         if amostra_olhar.ativo and amostra_olhar.delta_pose:
             delta_estado = somar_deltas(delta_estado, amostra_olhar.delta_pose)
-        if self.appendage_remaining > 0 and delta_estado:
-            delta_estado = somar_deltas(
-                delta_estado, {"door": Rotation3(0.0, radians(85.0), 0.0)}
-            )
 
         # Determina se o estado atual está totalmente migrado para deltas
         # Estados não migrados usam a pose legada diretamente
@@ -984,6 +992,7 @@ class AnimationController:
             dance_strength=self.dance_motion.strength,
             dance_style=self.dance_motion.style,
             personality=self.idle_personality.value,
+            modo_sono=self.modo_sono,
         )
         return displayed_pose
 
@@ -1067,7 +1076,7 @@ class AnimationController:
             )
         if state == AnimationState.FALL:
             return delta_fall(self.state_time, velocity)
-        if state == AnimationState.SLEEP:
+        if state == AnimationState.SLEEP and self.modo_sono == "em_pe":
             return delta_sleep(t, self.modo_sono)
         # Estados não migrados: delta vazio (usa pose legada)
         return {}

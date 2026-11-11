@@ -20,6 +20,7 @@ Uso::
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import logging
 import os
@@ -29,7 +30,7 @@ import tomllib
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = "SeJogaDesktopCompanion"
@@ -236,7 +237,46 @@ def load_settings(path: Path | None = None) -> Settings:
         except tomllib.TOMLDecodeError as exc:  # config corrompido não derruba o app
             print(f"[sejoga] config inválido em {path}: {exc}; usando defaults")
             data = {}
-    return Settings(**data)
+    try:
+        return Settings(**data)
+    except ValidationError as exc:
+        erros = exc.errors()
+    campos = ", ".join(".".join(map(str, erro["loc"])) for erro in erros)
+    print(f"[sejoga] config inválido em {path} ({campos}); usando defaults nesses campos")
+    _preservar_config_invalido(path)
+    return _recuperar_valores_validos(data, erros)
+
+
+def _preservar_config_invalido(path: Path) -> None:
+    """Guarda uma cópia do perfil inválido para diagnóstico antes de qualquer gravação."""
+    with contextlib.suppress(OSError):
+        copia = path.with_name(f"{path.stem}.invalido{path.suffix}")
+        original = path.read_bytes()
+        with copia.open("xb") as stream:
+            stream.write(original)
+
+
+def _remover_campo(data: dict, loc: tuple) -> bool:
+    """Remove ``data[loc]`` (caminho aninhado); devolve se removeu algo."""
+    alvo = data
+    for chave in loc[:-1]:
+        alvo = alvo.get(chave) if isinstance(alvo, dict) else None
+        if alvo is None:
+            return False
+    if isinstance(alvo, dict) and loc and loc[-1] in alvo:
+        del alvo[loc[-1]]
+        return True
+    return False
+
+
+def _recuperar_valores_validos(data: dict, erros: list) -> Settings:
+    """Revalida sem os campos rejeitados; cai nos defaults se não convergir."""
+    while sum(_remover_campo(data, tuple(erro["loc"])) for erro in erros):
+        try:
+            return Settings(**data)
+        except ValidationError as exc:
+            erros = exc.errors()
+    return Settings.model_construct()
 
 
 def save_settings(settings: Settings, path: Path | None = None) -> Path:

@@ -234,6 +234,28 @@ def test_click_wakes_sleep_and_does_not_immediately_fall_asleep():
     assert animation.state == AnimationState.IDLE
 
 
+def test_clique_acorda_sono_manual():
+    animation = controller()
+    animation.colocar_para_dormir("sentado")
+    animation.interact("click")
+    animation.update(0.1)
+    assert animation.state == AnimationState.WAKE
+    assert not animation._sleep_locked
+
+
+def test_sorteio_negativo_encerra_frase_de_danca():
+    from unittest.mock import Mock
+
+    animation = controller()
+    animation._dance_rng.random = Mock(side_effect=(0.0, 0.9))
+    musica = {"music_playing": True, "music_intensity": 0.5, "dance_chance": 0.35}
+    animation.update(0.1, **musica)
+    assert animation.state == AnimationState.DANCE
+    animation._dance_remaining = animation._dance_decision_in = 0.1
+    animation.update(0.1, **musica)
+    assert animation.state != AnimationState.DANCE
+
+
 def test_reactions_expire_and_drag_has_priority():
     animation = controller()
     animation.interact("pet")

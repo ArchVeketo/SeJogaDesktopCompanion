@@ -98,6 +98,13 @@ def test_fio_fone_atualizar_custa_pouco_por_quadro() -> None:
     assert (time.perf_counter() - inicio) / 100 < 0.004
 
 
+def test_ponto_no_eixo_da_capsula_sai_na_perpendicular():
+    capsula = Capsula((0, 0, 0), (0, 0, 2), 0.2)
+    x, y, z = empurrar_ponto_de_capsula((0, 0, 1), capsula, 0.05)
+    assert x * x + y * y == 0.25 ** 2
+    assert z == 1
+
+
 def test_empurrar_ponto_de_capsula_ponto_dentro_sai_na_folga() -> None:
     capsula = Capsula(a=(0.0, 0.0, 0.0), b=(0.0, 0.0, 1.0), raio=0.1)
 

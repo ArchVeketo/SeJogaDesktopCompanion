@@ -121,7 +121,7 @@ class GiroCorpo:
 
     @property
     def angulo(self):
-        """Heading suavizado atual, em graus, já dentro do limite."""
+        """Heading suavizado atual, em graus."""
         return self._mola.value
 
     def _alvo_do_olhar(self, direcao_olhar):
@@ -169,10 +169,10 @@ class GiroCorpo:
         alvo = clamp(alvo, -teto, teto)
         if permitir_costas:
             alvo = clamp(calcular_alvo_angular(self._mola.value, alvo), -teto, teto)
+        teto_transiente = max(teto, abs(self._mola.value))
         self._mola.update(dt, alvo)
-        # Clamp de segurança: a mola pode ultrapassar o alvo no transiente; o nó
-        # de giro nunca deve passar do limite para não sair do envelope da janela.
-        self._mola.value = clamp(self._mola.value, -teto, teto)
+        # Contém overshoot sem cortar o retorno suave de costas para frente.
+        self._mola.value = clamp(self._mola.value, -teto_transiente, teto_transiente)
         return self._mola.value
 
 

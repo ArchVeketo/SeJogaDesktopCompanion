@@ -223,43 +223,24 @@ def test_config_channel_drives_update_feed(monkeypatch):
 
     settings = Settings()
     settings.update.channel = "prerelease"
-    current = atualizador.release_para_checagem(settings.update.channel)
-    assert current.channel == "prerelease"
-    assert atualizador.check_update(current) is None
+    current = ReleaseInfo("0.1.0", "release")
+    assert atualizador.check_update(current, channel=settings.update.channel) is None
     assert calls == [
         f"https://github.com/{atualizador.REPOSITORY}/releases/download/updates-prerelease/channel.json"
     ]
 
 
-def test_release_para_checagem_prefers_installed_release(monkeypatch):
-    monkeypatch.setattr(
-        atualizador,
-        "installed_release",
-        lambda: ReleaseInfo("0.2.0rc1", "prerelease", 7),
-    )
-    assert atualizador.release_para_checagem("prerelease") == ReleaseInfo(
-        "0.2.0rc1", "prerelease", 7
-    )
-    # Canal diferente do instalado cai para a versao-piso do canal pedido.
-    assert atualizador.release_para_checagem("release") == ReleaseInfo(
-        "0.1.0", "release", 0
-    )
-
-
-def test_reescrever_canal_channel_info_preserva_campos(tmp_path):
-    path = tmp_path / "channel-info.json"
-    path.write_text(
-        json.dumps({"channel": "release", "scope": "machine"}), encoding="utf-8"
-    )
-    assert atualizador.reescrever_canal_channel_info(path, "nightly") is True
-    dados = json.loads(path.read_text(encoding="utf-8-sig"))
-    assert dados == {"channel": "nightly", "scope": "machine"}
-    assert list(tmp_path.glob("channel-info-*.tmp")) == []
-
-
-def test_reescrever_canal_channel_info_ausente_nao_falha(tmp_path):
-    ausente = tmp_path / "nao-existe.json"
-    assert atualizador.reescrever_canal_channel_info(ausente, "release") is False
+def test_troca_de_canal_compara_com_versao_e_build_instalados():
+    instalado = ReleaseInfo("0.1.0", "release", 2)
+    assert parse_manifest(
+        manifest("nightly", "0.1.0.dev20261111000000", 3), instalado, channel="nightly"
+    ) is None
+    assert parse_manifest(
+        manifest("nightly", "0.2.0.dev20261111000000", 1), instalado, channel="nightly"
+    ) is None
+    assert parse_manifest(
+        manifest("nightly", "0.2.0.dev20261111000000", 3), instalado, channel="nightly"
+    ).channel == "nightly"
 
 
 def test_external_redirect_is_blocked_before_following():

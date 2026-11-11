@@ -45,6 +45,17 @@ def test_roundtrip(tmp_path):
     assert loaded.update.channel == "prerelease"
 
 
+def test_perfil_invalido_preserva_campos_validos_e_copia_diagnostico(tmp_path):
+    path = tmp_path / "config.toml"
+    original = b'[window]\nscale = 0\n\n[update]\nchannel = "prerelease"\n'
+    path.write_bytes(original)
+    loaded = load_settings(path)
+    assert loaded.window.scale == Settings().window.scale
+    assert loaded.update.channel == "prerelease"
+    assert path.read_bytes() == original
+    assert (tmp_path / "config.invalido.toml").read_bytes() == original
+
+
 def test_corrupted_file_falls_back_to_defaults(tmp_path, capsys):
     path = tmp_path / "config.toml"
     path.write_text("isto nao e toml = = =", encoding="utf-8")

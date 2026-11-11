@@ -33,6 +33,51 @@ FACING_MASCOTE_GRAUS = 0.0
 FACING_CAIXA_EXTRA_GRAUS = 0.0
 
 
+def _texturizar_bbmodel(np, texture_path, name):
+    pnm = PNMImage()
+    if texture_path.exists() and pnm.read(
+        StringStream(texture_path.read_bytes()), texture_path.name
+    ):
+        tex = Texture(name + "_tex")
+        tex.load(pnm)
+        tex.setMinfilter(Texture.FTNearest)
+        tex.setMagfilter(Texture.FTNearest)
+        np.setTexture(tex, 1)
+
+
+def _escrever_faces(faces, verts, scale, resolucao, writers, vert_idx):
+    tex_w, tex_h = resolucao
+    vwriter, nwriter, twriter, tris = writers
+    for face in faces.values():
+        f_verts = face.get("vertices", [])
+        f_uv = face.get("uv", {})
+        if len(f_verts) != 4:
+            continue
+
+        # Blockbench Y é altura e Z é profundidade. No Panda os eixos se invertem.
+        p_pts = [Vec3(x * scale, z * scale, y * scale) for x, y, z in (verts[vid] for vid in f_verts)]
+
+        v0, v1, v2 = p_pts[0], p_pts[1], p_pts[2]
+        n = (v1 - v0).cross(v2 - v0)
+        if n.lengthSquared() > 1e-6:
+            n.normalize()
+        else:
+            n = Vec3(0, -1, 0)
+
+        for vid, ponto in zip(f_verts, p_pts, strict=True):
+            uv = f_uv.get(vid, [0, 0])
+            u = uv[0] / tex_w
+            v = 1.0 - uv[1] / tex_h
+            vwriter.addData3(ponto)
+            nwriter.addData3(n)
+            twriter.addData2(u, v)
+
+        tris.addVertices(vert_idx, vert_idx + 1, vert_idx + 2)
+        tris.addVertices(vert_idx, vert_idx + 2, vert_idx + 3)
+        vert_idx += 4
+    return vert_idx
+
+
 def _build_bbmodel_node(
     bbmodel_path: Path,
     texture_path: Path,
@@ -55,45 +100,9 @@ def _build_bbmodel_node(
         verts = elem.get("vertices", {})
         faces = elem.get("faces", {})
 
-        for _face_id, face in faces.items():
-            f_verts = face.get("vertices", [])
-            f_uv = face.get("uv", {})
-            if len(f_verts) != 4:
-                continue
-
-            # No Blockbench: X = largura, Y = altura, Z = profundidade (frente = -Z com os alto-falantes).
-            # No Panda: X = largura, Y = profundidade (frente = -Y voltado para a câmera), Z = altura (+Z).
-            p_pts = []
-            for vid in f_verts:
-                bx, by, bz = verts[vid]
-                px = bx * scale
-                py = bz * scale
-                pz = by * scale
-                p_pts.append(Vec3(px, py, pz))
-
-            v0, v1, v2 = p_pts[0], p_pts[1], p_pts[2]
-            n = (v1 - v0).cross(v2 - v0)
-            if n.lengthSquared() > 1e-6:
-                n.normalize()
-            else:
-                n = Vec3(0, -1, 0)
-
-            for vid in f_verts:
-                bx, by, bz = verts[vid]
-                px = bx * scale
-                py = bz * scale
-                pz = by * scale
-                uv = f_uv.get(vid, [0, 0])
-                u = uv[0] / tex_w
-                v = 1.0 - (uv[1] / tex_h)
-
-                vwriter.addData3(px, py, pz)
-                nwriter.addData3(n)
-                twriter.addData2(u, v)
-
-            tris.addVertices(vert_idx, vert_idx + 1, vert_idx + 2)
-            tris.addVertices(vert_idx, vert_idx + 2, vert_idx + 3)
-            vert_idx += 4
+        vert_idx = _escrever_faces(
+            faces, verts, scale, (tex_w, tex_h), (vwriter, nwriter, twriter, tris), vert_idx
+        )
 
     geom = Geom(vdata)
     geom.addPrimitive(tris)
@@ -101,16 +110,7 @@ def _build_bbmodel_node(
     gnode.addGeom(geom)
     np = NodePath(gnode)
 
-    pnm = PNMImage()
-    if texture_path.exists() and pnm.read(
-        StringStream(texture_path.read_bytes()), texture_path.name
-    ):
-        tex = Texture(name + "_tex")
-        tex.load(pnm)
-        tex.setMinfilter(Texture.FTNearest)
-        tex.setMagfilter(Texture.FTNearest)
-        np.setTexture(tex, 1)
-
+    _texturizar_bbmodel(np, texture_path, name)
     np.setTwoSided(True)
     return np
 
@@ -118,26 +118,7 @@ def _build_bbmodel_node(
 class MusicSpeaker:
     """Caixa de som / jukebox que surge durante a dança do mascote."""
 
-    def __init__(self, renderer):
-        """Monta a geometria da jukebox 3D sob o renderer."""
-        self.renderer = renderer
-        self._measure_character()
-
-        # Dimensões gerais do palco (baseadas no layout das 3 caixas em escala grande)
-        STAGE_SCALE = 0.044
-        self.stage_scale = STAGE_SCALE
-        self.width = 2.20
-        self.height = 1.25
-        self.depth = 1.35
-        self.final_position = Point3(0.0, 0.05, self.floor_z)
-
-        self.root = renderer.model_anchor.attachNewNode("music-speaker")
-        self.root.setLightOff(1)
-        self.root.setShaderOff(1)
-        self.root.setCollideMask(0)
-
-        self.geometry = self.root.attachNewNode("speaker-stage")
-
+    def _montar_caixas(self):
         # 1. Caixa central grande (BoomboxGRANDE)
         bb_grande_model = (
             assets_dir() / "assets" / "boomboxgrande" / "BoomboxGRANDE.bbmodel"
@@ -146,7 +127,7 @@ class MusicSpeaker:
         self.center_box = _build_bbmodel_node(
             bb_grande_model,
             bb_grande_tex,
-            scale=STAGE_SCALE,
+            scale=self.stage_scale,
             name="boombox-center",
         )
         self.center_box.reparentTo(self.geometry)
@@ -159,7 +140,7 @@ class MusicSpeaker:
         self.left_box = _build_bbmodel_node(
             bb_side_model,
             bb_side_tex,
-            scale=STAGE_SCALE,
+            scale=self.stage_scale,
             name="boombox-side-left",
         )
         self.left_box.reparentTo(self.geometry)
@@ -169,12 +150,33 @@ class MusicSpeaker:
         self.right_box = _build_bbmodel_node(
             bb_side_model,
             bb_side_tex,
-            scale=STAGE_SCALE,
+            scale=self.stage_scale,
             name="boombox-side-right",
         )
         self.right_box.reparentTo(self.geometry)
         self.right_box.setPos(0.80, 0.12, 0)
         self.right_box.setH(15.0)
+
+    def __init__(self, renderer):
+        """Monta a geometria da jukebox 3D sob o renderer."""
+        self.renderer = renderer
+        self._measure_character()
+
+        # Dimensões gerais do palco (baseadas no layout das 3 caixas em escala grande)
+        self.stage_scale = 0.044
+        self.width = 2.20
+        self.height = 1.25
+        self.depth = 1.35
+        self.final_position = Point3(0.0, 0.05, self.floor_z)
+
+        self.root = renderer.model_anchor.attachNewNode("music-speaker")
+        self.root.setLightOff(1)
+        self.root.setShaderOff(1)
+        self.root.setCollideMask(0)
+
+        self.geometry = self.root.attachNewNode("speaker-stage")
+
+        self._montar_caixas()
 
         from sejoga.musica.efeitos_caixa_som import SpeakerEffects
 
@@ -250,26 +252,7 @@ class MusicSpeaker:
         )
         return point, normal
 
-    def update(self, dt, dancing, phase, energy, bass=0):
-        """Atualiza a visibilidade, animação e pulso das caixas de som."""
-        if dancing and not self.was_dancing:
-            self.age = 0.0
-            self._landing_sound_played = False
-            self.current_position = Point3(0, 0.19, 0.86)
-        self.was_dancing = dancing
-        self.age += dt
-        self.visibility += ((1 if dancing else 0) - self.visibility) * (
-            1 - exp(-dt * 5)
-        )
-        self.ejecting = dancing and 0.55 <= self.age < 2.1
-        self.landed = self.age >= 2.1 and self.visibility > 0.95
-
-        if self.visibility < 0.005 or (dancing and self.age < 1.35):
-            self.root.hide()
-            return
-        self.root.show()
-
-        controller = getattr(self.renderer.showbase, "animation_controller", None)
+    def _posicao_de_entrada(self, controller):
         style = getattr(controller.dance_motion, "style", "head_bob") if controller else "head_bob"
 
         # Posição final: diretamente sob o mascote no head_bob (ele senta em cima);
@@ -294,10 +277,9 @@ class MusicSpeaker:
                 self.height * 0.03 * sin((self.age - 1.95) / 0.30 * 3.14159265)
             )
         self.current_position = Point3(position)
+        return position, ease
 
-        pulse = max(0, cos(phase)) ** 6
-        strength = max(0, min(1, energy * 0.7 + bass * 0.9))
-
+    def _aplicar_transformacao(self, position, ease, phase, strength):
         if self.age > 2.1:
             position.x += self.width * 0.002 * sin(phase * 8) * strength
             position.y += self.depth * 0.005 * sin(phase * 6) * strength
@@ -310,6 +292,7 @@ class MusicSpeaker:
         )
         self.root.setR((1 - ease) * -90)
 
+    def _aplicar_pulso(self, pulse, strength):
         # Pulso rítmico nas caixas com o grave e o beat
         if self.age > 2.1:
             box_scale = 1.0 + pulse * 0.035 * strength
@@ -321,6 +304,35 @@ class MusicSpeaker:
             self.center_box.setScale(1.0, 1.0, 1.0)
             self.left_box.setScale(1.0, 1.0, 1.0)
             self.right_box.setScale(1.0, 1.0, 1.0)
+
+    def update(self, dt, dancing, phase, energy, bass=0):
+        """Atualiza a visibilidade, animação e pulso das caixas de som."""
+        if dancing and not self.was_dancing:
+            self.age = 0.0
+            self._landing_sound_played = False
+            self.current_position = Point3(0, 0.19, 0.86)
+        self.was_dancing = dancing
+        self.age += dt
+        self.visibility += ((1 if dancing else 0) - self.visibility) * (
+            1 - exp(-dt * 5)
+        )
+        self.ejecting = dancing and 0.55 <= self.age < 2.1
+        self.landed = self.age >= 2.1 and self.visibility > 0.95
+
+        if self.visibility < 0.005 or (dancing and self.age < 1.35):
+            self.root.hide()
+            return
+        self.root.show()
+
+        controller = getattr(self.renderer.showbase, "animation_controller", None)
+        position, ease = self._posicao_de_entrada(controller)
+
+        pulse = max(0, cos(phase)) ** 6
+        strength = max(0, min(1, energy * 0.7 + bass * 0.9))
+
+        self._aplicar_transformacao(position, ease, phase, strength)
+
+        self._aplicar_pulso(pulse, strength)
 
         self.effects.update(self.age, phase, strength)
 

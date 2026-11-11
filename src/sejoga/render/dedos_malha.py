@@ -28,6 +28,7 @@ from sejoga.animacao import dedos_tuning as tuning_dedos
 from sejoga.nucleo import malha_corte as mc
 
 TAG_EIXO = "eixo-dobra"
+TAG_ABERTURA = "eixo-abertura"
 NOME_JUNTA = "dedo-{mesh}-junta{junta}"
 NOME_MALHA = "mesh{mesh}"
 #: Índice do indicador na tupla de malhas da mão: define o eixo de dobra do polegar.
@@ -146,12 +147,16 @@ def _fatiar_malha(  # noqa: PLR0915  # TODO convenção: fatiar sem prova visual
     estado = geom_node.getGeomState(0)
     anterior: NodePath = pai
     pivo_anterior: mc.Vec3 = (0.0, 0.0, 0.0)
-    eixo_local = " ".join(repr(c) for c in mc.ortogonalizar(eixo, direcao))
+    eixo_dobra = Vec3(*mc.ortogonalizar(eixo, direcao))
+    eixo_abertura = Vec3(*direcao).cross(eixo_dobra)
+    eixo_abertura.normalize()
 
     for k, segmento in enumerate(segmentos):
         pivo = anterior.attachNewNode(nome_junta(mesh, k))
         pivo.setPos(*(c - a for c, a in zip(segmento.pivo, pivo_anterior, strict=True)))
-        pivo.setTag(TAG_EIXO, eixo_local)
+        pivo.setTag(TAG_EIXO, " ".join(map(str, eixo_dobra)))
+        if k == 0:
+            pivo.setTag(TAG_ABERTURA, " ".join(map(str, eixo_abertura)))
         no = GeomNode(NOME_MALHA.format(mesh=mesh) + f"-seg{k}")
         no.addGeom(_montar_geom(modelo, segmento.triangulos, segmento.pivo), estado)
         pivo.attachNewNode(no)
@@ -174,10 +179,22 @@ def pivos_da_cadeia(raiz: NodePath, mesh: int) -> list[tuple[NodePath, Vec3]]:
     return cadeia
 
 
-def girar_pivo(pivo: NodePath, eixo: Vec3, graus: float) -> None:
+def eixo_abertura(pivo: NodePath) -> Vec3:
+    """Normal ao plano da palma na base do dedo."""
+    return Vec3(*(float(c) for c in pivo.getTag(TAG_ABERTURA).split()))
+
+
+def girar_pivo(
+    pivo: NodePath, eixo: Vec3, graus: float, abertura: float = 0.0,
+    normal_palmar: Vec3 | None = None,
+) -> None:
     """Gira o pivô em ``graus`` em torno do eixo dado."""
     rotacao = Quat()
     rotacao.setFromAxisAngle(graus, eixo)
+    if normal_palmar is not None:
+        leque = Quat()
+        leque.setFromAxisAngle(abertura, normal_palmar)
+        rotacao *= leque
     pivo.setQuat(rotacao)
 
 

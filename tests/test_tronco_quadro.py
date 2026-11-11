@@ -22,10 +22,10 @@ core = pytest.importorskip("panda3d.core", reason="Panda3D indisponível")
 gltf = pytest.importorskip("gltf", reason="panda3d-gltf indisponível")
 
 from sejoga.animacao.danca_tuning import FLOOR_ROLL_GRAUS, PIVO_QUADRIL_Z  # noqa: E402
-from sejoga.animacao.rig_flexivel import FlexibleRig, no_de_facing  # noqa: E402
 from sejoga.nucleo.esqueleto import ALL_GROUPS  # noqa: E402
 from sejoga.nucleo.recursos import resolve_model  # noqa: E402
 from sejoga.render.renderizador import Panda3DRenderer  # noqa: E402
+from sejoga.render.rig_flexivel import FlexibleRig, no_de_facing  # noqa: E402
 
 #: Ângulo de teste (graus) e deslocamento mínimo (u) considerado movimento.
 ANGULO = 10.0

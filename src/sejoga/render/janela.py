@@ -377,9 +377,12 @@ class OverlayApp(ShowBase):
             return Task.done
         image = self.win.getScreenshot()
         if image:
-            red, green, blue = bytes(image.getRamImageAs("RGB"))[:3]
-            # Calibrate only the known chroma clear pixel after PBR tone mapping.
-            if pixel_e_chroma((red, green, blue), self._chroma):
+            pixels = memoryview(bytes(image.getRamImageAs("RGB")))
+            largura, altura = image.getXSize(), image.getYSize()
+            cantos = (0, largura - 1, largura * (altura - 1), largura * altura - 1)
+            amostras = {tuple(pixels[3 * canto : 3 * canto + 3]) for canto in cantos}
+            if len(amostras) == 1 and pixel_e_chroma((rgb := amostras.pop()), self._chroma):
+                red, green, blue = rgb
                 self._background_key = red | (green << 8) | (blue << 16)
                 self._refresh_background_mode()
         return Task.done
@@ -944,8 +947,6 @@ class OverlayApp(ShowBase):
         arraste_por_pe = self._drag_active and getattr(
             self, "_body_grab_part", "body"
         ) in ("legs", "left-feet", "right-feet")
-        if arraste_por_pe:
-            necessario = max(necessario, base * 2)
         size = escolher_tamanho(
             necessario,
             current,
@@ -955,6 +956,8 @@ class OverlayApp(ShowBase):
             dragging=self._drag_active,
             fixar_degrau=arraste_por_pe,
         )
+        if arraste_por_pe:
+            size = max(size, base * 2)
         if size == current:
             return
         shift = (size - current) // 2
@@ -1115,6 +1118,8 @@ class OverlayApp(ShowBase):
 
         for label, kind in (
             ("Acenar", "wave"),
+            ("Abrir as mãos", "open_hands"),
+            ("Fechar os punhos", "close_fists"),
             ("Soltar os ombros", "stretch"),
             ("Mostrar tentáculos", "peek"),
             ("Espirro de tentáculos", "sneeze"),
@@ -1231,10 +1236,8 @@ class OverlayApp(ShowBase):
         if self._mouse_screen is not None:
             self._destino_caminhada_x = float(self._mouse_screen[0])
             return
-        try:
+        with contextlib.suppress(Exception):
             self._destino_caminhada_x = float(win32gui.GetCursorPos()[0])
-        except Exception:
-            pass
 
     def caminhar_destino_aleatorio(self) -> None:
         """Escolhe um destino horizontal aleatório na área útil do monitor atual."""

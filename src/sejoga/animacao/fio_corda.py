@@ -96,7 +96,9 @@ def empurrar_ponto_de_capsula(ponto: Vetor3, capsula: Capsula, folga: float) -> 
     if _norma(saida) >= limite:
         return ponto
 
-    return _soma(mais_proximo, _esc(_normalizar(saida), limite))
+    referencia = (1.0, 0.0, 0.0) if abs(eixo[2]) > abs(eixo[0]) else ESCAPE_PADRAO
+    perpendicular = _normalizar(_cruz(eixo, referencia))
+    return _soma(mais_proximo, _esc(_normalizar(saida, perpendicular), limite))
 
 
 def empurrar_ponto_de_caixa(

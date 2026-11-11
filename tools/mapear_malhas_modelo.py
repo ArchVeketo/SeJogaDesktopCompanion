@@ -17,7 +17,7 @@ import argparse
 import json
 import math
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -65,42 +65,40 @@ def _ancestral_grupo(node_idx: int, parent_of: dict[int, int | None], nodes_by_i
     return "root"
 
 
+def _classificar_cabeca(mesh_name, node_name, cx):
+    if mesh_name in {"mesh11", "mesh12", "mesh13", "mesh14"}:
+        return ("planos_cruzados_ocultos", "(oculto/remover)")
+    if mesh_name == "mesh18":
+        return ("fio_rigido_fone", "(oculto por MalhaFioFone)")
+    if node_name in {"pyramid", "sphere"}:
+        lado = "direita" if cx > 0 else "esquerda"
+        return (f"antena_{lado} ({node_name})", f"antena-{lado}")
+    if mesh_name == "mesh5":
+        return ("arco_topo_fone (cuboid)", "fones")
+    if mesh_name in {"mesh6", "mesh7"}:
+        lado = "direito" if cx > 0 else "esquerdo"
+        return (f"haste_arco_fone_{lado} (cuboid)", f"fone-{lado}")
+    if mesh_name in {"mesh3", "mesh4", "mesh17"}:
+        return (f"concha_fone_direito ({node_name})", "fone-direito")
+    if mesh_name in {"mesh1", "mesh2", "mesh8"}:
+        return (f"concha_fone_esquerdo ({node_name})", "fone-esquerdo")
+    if mesh_name == "mesh0":
+        return ("cranio_principal", "head")
+    return (f"detalhe_cabeca ({node_name})", "head")
+
+
 def _classificar_regiao(
     mesh_name: str,
     node_name: str,
     grupo: str,
-    bmin: tuple[float, float, float],
-    bmax: tuple[float, float, float],
-    centro: tuple[float, float, float],
-    dim: tuple[float, float, float],
+    centro_x: float,
 ) -> tuple[str, str]:
     """Infere ``(regiao_anatomica, no_novo_em_portugues)`` pelas medidas e grupo."""
-    cx, cy, cz = centro
-    dx, dy, dz = dim
-
     if grupo == "door":
         return ("porta_cabeca", "door")
 
     if grupo == "head":
-        if mesh_name in {"mesh11", "mesh12", "mesh13", "mesh14"}:
-            return ("planos_cruzados_ocultos", "(oculto/remover)")
-        if mesh_name == "mesh18":
-            return ("fio_rigido_fone", "(oculto por MalhaFioFone)")
-        if node_name in {"pyramid", "sphere"}:
-            lado = "direita" if cx > 0 else "esquerda"
-            return (f"antena_{lado} ({node_name})", f"antena-{lado}")
-        if mesh_name == "mesh5":
-            return ("arco_topo_fone (cuboid)", "fones")
-        if mesh_name in {"mesh6", "mesh7"}:
-            lado = "direito" if cx > 0 else "esquerdo"
-            return (f"haste_arco_fone_{lado} (cuboid)", f"fone-{lado}")
-        if mesh_name in {"mesh3", "mesh4", "mesh17"}:
-            return (f"concha_fone_direito ({node_name})", "fone-direito")
-        if mesh_name in {"mesh1", "mesh2", "mesh8"}:
-            return (f"concha_fone_esquerdo ({node_name})", "fone-esquerdo")
-        if mesh_name == "mesh0":
-            return ("cranio_principal", "head")
-        return (f"detalhe_cabeca ({node_name})", "head")
+        return _classificar_cabeca(mesh_name, node_name, centro_x)
 
     if grupo == "body":
         if node_name == "cylinder":
@@ -114,27 +112,62 @@ def _classificar_regiao(
         lado = "esquerdo" if "left" in grupo else "direito"
         return (f"tenis_{lado} ({node_name})", grupo)
 
-    if grupo in {"shoulder", "shoulder2"}:
-        lado = "direito" if grupo == "shoulder" else "esquerdo"
-        return (f"bloco_ombro_{lado}", grupo)
+    membro = {
+        "shoulder": "bloco_ombro_direito",
+        "shoulder2": "bloco_ombro_esquerdo",
+        "right-arm": "braco_superior_direito",
+        "left-arm": "braco_superior_esquerdo",
+        "ant-arm": "antebraco_direito",
+        "ant-arm2": "antebraco_esquerdo",
+        "hand": "palma_mao_direita",
+        "hand2": "palma_mao_esquerda",
+        "fingers": "dedo_mao_direita",
+        "fingers2": "dedo_mao_esquerda",
+    }
+    return (membro.get(grupo, grupo), grupo)
 
-    if grupo in {"right-arm", "left-arm"}:
-        lado = "direito" if "right" in grupo else "esquerdo"
-        return (f"braco_superior_{lado}", grupo)
 
-    if grupo in {"ant-arm", "ant-arm2"}:
-        lado = "direito" if grupo == "ant-arm" else "esquerdo"
-        return (f"antebraco_{lado}", grupo)
+def _limites_malha(mesh_dict, mat, accessors):
+    lo = [math.inf] * 3
+    hi = [-math.inf] * 3
+    vcount = 0
+    for prim in mesh_dict.get("primitives", []):
+        pos_idx = prim.get("attributes", {}).get("POSITION")
+        if pos_idx is None:
+            continue
+        acc = accessors[pos_idx]
+        vcount += int(acc.get("count", 0))
+        amin, amax = acc["min"], acc["max"]
+        for corner in (
+            (amin[0], amin[1], amin[2]),
+            (amax[0], amin[1], amin[2]),
+            (amin[0], amax[1], amin[2]),
+            (amax[0], amax[1], amin[2]),
+            (amin[0], amin[1], amax[2]),
+            (amax[0], amin[1], amax[2]),
+            (amin[0], amax[1], amax[2]),
+            (amax[0], amax[1], amax[2]),
+        ):
+            p = _apply(mat, corner)
+            # Desfaz o giro de 180° em Y do nó raiz para voltar ao espaço Blockbench:
+            p_bb = (-p[0] * ESCALA_BB, p[1] * ESCALA_BB, -p[2] * ESCALA_BB)
+            for k in range(3):
+                lo[k] = min(lo[k], p_bb[k])
+                hi[k] = max(hi[k], p_bb[k])
 
-    if grupo in {"hand", "hand2"}:
-        lado = "direita" if grupo == "hand" else "esquerda"
-        return (f"palma_mao_{lado}", grupo)
+    bmin = (lo[0], lo[1], lo[2])
+    bmax = (hi[0], hi[1], hi[2])
+    return bmin, bmax, vcount
 
-    if grupo in {"fingers", "fingers2"}:
-        lado = "direita" if grupo == "fingers" else "esquerda"
-        return (f"dedo_mao_{lado}", grupo)
 
-    return (grupo, grupo)
+def _matrizes_e_pais(nodes_data, roots):
+    world: dict[int, Mat4] = {}
+    parent_of: dict[int, int | None] = {}
+    for index, _depth, parent in _iter_tree(nodes_data, roots):
+        local = _node_local_matrix(nodes_data[index])
+        world[index] = _mul(world[parent], local) if parent is not None else local
+        parent_of[index] = parent
+    return world, parent_of
 
 
 def inspecionar_malhas() -> list[InfoMalha]:
@@ -147,13 +180,7 @@ def inspecionar_malhas() -> list[InfoMalha]:
     scene = scenes[doc.get("scene", 0)] if scenes else {}
     roots = scene.get("nodes", []) or list(range(len(nodes_data)))
 
-    world: dict[int, Mat4] = {}
-    parent_of: dict[int, int | None] = {}
-    for index, _depth, parent in _iter_tree(nodes_data, roots):
-        local = _node_local_matrix(nodes_data[index])
-        world[index] = _mul(world[parent], local) if parent is not None else local
-        parent_of[index] = parent
-
+    world, parent_of = _matrizes_e_pais(nodes_data, roots)
     nodes_by_idx = {n.index: n for n in model.nodes}
     accessors = doc.get("accessors", [])
     meshes = doc.get("meshes", [])
@@ -167,40 +194,12 @@ def inspecionar_malhas() -> list[InfoMalha]:
         mesh_name = mesh_dict.get("name", f"mesh{mesh_idx}")
         mat = world[node.index]
 
-        lo = [math.inf] * 3
-        hi = [-math.inf] * 3
-        vcount = 0
-        for prim in mesh_dict.get("primitives", []):
-            pos_idx = prim.get("attributes", {}).get("POSITION")
-            if pos_idx is None:
-                continue
-            acc = accessors[pos_idx]
-            vcount += int(acc.get("count", 0))
-            amin, amax = acc["min"], acc["max"]
-            for corner in (
-                (amin[0], amin[1], amin[2]),
-                (amax[0], amin[1], amin[2]),
-                (amin[0], amax[1], amin[2]),
-                (amax[0], amax[1], amin[2]),
-                (amin[0], amin[1], amax[2]),
-                (amax[0], amin[1], amax[2]),
-                (amin[0], amax[1], amax[2]),
-                (amax[0], amax[1], amax[2]),
-            ):
-                p = _apply(mat, corner)
-                # Desfaz o giro de 180° em Y do nó raiz para voltar ao espaço Blockbench:
-                p_bb = (-p[0] * ESCALA_BB, p[1] * ESCALA_BB, -p[2] * ESCALA_BB)
-                for k in range(3):
-                    lo[k] = min(lo[k], p_bb[k])
-                    hi[k] = max(hi[k], p_bb[k])
-
-        bmin = (lo[0], lo[1], lo[2])
-        bmax = (hi[0], hi[1], hi[2])
+        bmin, bmax, vcount = _limites_malha(mesh_dict, mat, accessors)
         centro = ((bmin[0] + bmax[0]) / 2, (bmin[1] + bmax[1]) / 2, (bmin[2] + bmax[2]) / 2)
         dim = (bmax[0] - bmin[0], bmax[1] - bmin[1], bmax[2] - bmin[2])
         grupo = _ancestral_grupo(node.index, parent_of, nodes_by_idx)
         regiao, no_novo = _classificar_regiao(
-            mesh_name, node.name, grupo, bmin, bmax, centro, dim
+            mesh_name, node.name, grupo, centro[0]
         )
         infos.append(
             InfoMalha(
@@ -240,24 +239,14 @@ def formatar_markdown(infos: list[InfoMalha]) -> str:
     return "\n".join(linhas)
 
 
-def renderizar_mapa_cores(infos: list[InfoMalha], destino: Path) -> list[Path]:
-    """Renderiza o modelo em repouso com cada malha em cor distinta e numerada."""
-    import colorsys
-
-    import gltf
+def _montar_cena():
     from direct.showbase.ShowBase import ShowBase
     from panda3d.core import (
         AmbientLight,
         DirectionalLight,
-        Filename,
-        NodePath,
         OrthographicLens,
-        PNMImage,
-        Point2,
-        Point3,
         loadPrcFileData,
     )
-    from PIL import Image, ImageDraw
 
     loadPrcFileData(
         "",
@@ -288,11 +277,11 @@ def renderizar_mapa_cores(infos: list[InfoMalha], destino: Path) -> list[Path]:
     base.cam.reparentTo(pivot)
     base.cam.setPos(0, -10, 0)
     base.cam.lookAt(pivot)
+    return base, pivot
 
-    model_np = NodePath(gltf.load_model(str(resolve_model())))
-    model_np.reparentTo(base.render)
-    model_np.setTextureOff(1000)
-    model_np.setMaterialOff(1000)
+
+def _colorir_malhas(model_np, infos):
+    import colorsys
 
     # Paleta bem separada para as 43 malhas
     cores_rgb: dict[str, tuple[int, int, int]] = {}
@@ -308,7 +297,51 @@ def renderizar_mapa_cores(infos: list[InfoMalha], destino: Path) -> list[Path]:
                 np_mesh.stash()
             else:
                 np_mesh.setColor(r, g, b, 1.0, 1000)
+    return cores_rgb
 
+
+def _rotular_malhas(base, model_np, infos, cores_rgb, arq):
+    from panda3d.core import Point2, Point3
+    from PIL import Image, ImageDraw
+
+    # Sobrepõe o número de cada malha projetado na tela
+    img = Image.open(arq).convert("RGBA")
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+    lens_node = base.cam.node().getLens()
+    for info in infos:
+        if info.mesh_name in {"mesh11", "mesh12", "mesh13", "mesh14"}:
+            continue
+        np_mesh = model_np.find(f"**/{info.mesh_name}")
+        if np_mesh.isEmpty():
+            continue
+        bounds = np_mesh.getTightBounds(base.cam)
+        if not bounds:
+            continue
+        centro_cam = (bounds[0] + bounds[1]) * 0.5
+        p2 = Point2()
+        if lens_node.project(Point3(centro_cam), p2):
+            px = int((p2.x * 0.5 + 0.5) * w)
+            py = int((0.5 - p2.y * 0.5) * h)
+            cor = cores_rgb[info.mesh_name]
+            rotulo = str(info.mesh_idx)
+            draw.rectangle((px - 10, py - 7, px + 10, py + 7), fill=(0, 0, 0, 190), outline=cor)
+            draw.text((px - 6, py - 6), rotulo, fill=cor)
+    img.save(arq)
+
+
+def renderizar_mapa_cores(infos: list[InfoMalha], destino: Path) -> list[Path]:
+    """Renderiza o modelo em repouso com cada malha em cor distinta e numerada."""
+    import gltf
+    from panda3d.core import Filename, NodePath, PNMImage
+
+    base, pivot = _montar_cena()
+    model_np = NodePath(gltf.load_model(str(resolve_model())))
+    model_np.reparentTo(base.render)
+    model_np.setTextureOff(1000)
+    model_np.setMaterialOff(1000)
+
+    cores_rgb = _colorir_malhas(model_np, infos)
     destino.mkdir(parents=True, exist_ok=True)
     gerados: list[Path] = []
     vistas = (("frente", 0.0, 0.0), ("tres_quartos", 35.0, -10.0), ("costas", 180.0, 0.0))
@@ -322,30 +355,7 @@ def renderizar_mapa_cores(infos: list[InfoMalha], destino: Path) -> list[Path]:
         arq = destino / f"mapa_malhas_{nome_vista}.png"
         pnm.write(Filename.fromOsSpecific(str(arq)))
 
-        # Sobrepõe o número de cada malha projetado na tela
-        img = Image.open(arq).convert("RGBA")
-        draw = ImageDraw.Draw(img)
-        w, h = img.size
-        lens_node = base.cam.node().getLens()
-        for info in infos:
-            if info.mesh_name in {"mesh11", "mesh12", "mesh13", "mesh14"}:
-                continue
-            np_mesh = model_np.find(f"**/{info.mesh_name}")
-            if np_mesh.isEmpty():
-                continue
-            bounds = np_mesh.getTightBounds(base.cam)
-            if not bounds:
-                continue
-            centro_cam = (bounds[0] + bounds[1]) * 0.5
-            p2 = Point2()
-            if lens_node.project(Point3(centro_cam), p2):
-                px = int((p2.x * 0.5 + 0.5) * w)
-                py = int((0.5 - p2.y * 0.5) * h)
-                cor = cores_rgb[info.mesh_name]
-                rotulo = str(info.mesh_idx)
-                draw.rectangle((px - 10, py - 7, px + 10, py + 7), fill=(0, 0, 0, 190), outline=cor)
-                draw.text((px - 6, py - 6), rotulo, fill=cor)
-        img.save(arq)
+        _rotular_malhas(base, model_np, infos, cores_rgb, arq)
         gerados.append(arq)
 
     base.destroy()
@@ -365,7 +375,7 @@ def main() -> None:
         for arq in gerados:
             print(f"Render salvo: {arq}")
     if args.json:
-        print(json.dumps([i.__dict__ for i in infos], indent=2, ensure_ascii=False))
+        print(json.dumps([asdict(info) for info in infos], indent=2, ensure_ascii=False))
     else:
         print(formatar_markdown(infos))
 

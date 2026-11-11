@@ -99,6 +99,17 @@ def test_giro_suaviza_sem_saltar():
     )
 
 
+def test_retorno_de_costas_nao_salta_para_perfil():
+    giro = GiroCorpo()
+    for _ in range(240):
+        giro.update(1 / 60, angulo_pedido=180, permitir_costas=True)
+    costas = giro.angulo
+    frente = giro.update(1 / 60, angulo_pedido=0)
+    assert abs(costas) == pytest.approx(180)
+    assert 0 < abs(costas - frente) < 5
+    assert _assentar(giro, angulo_pedido=0) == pytest.approx(0, abs=1e-6)
+
+
 def test_angulo_pedido_tem_precedencia_sobre_o_olhar():
     giro = GiroCorpo()
     # Olhar para a direita, mas um estado pede giro para a esquerda.

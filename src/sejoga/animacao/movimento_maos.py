@@ -30,6 +30,8 @@ class HandMotion:
             "wave": 0.2,
             "sneeze": 0.25,
             "sleep": 0.12,
+            "open_hands": 0.0,
+            "close_fists": 0.0,
         }.get(state, 0.35)
         for upper_arm, shoulder, arm, wrist, fingers, side in (
             ("right-arm", "shoulder", "ant-arm", "hand", "fingers", 1),

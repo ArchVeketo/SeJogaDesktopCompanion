@@ -28,7 +28,7 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Atualizador e inicializador do Se Joga Desktop Companion")]
 [assembly: AssemblyCopyright("© Se Joga no Armário")]
 [assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
 [assembly: ComVisible(false)]
 
 internal static class SeJogaLauncher
@@ -55,7 +55,10 @@ internal static class SeJogaLauncher
         try
         {
             Settings = ReadJson(Path.Combine(Root, "channel-info.json"));
-            Channel = Text(Settings, "channel");
+            int channelArg = Array.IndexOf(args, "--channel");
+            if (channelArg == args.Length - 1 && channelArg >= 0)
+                throw new InvalidDataException("Canal de atualização ausente.");
+            Channel = channelArg < 0 ? Text(Settings, "channel") : args[channelArg + 1];
             if (!new[] { "release", "prerelease", "nightly" }.Contains(Channel))
                 throw new InvalidDataException("Canal de atualização inválido.");
             string scope = Text(Settings, "scope");
@@ -106,7 +109,7 @@ internal static class SeJogaLauncher
             bool temRuntime = File.Exists(CurrentExecutable());
             if (args.Contains("--update") || !temRuntime)
             {
-                var start = new ProcessStartInfo(Application.ExecutablePath, "--apply-update")
+                var start = new ProcessStartInfo(Application.ExecutablePath, "--apply-update --channel " + Channel)
                     { UseShellExecute = true, Verb = TestScope ? "open" : "runas", WorkingDirectory = Root };
                 try
                 {
@@ -378,8 +381,11 @@ internal static class SeJogaLauncher
                 if (!prepare && File.Exists(Path.Combine(current, "release-info.json")))
                 {
                     var installed = ReadJson(Path.Combine(current, "release-info.json"));
-                    if (CompareVersion(installed, manifest) > 0 || Number(installed, "build_id") > Number(manifest, "build_id") ||
-                        (!repair && Number(installed, "build_id") == Number(manifest, "build_id"))) return;
+                    int versionComparison = CompareVersion(installed, manifest);
+                    long installedBuild = Number(installed, "build_id"), candidateBuild = Number(manifest, "build_id");
+                    if (versionComparison > 0 || installedBuild > candidateBuild ||
+                        (!repair && (versionComparison == 0 || installedBuild == candidateBuild)))
+                        throw new InvalidDataException("O feed não oferece uma versão e um build mais recentes que os instalados.");
                 }
                 // Fecha o mascote ANTES do download para que ele nao fique renderizando
                 // atras da barra de progresso (o "bloco preto" que o usuario relatava). O
@@ -428,9 +434,10 @@ internal static class SeJogaLauncher
     static void UpdateRegistry(Dictionary<string, object> manifest)
     {
         // The installer registers the product; payload updates refresh its version.
+        string installedChannel = Text(Settings, "channel");
         string id = TestScope ? "{A243421C-F2B1-4563-873B-7AC5A4C89380}" :
-            Channel == "release" ? "{27AD0F68-F575-45DB-B24A-C94954679DA1}" :
-            Channel == "prerelease" ? "{E77A6F2A-F8AE-4EB8-BF84-2FC2C6CE0B19}" : "{26B8DB1E-7B18-4E13-802E-202E8C0A4854}";
+            installedChannel == "release" ? "{27AD0F68-F575-45DB-B24A-C94954679DA1}" :
+            installedChannel == "prerelease" ? "{E77A6F2A-F8AE-4EB8-BF84-2FC2C6CE0B19}" : "{26B8DB1E-7B18-4E13-802E-202E8C0A4854}";
         using (var hive = Microsoft.Win32.RegistryKey.OpenBaseKey(TestScope ? Microsoft.Win32.RegistryHive.CurrentUser : Microsoft.Win32.RegistryHive.LocalMachine,
                     Microsoft.Win32.RegistryView.Registry64))
         using (var key = hive.OpenSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + id + "_is1", true))

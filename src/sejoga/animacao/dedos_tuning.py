@@ -27,7 +27,7 @@ FRACOES_SEGMENTOS_POLEGAR = (0.55, 0.45)
 #: Ângulo de projeto (graus) da sobreposição que tampa a cunha externa da junta:
 #: ``e = (espessura/2) * tan(θ/2)``. Maior tampa dobras fortes, mas deixa uma
 #: aba maior no lado interno. A_CONFIRMAR na GPU (C16).
-ANGULO_PROJETO_SOBREPOSICAO_GRAUS = 55.0
+ANGULO_PROJETO_SOBREPOSICAO_GRAUS = 90.0
 #: Fração máxima do segmento vizinho que a sobreposição pode invadir.
 FRACAO_MAXIMA_SOBREPOSICAO = 0.9
 #: Quanto (fração do comprimento) para dentro da raiz se mede a seção que fixa o
@@ -59,6 +59,12 @@ FLEXAO_GESTO_REFERENCIA_GRAUS = 60.0
 #: baixos: a mão relaxada só curva levemente; valores altos viravam "garrinha".
 CURL_REPOUSO_DEDO_GRAUS = (4.0, 6.0, 4.0)
 CURL_REPOUSO_POLEGAR_GRAUS = (3.0, 4.0)
+#: Fechamento completo na luva segmentada, da base à ponta.
+CURL_PUNHO_DEDO_GRAUS = (75.0, 90.0, 58.0)
+CURL_PUNHO_POLEGAR_GRAUS = (38.0, 56.0)
+#: Leque no plano da palma, do polegar ao mindinho.
+ABERTURA_MAXIMA_GRAUS = (23.0, 12.0, 4.0, 5.0, 16.0)
+OPOSICAO_POLEGAR_GRAUS = 22.0
 #: Multiplicador do repouso por dedo (polegar, indicador ... mindinho): a mão
 #: relaxada fecha um pouco mais para o lado do mindinho.
 VARIACAO_REPOUSO_POR_DEDO = (0.8, 0.9, 1.0, 1.1, 1.2)

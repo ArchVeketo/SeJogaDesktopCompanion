@@ -73,7 +73,6 @@ def convert(gltf_path: Path, out_path: Path) -> dict:  # noqa: PLR0915  # TODO c
             file=sys.stderr,
         )
     buffer.pop("uri", None)
-    buffer["byteLength"] = len(buf_bytes)
 
     # Move cada imagem embutida para o BIN chunk, como bufferView.
     buffer_views = doc.setdefault("bufferViews", [])
@@ -95,7 +94,9 @@ def convert(gltf_path: Path, out_path: Path) -> dict:  # noqa: PLR0915  # TODO c
         )
         image.pop("uri", None)
         image["bufferView"] = len(buffer_views) - 1
-        image["mimeType"] = image.get("mimeType", "image/png")
+        image["mimeType"] = uri.removeprefix("data:").split(";", 1)[0]
+
+    buffer["byteLength"] = len(buf_bytes)
 
     # BIN chunk é sempre o último e deve estar alinhado em 4 bytes.
     while len(buf_bytes) % BV_ALIGN:

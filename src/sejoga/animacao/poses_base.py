@@ -137,45 +137,55 @@ def pose_drag(
     rig.set_rotation("shoulder2", x=-shoulder_comp)
 
 
+def _sono_sentado(rig: Rig, breath: float) -> None:
+    # Sentado no chão com as pernas abertas ("pernas abertas", torso relaxado)
+    rig.set_rotation("body", x=6.0 + breath * 0.6)
+    rig.set_rotation("cintura", x=2.0)
+    rig.set_rotation("abdomen", x=2.0)
+    rig.set_rotation("peitoral", x=2.0)
+    rig.set_rotation("head", x=14.0 + breath * 0.8, y=3.0)
+    # Pernas splayadas para fora (abertas no chão)
+    rig.set_rotation("coxa-direita", y=22.0)
+    rig.set_rotation("coxa-esquerda", y=-22.0)
+    rig.set_rotation("right-arm", x=10.0, y=-6.0, z=20.0)
+    rig.set_rotation("left-arm", x=10.0, y=6.0, z=-20.0)
+    rig.set_rotation("ant-arm", z=20.0)
+    rig.set_rotation("ant-arm2", z=-20.0)
+    rig.set_rotation("fingers", z=6.0 + breath * 1.5)
+    rig.set_rotation("fingers2", z=-6.0 - breath * 1.5)
+
+
+def _sono_deitado(rig: Rig, breath: float) -> None:
+    # Deitado no chão de lado: corpo unificado e relaxado
+    rig.set_rotation("body", x=2.0 + breath * 0.5)
+    rig.set_rotation("cintura", x=1.0)
+    rig.set_rotation("abdomen", x=1.0)
+    rig.set_rotation("peitoral", x=1.0)
+    rig.set_rotation("head", x=6.0 + breath * 0.6, y=-5.0)
+    # Pernas encolhidas suavemente em repouso
+    rig.set_rotation("coxa-direita", y=10.0)
+    rig.set_rotation("coxa-esquerda", y=8.0)
+    # Braços aconchegados na frente do peito/rosto como travesseiro
+    rig.set_rotation("right-arm", x=-20.0, y=-10.0, z=50.0)
+    rig.set_rotation("left-arm", x=-25.0, y=10.0, z=-45.0)
+    rig.set_rotation("ant-arm", z=45.0)
+    rig.set_rotation("ant-arm2", z=-45.0)
+    rig.set_rotation("hand", z=8.0)
+    rig.set_rotation("hand2", z=-8.0)
+    rig.set_rotation("fingers", z=8.0)
+    rig.set_rotation("fingers2", z=-8.0)
+
+
 def pose_sleep(rig: Rig, t: float, modo: str = "em_pe") -> None:
     """Aplica a pose de sono com respiração lenta nos 3 modos."""
     breath = sin(t * 0.75)
 
     if modo == "sentado":
-        rig.set_rotation("body", x=8.0 + breath * 0.6, z=-3.0)
-        rig.set_rotation("cintura", x=4.0)
-        rig.set_rotation("abdomen", x=6.0)
-        rig.set_rotation("peitoral", x=8.0)
-        rig.set_rotation("head", x=-18.0 + breath * 0.8, y=4.0, z=-5.0)
-        rig.set_rotation("coxa-direita", x=68.0)
-        rig.set_rotation("coxa-esquerda", x=68.0)
-        rig.set_rotation("canela-direita", x=-72.0)
-        rig.set_rotation("canela-esquerda", x=-72.0)
-        rig.set_rotation("joelho-direito", x=-36.0)
-        rig.set_rotation("joelho-esquerdo", x=-36.0)
-        rig.set_rotation("right-arm", x=-12.0, y=6.0, z=25.0)
-        rig.set_rotation("left-arm", x=-12.0, y=-6.0, z=-25.0)
-        rig.set_rotation("ant-arm", x=-8.0, z=42.0)
-        rig.set_rotation("ant-arm2", x=-8.0, z=-42.0)
-        rig.set_rotation("fingers", z=8.0 + breath * 1.5)
-        rig.set_rotation("fingers2", z=-8.0 - breath * 1.5)
+        _sono_sentado(rig, breath)
         return
 
     if modo == "deitado":
-        rig.set_rotation("body", x=breath * 0.5, z=-82.0)
-        rig.set_rotation("head", x=-6.0 + breath * 0.6, z=-10.0)
-        rig.set_rotation("coxa-direita", x=24.0, z=8.0)
-        rig.set_rotation("coxa-esquerda", x=16.0, z=-6.0)
-        rig.set_rotation("canela-direita", x=-32.0)
-        rig.set_rotation("canela-esquerda", x=-24.0)
-        rig.set_rotation("joelho-direito", x=-16.0)
-        rig.set_rotation("joelho-esquerdo", x=-12.0)
-        rig.set_rotation("right-arm", x=-10.0, z=45.0)
-        rig.set_rotation("left-arm", x=-16.0, z=-50.0)
-        rig.set_rotation("ant-arm", z=36.0)
-        rig.set_rotation("ant-arm2", z=-36.0)
-        rig.set_rotation("fingers", z=8.0)
-        rig.set_rotation("fingers2", z=-8.0)
+        _sono_deitado(rig, breath)
         return
 
     rig.set_rotation("body", x=1.5 + breath * 0.6, z=-2.0)
@@ -667,6 +677,8 @@ def _gesto_idle_mao(
 
 def _curl_por_estado(t: float, state: str, side: int, curl: float) -> float:
     """Substitui o curl dos dedos nos estados com dedos próprios."""
+    if state in ("open_hands", "close_fists"):
+        return 0.0
     if state == "sleep":
         return 8 + sin(t * 0.6) * 0.7
     if state == "fall":
@@ -717,7 +729,7 @@ def _secundario_lado(
         if personality in (IdlePersonality.CURIOUS, IdlePersonality.PLAYFUL)
         else 4.5
     )
-    curl = 12 + sin(t * 0.62 - side * 0.3) * amplitude + wrist_follow * 0.3
+    curl = 3 + sin(t * 0.62 - side * 0.3) * amplitude + wrist_follow * 0.3
     curl, idle_wrist = _gesto_idle_mao(t, state, personality, side, curl)
     curl = _curl_por_estado(t, state, side, curl)
     rig.set_rotation(
@@ -738,37 +750,7 @@ def pose_secondary(
     _secundario_coluna_e_fones(rig, t, state)
 
 
-def _secundario_coluna_e_fones(rig: Rig, t: float, state: str) -> None:
-    """Aplica micro-ruído orgânico e follow-through nos nós da coluna, fones e antenas."""
-    escala_ruido = 1.0 if state in ("idle", "hover") else 0.45
-    micro = delta_micro_ruido_idle(t, escala=escala_ruido)
-    cabeca = rig.current.get("head")
-    corpo = rig.current.get("body")
-    head_x = degrees(cabeca.x) if cabeca else 0.0
-    head_y = degrees(cabeca.y) if cabeca else 0.0
-    head_z = degrees(cabeca.z) if cabeca else 0.0
-    body_x = degrees(corpo.x) if corpo else 0.0
-    body_y = degrees(corpo.y) if corpo else 0.0
-    body_z = degrees(corpo.z) if corpo else 0.0
-
-    # Distribui uma fração suave da inclinação/torção nos 3 elos da coluna
-    for nome, fracao in (
-        ("cintura", 0.12),
-        ("abdomen", 0.18),
-        ("peitoral", 0.25),
-    ):
-        if nome in rig.current:
-            r_micro = micro.get(nome)
-            mx = degrees(r_micro.x) if r_micro else 0.0
-            my = degrees(r_micro.y) if r_micro else 0.0
-            mz = degrees(r_micro.z) if r_micro else 0.0
-            rig.set_rotation(
-                nome,
-                x=body_x * fracao + mx,
-                y=body_y * fracao + my,
-                z=body_z * fracao + mz,
-            )
-
+def _secundario_fones(rig, t, micro, head_x, head_y, head_z):
     # Fones e antenas reagem com atraso/balanço secundário ao movimento da cabeça
     if "fones" in rig.current:
         r_fones = micro.get("fones")
@@ -803,6 +785,40 @@ def _secundario_coluna_e_fones(rig: Rig, t: float, state: str) -> None:
                 y=-head_y * 0.15 + ay,
                 z=-head_z * 0.28 + az,
             )
+
+
+def _secundario_coluna_e_fones(rig: Rig, t: float, state: str) -> None:
+    """Aplica micro-ruído orgânico e follow-through nos nós da coluna, fones e antenas."""
+    escala_ruido = 1.0 if state in ("idle", "hover") else 0.45
+    micro = delta_micro_ruido_idle(t, escala=escala_ruido)
+    cabeca = rig.current.get("head")
+    corpo = rig.current.get("body")
+    head_x = degrees(cabeca.x) if cabeca else 0.0
+    head_y = degrees(cabeca.y) if cabeca else 0.0
+    head_z = degrees(cabeca.z) if cabeca else 0.0
+    body_x = degrees(corpo.x) if corpo else 0.0
+    body_y = degrees(corpo.y) if corpo else 0.0
+    body_z = degrees(corpo.z) if corpo else 0.0
+
+    # Distribui uma fração suave da inclinação/torção nos 3 elos da coluna
+    for nome, fracao in (
+        ("cintura", 0.12),
+        ("abdomen", 0.18),
+        ("peitoral", 0.25),
+    ):
+        if nome in rig.current:
+            r_micro = micro.get(nome)
+            mx = degrees(r_micro.x) if r_micro else 0.0
+            my = degrees(r_micro.y) if r_micro else 0.0
+            mz = degrees(r_micro.z) if r_micro else 0.0
+            rig.set_rotation(
+                nome,
+                x=body_x * fracao + mx,
+                y=body_y * fracao + my,
+                z=body_z * fracao + mz,
+            )
+
+    _secundario_fones(rig, t, micro, head_x, head_y, head_z)
 
 
 def pose_throw_release(rig: Rig, t: float, grip: float = 0.5) -> None:

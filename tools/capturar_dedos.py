@@ -18,8 +18,8 @@ import tempfile
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-#: Pose -> flexão pedida (graus) para os cinco dedos, via tabela de gestos.
-POSES = {"abertos": 0, "meio": 38, "fechados": 80}
+#: Ações do controlador usadas também no menu da bandeja.
+POSES = {"relaxados": None, "abertos": "open_hands", "fechados": "close_fists"}
 VISTAS = {"frente": 0.0, "lado": 90.0}
 QUADROS_POR_POSE = 60
 #: Lado (px) do recorte em torno da mão e ampliação inteira do recorte.
@@ -27,49 +27,53 @@ RECORTE_PX = 150
 AMPLIACAO = 4
 TIMEOUT_S = 300
 _FILHO = """
-import sys, tempfile
+import sys, time
 from pathlib import Path
 raiz, vista, contorno, pasta = sys.argv[1:5]
 sys.path.insert(0, raiz + "/src")
 sys.path.insert(0, raiz + "/tools")
 import capturar_dedos as c
-from sejoga import config
-perfil = Path(tempfile.mkdtemp(prefix="sejoga-dedos-"))
-config.default_config_path = lambda: perfil / "config.toml"
+from sejoga.configuracao import Settings
 from sejoga.render.janela import OverlayApp
-from sejoga.animacao import finger_gestures as fg
-from panda3d.core import Filename, PNMImage, Point2, Point3
-s = config.Settings(); s.physics.enabled = False; s.music.enabled = False
+from panda3d.core import Point2
+from PIL import Image
+
+s = Settings()
+s.physics.enabled = s.music.enabled = False
 s.window.outline_enabled = contorno == "com"
-app = OverlayApp(s); app.hotkey_manager.close(); app.taskMgr.remove("mouse-poll")
+app = OverlayApp(s)
+app.hotkey_manager.close()
+app.taskMgr.remove("mouse-poll")
 r = app.renderer
 r.set_model_rotation(y=c.VISTAS[vista])
-r.set_outline_settings(s.window)
-atual = ["abertos"]
-for nome, graus in c.POSES.items():
-    fg.GESTURES["t_" + nome] = (graus,) * 5
-original = r.finger_gestures.update
-r.finger_gestures.update = lambda dt, gesto: original(dt, "t_" + atual[0])
-for nome in c.POSES:
-    atual[0] = nome
-    for _ in range(c.QUADROS_POR_POSE):
-        app.taskMgr.step()
-    imagem = PNMImage()
-    app.win.getScreenshot().store(imagem)
-    mao = r._rig_nodes["fingers"].getPos(app.cam)
-    tela = Point2()
-    app.cam.node().getLens().project(Point3(mao), tela)
-    cx = (tela.x + 1) / 2 * imagem.getXSize()
-    cy = (1 - tela.y) / 2 * imagem.getYSize()
-    lado = c.RECORTE_PX
-    x0 = max(0, min(imagem.getXSize() - lado, int(cx - lado / 2)))
-    y0 = max(0, min(imagem.getYSize() - lado, int(cy - lado / 2)))
-    saida = PNMImage(lado * c.AMPLIACAO, lado * c.AMPLIACAO, 4)
-    for y in range(lado * c.AMPLIACAO):
-        for x in range(lado * c.AMPLIACAO):
-            sx, sy = x0 + x // c.AMPLIACAO, y0 + y // c.AMPLIACAO
-            saida.setXelA(x, y, imagem.getRed(sx, sy), imagem.getGreen(sx, sy), imagem.getBlue(sx, sy), 1.0)
-    saida.write(Filename.fromOsSpecific(str(Path(pasta) / f"dedos-{nome}-{vista}-contorno-{contorno}.png")))
+try:
+    for nome, acao in c.POSES.items():
+        if acao:
+            app.animation_controller.interact(acao)
+        for _ in range(c.QUADROS_POR_POSE):
+            app.taskMgr.step()
+            time.sleep(1 / 90)
+        textura = app.win.getScreenshot()
+        largura, altura = textura.getXSize(), textura.getYSize()
+        imagem = Image.frombytes("RGB", (largura, altura), bytes(textura.getRamImageAs("RGB")))
+        imagem = imagem.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+        tela = Point2()
+        assert app.cam.node().getLens().project(r._rig_nodes["fingers"].getPos(app.cam), tela)
+        cx, cy = (tela.x + 1) * largura / 2, (1 - tela.y) * altura / 2
+        lado = c.RECORTE_PX
+        x0 = max(0, min(largura - lado, int(cx - lado / 2)))
+        y0 = max(0, min(altura - lado, int(cy - lado / 2)))
+        recorte = imagem.crop((x0, y0, x0 + lado, y0 + lado))
+        recorte.resize((lado * c.AMPLIACAO,) * 2, Image.Resampling.NEAREST).save(
+            Path(pasta) / f"dedos-{nome}-{vista}-contorno-{contorno}.png"
+        )
+finally:
+    app.debug_tools.close()
+    app.music_listener.stop()
+    app.tray_icon.hide()
+    app.desktop.close()
+    app.destroy()
+
 """
 
 
@@ -79,11 +83,8 @@ def main() -> int:
     parser.add_argument("--saida", type=Path, required=True)
     args = parser.parse_args()
     args.saida.mkdir(parents=True, exist_ok=True)
-    ambiente = dict(os.environ)
-    ambiente.setdefault(
-        "SEJOGA_CONFIG_PATH",
-        str(Path(tempfile.gettempdir()) / "sejoga-cap" / "config.toml"),
-    )
+    perfil = Path(tempfile.mkdtemp(prefix="sejoga-dedos-")) / "config.toml"
+    ambiente = dict(os.environ, SEJOGA_CONFIG_PATH=str(perfil))
     falhas = 0
 
     for vista in VISTAS:
