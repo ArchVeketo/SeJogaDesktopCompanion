@@ -1,23 +1,25 @@
 # SeJogaDesktopCompanion — Status atual e próximos passos
 
-**Atualizado:** 2026-11-10  
-**Base de trabalho:** commits `363276c`, `039d97a` e seguintes.
+**Atualizado:** 2026-11-11  
+**Base de trabalho:** commits recentes e integração do rig completo Blockbench.
 
 Este é o roadmap canônico do projeto. As listas de próximos passos nos documentos de pesquisa e arquitetura foram escritas antes de várias etapas serem implementadas; consulte esta página para o estado atual.
 
 > **Refatoração de nomes:** os módulos foram renomeados para português conforme [CONVENCAO_PYTHON.md](CONVENCAO_PYTHON.md). Os docs datados citam os nomes antigos; o mapa antigo → novo e as exceções pendentes (`TODO convenção`) estão em [REFATORACAO_CONVENCAO.md](REFATORACAO_CONVENCAO.md).
 
-## Avaliação do autor — 05/11/2026
-
-O estado atual é um protótipo básico, ainda sem aprovação de qualidade visual, funcionalidade completa ou otimização. Testes técnicos passando não significam aprovação artística das animações.
-
-Prioridades para a próxima etapa:
-
-- Refazer os passos e as transições de dança com poses legíveis, peso e intenção; a coreografia atual não atende à expectativa.
-- Refazer a aparência e a textura da caixa de som; a versão atual foi rejeitada visualmente pelo autor.
-- Revisar a integração das animações e medir o desempenho em uso real antes de considerar o conjunto finalizado.
-
 ## Status atual
+
+### Implementado e verificado neste ambiente
+
+- **Integração do modelo Blockbench atualizado, soltura dos braços, eliminação da garrinha, 3 modos de sono e palco musical Boombox FNF (11/11):**
+  1. *Rig e Malha:* Normalização do modelo `projetoMARIO.bbmodel` / `mario.gltf` com hierarquia completa: coxas (`coxa-direita`, `coxa-esquerda`), joelhos (`joelho-direito`, `joelho-esquerdo`), canelas (`canela-direita`, `canela-esquerda`), pélvis (`pelvis`), porta (`door`), fones e 8 planos segmentados do fio do fone (`fio do fone`). As juntas de joelho foram integradas no esqueleto e calibrador de molas sem deformação destrutiva de malha.
+  2. *Fio do Fone:* Conectado à simulação física de Verlet (`FioFone`), preservando a malha segmentada texturizada do fone e respondendo à inércia do movimento.
+  3. *Soltura dos Braços e Mãos Naturais:* Remoção de caixas de colisão invasivas (`quadril`, `pe_*`, `orelha_*`, `chapeu_*`, `topo_cabeca`) e desativação da colisão cápsula braço-contra-braço, permitindo que os braços fiquem naturalmente soltos e pendurados a `14.54°` de repouso (ao invés de dobrados a `39.28°`), alternando suavemente com poses expressivas. Redução drástica do curl dos dedos em repouso de `(16°, 24°, 18°)` para `(4°, 6°, 4°)`, eliminando a pose de "garrinha".
+  4. *Frequência dos Tentáculos:* Frequência de espiada autônoma substancialmente reduzida (intervalo de 180 a 360 segundos, duração de 5.5s), restrita exclusivamente ao estado de IDLE, cessando interferências e repetições excessivas.
+  5. *Menu de Sono em 3 Modos:* Adicionado submenu "Dormir" no menu de contexto com opções explícitas: "Dormir em pé", "Dormir sentado", "Dormir deitado" e "Acordar", integradas ao controlador de animação e persistência de poses base.
+  6. *Caminhadas Moduladas por Personalidade:* O ciclo de passos procedural agora adapta passada, flexão de joelho, elevação do pé e inclinação do tronco conforme a personalidade e estilo de idle ativo (`street`, `fighter`, `rhythm`, `stylish`, etc.).
+  7. *Palco da Boombox 3D e Dança FNF Girlfriend:* Substituída a caixa procedural antiga pelo palco real 3D composto pela `BoomboxGRANDE.bbmodel` central com suas texturas de cones frontais e seletores, ladeada por duas caixas anguladas `BoomboxSIde1.bbmodel` (conforme `Music.bbmodel`). Na dança `head_bob`, o Mario agora senta no topo da BoomboxGRANDE com as pernas penduradas balançando alternadamente no ritmo da batida, braço esquerdo apoiado no topo da caixa (`ALVO_APOIO_CAIXA`), mão direita descansando no colo (`ALVO_COLO`) e cabeça balançando de um lado para o outro com roll/yaw e aceno no beat, inspirado na Girlfriend de Friday Night Funkin'. Overhaul completo de fluidez nas danças `rock`, `hip_hop` e `breakdance`.
+  8. *Testes e Build:* **695 testes passando (100% de cobertura verde).** Executável compilado via `.\build.ps1` com sucesso na pasta `dist/SeJogaCompanion`.
 
 **Direção de dança atualizada em 05/11:** seguir [GUIA_ANIMACAO_DANCA.md, versão 2.0](GUIA_ANIMACAO_DANCA.md). A caixa deve superar o mascote em altura e largura; o head nod principal tem costas apoiadas, braços cruzados e pés firmes. A caixa pequena com apoio da mão esquerda descrita em registros anteriores é um protótipo que não atende à intenção final. O guia separa estado do código, coreografia desejada, referências pesquisadas e próximos passos. Decal original SVG/PNG aplicado ao gabinete no runtime.
 

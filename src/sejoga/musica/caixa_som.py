@@ -9,7 +9,7 @@ nas outras danças (rock, hip hop, breakdance), as caixas emolduram o fundo do p
 from __future__ import annotations
 
 import json
-from math import cos, exp, sin, tau
+from math import cos, exp, sin
 from pathlib import Path
 
 from panda3d.core import (
