@@ -11,7 +11,7 @@ from math import exp, sin, tau
 
 from sejoga.animacao import gestos_tuning as tuning_gestos
 from sejoga.animacao.braco_hpr import braco_hpr_graus
-from sejoga.animacao.clipes_ocioso import sample_track
+from sejoga.animacao.interpolacao import amostrar_pista, suavizar_quintico
 from sejoga.nucleo.esqueleto import Rig
 
 Trio = tuple[float, float, float]
@@ -24,14 +24,7 @@ def _faixa(chaves: tuple[tuple[float, float], ...], instante: float) -> float:
     """Valor da faixa de chaves (easing quíntico) no ``instante``."""
     trio = tuple((quando, (valor, 0.0, 0.0)) for quando, valor in chaves)
 
-    return sample_track(trio, instante)[0]
-
-
-def _suave(fracao: float) -> float:
-    """Degrau quíntico (0..1) com velocidade e aceleração nulas nas pontas."""
-    fracao = max(0.0, min(1.0, fracao))
-
-    return fracao**3 * (fracao * (fracao * 6.0 - 15.0) + 10.0)
+    return amostrar_pista(trio, instante)[0]
 
 
 def _entre(repouso: Trio, alvo: Trio, fator: float) -> Trio:
@@ -51,8 +44,8 @@ def _balanco(instante: float) -> float:
     if decorrido <= 0.0 or decorrido >= duracao:
         return 0.0
 
-    entrada = _suave(decorrido / tuning_gestos.ACENO_SUAVIZACAO_S)
-    saida = _suave((duracao - decorrido) / tuning_gestos.ACENO_SUAVIZACAO_S)
+    entrada = suavizar_quintico(decorrido / tuning_gestos.ACENO_SUAVIZACAO_S)
+    saida = suavizar_quintico((duracao - decorrido) / tuning_gestos.ACENO_SUAVIZACAO_S)
     oscilacao = sin(tau * tuning_gestos.ACENO_FREQUENCIA_HZ * decorrido)
 
     return (

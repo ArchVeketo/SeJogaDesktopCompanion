@@ -5,10 +5,13 @@ starts and ends at zero; the relaxed base pose remains underneath the phrase.
 """
 
 from dataclasses import dataclass
-from itertools import pairwise
 from math import cos, sin, tau
 
+from sejoga.animacao.interpolacao import amostrar_pista
 from sejoga.animacao.pose_repouso import REPOUSO
+
+# Mantém o import usado por ferramentas de inspeção e testes existentes.
+sample_track = amostrar_pista
 
 
 @dataclass(frozen=True)
@@ -17,18 +20,6 @@ class IdleClip:
 
     duration: float
     tracks: dict[str, tuple[tuple[float, tuple[float, float, float]], ...]]
-
-
-def sample_track(keys, time):
-    """Quintic easing keeps velocity and acceleration continuous at holds."""
-    if time <= keys[0][0]:
-        return keys[0][1]
-    for (start, a), (end, b) in pairwise(keys):
-        if time <= end:
-            u = (time - start) / (end - start)
-            blend = u * u * u * (u * (u * 6 - 15) + 10)
-            return tuple(x + (y - x) * blend for x, y in zip(a, b, strict=True))
-    return keys[-1][1]
 
 
 def phrase(*keys):
@@ -1108,7 +1099,7 @@ def sample_idle(
         base = pose.get(group, (0, 0, 0))
         pose[group] = tuple(a + b for a, b in zip(base, extra, strict=True))
     for group, keys in clip.tracks.items():
-        delta = sample_track(keys, local)
+        delta = amostrar_pista(keys, local)
         base = pose.get(group, (0, 0, 0))
         pose[group] = tuple(a + b for a, b in zip(base, delta, strict=True))
     # Respiração viva por cima da frase autoral: peito sobe/desce sempre, mesmo

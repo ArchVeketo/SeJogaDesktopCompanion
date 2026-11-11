@@ -17,7 +17,8 @@ from sejoga.animacao import movimento_corpo_tuning as tune
 from sejoga.animacao import sono_tuning as sono
 from sejoga.animacao.braco_hpr import braco_hpr_graus
 from sejoga.animacao.clipes_animacao import amostrar_clipe, ciclo_da_fase
-from sejoga.animacao.clipes_ocioso import camada_respiracao, sample_idle, sample_track
+from sejoga.animacao.clipes_ocioso import camada_respiracao, sample_idle
+from sejoga.animacao.interpolacao import amostrar_pista
 from sejoga.animacao.movimento_corpo import BodyPose
 from sejoga.animacao.pose_repouso import REPOUSO
 from sejoga.animacao.ruido_procedural import delta_micro_ruido_idle
@@ -178,7 +179,7 @@ def delta_soltura(tempo: float, aperto: float) -> dict[str, Rotation3]:
         (loc.SOLTURA_DURACAO_S, (0.0, 0.0, 0.0)),
     )
 
-    return _delta_dedos(sample_track(chaves, max(0.0, tempo))[2])
+    return _delta_dedos(amostrar_pista(chaves, max(0.0, tempo))[2])
 
 
 def somar_deltas(
@@ -487,7 +488,7 @@ def _cochilo(t: float) -> float:
         (sono.SONO_COCHILO_PERIODO_S, (0.0, 0.0, 0.0)),
     )
 
-    return sample_track(chaves, t % sono.SONO_COCHILO_PERIODO_S)[0]
+    return amostrar_pista(chaves, t % sono.SONO_COCHILO_PERIODO_S)[0]
 
 
 def delta_fisica(motion: BodyPose) -> dict[str, Rotation3]:

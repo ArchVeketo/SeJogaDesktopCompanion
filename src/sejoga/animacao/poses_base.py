@@ -12,7 +12,7 @@ from math import degrees, exp, pi, sin, tanh
 
 from sejoga.animacao.braco_hpr import braco_hpr_graus
 from sejoga.animacao.clipes_animacao import amostrar_clipe
-from sejoga.animacao.clipes_ocioso import sample_idle, sample_track
+from sejoga.animacao.clipes_ocioso import sample_idle
 from sejoga.animacao.gestos_reacao import (
     aplicar_aceno,
     aplicar_alongar,
@@ -25,6 +25,7 @@ from sejoga.animacao.gestos_tuning import (
     SURPRESA_RECUO,
     WAKE_BRACO_ELEVACAO,
 )
+from sejoga.animacao.interpolacao import amostrar_pista
 from sejoga.animacao.pose_repouso import pose_repouso
 from sejoga.animacao.respiracao_tuning import parametros_de
 from sejoga.animacao.ruido_procedural import delta_micro_ruido_idle
@@ -357,7 +358,7 @@ def _interacao_double_click(
     """Recua e estica o braço direito no clique duplo."""
 
     def track(*keys):
-        return sample_track(tuple((at, (value, 0, 0)) for at, value in keys), t)[0]
+        return amostrar_pista(tuple((at, (value, 0, 0)) for at, value in keys), t)[0]
 
     recoil = track((0, 0), (0.18, 5), (0.42, -7), (0.75, 2), (1.4, 0))
     reach = track((0, 0), (0.18, -4), (0.44, 1), (0.65, 1), (1.4, 0))

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from math import tau
 
 from sejoga.animacao import locomocao_tuning as loc
-from sejoga.animacao.clipes_ocioso import sample_track
+from sejoga.animacao.interpolacao import Chaves, amostrar_pista
 from sejoga.nucleo.esqueleto import Rotation3
 
 #: Separador de rótulo numa chave de track: ``"head:quique"`` soma em ``head``.
@@ -28,8 +28,6 @@ _SEPARADOR_ROTULO = ":"
 _MEIO = 0.5
 _QUARTO = 0.25
 _TRES_QUARTOS = 0.75
-
-Chaves = tuple[tuple[float, tuple[float, float, float]], ...]
 
 
 @dataclass(frozen=True)
@@ -149,7 +147,7 @@ def amostrar_clipe(
 
     for chave, keys in clipe.tracks.items():
         grupo = chave.split(_SEPARADOR_ROTULO)[0]
-        x, y, z = sample_track(keys, local)
+        x, y, z = amostrar_pista(keys, local)
         if grupo in ("right-arm", "left-arm"):
             fator_braco = mods.get("braco", 1.0)
             y *= fator_braco

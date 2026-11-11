@@ -248,8 +248,7 @@ class AnimationController:
             self.orientacao_manual = None
             return
         self.orientacao_manual = OrientacaoCorpo(orientacao)
-        if self.orientacao_manual != OrientacaoCorpo.COSTAS:
-            self.pacote_olhar_tela.interromper()
+        self.pacote_olhar_tela.interromper()
 
     def voltar_ao_plano(self) -> None:
         """Retorna imediatamente ao plano frontal (`perto` e `frente`)."""

@@ -15,11 +15,12 @@ FRONTEIRA: Python puro (sem Panda3D, Qt ou Win32).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import random
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from math import pi, radians, sin
-import random
 
+from sejoga.animacao.interpolacao import suavizar_quintico
 from sejoga.animacao.mola_critica import avancar_mola_critica
 from sejoga.nucleo.esqueleto import Rotation3
 
@@ -30,6 +31,9 @@ class NivelProfundidade(StrEnum):
     PERTO = "perto"
     MEDIO = "medio"
     LONGE = "longe"
+
+
+_ORDEM_PROFUNDIDADE = tuple(NivelProfundidade)
 
 
 class OrientacaoCorpo(StrEnum):
@@ -84,6 +88,7 @@ class EstadoProfundidade:
     """Controla a escala e subida visual dos 3 níveis de profundidade (§8.5.1)."""
 
     def __init__(self) -> None:
+        """Inicia no nível mais próximo da tela."""
         self.nivel_alvo: NivelProfundidade = NivelProfundidade.PERTO
         self.escala_atual: float = 1.0
         self._vel_escala: float = 0.0
@@ -96,24 +101,14 @@ class EstadoProfundidade:
 
     def avancar_fundo(self) -> NivelProfundidade:
         """Avança um nível para dentro da tela (`perto -> medio -> longe`)."""
-        ordem = (
-            NivelProfundidade.PERTO,
-            NivelProfundidade.MEDIO,
-            NivelProfundidade.LONGE,
-        )
-        idx = min(len(ordem) - 1, ordem.index(self.nivel_alvo) + 1)
-        self.nivel_alvo = ordem[idx]
+        idx = min(len(_ORDEM_PROFUNDIDADE) - 1, _ORDEM_PROFUNDIDADE.index(self.nivel_alvo) + 1)
+        self.nivel_alvo = _ORDEM_PROFUNDIDADE[idx]
         return self.nivel_alvo
 
     def avancar_frente(self) -> NivelProfundidade:
         """Volta um nível para a frente da tela (`longe -> medio -> perto`)."""
-        ordem = (
-            NivelProfundidade.PERTO,
-            NivelProfundidade.MEDIO,
-            NivelProfundidade.LONGE,
-        )
-        idx = max(0, ordem.index(self.nivel_alvo) - 1)
-        self.nivel_alvo = ordem[idx]
+        idx = max(0, _ORDEM_PROFUNDIDADE.index(self.nivel_alvo) - 1)
+        self.nivel_alvo = _ORDEM_PROFUNDIDADE[idx]
         return self.nivel_alvo
 
     def atualizar(self, dt: float, *, arrastando: bool = False) -> tuple[float, float]:
@@ -147,11 +142,6 @@ class AmostraOlharTela:
     delta_pose: dict[str, Rotation3]
 
 
-def _suavizar_quintico(u: float) -> float:
-    u = max(0.0, min(1.0, u))
-    return u * u * u * (u * (u * 6.0 - 15.0) + 10.0)
-
-
 class PacoteOlharTela:
     """Executa o pacote principal 'Olhar a tela' (§7.2 e §8.3).
 
@@ -166,6 +156,7 @@ class PacoteOlharTela:
     """
 
     def __init__(self) -> None:
+        """Prepara a sequência para o primeiro disparo."""
         self.ativo: bool = False
         self.tempo: float = 0.0
         self.lado: float = 1.0
@@ -202,7 +193,7 @@ class PacoteOlharTela:
 
         if t < t1:
             # Fase 1: Olhar por cima do ombro (nível 2 de §7.2: torção na cadeia)
-            u = _suavizar_quintico(t / t1)
+            u = suavizar_quintico(t / t1)
             fase = "olhar_ombro"
             giro_corpo = 0.0
             em_passo = False
@@ -210,7 +201,7 @@ class PacoteOlharTela:
             curiosidade = 0.0
         elif t < t2:
             # Fase 2: Virar de costas com passos enquanto desfaz a torção local
-            u = _suavizar_quintico((t - t1) / DURACAO_FASE_VIRAR_COSTAS_S)
+            u = suavizar_quintico((t - t1) / DURACAO_FASE_VIRAR_COSTAS_S)
             fase = "virar_costas"
             giro_corpo = s * 180.0 * u
             em_passo = True
@@ -226,7 +217,7 @@ class PacoteOlharTela:
             curiosidade = sin(u * pi)
         else:
             # Fase 4: Voltar para a frente com passos
-            u = _suavizar_quintico((t - t3) / DURACAO_FASE_VOLTAR_FRENTE_S)
+            u = suavizar_quintico((t - t3) / DURACAO_FASE_VOLTAR_FRENTE_S)
             fase = "voltar_frente"
             giro_corpo = s * 180.0 * (1.0 - u)
             em_passo = True
@@ -290,10 +281,11 @@ class AgendadorPacotes:
         intervalo_base_s: float = 65.0,
         semente: int | None = None,
     ) -> None:
+        """Inicializa os relógios com cópias da configuração recebida."""
         self._rng = random.Random(semente)
         self.intervalo_base_s = max(5.0, intervalo_base_s)
         self.pacotes: dict[str, ItemPacote] = {
-            p.nome: p
+            p.nome: replace(p)
             for p in (
                 pacotes
                 if pacotes is not None
@@ -332,21 +324,9 @@ class AgendadorPacotes:
         ]
         if not disponiveis:
             return None
-        if len(disponiveis) > 1 and self.ultimo_escolhido is not None:
-            sem_repetir = [
-                p for p in disponiveis if p.nome != self.ultimo_escolhido
-            ]
-            if sem_repetir:
-                disponiveis = sem_repetir
-        total = sum(p.peso for p in disponiveis)
-        r = self._rng.uniform(0.0, total)
-        acumulado = 0.0
-        escolhido = disponiveis[-1]
-        for item in disponiveis:
-            acumulado += item.peso
-            if r <= acumulado:
-                escolhido = item
-                break
+        sem_repetir = [p for p in disponiveis if p.nome != self.ultimo_escolhido]
+        candidatos = sem_repetir or disponiveis
+        escolhido = self._rng.choices(candidatos, weights=[p.peso for p in candidatos])[0]
         escolhido.restante_s = escolhido.resfriamento_s
         self.ultimo_escolhido = escolhido.nome
         return escolhido.nome
