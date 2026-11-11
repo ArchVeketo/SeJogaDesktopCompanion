@@ -227,6 +227,7 @@ class OverlayApp(ShowBase):
         # flicker. O cooldown simétrico vive no estado abaixo.
         self._envelope_estado = EstadoEnvelope()
         self._fit_pose_cache = None
+        self._destino_caminhada_x: float | None = None
 
         self._init_pyside()
         self._create_panda_window()
@@ -730,6 +731,8 @@ class OverlayApp(ShowBase):
         dt = now - self._animation_last_tick
         self._animation_last_tick = now
         state = self.physics.get_state() if self.physics else None
+        self._atualizar_caminhada_horizontal(dt, state)
+        state = self.physics.get_state() if self.physics else None
         music = self.music_listener.snapshot if self.music_listener else None
         music_playing = bool(music and music.is_playing)
         music_intensity = music.audio_level if music else 0.0
@@ -767,6 +770,10 @@ class OverlayApp(ShowBase):
             self.animation_controller.interact(
                 "surprise", direction=alvo.direcao, strength=alvo.forca
             )
+        self.renderer.aplicar_profundidade_visual(
+            self.animation_controller.profundidade.escala_atual,
+            self.animation_controller.profundidade.subida_atual,
+        )
         self.renderer.apply_rig_pose(pose)
         self.renderer.lower_body.apply(
             self.animation_controller.leg_motion.pose,
@@ -781,8 +788,9 @@ class OverlayApp(ShowBase):
             # frente. O olhar (alvo.direcao) segue movendo cabeça/tronco/braço
             # via look_direction/look_vertical no controller, mas NÃO vira mais
             # o corpo. O giro só ocorre por angulo_giro_pedido explícito
-            # (ganchos de animação/locomoção futura), que aqui fica no default.
+            # (pacotes de animação, orientação manual ou caminhada).
             direcao_olhar=0.0,
+            angulo_giro_pedido=self.animation_controller.angulo_giro_pedido,
         )
         self.renderer.update_appendages(
             dt, self.animation_controller.appendage_remaining > 0
@@ -1082,6 +1090,29 @@ class OverlayApp(ShowBase):
             )
             self._personality_actions[value] = action
 
+        dormir_menu = self.tray_menu.addMenu("Dormir")
+        dormir_menu.addAction("Dormir em pé").triggered.connect(
+            lambda: self.animation_controller.colocar_para_dormir("em_pe")
+            if self.animation_controller
+            else None
+        )
+        dormir_menu.addAction("Dormir sentado").triggered.connect(
+            lambda: self.animation_controller.colocar_para_dormir("sentado")
+            if self.animation_controller
+            else None
+        )
+        dormir_menu.addAction("Dormir deitado").triggered.connect(
+            lambda: self.animation_controller.colocar_para_dormir("deitado")
+            if self.animation_controller
+            else None
+        )
+        dormir_menu.addSeparator()
+        dormir_menu.addAction("Acordar").triggered.connect(
+            lambda: self.animation_controller.acordar()
+            if self.animation_controller
+            else None
+        )
+
         for label, kind in (
             ("Acenar", "wave"),
             ("Soltar os ombros", "stretch"),
@@ -1095,6 +1126,59 @@ class OverlayApp(ShowBase):
                     kind
                 )
             )
+
+        self.tray_menu.addSeparator()
+        olhar_tela_action = self.tray_menu.addAction("Olhar a tela")
+        olhar_tela_action.triggered.connect(
+            lambda _checked=False: (
+                self.animation_controller.iniciar_pacote_olhar_tela()  # type: ignore[union-attr]
+            )
+        )
+
+        profundidade_menu = self.tray_menu.addMenu("Profundidade")
+        for nivel_valor, nivel_rotulo in (
+            ("perto", "Perto"),
+            ("medio", "Médio"),
+            ("longe", "Longe"),
+        ):
+            profundidade_menu.addAction(nivel_rotulo).triggered.connect(
+                lambda _checked=False, n=nivel_valor: (
+                    self.animation_controller.definir_profundidade(n)  # type: ignore[union-attr]
+                )
+            )
+        profundidade_menu.addSeparator()
+        profundidade_menu.addAction("Caminhar para o fundo").triggered.connect(
+            lambda _checked=False: (
+                self.animation_controller.caminhar_para_fundo()  # type: ignore[union-attr]
+            )
+        )
+        profundidade_menu.addAction("Caminhar para a frente").triggered.connect(
+            lambda _checked=False: (
+                self.animation_controller.caminhar_para_frente()  # type: ignore[union-attr]
+            )
+        )
+
+        orientacao_menu = self.tray_menu.addMenu("Orientação")
+        for ori_valor, ori_rotulo in (
+            ("frente", "Frente"),
+            ("perfil", "Perfil"),
+            ("costas", "Costas"),
+        ):
+            orientacao_menu.addAction(ori_rotulo).triggered.connect(
+                lambda _checked=False, o=ori_valor: (
+                    self.animation_controller.definir_orientacao(o)  # type: ignore[union-attr]
+                )
+            )
+
+        self.tray_menu.addAction("Caminhar até o mouse").triggered.connect(
+            lambda _checked=False: self.caminhar_ate_mouse()
+        )
+        self.tray_menu.addAction("Caminhar para destino aleatório").triggered.connect(
+            lambda _checked=False: self.caminhar_destino_aleatorio()
+        )
+        self.tray_menu.addAction("Voltar ao plano (frente)").triggered.connect(
+            lambda _checked=False: self._voltar_ao_plano_frontal()
+        )
         self.tray_menu.addSeparator()
         quit_action = self.tray_menu.addAction("Encerrar Mário")
         quit_action.triggered.connect(lambda _checked=False: self.quit_app())
@@ -1135,6 +1219,58 @@ class OverlayApp(ShowBase):
         if self.animation_controller:
             self.animation_controller.set_idle_personality(personality)
         self._persist_settings()
+
+    def _voltar_ao_plano_frontal(self) -> None:
+        """Interrompe caminhadas/pacotes e retorna a `perto` e `frente` (§8.5.2)."""
+        self._destino_caminhada_x = None
+        if self.animation_controller:
+            self.animation_controller.voltar_ao_plano()
+
+    def caminhar_ate_mouse(self) -> None:
+        """Define a posição X atual do cursor como destino de caminhada (§8.5.2)."""
+        if self._mouse_screen is not None:
+            self._destino_caminhada_x = float(self._mouse_screen[0])
+            return
+        try:
+            self._destino_caminhada_x = float(win32gui.GetCursorPos()[0])
+        except Exception:
+            pass
+
+    def caminhar_destino_aleatorio(self) -> None:
+        """Escolhe um destino horizontal aleatório na área útil do monitor atual."""
+        import random as _rnd
+
+        left, _top, right, _bottom = self._retangulo_monitor_preferido()
+        margem = max(80, self.settings.window.size // 2)
+        if right - left > 2 * margem:
+            self._destino_caminhada_x = float(
+                _rnd.uniform(left + margem, right - margem)
+            )
+
+    def _atualizar_caminhada_horizontal(self, dt: float, state: Any) -> None:
+        """Conduz a caminhada horizontal até `_destino_caminhada_x` quando ativa."""
+        if self.animation_controller and self.animation_controller.pedido_caminhada_autonoma:
+            pedido = self.animation_controller.pedido_caminhada_autonoma
+            self.animation_controller.pedido_caminhada_autonoma = None
+            if pedido == "aleatorio":
+                self.caminhar_destino_aleatorio()
+
+        if self._drag_active:
+            self._destino_caminhada_x = None
+            return
+        if self._destino_caminhada_x is None or not self.physics or state is None:
+            return
+        if not state.grounded:
+            return
+        dx = self._destino_caminhada_x - state.position[0]
+        if abs(dx) <= 18.0:
+            self._destino_caminhada_x = None
+            self.physics.body.velocity = (0.0, self.physics.body.velocity.y)
+            self.physics.state.velocity = (0.0, self.physics.body.velocity.y)
+            return
+        vel_x = 180.0 if dx > 0.0 else -180.0
+        self.physics.body.velocity = (vel_x, self.physics.body.velocity.y)
+        self.physics.state.velocity = (vel_x, self.physics.body.velocity.y)
 
     def _setup_timers(self) -> None:
         """Agenda a animação e bombeia os eventos do Qt junto ao loop Panda3D."""

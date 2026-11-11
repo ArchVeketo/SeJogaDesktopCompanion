@@ -25,7 +25,7 @@ from panda3d.core import (
 
 from sejoga.animacao.controlador_animacao import AnimationState
 from sejoga.nucleo.cinematica import BASE_ADICIONAL_GRAUS
-from sejoga.nucleo.esqueleto import Rig
+from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig
 from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.recursos import resolve_model
 from sejoga.render.dedos_malha import fatiar_dedos
@@ -116,6 +116,9 @@ class Panda3DRenderer:
         self._outline_breath = 0.0
         self._outline_enabled = True
         self._outline_respiracao = RespiracaoContorno()
+        self._user_scale = 1.0
+        self._escala_profundidade = 1.0
+        self._subida_profundidade = 0.0
 
         self._setup_scene()
         self._load_model()
@@ -247,21 +250,11 @@ class Panda3DRenderer:
 
         # panda3d-gltf 1.x expõe load_model diretamente no módulo.
         model_np = NodePath(gltf.load_model(str(model_path)))
+        # O asset rigado atual não tem mais os planos cruzados de exportação em
+        # volta das antenas; a lista fica para o overlay de depuração.
         self._hidden_export_planes = []
-        head = model_np.find("**/head")
-        for name in ("mesh11", "mesh12", "mesh13", "mesh14"):
-            plane = model_np.find(f"**/{name}")
-            if (
-                not plane.isEmpty()
-                and head.isAncestorOf(plane)
-                and plane.getParent().getName() == "plane"
-            ):
-                # Crossed export/decorative planes around the headphone antennae
-                # show dotted triangular scaffolding in the desktop projection.
-                plane.stash()
-                self._hidden_export_planes.append(name)
-        # O fio rígido do fone sai de cena (antes do copyTo do contorno); a corda
-        # simulada de MalhaFioFone toma o lugar. O asset não é alterado.
+        # O fio do fone do asset (``fio do fone``) continua visível: MalhaFioFone
+        # move seus planos pela física da corda. Só um fio rígido legado some.
         ocultar_peca_rigida_do_fio(model_np)
         # Dedos viram cadeia de pivôs ANTES do copyTo do contorno (herda a cadeia).
         fatiar_dedos(model_np)
@@ -355,22 +348,55 @@ class Panda3DRenderer:
             self.height - self._model_radius_px - 35,
         )
 
-    def set_visual_scale(self, scale: float) -> None:
+    def set_visual_scale(
+        self,
+        scale: float,
+        *,
+        escala_profundidade: float | None = None,
+        subida_fracao: float | None = None,
+    ) -> None:
         """Atualiza a escala sem deslocar o centro nem os pés do personagem."""
+        self._user_scale = scale
+        if escala_profundidade is not None:
+            self._escala_profundidade = escala_profundidade
+        if subida_fracao is not None:
+            self._subida_profundidade = subida_fracao
         if not self.model_np:
             return
-        model_scale = self._fit_scale * scale
+        model_scale = self._fit_scale * self._user_scale * self._escala_profundidade
         units_per_pixel_z = self._view_height / self.height
+        elevacao_z = (
+            self._subida_profundidade
+            * self._model_dimensions.z
+            * self._fit_scale
+            * self._user_scale
+        )
         self.model_np.setScale(model_scale)
         self.model_np.setPos(
             -self._model_center.x * model_scale,
             -self._model_center.y * model_scale,
             -self._model_min_z * model_scale
-            - self._model_radius_px * units_per_pixel_z,
+            - self._model_radius_px * units_per_pixel_z
+            + elevacao_z,
         )
         if self.outline_np:
             self.outline_np.setScale(self.model_np.getScale())
             self.outline_np.setPos(self.model_np.getPos())
+
+    def aplicar_profundidade_visual(
+        self, escala_profundidade: float, subida_fracao: float
+    ) -> None:
+        """Aplica a escala e subida da profundidade visual (Opção A de §8.5.1)."""
+        if (
+            abs(escala_profundidade - self._escala_profundidade) < 1e-4
+            and abs(subida_fracao - self._subida_profundidade) < 1e-4
+        ):
+            return
+        self.set_visual_scale(
+            self._user_scale,
+            escala_profundidade=escala_profundidade,
+            subida_fracao=subida_fracao,
+        )
 
     def _setup_outline(self) -> None:
         # Invariante: chamado dentro de _load_model() apos definir model_np.
@@ -541,16 +567,9 @@ void main() {{
         """Aplica a pose do rig nos nós do modelo."""
         if not self.model_np:
             return
-        for group in (
-            "head",
-            "body",
-            "right-arm",
-            "left-arm",
-            "legs",
-            "left-feet",
-            "right-feet",
-        ):
-            if group in self._rig_nodes:
+        self._ultima_pose = pose_dict
+        for group in ALL_GROUPS:
+            if group in self._rig_nodes and group in self._rig_base_pos:
                 self._rig_nodes[group].setPos(self._rig_base_pos[group])
 
         for group_name, rotation in pose_dict.items():
@@ -665,9 +684,7 @@ void main() {{
             and controller.dance_motion.style == "head_bob"
         )
         settle = self.music_speaker.settle if hasattr(self, "music_speaker") else 0
-        self._dance_stage_yaw.update(
-            getattr(controller, "delta_time", 1 / 60), -55 * settle if head_nod else 0
-        )
+        self._dance_stage_yaw.update(getattr(controller, "delta_time", 1 / 60), 0.0)
         if (
             not dragging
             and controller
@@ -701,13 +718,32 @@ void main() {{
         # Ganhos e SINAIS do tronco vêm de body_motion_tuning (req 4): o tronco
         # deve inclinar/girar no MESMO sentido do resto do corpo. Os sinais são
         # calibráveis na GPU (default +1 preserva o comportamento atual).
+        # Soma a contribuição da cadeia da coluna (cintura + abdomen + peitoral)
+        # ao pivô compartilhado (spine), para que cabeça e braços acompanhem a
+        # torção e inclinação da coluna superior nos idles, caminhada e danças.
+        pose_atual = (
+            getattr(controller.rig, "current", {}) if controller is not None else {}
+        )
+        col_x = col_y = col_z = 0.0
+        for elo_col, peso_col in (
+            ("cintura", 0.35),
+            ("abdomen", 0.45),
+            ("peitoral", 0.55),
+        ):
+            rot_col = pose_atual.get(elo_col)
+            if rot_col is not None:
+                col_x += math.degrees(rot_col.x) * peso_col
+                col_y += math.degrees(rot_col.y) * peso_col
+                col_z += math.degrees(rot_col.z) * peso_col
+
         for spine, neck, _shoulders in self.flexible_rig.chains:
             spine.setHpr(
-                _tune.TRONCO_YAW_SINAL * motion.yaw,
+                _tune.TRONCO_YAW_SINAL * motion.yaw + col_y,
                 _tune.TRONCO_PITCH_SINAL * motion.pitch * _tune.TRONCO_PITCH_GANHO
-                + (10 * settle if head_nod else 0),
+                + col_x,
                 _tune.TRONCO_ROLL_SINAL * motion.roll * _tune.TRONCO_ROLL_GANHO
-                + self.flexible_rig.spine.value,
+                + self.flexible_rig.spine.value
+                + col_z,
             )
             spine.setZ(
                 _tune.TRONCO_PIVO_Z
@@ -724,22 +760,6 @@ void main() {{
             ).getMat()
             self._suspension_pivot.setMat(
                 Mat4.translateMat(-pivot) * rotation * Mat4.translateMat(pivot)
-            )
-        if head_nod and self.music_speaker.landed:
-            body = self._rig_nodes["body"]
-            mesh = body.find("**/mesh20")
-            low, high = mesh.getTightBounds(body)
-            plane, normal = self.music_speaker.support_in_stage()
-            corners = [
-                self.model_anchor.getRelativePoint(body, Point3(x, low.y, z))
-                for x in (low.x, high.x)
-                for z in (low.z, high.z)
-            ]
-            distance = min((back - plane).dot(normal) for back in corners)
-            limit = self.model_np.getScale().x * 0.60
-            correction = max(-limit, min(limit, -distance)) * settle
-            self._suspension_pivot.setPos(
-                self._suspension_pivot.getPos() + normal * correction
             )
 
     def _giro_no_quadril(self, yaw, pitch, roll):
@@ -802,7 +822,16 @@ void main() {{
             return
         olhar = 0.0 if dragging else direcao_olhar
         pedido = None if dragging else angulo_pedido
-        angulo = self._giro_corpo.update(dt, direcao_olhar=olhar, angulo_pedido=pedido)
+        controller = getattr(self.showbase, "animation_controller", None)
+        permitir_costas = bool(
+            not dragging and getattr(controller, "permitir_giro_costas", False)
+        )
+        angulo = self._giro_corpo.update(
+            dt,
+            direcao_olhar=olhar,
+            angulo_pedido=pedido,
+            permitir_costas=permitir_costas,
+        )
         if abs(angulo) < 0.01:
             self._body_facing.setMat(Mat4.identMat())
             return
@@ -819,7 +848,12 @@ void main() {{
         self._collider_sources = []
         head = self._rig_nodes["head"]
         door = self._rig_nodes["door"]
-        cabinet = head.find("**/mesh0")
+        # Gabinete da TV: grupo ``Armario`` no asset rigado (antes ``mesh0``).
+        cabinet = head.find("**/Armario")
+        if cabinet.isEmpty():
+            cabinet = head.find("**/mesh0")
+        elif not cabinet.find("+GeomNode").isEmpty():
+            cabinet = cabinet.find("+GeomNode")
         if not cabinet.isEmpty():
             low, high = cabinet.getTightBounds(head)
             thickness = 0.022

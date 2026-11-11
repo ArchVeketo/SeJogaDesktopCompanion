@@ -112,6 +112,7 @@ class LegMotion:
         dance_phase=None,
         dance_strength=1.0,
         dance_style="head_bob",
+        personality="calm",
     ):
         """Avança as pernas um passo e devolve a pose resultante."""
         dt = max(0, min(DT_MAXIMO, dt))
@@ -120,15 +121,35 @@ class LegMotion:
             self.phase += (
                 dt * tau * (FASE_CORRIDA if state == "run" else FASE_CAMINHADA)
             )
+            fator_amp = 1.0
+            fator_joelho = 1.0
+            fator_lift = 1.0
+            if personality == "fighter":
+                fator_amp, fator_joelho, fator_lift = 0.95, 1.25, 1.2
+            elif personality == "street":
+                fator_amp, fator_joelho, fator_lift = 1.2, 0.95, 0.9
+            elif personality == "playful":
+                fator_amp, fator_joelho, fator_lift = 1.1, 1.35, 1.45
+            elif personality == "shy":
+                fator_amp, fator_joelho, fator_lift = 0.8, 0.75, 0.7
+            elif personality == "stylish":
+                fator_amp, fator_joelho, fator_lift = 1.1, 1.1, 1.1
+            elif personality == "confident":
+                fator_amp, fator_joelho, fator_lift = 1.15, 1.0, 1.0
+            elif personality == "rhythm":
+                fator_amp, fator_joelho, fator_lift = 1.05, 1.2, 1.25
+
             stride = sin(self.phase)
-            amplitude = AMPLITUDE_CORRIDA if state == "run" else AMPLITUDE_CAMINHADA
+            amplitude = (AMPLITUDE_CORRIDA if state == "run" else AMPLITUDE_CAMINHADA) * fator_amp
+            p_joelho = PASSADA_JOELHO * fator_joelho
+            p_lift = PASSADA_LIFT * fator_lift
             target = LegPose(
                 stride * amplitude,
                 -stride * amplitude,
-                max(0, stride) * PASSADA_JOELHO,
-                max(0, -stride) * PASSADA_JOELHO,
-                max(0, stride) * PASSADA_LIFT,
-                max(0, -stride) * PASSADA_LIFT,
+                max(0, stride) * p_joelho,
+                max(0, -stride) * p_joelho,
+                max(0, stride) * p_lift,
+                max(0, -stride) * p_lift,
             )
         elif state == "fall":
             descent = 0.5 + 0.5 * tanh(velocity[1] / QUEDA_DESCIDA_ESCALA)
@@ -176,7 +197,16 @@ class LegMotion:
                 max(0, -step) * DANCA_PASSO_LIFT,
             )
             if dance_style == "head_bob":
-                target = LegPose(*DANCA_HEADBOB)
+                # Mario sentado no topo da jukebox estilo FNF Girlfriend:
+                # Coxas apoiadas à frente no topo da caixa e pernas balançando alternadas ao som
+                balanco_canelas = sin(self.phase * 0.5) * 16.0 * max(0.4, dance_strength)
+                quique_assento = (0.5 + 0.5 * cos(self.phase)) * 2.5 * dance_strength
+                target = LegPose(
+                    -68.0 + quique_assento,
+                    -68.0 + quique_assento,
+                    78.0 + balanco_canelas,
+                    78.0 - balanco_canelas,
+                )
             elif dance_style == "hip_hop":
                 quique = (0.5 + 0.5 * cos(self.phase)) * DANCA_HIPHOP_JOELHO
                 target = LegPose(

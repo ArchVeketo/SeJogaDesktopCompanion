@@ -1,107 +1,132 @@
-"""Deform the joined shorts and articulate existing boots without editing GLTF."""
+"""Articula as pernas separadas do rig (coxa, joelho, canela) e as botas.
 
-from panda3d.core import GeomVertexReader, GeomVertexWriter, Mat4, Point3, Vec3
+O asset tem as pernas fatiadas em grupos próprios (``coxa-*``, ``joelho-*``,
+``canela-*``) dentro de ``legs``; as botas (``left-feet``/``right-feet``) são
+raízes irmãs. Nada de deformar vértices: cada peça recebe uma transformação
+rígida calculada no referencial de ``model_np``:
+
+- quadril: rotação em X em torno do pivô de ``coxa-*``;
+- joelho: rotação em X em torno do pivô de ``joelho-*`` (ponto médio do short),
+  aplicada à canela e à bota; a peça do joelho recebe metade do ângulo para
+  tampar a dobra.
+
+A convenção de sinal é a mesma do IK antigo (``setP`` no referencial de
+``model_np``), então ``LegMotion`` não muda de significado.
+"""
+
+from panda3d.core import Mat4, TransformState, Vec3
+
+from sejoga.nucleo.esqueleto import Rotation3
+
+#: (lado da LegPose, coxa, joelho, canela, bota).
+LADOS = (
+    ("left", "coxa-esquerda", "joelho-esquerdo", "canela-esquerda", "left-feet"),
+    ("right", "coxa-direita", "joelho-direito", "canela-direita", "right-feet"),
+)
+#: Fração do ângulo do joelho aplicada à peça ``joelho-*`` (tampa a dobra).
+FRACAO_PECA_JOELHO = 0.5
+_EIXO_X = Vec3(1, 0, 0)
+
+
+def _rotacao_em_torno(pivo: Vec3, graus: float) -> Mat4:
+    """Rotação (vetor-linha do Panda) de ``graus`` em X em torno de ``pivo``."""
+    return (
+        Mat4.translateMat(-pivo)
+        * Mat4.rotateMat(graus, _EIXO_X)
+        * Mat4.translateMat(pivo)
+    )
 
 
 class LowerBody:
-    """IK do quadril e dos joelhos sobre os nós do renderer."""
+    """Quadril, joelhos e botas aplicados sobre os nós do renderer."""
 
     def __init__(self, renderer):
-        """Cria os pivôs do quadril e dos joelhos."""
+        """Mede os pivôs de repouso das pernas no referencial do modelo."""
         self.renderer = renderer
-        mesh = renderer.model_np.find("**/mesh30")
-        self.mesh = mesh
-        geom = mesh.node().modifyGeom(0)
-        self.data = geom.modifyVertexData()
-        reader = GeomVertexReader(self.data, "vertex")
-        self.vertices = [
-            Point3(reader.getData3()) for _ in range(self.data.getNumRows())
-        ]
-        reader = GeomVertexReader(self.data, "normal")
-        self.normals = [Vec3(reader.getData3()) for _ in self.vertices]
-        self.to_model = mesh.getMat(renderer.model_np)
-        self.from_model = renderer.model_np.getMat(mesh)
-        self.hip_joints = []
-        self.knee_joints = []
-        self.hip_inverse_rest = []
-        self.knee_inverse_rest = []
-        for side, x in (("left", -0.125), ("right", 0.125)):
-            hip = renderer.model_np.attachNewNode(side + "-hip-pivot")
-            hip.setPos(x, 0, 0.4375)
-            knee = hip.attachNewNode(side + "-knee-pivot")
-            knee.setPos(0, 0, -0.1875)
-            self.hip_joints.append(hip)
-            self.knee_joints.append(knee)
-            for joint, collection in (
-                (hip, self.hip_inverse_rest),
-                (knee, self.knee_inverse_rest),
-            ):
-                inverse = Mat4(joint.getMat(renderer.model_np))
-                inverse.invertInPlace()
-                collection.append(inverse)
-        self.joints = self.hip_joints + self.knee_joints
+        r = renderer
+        self._lados = []
+        self.joints = []
+        for lado, coxa, joelho, canela, bota in LADOS:
+            nos = {n: r.model_np.find("**/" + n) for n in (coxa, joelho, canela, bota)}
+            if any(no.isEmpty() for no in nos.values()):
+                continue
+            dados = {
+                "lado": lado,
+                "nomes": (coxa, joelho, canela, bota),
+                "quadril": Vec3(nos[coxa].getPos(r.model_np)),
+                "joelho": Vec3(nos[joelho].getPos(r.model_np)),
+                # Transformação local de repouso de cada peça (pai imediato).
+                "repouso_local": {n: Mat4(no.getMat()) for n, no in nos.items()},
+            }
+            self._lados.append(dados)
+            self.joints.extend((nos[coxa], nos[joelho]))
 
-    @staticmethod
-    def rotate(pivot, angle):
-        """Gira o pivô no ângulo dado."""
-        return (
-            Mat4.translateMat(-pivot)
-            * Mat4.rotateMat(angle, Vec3(1, 0, 0))
-            * Mat4.translateMat(pivot)
-        )
+    def _local_com_pose(self, nome: str, local_repouso: Mat4) -> Mat4:
+        """Repouso local + rotação vinda da pose do rig (clipes), se houver."""
+        pose = getattr(self.renderer, "_ultima_pose", None) or {}
+        rot = pose.get(nome)
+        if rot is None:
+            return Mat4(local_repouso)
+        if isinstance(rot, Rotation3):
+            x, y, z = rot.x, rot.y, rot.z
+        else:
+            x, y, z = rot
+        if abs(x) + abs(y) + abs(z) < 1e-6:
+            return Mat4(local_repouso)
+        import math
 
-    def apply(self, pose, grounded):  # noqa: PLR0915  # TODO convenção: fatiar sem prova visual na GPU arrisca mudar o movimento; lote próprio com caracterização
-        """Aplica a pose das pernas, apoiada no chão ou não."""
+        extra = TransformState.makeHpr(
+            Vec3(math.degrees(y), math.degrees(x), math.degrees(z))
+        ).getMat()
+        return extra * local_repouso
+
+    def apply(self, pose, grounded):
+        """Aplica a pose das pernas, mantendo as botas no chão quando apoiado."""
         r = self.renderer
-        angles = (pose.left, pose.right)
-        for index in range(2):
-            self.hip_joints[index].setP(angles[index])
-            self.knee_joints[index].setP((pose.left_knee, pose.right_knee)[index])
-        thighs = [
-            inverse * joint.getMat(r.model_np)
-            for inverse, joint in zip(
-                self.hip_inverse_rest, self.hip_joints, strict=True
+        for dados in self._lados:
+            coxa, joelho, canela, bota = dados["nomes"]
+            lado = dados["lado"]
+            ang_quadril = getattr(pose, lado)
+            ang_joelho = getattr(pose, lado + "_knee")
+            lift = getattr(pose, lado + "_lift")
+            quadril = _rotacao_em_torno(dados["quadril"], ang_quadril)
+            dobra = _rotacao_em_torno(dados["joelho"], ang_joelho)
+            meia_dobra = _rotacao_em_torno(
+                dados["joelho"], ang_joelho * FRACAO_PECA_JOELHO
             )
-        ]
-        writer = GeomVertexWriter(self.data, "vertex")
-        normals = GeomVertexWriter(self.data, "normal")
-        for vertex, normal in zip(self.vertices, self.normals, strict=True):
-            point = self.to_model.xformPoint(vertex)
-            n = self.to_model.xformVec(normal)
-            # Blend at the crotch and fade to the original waistband. Shared
-            # vertices receive identical weights, so no seam opens in shorts.
-            side = max(0, min(1, (point.x + 0.045) / 0.09))
-            weight = max(0, min(1, (0.44 - point.z) / 0.12))
-            moved = (
-                thighs[0].xformPoint(point) * (1 - side)
-                + thighs[1].xformPoint(point) * side
+            pecas = (
+                (coxa, Mat4.identMat()),
+                (joelho, meia_dobra),
+                (canela, dobra),
+                (bota, dobra),
             )
-            turned = thighs[0].xformVec(n) * (1 - side) + thighs[1].xformVec(n) * side
-            writer.setData3(
-                self.from_model.xformPoint(point * (1 - weight) + moved * weight)
-            )
-            normals.setData3(
-                self.from_model.xformVec(
-                    n * (1 - weight) + turned * weight
-                ).normalized()
-            )
-        # Mirror the deformed shorts into the optional outline's own vertex data.
-        outline = r.outline_np.find("**/mesh30")
-        if not outline.isEmpty():
-            outline.node().modifyGeom(0).setVertexData(self.data)
-        for i, name in enumerate(("left-feet", "right-feet")):
-            foot = r._rig_nodes[name]
-            original = foot.getMat(r.model_np)
-            transform = (
-                original
-                * self.knee_inverse_rest[i]
-                * self.knee_joints[i].getMat(r.model_np)
-            )
-            if grounded:
-                before = foot.getTightBounds(r.model_np)[0].z
-                foot.setMat(r.model_np, transform)
-                after = foot.getTightBounds(r.model_np)[0].z
-                lift = (pose.left_lift, pose.right_lift)[i]
-                transform *= Mat4.translateMat(0, 0, before - after + lift)
-            foot.setMat(r.model_np, transform)
-            r._outline_nodes[name].setMat(r.outline_np, transform)
+            finais = {}
+            for nome, local_dobra in pecas:
+                no = r._rig_nodes.get(nome)
+                if no is None:
+                    no = r.model_np.find("**/" + nome)
+                if no.isEmpty():
+                    continue
+                local = self._local_com_pose(nome, dados["repouso_local"][nome])
+                pai_modelo = no.getParent().getMat(r.model_np)
+                repouso_modelo = local * pai_modelo
+                # A coxa gira em torno do próprio pivô; o resto dobra no joelho.
+                final = repouso_modelo * local_dobra * quadril
+                finais[nome] = (no, repouso_modelo, final)
+            correcao = Mat4.identMat()
+            if grounded and bota in finais:
+                # Mantém a sola onde estava em repouso (mais o passo) e leva a
+                # canela/joelho junto, para o short não descolar da bota.
+                no, repouso_modelo, final = finais[bota]
+                no.setMat(r.model_np, repouso_modelo)
+                antes = no.getTightBounds(r.model_np)[0].z
+                no.setMat(r.model_np, final)
+                depois = no.getTightBounds(r.model_np)[0].z
+                correcao = Mat4.translateMat(0, 0, antes - depois + lift)
+            for nome, (no, _repouso, final) in finais.items():
+                if nome != coxa:
+                    final = final * correcao
+                no.setMat(r.model_np, final)
+                contorno = r._outline_nodes.get(nome)
+                if contorno is not None:
+                    contorno.setMat(no.getMat())

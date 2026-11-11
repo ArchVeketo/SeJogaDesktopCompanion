@@ -48,9 +48,9 @@ class AlvoBraco:
         return (-self.alvo[0], self.alvo[1], self.alvo[2])
 
 
-#: REPOUSO/idle: braços abertos e levemente baixados, mão um pouco à frente. É o
-#: ponto livre mais baixo perto do repouso autoral (0.075, -0.265, 0.02).
-ALVO_IDLE = AlvoBraco(alvo=(0.24, -0.14, 0.08))
+#: REPOUSO/idle: braços naturalmente baixados ao lado do tronco com cotovelo
+#: levemente relaxado (~14°) e punho ao lado do quadril, solto como num ser humano.
+ALVO_IDLE = AlvoBraco(alvo=(0.145, -0.235, 0.04), polo=(0.12, -0.85, -0.45))
 
 #: WAVE/aceno: punho na altura do ombro, por fora da orelha, antebraço para cima.
 #: O balanço e o giro do pulso entram como termos aditivos em ``rig.pose_flourish``.
@@ -65,8 +65,8 @@ ALVO_STRETCH = AlvoBraco(alvo=(0.12, 0.08, 0.18))
 #: DANCE/dança: mão à frente e um pouco acima do ombro; o ``beat`` modula por cima.
 ALVO_DANCE = AlvoBraco(alvo=(0.15, 0.08, 0.17))
 
-#: SLEEP/sono: braços relaxados, mãos recolhidas à frente.
-ALVO_SLEEP = AlvoBraco(alvo=(0.22, -0.10, 0.10))
+#: SLEEP/sono: braços relaxados junto ao corpo, mãos recolhidas à frente.
+ALVO_SLEEP = AlvoBraco(alvo=(0.135, -0.205, 0.095))
 
 #: THROWN/arremesso: mãos à frente e para fora, silhueta aérea legível.
 ALVO_THROWN = AlvoBraco(alvo=(0.16, 0.02, 0.16))
@@ -74,8 +74,8 @@ ALVO_THROWN = AlvoBraco(alvo=(0.16, 0.02, 0.16))
 #: INTERACTION/interação (base): mãos à frente, como quem reage ao cursor.
 ALVO_INTERACTION = AlvoBraco(alvo=(0.15, -0.01, 0.16))
 
-#: DRAG_PERNA: pego pela perna, os braços pendem o máximo que o corpo permite.
-ALVO_DRAG_PERNA = AlvoBraco(alvo=(0.23, -0.14, 0.06))
+#: DRAG_PERNA: pego pela perna, os braços pendem relaxados junto ao corpo.
+ALVO_DRAG_PERNA = AlvoBraco(alvo=(0.140, -0.245, 0.040))
 
 #: FALL/queda: mãos abertas para fora (o flailing entra aditivo).
 ALVO_FALL = AlvoBraco(alvo=(0.21, -0.02, 0.08))
@@ -84,20 +84,23 @@ ALVO_FALL = AlvoBraco(alvo=(0.21, -0.02, 0.08))
 #: (medido: nenhum alvo com o punho além do ombro em direção ao centro fica
 #: livre), então "cruzado" é o fallback documentado em DECISOES_ANIMACOES.md:
 #: antebraços à frente do peito, mãos próximas, um braço mais à frente que o outro.
-ALVO_CRUZADO_DIR = AlvoBraco(alvo=(0.08, 0.06, 0.22))
-ALVO_CRUZADO_ESQ = AlvoBraco(alvo=(0.08, 0.06, 0.16))
+ALVO_CRUZADO_DIR = AlvoBraco(alvo=(0.10, -0.04, 0.21))
+ALVO_CRUZADO_ESQ = AlvoBraco(alvo=(0.10, -0.06, 0.16))
 
-#: Chifre do rock: o ponto livre mais alto e para fora (acima da cabeça fica
-#: fora do alcance de 0.281 u, o ombro está 0.19 u abaixo do topo da cabeça).
-ALVO_CHIFRE = AlvoBraco(alvo=(0.24, 0.08, 0.04))
+#: Chifre do rock: braço erguido e cotovelo dobrado (~52°) ao lado do fone.
+ALVO_CHIFRE = AlvoBraco(alvo=(0.24, 0.08, 0.05))
 
-#: Contrapeso do hip hop: braço quase estendido (cotovelo ~17 graus) para
-#: frente-fora, na altura do ombro. Mais perto (0.20) dobrava o cotovelo 42 graus.
-ALVO_CONTRAPESO = AlvoBraco(alvo=(0.22, 0.0, 0.17))
+#: Contrapeso do hip hop: braço aberto com cotovelo flexionado (~52°) no groove.
+ALVO_CONTRAPESO = AlvoBraco(alvo=(0.185, -0.085, 0.145))
 
-#: Apoio de chão do breakdance: mão baixa à frente e para fora (o roll do corpo
-#: no renderer leva a mão ao chão).
-ALVO_APOIO_CHAO = AlvoBraco(alvo=(0.22, -0.12, 0.12))
+#: Apoio de chão do breakdance: mão baixa à frente e cotovelo flexionado (~48°).
+ALVO_APOIO_CHAO = AlvoBraco(alvo=(0.175, -0.145, 0.120))
+
+#: Apoio na caixa de som (head bob estilo FNF): mão apoiada ao lado do quadril no topo da caixa.
+ALVO_APOIO_CAIXA = AlvoBraco(alvo=(0.18, -0.19, -0.04), polo=(0.20, -0.60, -0.50))
+
+#: Mão descansando no colo / coxa ao sentar no head bob.
+ALVO_COLO = AlvoBraco(alvo=(0.14, -0.16, 0.14), polo=(0.14, -0.70, -0.40))
 
 
 #: Registro por nome (facilita consumo e documentação).
@@ -117,6 +120,8 @@ ALVOS: dict[str, AlvoBraco] = {
     "chifre": ALVO_CHIFRE,
     "contrapeso": ALVO_CONTRAPESO,
     "apoio_chao": ALVO_APOIO_CHAO,
+    "apoio_caixa": ALVO_APOIO_CAIXA,
+    "colo": ALVO_COLO,
 }
 
 #: Alvos autorais anteriores (antes da medição de colisão), para o relatório.

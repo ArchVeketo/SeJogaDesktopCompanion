@@ -138,3 +138,32 @@ def test_ponta_solta_tem_mais_velocidade_que_a_ancora_apos_degrau():
     corpo = pose_molas.molas["body"]
     dedos = pose_molas.molas["fingers"]
     assert abs(dedos.x.velocity) > abs(corpo.x.velocity)
+
+
+def test_iniciar_transicao_preserva_velocidade_das_molas():
+    from sejoga.animacao.resolvedor_poses import PoseResolver
+
+    resolver = PoseResolver()
+    resolver.definir_pose({"right-arm": Rotation3()})
+    for _ in range(15):
+        pose = resolver.resolver(1 / 60, {"right-arm": Rotation3(z=0.8)})
+    vel_antes = resolver.molas["right-arm"].z.velocity
+    assert abs(vel_antes) > 0.1
+
+    resolver.iniciar_transicao(pose, transition_seconds=0.55)
+    assert resolver.molas["right-arm"].z.velocity == pytest.approx(vel_antes)
+    pose_trans = resolver.resolver(1 / 60, {"right-arm": Rotation3(z=-0.2)})
+    assert pose_trans["right-arm"] == pose["right-arm"]
+    assert resolver.molas["right-arm"].z.velocity == pytest.approx(vel_antes)
+
+
+def test_limitar_suave_preserva_centro_e_amortece_extremos():
+    from sejoga.animacao.resolvedor_poses import limitar_suave
+
+    # No centro da faixa (fora da margem de 15%), o valor é preservado 1:1.
+    assert limitar_suave(0.0, -1.0, 1.0, fracao_margem=0.15) == 0.0
+    assert limitar_suave(0.5, -1.0, 1.0, fracao_margem=0.15) == pytest.approx(0.5)
+    # Na margem e além do limite, aproxima suavemente sem ultrapassar o teto.
+    na_borda = limitar_suave(1.0, -1.0, 1.0, fracao_margem=0.15)
+    alem = limitar_suave(5.0, -1.0, 1.0, fracao_margem=0.15)
+    assert 0.7 < na_borda < alem <= 1.0

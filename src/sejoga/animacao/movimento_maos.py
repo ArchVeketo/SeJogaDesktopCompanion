@@ -20,49 +20,78 @@ class HandMotion:
         self.clock += dt
         result = dict(pose)
         energy = {
-            "idle": 0.45,
-            "hover": 0.65,
-            "walk": 1,
-            "run": 1.2,
-            "dance": 1.1,
-            "drag": 0.7,
-            "fall": 0.7,
-            "wave": 0.12,
-            "sneeze": 0.2,
-            "sleep": 0.08,
-        }.get(state, 0.25)
-        for arm, wrist, fingers, side in (
-            ("ant-arm", "hand", "fingers", 1),
-            ("ant-arm2", "hand2", "fingers2", -1),
+            "idle": 0.65,
+            "hover": 0.8,
+            "walk": 1.15,
+            "run": 1.35,
+            "dance": 1.35,
+            "drag": 0.75,
+            "fall": 0.8,
+            "wave": 0.2,
+            "sneeze": 0.25,
+            "sleep": 0.12,
+        }.get(state, 0.35)
+        for upper_arm, shoulder, arm, wrist, fingers, side in (
+            ("right-arm", "shoulder", "ant-arm", "hand", "fingers", 1),
+            ("left-arm", "shoulder2", "ant-arm2", "hand2", "fingers2", -1),
         ):
             if arm not in pose:
                 continue
             authored = pose[arm]
             previous = self.previous.get(arm, authored)
-            speed = (authored.x - previous.x) / dt if dt else 0
+            speed_x = (authored.x - previous.x) / dt if dt else 0.0
+            speed_z = (authored.z - previous.z) / dt if dt else 0.0
             self.previous[arm] = authored
-            lag = max(-radians(7), min(radians(7), -speed * 0.035)) * energy
-            phase = self.clock * 1.15 - side * 0.65
+            lag_x = max(-radians(8), min(radians(8), -speed_x * 0.04)) * energy
+            lag_z = max(-radians(9), min(radians(9), -speed_z * 0.045)) * energy
+            phase = self.clock * 1.35 - side * 0.75
             targets = {
-                arm: (radians(1.8) * sin(phase) * energy, 0, 0),
-                wrist: (
-                    lag,
-                    radians(2.5) * sin(phase - 0.5) * energy,
-                    radians(3) * sin(phase - 0.8) * side * energy,
+                upper_arm: (
+                    radians(1.6) * sin(phase + 0.3) * energy,
+                    radians(2.2) * sin(phase * 0.85 - side * 0.4) * side * energy,
+                    radians(2.4) * sin(phase - 0.2) * side * energy,
                 ),
-                fingers: (0, 0, radians(4) * sin(phase - 1.1) * side * energy),
+                shoulder: (
+                    radians(1.2) * sin(phase + 0.5) * energy,
+                    0.0,
+                    radians(1.5) * sin(phase) * side * energy,
+                ),
+                arm: (
+                    radians(2.4) * sin(phase) * energy,
+                    0.0,
+                    (radians(3.2) * (0.5 + 0.5 * sin(phase - 0.35)) * side * energy)
+                    + lag_z * 0.45,
+                ),
+                wrist: (
+                    lag_x + radians(2.8) * sin(phase - 0.45) * energy,
+                    radians(3.6) * sin(phase - 0.5) * energy,
+                    lag_z + radians(4.5) * sin(phase - 0.8) * side * energy,
+                ),
+                fingers: (
+                    0.0,
+                    0.0,
+                    radians(5.8) * sin(phase - 1.1) * side * energy + lag_z * 0.35,
+                ),
             }
             for joint, target in targets.items():
                 if joint not in pose:
                     continue
-                old = self.offsets.get(joint, (0, 0, 0))
-                rate = 10 if joint == arm else 7 if joint == wrist else 5
+                old = self.offsets.get(joint, (0.0, 0.0, 0.0))
+                rate = (
+                    11
+                    if joint in (upper_arm, shoulder)
+                    else 9
+                    if joint == arm
+                    else 7
+                    if joint == wrist
+                    else 5
+                )
                 blend = 1 - exp(-dt * rate)
                 offset = tuple(
                     a + (b - a) * blend for a, b in zip(old, target, strict=True)
                 )
                 self.offsets[joint] = offset
-                base = pose[joint]
+                base = result[joint]
                 result[joint] = Rotation3(
                     base.x + offset[0], base.y + offset[1], base.z + offset[2]
                 )

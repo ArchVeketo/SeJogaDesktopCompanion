@@ -45,3 +45,24 @@ SONO_DEDOS_RESPIRACAO = 0.5
 #: Duração mínima (s) do crossfade na entrada do sono. O mínimo de 1,2 s evita
 #: que o corpo "caia" de uma vez ao adormecer.
 SONO_TRANSICAO_S = 1.2
+
+# --------------------------------------------------------------------------- #
+# Modos de Sono: "em_pe", "sentado", "deitado"
+# --------------------------------------------------------------------------- #
+# 1. Dormir sentado: pernas dobradas à frente, corpo ligeiramente curvado,
+# braços apoiados no colo / coxas.
+SONO_SENTADO_COXA_GRAUS = 68.0
+SONO_SENTADO_CANELA_GRAUS = -72.0
+SONO_SENTADO_CORPO_X = 8.0
+SONO_SENTADO_CABECA_X = -18.0
+SONO_SENTADO_CABECA_Z = -5.0
+SONO_SENTADO_BRACO_Z = -30.0
+SONO_SENTADO_ANTEBRACO_Z = 38.0
+
+# 2. Dormir deitado: corpo tombado no chão/barra (roll ~82°), pernas
+# relaxadas com leve flexão aconchegante, braços dobrados junto ao peito.
+SONO_DEITADO_ROLL = -82.0
+SONO_DEITADO_COXA_GRAUS = 24.0
+SONO_DEITADO_CANELA_GRAUS = -32.0
+SONO_DEITADO_BRACO_Z = -18.0
+SONO_DEITADO_ANTEBRACO_Z = 36.0

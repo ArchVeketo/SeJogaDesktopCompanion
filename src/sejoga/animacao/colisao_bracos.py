@@ -79,18 +79,28 @@ def _espelhada(caixa: CaixaOrientada) -> CaixaOrientada:
     )
 
 
-#: Medido por AABB de cada malha (Panda3D, relativo ao nó raiz do asset).
+#: Volumes nucleares do corpo em repouso (relativos ao nó raiz do asset).
+#: Para tronco e quadril (short evasê cuja barra inferior abre até ±0.312 perto
+#: dos pés, mas na cintura tem meia-largura 0.186..0.215), a caixa representa o
+#: volume real da cintura/quadril superior onde braço e punho transitam, evitando
+#: que o flare da barra inferior empurre os braços para um A-pose artificial.
 _ORELHA = _caixa(0.146, 0.303, -0.126, 0.112, 0.789, 1.027)
 _CHAPEU_LATERAL = _caixa(0.240, 0.394, -0.200, -0.030, 1.018, 1.125)
-_PE = _caixa(0.028, 0.277, -0.140, 0.269, 0.091, 0.384)
+_PE = _caixa(0.028, 0.230, -0.120, 0.220, 0.091, 0.350)
 
+#: Volumes do corpo que BLOQUEIAM os braços. Só o núcleo: tronco e cabeça.
+#: Orelhas, chapéu, topo da cabeça, quadril e pés ficaram de fora de propósito:
+#: eram caixas folgadas que empurravam os braços para poses duras (A-pose,
+#: cotovelo para fora) e impediam gestos naturais ao lado do corpo. Os volumes
+#: antigos seguem nomeados abaixo para diagnóstico (``CAIXAS_DIAGNOSTICO``).
 CAIXAS_CORPO: dict[str, CaixaOrientada] = {
-    "tronco": _caixa(-0.186, 0.186, -0.146, 0.143, 0.420, 0.723),
+    "tronco": _caixa(-0.165, 0.165, -0.130, 0.130, 0.420, 0.723),
     "cabeca": _caixa(-0.146, 0.146, -0.161, 0.151, 0.651, 1.100),
+}
+CAIXAS_DIAGNOSTICO: dict[str, CaixaOrientada] = {
+    **CAIXAS_CORPO,
     "topo_cabeca": _caixa(-0.195, 0.195, -0.070, 0.032, 1.140, 1.234),
-    # mesh18 (plano inclinado do cabo do fone na frente da camiseta) fica de fora:
-    # é decalque fino, a AABB dele bloquearia qualquer mão à frente do peito.
-    "quadril": _caixa(-0.312, 0.312, -0.189, 0.188, 0.135, 0.474),
+    "quadril": _caixa(-0.205, 0.205, -0.155, 0.155, 0.135, 0.474),
     "orelha_direita": _ORELHA,
     "orelha_esquerda": _espelhada(_ORELHA),
     "chapeu_direito": _CHAPEU_LATERAL,
@@ -98,6 +108,10 @@ CAIXAS_CORPO: dict[str, CaixaOrientada] = {
     "pe_direito": _PE,
     "pe_esquerdo": _espelhada(_PE),
 }
+#: O braço (ombro→cotovelo) já fica fora da colisão pela ``raiz_isenta`` (o
+#: trecho estrutural colado ao tronco); só antebraço e mão+dedos são testados.
+#: Braço contra braço desligado: mãos podem se cruzar/encostar (gestos).
+COLISAO_ENTRE_BRACOS = False
 
 # --------------------------------------------------------------------------- #
 # Correção
@@ -191,10 +205,12 @@ def penetracao_do_lado(
     """
     minhas = capsulas_do_braco(model, lado, pose)
 
-    if do_outro is None:
+    if do_outro is None and COLISAO_ENTRE_BRACOS:
         do_outro = capsulas_do_braco(
             model, "left" if lado == "right" else "right", pose
         )
+    if not COLISAO_ENTRE_BRACOS:
+        do_outro = []
     maior = 0.0
 
     for capsula in minhas:

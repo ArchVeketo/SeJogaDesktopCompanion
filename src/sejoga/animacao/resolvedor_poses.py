@@ -8,7 +8,7 @@ renderer, que não precisa aplicar mais nenhuma correção.
 
 from __future__ import annotations
 
-from math import radians
+from math import radians, tanh
 
 from sejoga.animacao import braco_tuning as tun
 from sejoga.animacao.colisao_bracos import ResolvedorBracos
@@ -33,6 +33,33 @@ _CLAMP_ARM_Y_MIN = radians(tun.OMBRO_AZIMUTE_MIN_GRAUS)
 _CLAMP_ARM_Y_MAX = radians(tun.OMBRO_AZIMUTE_MAX_GRAUS)
 _CLAMP_COTOVELO_MIN = radians(tun.COTOVELO_MIN_GRAUS)
 _CLAMP_COTOVELO_MAX = radians(tun.COTOVELO_MAX_GRAUS)
+
+
+def limitar_suave(
+    valor: float,
+    minimo: float,
+    maximo: float,
+    fracao_margem: float = tun.FRACAO_MARGEM_CLAMP_SUAVE,
+    *,
+    suavizar_minimo: bool = True,
+) -> float:
+    """Aproxima ``valor`` dos limites com tangente hiperbólica sem parada seca.
+
+    Preserva inclinação 1.0 exata no trecho central da faixa e aplica ``tanh``
+    apenas nas margens finais (``fracao_margem`` da largura total), seguido do
+    clamp rígido ``max/min`` como segurança final (estudo §4.7).
+    """
+    largura = maximo - minimo
+    if largura <= 0.0 or fracao_margem <= 0.0:
+        return max(minimo, min(maximo, valor))
+    margem = largura * min(0.5, fracao_margem)
+    limite_inf = minimo + margem
+    limite_sup = maximo - margem
+    if valor > limite_sup:
+        valor = limite_sup + margem * tanh((valor - limite_sup) / margem)
+    elif suavizar_minimo and valor < limite_inf:
+        valor = limite_inf - margem * tanh((limite_inf - valor) / margem)
+    return max(minimo, min(maximo, valor))
 
 
 class PoseResolver:
@@ -100,7 +127,7 @@ class PoseResolver:
         ponto de partida do crossfade.
         """
         self._transition_from = dict(pose_atual)
-        self._crossfade.definir(pose_atual)
+        self._crossfade.definir(pose_atual, preservar_velocidade=True)
         self._just_transitioned = True
         self._transitioning = True
         self._transition_seconds = max(0.0, transition_seconds)
@@ -201,7 +228,8 @@ class PoseResolver:
                 {
                     grupo: self._transition_from.get(grupo, Rotation3())
                     for grupo in pose_alvo
-                }
+                },
+                preservar_velocidade=True,
             )
             self._just_transitioned = False
             return {
@@ -234,24 +262,30 @@ class PoseResolver:
         # azimute Y em faixa ampla (contém só deriva). Limites em braco_tuning.
         if "right-arm" in resultado:
             r = resultado["right-arm"]
-            y = max(_CLAMP_ARM_Y_MIN, min(_CLAMP_ARM_Y_MAX, r.y))
-            z = max(_CLAMP_RIGHT_ARM_Z_MIN, min(_CLAMP_RIGHT_ARM_Z_MAX, r.z))
+            y = limitar_suave(r.y, _CLAMP_ARM_Y_MIN, _CLAMP_ARM_Y_MAX)
+            z = limitar_suave(r.z, _CLAMP_RIGHT_ARM_Z_MIN, _CLAMP_RIGHT_ARM_Z_MAX)
             if y != r.y or z != r.z:
                 resultado["right-arm"] = Rotation3(r.x, y, z)
 
         # Left arm: espelho.
         if "left-arm" in resultado:
             r = resultado["left-arm"]
-            y = max(_CLAMP_ARM_Y_MIN, min(_CLAMP_ARM_Y_MAX, r.y))
-            z = max(_CLAMP_LEFT_ARM_Z_MIN, min(_CLAMP_LEFT_ARM_Z_MAX, r.z))
+            y = limitar_suave(r.y, _CLAMP_ARM_Y_MIN, _CLAMP_ARM_Y_MAX)
+            z = limitar_suave(r.z, _CLAMP_LEFT_ARM_Z_MIN, _CLAMP_LEFT_ARM_Z_MAX)
             if y != r.y or z != r.z:
                 resultado["left-arm"] = Rotation3(r.x, y, z)
 
         # Cotovelo: dobradiça de um lado só (sem hiperextensão), espelhado.
+        # O mínimo (0°) é parada anatômica reta; suaviza-se a flexão máxima.
         for grupo, sinal in (("ant-arm", 1.0), ("ant-arm2", -1.0)):
             if grupo in resultado:
                 r = resultado[grupo]
-                flexao = max(_CLAMP_COTOVELO_MIN, min(_CLAMP_COTOVELO_MAX, sinal * r.z))
+                flexao = limitar_suave(
+                    sinal * r.z,
+                    _CLAMP_COTOVELO_MIN,
+                    _CLAMP_COTOVELO_MAX,
+                    suavizar_minimo=False,
+                )
                 if sinal * flexao != r.z:
                     resultado[grupo] = Rotation3(r.x, r.y, sinal * flexao)
 

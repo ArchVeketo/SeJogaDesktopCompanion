@@ -20,8 +20,8 @@ def model():
 
 
 def test_counts(model):
-    assert len(model.nodes) == 61
-    assert model.mesh_count == 43
+    assert len(model.nodes) == 89
+    assert model.mesh_count == 56
     assert model.vertex_count > 1000
     assert model.material_count >= 1
     assert model.texture_count >= 1

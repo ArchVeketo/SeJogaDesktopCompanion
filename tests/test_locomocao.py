@@ -41,10 +41,10 @@ def test_walk_usa_a_fase_de_passada_das_pernas(monkeypatch):
     chamadas: list[tuple[float, float]] = []
     original = modulo_animacao.delta_walk
 
-    def espiao(fase, run=False):
+    def espiao(fase, run=False, *args, **kwargs):
         chamadas.append((fase, animacao.leg_motion.phase))
 
-        return original(fase, run)
+        return original(fase, run, *args, **kwargs)
 
     monkeypatch.setattr(modulo_animacao, "delta_walk", espiao)
 

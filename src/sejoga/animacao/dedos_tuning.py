@@ -16,8 +16,10 @@ from __future__ import annotations
 # Malha: quais blocos viram cadeia e como são cortados
 # --------------------------------------------------------------------------- #
 #: Índice 0 = polegar; 1..4 = indicador, médio, anelar, mindinho (nomes ``meshN``).
-MESH_DEDOS_DIREITA = (25, 26, 27, 28, 29)
-MESH_DEDOS_ESQUERDA = (38, 39, 40, 41, 42)
+#: Índices do asset rigado atual (``tools/atualizar_rig_modelo.py``): o polegar
+#: é filho de ``hand``/``hand2`` e os quatro dedos de ``fingers``/``fingers2``.
+MESH_DEDOS_DIREITA = (32, 33, 34, 35, 36)
+MESH_DEDOS_ESQUERDA = (40, 41, 42, 44, 43)
 #: Fração do comprimento de cada segmento, da raiz à ponta (soma 1). Falange
 #: proximal maior que a distal, como na mão humana.
 FRACOES_SEGMENTOS_DEDO = (0.40, 0.33, 0.27)
@@ -53,12 +55,13 @@ FLEXAO_GESTO_REFERENCIA_GRAUS = 60.0
 # --------------------------------------------------------------------------- #
 # Repouso natural (mão relaxada, nunca reta como régua)
 # --------------------------------------------------------------------------- #
-#: Flexão de repouso (graus) por junta, antes da variação por dedo.
-CURL_REPOUSO_DEDO_GRAUS = (7.0, 11.0, 7.0)
-CURL_REPOUSO_POLEGAR_GRAUS = (5.0, 4.0)
+#: Flexão de repouso (graus) por junta, antes da variação por dedo. Valores
+#: baixos: a mão relaxada só curva levemente; valores altos viravam "garrinha".
+CURL_REPOUSO_DEDO_GRAUS = (4.0, 6.0, 4.0)
+CURL_REPOUSO_POLEGAR_GRAUS = (3.0, 4.0)
 #: Multiplicador do repouso por dedo (polegar, indicador ... mindinho): a mão
 #: relaxada fecha um pouco mais para o lado do mindinho.
-VARIACAO_REPOUSO_POR_DEDO = (0.6, 0.8, 1.0, 1.15, 1.3)
+VARIACAO_REPOUSO_POR_DEDO = (0.8, 0.9, 1.0, 1.1, 1.2)
 
 # --------------------------------------------------------------------------- #
 # Movimento secundário (onda base → ponta)

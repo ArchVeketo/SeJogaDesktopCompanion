@@ -18,9 +18,12 @@ from sejoga.animacao.mola_tuning import (
 from sejoga.animacao.movimento_corpo import Spring
 from sejoga.nucleo.esqueleto import Rotation3
 
-# Cadeias ombro->antebraço->mão->dedos e o espelho do lado esquerdo.
+# Cadeias ombro->antebraço->mão->dedos, fones->antenas e coluna.
 CADEIA_DIREITA = ("right-arm", "ant-arm", "hand", "fingers")
 CADEIA_ESQUERDA = ("left-arm", "ant-arm2", "hand2", "fingers2")
+CADEIA_FONE_DIREITO = ("fones", "fone-direito", "antena-direita")
+CADEIA_FONE_ESQUERDO = ("fones", "fone-esquerdo", "antena-esquerda")
+CADEIA_COLUNA = ("cintura", "abdomen", "peitoral")
 
 
 class JointSpring:
@@ -52,6 +55,12 @@ class JointSpring:
         self.x.value, self.x.velocity = pose.x, 0.0
         self.y.value, self.y.velocity = pose.y, 0.0
         self.z.value, self.z.velocity = pose.z, 0.0
+
+    def definir_posicao(self, pose: Rotation3) -> None:
+        """Reposiciona as molas preservando a velocidade atual."""
+        self.x.value = pose.x
+        self.y.value = pose.y
+        self.z.value = pose.z
 
 
 class SpringPose:
@@ -89,10 +98,19 @@ class SpringPose:
             pose[grupo] = self._mola(grupo).atualizar(dt, alvo)
         return pose
 
-    def definir(self, poses: dict[str, Rotation3]) -> None:
-        """Coloca as molas direto nas poses dadas, sem transição."""
+    def definir(
+        self,
+        poses: dict[str, Rotation3],
+        *,
+        preservar_velocidade: bool = False,
+    ) -> None:
+        """Coloca as molas direto nas poses dadas, opcionalmente preservando velocidade."""
         for grupo, pose in poses.items():
-            self._mola(grupo).definir(pose)
+            mola = self._mola(grupo)
+            if preservar_velocidade:
+                mola.definir_posicao(pose)
+            else:
+                mola.definir(pose)
 
     def pose(self) -> dict[str, Rotation3]:
         """Devolve a pose atual de todas as molas."""

@@ -6,7 +6,7 @@ resultado por junta é suavizado por molas amortecidas, dando peso e recuperaç�
 naturais.
 """
 
-from math import exp, floor, tau
+from math import cos, exp, floor, sin, tau
 
 from sejoga.animacao import danca_tuning as tune
 from sejoga.animacao.danca_frases_tuning import frase_do_estilo
@@ -118,6 +118,180 @@ class DanceMotion:
         )
         for grupo, (x, y, z) in pose.items():
             rig.set_rotation(grupo, x=x, y=y, z=z)
+
+        # Groove contínuo de coluna, ombros, braços, punhos, dedos e fones
+        # sincronizado à fase da batida, dando articulação viva a cada estilo.
+        pulso = 0.5 + 0.5 * cos(self.phase)
+        onda = sin(self.phase)
+        meia_onda = sin(self.phase * 0.5)
+        energia_ef = 0.55 + 0.45 * self.energy
+
+        bx, by, bz = pose.get("body", (0.0, 0.0, 0.0))
+        hx, hy, hz = pose.get("head", (0.0, 0.0, 0.0))
+
+        # 1. Cadeia da coluna (cintura -> abdomen -> peitoral)
+        rig.set_rotation(
+            "cintura",
+            x=bx * 0.25 + pulso * 2.2 * energia_ef,
+            y=by * 0.25 + meia_onda * 4.5 * energia_ef,
+            z=bz * 0.30 + meia_onda * 3.8 * energia_ef,
+        )
+        rig.set_rotation(
+            "abdomen",
+            x=bx * 0.35 + onda * 2.5 * energia_ef,
+            y=by * 0.35 - meia_onda * 3.5 * energia_ef,
+            z=bz * 0.35 + sin(self.phase * 0.5 - 0.4) * 3.2 * energia_ef,
+        )
+        rig.set_rotation(
+            "peitoral",
+            x=bx * 0.45 - pulso * 3.2 * energia_ef,
+            y=by * 0.45 + meia_onda * 5.0 * energia_ef,
+            z=bz * 0.40 - meia_onda * 2.8 * energia_ef,
+        )
+
+        # 2. Fones e antenas reagindo ao headbang/nod com chicote secundário
+        atraso = sin(self.phase - 0.65)
+        rig.set_rotation(
+            "fones",
+            x=-hx * 0.22 + atraso * 3.5 * energia_ef,
+            y=-hy * 0.16,
+            z=-hz * 0.25 + meia_onda * 2.8 * energia_ef,
+        )
+        rig.set_rotation(
+            "fone-direito",
+            x=-hx * 0.14,
+            y=-hy * 0.10,
+            z=-hz * 0.22 + onda * 2.5 * energia_ef,
+        )
+        rig.set_rotation(
+            "fone-esquerdo",
+            x=-hx * 0.14,
+            y=-hy * 0.10,
+            z=-hz * 0.22 - onda * 2.5 * energia_ef,
+        )
+        rig.set_rotation(
+            "antena-direita",
+            x=-hx * 0.42 + atraso * 7.5 * energia_ef,
+            y=-hy * 0.30 + meia_onda * 4.0 * energia_ef,
+            z=-hz * 0.48 + onda * 6.5 * energia_ef,
+        )
+        rig.set_rotation(
+            "antena-esquerda",
+            x=-hx * 0.42 + atraso * 7.5 * energia_ef,
+            y=-hy * 0.30 - meia_onda * 4.0 * energia_ef,
+            z=-hz * 0.48 - onda * 6.5 * energia_ef,
+        )
+
+        # 3. Groove adicional nos braços, cotovelos, ombros, punhos e dedos por estilo
+        rx, ry, rz = pose.get("right-arm", (0.0, 0.0, 0.0))
+        lx, ly, lz = pose.get("left-arm", (0.0, 0.0, 0.0))
+        arx, ary, arz = pose.get("ant-arm", (0.0, 0.0, 0.0))
+        alx, aly, alz = pose.get("ant-arm2", (0.0, 0.0, 0.0))
+
+        if self.style == "head_bob":
+            rig.set_rotation(
+                "right-arm",
+                x=rx + onda * 2.5,
+                y=ry + meia_onda * 3.0,
+                z=rz - pulso * 3.5,
+            )
+            rig.set_rotation(
+                "left-arm",
+                x=lx - onda * 2.0,
+                y=ly + meia_onda * 2.5,
+                z=lz + pulso * 3.0,
+            )
+            rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + pulso * 4.0)
+            rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - pulso * 4.0)
+            rig.set_rotation("shoulder", x=pulso * 2.0, y=0.0, z=-pulso * 2.5)
+            rig.set_rotation("shoulder2", x=pulso * 2.0, y=0.0, z=pulso * 2.5)
+            rig.set_rotation("hand", x=-onda * 3.5, y=meia_onda * 3.0, z=onda * 4.0)
+            rig.set_rotation("hand2", x=onda * 3.5, y=meia_onda * 3.0, z=-onda * 4.0)
+            rig.set_rotation("fingers", z=4.0 + pulso * 4.0)
+            rig.set_rotation("fingers2", z=-4.0)
+        elif self.style == "rock":
+            rig.set_rotation(
+                "right-arm",
+                x=rx + onda * 4.0,
+                y=ry + meia_onda * 4.5,
+                z=rz - pulso * 7.5,
+            )
+            rig.set_rotation(
+                "left-arm",
+                x=lx - onda * 4.5,
+                y=ly - meia_onda * 5.0,
+                z=lz + pulso * 6.5,
+            )
+            rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + pulso * 7.0)
+            rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - (1.0 - pulso) * 8.0)
+            rig.set_rotation("shoulder", x=pulso * 3.0, y=0.0, z=-pulso * 4.0)
+            rig.set_rotation("shoulder2", x=pulso * 2.5, y=0.0, z=pulso * 3.0)
+            hx_m, hy_m, hz_m = pose.get("hand", (180.0, 0.0, 0.0))
+            rig.set_rotation(
+                "hand",
+                x=hx_m + onda * 6.0,
+                y=hy_m + meia_onda * 4.5,
+                z=hz_m - pulso * 7.0,
+            )
+            rig.set_rotation("hand2", x=-onda * 5.0, y=0.0, z=pulso * 6.0)
+            rig.set_rotation("fingers", z=-4.0 + onda * 4.0)
+            rig.set_rotation("fingers2", z=-12.0 - pulso * 6.0)
+        elif self.style == "hip_hop":
+            rig.set_rotation(
+                "right-arm",
+                x=rx + onda * 4.0,
+                y=ry + meia_onda * 5.0,
+                z=rz - pulso * 5.0,
+            )
+            rig.set_rotation(
+                "left-arm",
+                x=lx - onda * 4.0,
+                y=ly + meia_onda * 5.0,
+                z=lz + pulso * 5.0,
+            )
+            rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + pulso * 2.5)
+            rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - pulso * 2.5)
+            rig.set_rotation(
+                "shoulder",
+                x=onda * 2.5,
+                y=0.0,
+                z=-pulso * 3.0 + meia_onda * 2.0,
+            )
+            rig.set_rotation(
+                "shoulder2",
+                x=-onda * 2.5,
+                y=0.0,
+                z=pulso * 3.0 + meia_onda * 2.0,
+            )
+            rig.set_rotation(
+                "hand", x=-onda * 5.0, y=meia_onda * 4.0, z=pulso * 6.0
+            )
+            rig.set_rotation(
+                "hand2", x=onda * 5.0, y=meia_onda * 4.0, z=-pulso * 6.0
+            )
+            rig.set_rotation("fingers", z=6.0 + onda * 5.0)
+            rig.set_rotation("fingers2", z=-6.0 - onda * 5.0)
+        else:  # breakdance
+            toprock = 1.0 - self.floor_amount
+            rig.set_rotation(
+                "right-arm",
+                x=rx + onda * 4.0 * toprock,
+                y=ry + meia_onda * 8.0 * toprock,
+                z=rz - pulso * 7.0 * toprock,
+            )
+            rig.set_rotation(
+                "left-arm",
+                x=lx - onda * 4.0 * toprock,
+                y=ly + meia_onda * 8.0 * toprock,
+                z=lz + pulso * 7.0 * toprock,
+            )
+            rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + pulso * 2.0)
+            rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - pulso * 2.0)
+            rig.set_rotation("shoulder", x=onda * 4.0, y=0.0, z=-pulso * 5.0)
+            rig.set_rotation("shoulder2", x=-onda * 4.0, y=0.0, z=pulso * 5.0)
+            rig.set_rotation("hand", x=-onda * 9.0, y=0.0, z=meia_onda * 10.0)
+            rig.set_rotation("hand2", x=onda * 9.0, y=0.0, z=-meia_onda * 10.0)
+
         rig.set_rotation("door", y=0)
         return rig.pose()
 

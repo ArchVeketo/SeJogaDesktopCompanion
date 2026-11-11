@@ -10,7 +10,12 @@ from dataclasses import dataclass
 from math import radians
 
 from sejoga.nucleo.cinematica import espelhar_rotacao
-from sejoga.nucleo.esqueleto import Rotation3
+from sejoga.nucleo.esqueleto import (
+    HEAD_SUBGROUPS,
+    LEG_SUBGROUPS,
+    TORSO_SUBGROUPS,
+    Rotation3,
+)
 
 
 @dataclass(frozen=True)
@@ -35,21 +40,21 @@ class RepousoAnatomico:
     NÃO provado visualmente: a simetria na tela depende do usuário (C3).
     """
 
-    # Ombro (osso base da cadeia): IK do alvo idle.
-    BRACO_X: float = 27.05  # torção: põe a dobradiça do cotovelo à frente
-    BRACO_Y: float = 0.81  # azimute: braço para o lado, sem recuo
-    BRACO_Z: float = 33.49  # elevação: braço caído, afastado do tronco
+    # Ombro (osso base da cadeia): IK do alvo idle relaxado (solto ao lado do corpo).
+    BRACO_X: float = 14.91
+    BRACO_Y: float = -27.89
+    BRACO_Z: float = 66.66
 
-    # Antebraço (cotovelo): flexão para a frente (IK do alvo idle).
+    # Antebraço (cotovelo): flexão natural leve (~14°), não duro/esticado nem dobrado fixo.
     ANTEBRACO_X: float = 0.0
-    ANTEBRACO_Z: float = 1.63
+    ANTEBRACO_Z: float = 14.54
 
-    # Mão
+    # Mão: punho relaxado neutro (sem torção forçada)
     MAO_X: float = 0.0
-    MAO_Z: float = 0.0
+    MAO_Z: float = 2.0
 
-    # Dedos
-    DEDOS_Z: float = 0.0
+    # Dedos: leve curvatura natural relaxada (sem garrinha)
+    DEDOS_Z: float = 2.0
 
 
 #: Instância global de repouso — usar em vez de recriar.
@@ -82,6 +87,10 @@ def pose_repouso() -> dict[str, Rotation3]:
         "door": Rotation3(0, 0, 0),
         "shoulder": Rotation3(0, 0, 0),
         "shoulder2": Rotation3(0, 0, 0),
+        **{
+            grupo: Rotation3(0, 0, 0)
+            for grupo in (*HEAD_SUBGROUPS, *TORSO_SUBGROUPS, *LEG_SUBGROUPS)
+        },
     }
 
 

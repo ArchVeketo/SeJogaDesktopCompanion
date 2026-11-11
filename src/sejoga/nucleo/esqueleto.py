@@ -23,7 +23,23 @@ from sejoga.nucleo.modelo import Model
 
 #: Grupos que formam o rig animável, por região do corpo.
 HEAD_GROUPS = ("head", "door")
+HEAD_SUBGROUPS = (
+    "fones",
+    "fone-direito",
+    "fone-esquerdo",
+    "antena-direita",
+    "antena-esquerda",
+)
 BODY_GROUPS = ("body", "legs")
+TORSO_SUBGROUPS = ("cintura", "abdomen", "peitoral")
+LEG_SUBGROUPS = (
+    "coxa-direita",
+    "canela-direita",
+    "joelho-direito",
+    "coxa-esquerda",
+    "canela-esquerda",
+    "joelho-esquerdo",
+)
 ARM_GROUPS = ("right-arm", "left-arm")
 ARM_SUBGROUPS = (
     "shoulder",
@@ -37,7 +53,16 @@ ARM_SUBGROUPS = (
 )
 FOOT_GROUPS = ("left-feet", "right-feet")
 
-ALL_GROUPS = HEAD_GROUPS + BODY_GROUPS + ARM_GROUPS + ARM_SUBGROUPS + FOOT_GROUPS
+ALL_GROUPS = (
+    HEAD_GROUPS
+    + HEAD_SUBGROUPS
+    + BODY_GROUPS
+    + TORSO_SUBGROUPS
+    + LEG_SUBGROUPS
+    + ARM_GROUPS
+    + ARM_SUBGROUPS
+    + FOOT_GROUPS
+)
 
 
 class IdlePersonality(StrEnum):

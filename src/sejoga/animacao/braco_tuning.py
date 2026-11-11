@@ -41,6 +41,10 @@ OMBRO_ELEVACAO_MAX_GRAUS = 110.0
 #: Azimute (H): faixa ampla, contém só deriva extrema.
 OMBRO_AZIMUTE_MIN_GRAUS = -120.0
 OMBRO_AZIMUTE_MAX_GRAUS = 120.0
+#: Fração de cada extremo da faixa onde o clamp suave (tanh) amortece a chegada
+#: antes do limite rígido final, evitando parada seca em gestos amplos sem
+#: comprimir os 70% centrais da faixa (docs/ESTUDO_ANIMACAO_PROCEDURAL.md §4.7).
+FRACAO_MARGEM_CLAMP_SUAVE = 0.15
 
 # --------------------------------------------------------------------------- #
 # IK
@@ -53,7 +57,7 @@ FOLGA_ALCANCE = 1e-4
 #: Direção para onde o COTOVELO aponta, em ``alvos_bracos`` (direita, cima,
 #: frente): para trás, para baixo e levemente para fora, como o cotovelo humano.
 #: O antebraço dobra para a frente em torno dessa direção. A_CONFIRMAR (C2).
-POLO_COTOVELO_ANATOMICO = (0.3, -0.6, -0.75)
+POLO_COTOVELO_ANATOMICO = (0.38, -0.62, -0.65)
 
 # --------------------------------------------------------------------------- #
 # Anti-atravessamento (consumido por `animacao.colisao_bracos`)
@@ -69,12 +73,14 @@ POLO_COTOVELO_ANATOMICO = (0.3, -0.6, -0.75)
 FRACAO_NUCLEO_BRACO = 0.5
 #: Penetração EXTRA tolerada (u, além de ``FOLGA_PENETRACAO_U``) do núcleo do braço
 #: em cada caixa do corpo. Só as caixas "moles" (camiseta e short, AABBs mais
-#: largas que o tecido) têm folga; cabeça, fone, pés e o outro braço seguem
-#: estritos (folga 0). Medido com núcleo 0.5: sem folga 133 alvos livres e punho
-#: no máximo 0.06 u abaixo do ombro; com tronco 0.03 / quadril 0.03, 733 alvos e
-#: 0.18 u abaixo (braço pendente). Maior = braço mais solto e mais braço dentro
-#: do tecido. A_CONFIRMAR na GPU (recalibracao-gpu.md, C13).
-FOLGA_EXTRA_CAIXA_U = {"tronco": 0.03, "quadril": 0.03}
+#: largas que o tecido) têm folga; cabeça, fone e o outro braço seguem
+#: estritos (folga 0).
+FOLGA_EXTRA_CAIXA_U = {
+    "tronco": 0.045,
+    "quadril": 0.045,
+    "pe_direito": 0.035,
+    "pe_esquerdo": 0.035,
+}
 #: Passos (graus) da busca em cada grau de liberdade: o fino ajusta, os grossos
 #: saltam mínimos locais (ex.: antebraço dobrado contra o peito). Cada passo é o
 #: triplo do anterior, o bastante para sair de um mínimo local em 3 tentativas.

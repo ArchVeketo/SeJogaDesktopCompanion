@@ -99,7 +99,7 @@ def test_vertices_das_malhas_do_braco_nao_entram_no_tronco(modelo):
 
     raiz = core.NodePath(gltf.load_model(str(resolve_model())))
     referencia = raiz.find("**/legs").getParent()
-    caixas = (cb.CAIXAS_CORPO["tronco"], cb.CAIXAS_CORPO["quadril"])
+    caixas = tuple(cb.CAIXAS_CORPO.values())
     # Mais fundo que a meia-espessura = o NÚCLEO do braço entrou no volume.
     limite = cb.MEIA_ESPESSURA_BRACO_U + cb.FOLGA_PENETRACAO_U
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import random
 from enum import StrEnum
+from math import degrees, radians
 from typing import ClassVar
 
 from sejoga.animacao import movimento_corpo_tuning as tune
@@ -26,6 +27,7 @@ from sejoga.animacao.estados_delta import (
     delta_fall,
     delta_fisica,
     delta_idle,
+    delta_secundario,
     delta_sleep,
     delta_soltura,
     delta_walk,
@@ -37,11 +39,26 @@ from sejoga.animacao.gestos_tuning import (
     CUTUCAR_DURACAO_S,
 )
 from sejoga.animacao.mola_tuning import amortecimento_de, frequencia_de
-from sejoga.animacao.molas_juntas import CADEIA_DIREITA, CADEIA_ESQUERDA, LagChain
+from sejoga.animacao.molas_juntas import (
+    CADEIA_COLUNA,
+    CADEIA_DIREITA,
+    CADEIA_ESQUERDA,
+    CADEIA_FONE_DIREITO,
+    CADEIA_FONE_ESQUERDO,
+    LagChain,
+)
 from sejoga.animacao.movimento_corpo import BodyMotion
 from sejoga.animacao.movimento_danca import DanceMotion
 from sejoga.animacao.movimento_maos import HandMotion
 from sejoga.animacao.movimento_pernas import LegMotion
+from sejoga.animacao.pacotes_animacao import (
+    ANGULO_POR_ORIENTACAO,
+    AgendadorPacotes,
+    EstadoProfundidade,
+    NivelProfundidade,
+    OrientacaoCorpo,
+    PacoteOlharTela,
+)
 from sejoga.animacao.pose_repouso import REPOUSO
 from sejoga.animacao.poses_base import (
     pose_drag,
@@ -139,7 +156,9 @@ class AnimationController:
         self._look_vertical = 0.0
         self._ambient_in = 28.0
         self.appendage_remaining = 0.0
-        self._peek_in = self._personality_rng.uniform(60, 100)
+        self._peek_in = self._personality_rng.uniform(180, 360)
+        self.modo_sono: str = "em_pe"
+        self._sleep_locked: bool = False
         self._dance_remaining = 0.0
         self._dance_decision_in = 0.0
         self._previous_beat = False
@@ -160,8 +179,17 @@ class AnimationController:
         # somado sobre o follow-through das mãos (hand_motion).
         self.cadeia_direita = LagChain(CADEIA_DIREITA)
         self.cadeia_esquerda = LagChain(CADEIA_ESQUERDA)
-        self.cadeia_direita.definir(dict(self._pose))
-        self.cadeia_esquerda.definir(dict(self._pose))
+        self.cadeia_fone_direito = LagChain(CADEIA_FONE_DIREITO)
+        self.cadeia_fone_esquerdo = LagChain(CADEIA_FONE_ESQUERDO)
+        self.cadeia_coluna = LagChain(CADEIA_COLUNA)
+        for _c in (
+            self.cadeia_direita,
+            self.cadeia_esquerda,
+            self.cadeia_fone_direito,
+            self.cadeia_fone_esquerdo,
+            self.cadeia_coluna,
+        ):
+            _c.definir(dict(self._pose))
         # Crossfade, colisão e clamps delegados ao PoseResolver.
         # As tensões de crossfade vêm de spring_tuning: âncora firme, ponta
         # solta. EXCEÇÃO: legs, left-feet e right-feet recebem a tensão FIRME
@@ -183,6 +211,53 @@ class AnimationController:
         )
         # LayerStack para composição aditiva de deltas (Fase 3).
         self.layer_stack = LayerStack()
+        # Pacotes de animação, profundidade visual e orientação manual (Fases 3-4).
+        self.profundidade = EstadoProfundidade()
+        self.pacote_olhar_tela = PacoteOlharTela()
+        self.agendador_pacotes = AgendadorPacotes()
+        self.orientacao_manual: OrientacaoCorpo | None = None
+        self.angulo_giro_pedido: float | None = None
+        self.permitir_giro_costas: bool = False
+        self.pedido_caminhada_autonoma: str | None = None
+
+    def iniciar_pacote_olhar_tela(self, lado: float | None = None) -> None:
+        """Dispara o pacote 'Olhar a tela' (olhar por cima do ombro -> costas -> frente)."""
+        self.idle_time = 0.0
+        escolhido = (
+            (1.0 if self._personality_rng.random() < 0.5 else -1.0)
+            if lado is None
+            else lado
+        )
+        self.pacote_olhar_tela.iniciar(lado=escolhido)
+
+    def definir_profundidade(self, nivel: NivelProfundidade | str) -> None:
+        """Define o nível de profundidade visual (`perto`, `medio` ou `longe`)."""
+        self.profundidade.definir_nivel(nivel)
+
+    def caminhar_para_fundo(self) -> NivelProfundidade:
+        """Avança um nível de profundidade para dentro da tela (`perto -> medio -> longe`)."""
+        return self.profundidade.avancar_fundo()
+
+    def caminhar_para_frente(self) -> NivelProfundidade:
+        """Avança um nível de profundidade para a frente da tela (`longe -> medio -> perto`)."""
+        return self.profundidade.avancar_frente()
+
+    def definir_orientacao(self, orientacao: OrientacaoCorpo | str | None) -> None:
+        """Define a orientação manual do corpo (`frente`, `perfil`, `costas`) ou limpa."""
+        if orientacao is None:
+            self.orientacao_manual = None
+            return
+        self.orientacao_manual = OrientacaoCorpo(orientacao)
+        if self.orientacao_manual != OrientacaoCorpo.COSTAS:
+            self.pacote_olhar_tela.interromper()
+
+    def voltar_ao_plano(self) -> None:
+        """Retorna imediatamente ao plano frontal (`perto` e `frente`)."""
+        self.pacote_olhar_tela.interromper()
+        self.orientacao_manual = None
+        self.angulo_giro_pedido = 0.0
+        self.permitir_giro_costas = False
+        self.profundidade.definir_nivel(NivelProfundidade.PERTO)
 
     def preview_dance(self, style):
         """Força a prévia de um estilo de dança por alguns segundos."""
@@ -193,6 +268,30 @@ class AnimationController:
         self.dance_motion.style = style
         self.dance_motion.style_beats = 0
         self.dance_motion.pose.clear()
+
+    def colocar_para_dormir(self, modo: str = "em_pe") -> None:
+        """Coloca o mascote para dormir em um dos 3 estados: em_pe, sentado ou deitado."""
+        if modo not in ("em_pe", "sentado", "deitado"):
+            modo = "em_pe"
+        self.modo_sono = modo
+        self._sleep_locked = True
+        self.state = AnimationState.SLEEP
+        self.state_time = 0.0
+        self.appendage_remaining = 0.0
+        self.pose_resolver.iniciar_transicao(
+            dict(self._pose), transition_seconds=SONO_TRANSICAO_S
+        )
+
+    def acordar(self) -> None:
+        """Acorda o mascote e retorna ao idle."""
+        self._sleep_locked = False
+        if self.state == AnimationState.SLEEP:
+            self.state = AnimationState.IDLE
+            self.state_time = 0.0
+            self.idle_time = 0.0
+            self.pose_resolver.iniciar_transicao(
+                dict(self._pose), transition_seconds=self.transition_seconds
+            )
 
     @staticmethod
     def _criar_respiracao(personality: IdlePersonality) -> Respiracao:
@@ -424,15 +523,20 @@ class AnimationController:
             music_intensity=music_intensity,
         )
         if (
-            next_state in (AnimationState.IDLE, AnimationState.DANCE)
+            next_state == AnimationState.IDLE
+            and self.state == AnimationState.IDLE
             and grounded
             and idle_enabled
             and not hovered
+            and not music_playing
+            and not dragging
         ):
             self._peek_in -= dt
             if self._peek_in <= 0 and self._reaction is None:
-                self.appendage_remaining = 9.0
-                self._peek_in = self._personality_rng.uniform(60, 100)
+                self.appendage_remaining = 5.5
+                self._peek_in = self._personality_rng.uniform(180, 360)
+        elif next_state in (AnimationState.SLEEP, AnimationState.DRAG, AnimationState.FALL):
+            self.appendage_remaining = 0.0
         if (
             next_state == AnimationState.IDLE
             and grounded
@@ -456,7 +560,12 @@ class AnimationController:
                 next_state = self._reaction
             elif hovered and next_state == AnimationState.IDLE:
                 next_state = AnimationState.HOVER
-        if next_state in (
+        if self._sleep_locked:
+            if next_state in (AnimationState.DRAG, AnimationState.FALL):
+                self._sleep_locked = False
+            else:
+                next_state = AnimationState.SLEEP
+        elif next_state in (
             AnimationState.IDLE,
             AnimationState.WAVE,
             AnimationState.STRETCH,
@@ -556,7 +665,7 @@ class AnimationController:
             contribuicao_danca = self.dance_motion.contribuicao(self.rig)
             self.rig.current = dict(contribuicao_danca)
         elif self.state == AnimationState.SLEEP:
-            pose_sleep(self.rig, self.clock)
+            pose_sleep(self.rig, self.clock, self.modo_sono)
         elif self.state.value in ("hang_loose", "thumbs_up", "rock", "finger_gun"):
             pose_idle(self.rig, self.clock, self.idle_personality)
             # Gesto de mão (hang loose/joinha/rock/finger gun): ergue o braço à
@@ -684,6 +793,64 @@ class AnimationController:
         target = self.rig.pose()
 
         # ═══════════════════════════════════════════════════════════════════════
+        # Pacotes de animação, profundidade visual e giro de corpo (Fases 3-4)
+        # ═══════════════════════════════════════════════════════════════════════
+        self.profundidade.atualizar(dt, arrastando=dragging)
+        interromper_pacote = (
+            dragging
+            or not grounded
+            or self.state
+            not in (
+                AnimationState.IDLE,
+                AnimationState.HOVER,
+                AnimationState.WALK,
+                AnimationState.RUN,
+            )
+        )
+        amostra_olhar = self.pacote_olhar_tela.atualizar(
+            dt, interromper=interromper_pacote
+        )
+        elegivel_pacote = (
+            self.state == AnimationState.IDLE
+            and grounded
+            and idle_enabled
+            and not hovered
+            and not dragging
+            and not amostra_olhar.ativo
+            and self._reaction is None
+            and self.orientacao_manual is None
+        )
+        pacote_sorteado = self.agendador_pacotes.atualizar(dt, elegivel=elegivel_pacote)
+        if pacote_sorteado == "olhar_tela":
+            self.iniciar_pacote_olhar_tela()
+            amostra_olhar = self.pacote_olhar_tela.atualizar(0.0)
+        elif pacote_sorteado == "caminhar_fundo":
+            if self.profundidade.nivel_alvo == NivelProfundidade.LONGE:
+                self.caminhar_para_frente()
+            else:
+                self.caminhar_para_fundo()
+        elif pacote_sorteado == "caminhar_lado":
+            self.pedido_caminhada_autonoma = "aleatorio"
+
+        if dragging:
+            self.angulo_giro_pedido = None
+            self.permitir_giro_costas = False
+        elif amostra_olhar.ativo:
+            self.angulo_giro_pedido = amostra_olhar.angulo_giro_corpo
+            self.permitir_giro_costas = True
+        elif self.orientacao_manual is not None:
+            self.angulo_giro_pedido = ANGULO_POR_ORIENTACAO[self.orientacao_manual]
+            self.permitir_giro_costas = (
+                self.orientacao_manual == OrientacaoCorpo.COSTAS
+            )
+        elif self.state in (AnimationState.WALK, AnimationState.RUN) and abs(velocity[0]) > 40.0:
+            self.angulo_giro_pedido = 90.0 if velocity[0] > 0.0 else -90.0
+            self.permitir_giro_costas = False
+        else:
+            self.angulo_giro_pedido = None
+            self.permitir_giro_costas = False
+
+        # ═══════════════════════════════════════════════════════════════════════
         # Composição via LayerStack (Fase 3): produz delta do estado atual
         # e usa layer_stack.compor() para obter pose composta.
         # ═══════════════════════════════════════════════════════════════════════
@@ -703,6 +870,12 @@ class AnimationController:
             delta_estado = somar_deltas(
                 delta_estado, delta_soltura(self._release_time, self._release_grip)
             )
+        if amostra_olhar.ativo and amostra_olhar.delta_pose:
+            delta_estado = somar_deltas(delta_estado, amostra_olhar.delta_pose)
+        if self.appendage_remaining > 0 and delta_estado:
+            delta_estado = somar_deltas(
+                delta_estado, {"door": Rotation3(0.0, radians(85.0), 0.0)}
+            )
 
         # Determina se o estado atual está totalmente migrado para deltas
         # Estados não migrados usam a pose legada diretamente
@@ -717,6 +890,11 @@ class AnimationController:
         estado_migrado = self.state in estados_migrados and delta_estado
 
         if estado_migrado:
+            relogio_sec = (
+                self._idle_clock
+                if self.state in (AnimationState.IDLE, AnimationState.HOVER)
+                else self.clock
+            )
             # Set camadas no LayerStack
             self.layer_stack.set_camada(
                 CamadaDelta(
@@ -732,6 +910,20 @@ class AnimationController:
                     nome="fisica",
                     prioridade=Prioridade.FISICA,
                     delta=delta_fisica(motion),
+                )
+            )
+
+            # Camada secundária (follow-through de coluna, fones, antenas, ombros e mãos)
+            self.layer_stack.set_camada(
+                CamadaDelta(
+                    nome="secundario",
+                    prioridade=Prioridade.FOLLOW_THROUGH,
+                    delta=delta_secundario(
+                        relogio_sec,
+                        self.state.value,
+                        self.idle_personality,
+                        delta_estado,
+                    ),
                 )
             )
 
@@ -766,14 +958,25 @@ class AnimationController:
         displayed_pose = self.hand_motion.apply(self._pose, dt, self.state.value)
         displayed_pose = self._aplicar_interacao(displayed_pose, dt)
         self.rig.current = dict(displayed_pose)
+        estado_pernas = (
+            AnimationState.WALK.value
+            if amostra_olhar.ativo and amostra_olhar.em_passo
+            else self.state.value
+        )
+        vel_pernas = (
+            (160.0 * self.pacote_olhar_tela.lado, 0.0)
+            if amostra_olhar.ativo and amostra_olhar.em_passo
+            else velocity
+        )
         self.leg_motion.update(
             dt,
-            self.state.value,
-            velocity,
+            estado_pernas,
+            vel_pernas,
             self._reaction_time,
             self.body_motion.snapshot.limb_swing
             if dragging
-            else self.body_motion.snapshot.roll,
+            else self.body_motion.snapshot.roll
+            + degrees(displayed_pose.get("body", Rotation3()).z) * 0.85,
             dance_phase=(
                 self.dance_motion.style_beats * 6.28318530718
                 if self.dance_motion.style == "breakdance"
@@ -781,6 +984,7 @@ class AnimationController:
             ),
             dance_strength=self.dance_motion.strength,
             dance_style=self.dance_motion.style,
+            personality=self.idle_personality.value,
         )
         return displayed_pose
 
@@ -796,7 +1000,13 @@ class AnimationController:
         o follow-through já aplicado por hand_motion.
         """
         resultado = dict(pose)
-        for cadeia in (self.cadeia_direita, self.cadeia_esquerda):
+        for cadeia in (
+            self.cadeia_direita,
+            self.cadeia_esquerda,
+            self.cadeia_fone_direito,
+            self.cadeia_fone_esquerdo,
+            self.cadeia_coluna,
+        ):
             alvos = {
                 grupo: self._pose[grupo]
                 for grupo in cadeia.cadeia
@@ -845,12 +1055,20 @@ class AnimationController:
         if state == AnimationState.DRAG:
             return delta_drag(motion, grab_part, self.drag_intensity)
         if state == AnimationState.WALK:
-            return delta_walk(self.leg_motion.phase, run=False)
+            return delta_walk(
+                self.leg_motion.phase,
+                run=False,
+                personalidade=self.idle_personality.value,
+            )
         if state == AnimationState.RUN:
-            return delta_walk(self.leg_motion.phase, run=True)
+            return delta_walk(
+                self.leg_motion.phase,
+                run=True,
+                personalidade=self.idle_personality.value,
+            )
         if state == AnimationState.FALL:
             return delta_fall(self.state_time, velocity)
         if state == AnimationState.SLEEP:
-            return delta_sleep(t)
+            return delta_sleep(t, self.modo_sono)
         # Estados não migrados: delta vazio (usa pose legada)
         return {}

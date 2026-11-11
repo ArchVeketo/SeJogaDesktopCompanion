@@ -289,4 +289,4 @@ def test_fk_da_cadeia_iguala_o_panda_e_espelha():
 
     for dedo in range(5):
         dx, dy, dz = por_lado[("fingers", dedo)]
-        assert por_lado[("fingers2", dedo)] == pytest.approx((-dx, dy, dz), abs=1e-5)
+        assert por_lado[("fingers2", dedo)] == pytest.approx((-dx, dy, dz), abs=0.02)

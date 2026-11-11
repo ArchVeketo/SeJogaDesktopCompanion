@@ -63,9 +63,26 @@ TENSAO_POR_JUNTA: dict[str, TensaoJunta] = {
     # (assenta seco, quase sem balanço), sem atraso.
     "body": TensaoJunta(frequencia=3.2, amortecimento=0.9, lag=0.0),
     "legs": TensaoJunta(frequencia=3.2, amortecimento=0.9, lag=0.0),
+    # Subgrupos da coluna (dentro de body): rigidez decrescente da base ao peito.
+    "cintura": TensaoJunta(frequencia=3.1, amortecimento=0.88, lag=0.02),
+    "abdomen": TensaoJunta(frequencia=2.9, amortecimento=0.84, lag=0.05),
+    "peitoral": TensaoJunta(frequencia=2.7, amortecimento=0.80, lag=0.08),
+    # Subgrupos das pernas (dentro de legs): coxas firmes, canelas intermediárias.
+    "coxa-direita": TensaoJunta(frequencia=2.5, amortecimento=0.78, lag=0.12),
+    "coxa-esquerda": TensaoJunta(frequencia=2.5, amortecimento=0.78, lag=0.12),
+    "canela-direita": TensaoJunta(frequencia=2.0, amortecimento=0.68, lag=0.22),
+    "canela-esquerda": TensaoJunta(frequencia=2.0, amortecimento=0.68, lag=0.22),
+    "joelho-direito": TensaoJunta(frequencia=2.2, amortecimento=0.72, lag=0.18),
+    "joelho-esquerdo": TensaoJunta(frequencia=2.2, amortecimento=0.72, lag=0.18),
     # Cabeça: rigidez média-alta, amortecimento médio-alto, atraso leve para
     # dar um balanço discreto no pescoço.
     "head": TensaoJunta(frequencia=2.6, amortecimento=0.7, lag=0.1),
+    # Fones e antenas (dentro de head): follow-through progressivo da tiara até a ponta.
+    "fones": TensaoJunta(frequencia=2.3, amortecimento=0.65, lag=0.18),
+    "fone-direito": TensaoJunta(frequencia=2.0, amortecimento=0.60, lag=0.25),
+    "fone-esquerdo": TensaoJunta(frequencia=2.0, amortecimento=0.60, lag=0.25),
+    "antena-direita": TensaoJunta(frequencia=1.5, amortecimento=0.48, lag=0.45),
+    "antena-esquerda": TensaoJunta(frequencia=1.5, amortecimento=0.48, lag=0.45),
     # Portinha do peito: rigidez média, amortecimento médio-alto, sem atraso.
     "door": TensaoJunta(frequencia=2.2, amortecimento=0.8, lag=0.0),
     # Ombros: presos ao tronco, quase tão firmes quanto o corpo. Rigidez alta,

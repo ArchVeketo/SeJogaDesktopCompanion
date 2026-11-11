@@ -28,6 +28,7 @@ from math import atan2, cos, degrees, radians, sin, sqrt
 from sejoga.nucleo.cinematica_const import (
     EPSILON_DEGENERADO,
     TORCAO_BASE_ANTEBRACO_GRAUS,
+    TORCAO_BASE_MAO_GRAUS,
 )
 from sejoga.nucleo.esqueleto import ALL_GROUPS, Rotation3
 from sejoga.nucleo.modelo import Model
@@ -52,9 +53,12 @@ _GIMBAL_COS_MINIMO = 1e-6
 _COS_PITCH_MINIMO = EPSILON_DEGENERADO
 
 #: HPR (graus) SOMADO ao repouso do glTF, igual no renderer (``apply_rig_pose``) e
-#: na FK. É o osso base do cotovelo: torção fixa do antebraço (ver braco_tuning).
+#: na FK. Inclui a torção-base do cotovelo e a pronação anatômica do punho.
 BASE_ADICIONAL_GRAUS: dict[str, tuple[float, float, float]] = {
-    grupo: (0.0, TORCAO_BASE_ANTEBRACO_GRAUS, 0.0) for grupo in ("ant-arm", "ant-arm2")
+    "ant-arm": (0.0, TORCAO_BASE_ANTEBRACO_GRAUS, 0.0),
+    "ant-arm2": (0.0, TORCAO_BASE_ANTEBRACO_GRAUS, 0.0),
+    "hand": (0.0, TORCAO_BASE_MAO_GRAUS, 0.0),
+    "hand2": (0.0, TORCAO_BASE_MAO_GRAUS, 0.0),
 }
 
 

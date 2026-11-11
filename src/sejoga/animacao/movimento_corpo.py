@@ -15,18 +15,50 @@ def clamp(value, low, high):
     return max(low, min(high, value))
 
 
+def calcular_alvo_angular(valor: float, alvo: float) -> float:
+    """Reposiciona ``alvo`` (graus) para o caminho angular mais curto a partir de ``valor``."""
+    diferenca = ((alvo - valor + 180.0) % 360.0) - 180.0
+    return valor + diferenca
+
+
 @dataclass
 class Spring:
-    """Mola amortecida de um grau de liberdade."""
+    """Mola amortecida de um grau de liberdade (regime subamortecido).
+
+    Parâmetros
+    ----------
+    frequency:
+        Frequência nominal em Hz. Deve ser positiva.
+    damping:
+        Razão de amortecimento (zeta). Deve estar em ``(0, 1)`` — somente o
+        regime subamortecido é suportado. Para amortecimento crítico
+        (``zeta == 1``), usar ``mola_critica.avancar_mola_critica``.
+    """
 
     frequency: float
     damping: float
     value: float = 0.0
     velocity: float = 0.0
 
+    def __post_init__(self) -> None:
+        """Valida faixa de frequência e amortecimento na construção."""
+        if self.frequency <= 0:
+            msg = (
+                f"frequency deve ser positiva, recebeu {self.frequency!r}. "
+                "Uma mola com frequência zero não oscila."
+            )
+            raise ValueError(msg)
+        if not (0 < self.damping < 1):
+            msg = (
+                f"damping deve estar em (0, 1), recebeu {self.damping!r}. "
+                "Spring só implementa o regime subamortecido; para "
+                "amortecimento crítico use mola_critica.avancar_mola_critica."
+            )
+            raise ValueError(msg)
+
     def update(self, dt, target):
         """Avança a mola um passo rumo ao alvo e devolve o valor."""
-        if dt <= 0:
+        if not isfinite(dt) or dt <= 0:
             return self.value
         omega = 2 * pi * self.frequency
         decay = self.damping * omega
@@ -68,8 +100,10 @@ class GiroCorpo:
     - ``FREQUENCIA``/``AMORTECIMENTO`` da mola: peso/estabilidade do giro.
     """
 
-    # Teto do giro parcial (graus). Perfil de lado, sem costas completas.
+    # Teto padrão do giro parcial (graus). Perfil de lado.
     LIMITE_GRAUS = 90.0
+    # Teto ampliado para pacotes de animação/costas completas (180°).
+    LIMITE_COSTAS_GRAUS = 180.0
     # Fração do olhar (-1..1) convertida em ângulo-alvo antes do clamp.
     GANHO_OLHAR = 70.0
     # Abaixo deste |olhar| o corpo fica de frente (só a cabeça acompanha).
@@ -78,9 +112,12 @@ class GiroCorpo:
     FREQUENCIA = 1.1
     AMORTECIMENTO = 0.9
 
-    def __init__(self):
+    def __init__(self, *, limite_graus: float | None = None):
         """Inicia o giro do corpo parado."""
         self._mola = Spring(self.FREQUENCIA, self.AMORTECIMENTO)
+        self.limite_graus = (
+            self.LIMITE_GRAUS if limite_graus is None else float(limite_graus)
+        )
 
     @property
     def angulo(self):
@@ -103,29 +140,39 @@ class GiroCorpo:
         sinal = 1.0 if direcao > 0 else -1.0
         return sinal * excedente * self.GANHO_OLHAR
 
-    def update(self, dt, *, direcao_olhar=0.0, angulo_pedido=None):
+    def update(
+        self,
+        dt,
+        *,
+        direcao_olhar=0.0,
+        angulo_pedido=None,
+        permitir_costas=False,
+    ):
         """Avança a mola um quadro e devolve o heading suavizado e clampado.
 
         - ``direcao_olhar``: sinal de atenção (-1..1) de ``foco_atencao``; o corpo
           acompanha a cabeça com giro parcial quando o alvo está muito de lado.
         - ``angulo_pedido``: gancho para estados de animação (ex.: danças que
-          viram de lado) pedirem um heading explícito em graus. Quando informado,
-          tem precedência sobre o olhar. Sempre clampado em ``±LIMITE_GRAUS``.
+          viram de lado ou pacote Olhar a tela) pedirem um heading explícito em graus.
+          Quando informado, tem precedência sobre o olhar.
+        - ``permitir_costas``: quando True, libera o teto até ``LIMITE_COSTAS_GRAUS``
+          (180°) e usa ``calcular_alvo_angular`` para escolher o caminho curto.
 
         ``dt <= 0`` não avança a mola (devolve o ângulo atual), como ``Spring``.
         """
+        teto = self.LIMITE_COSTAS_GRAUS if permitir_costas else self.limite_graus
         alvo = (
             float(angulo_pedido)
             if angulo_pedido is not None
             else self._alvo_do_olhar(direcao_olhar)
         )
-        alvo = clamp(alvo, -self.LIMITE_GRAUS, self.LIMITE_GRAUS)
+        alvo = clamp(alvo, -teto, teto)
+        if permitir_costas:
+            alvo = clamp(calcular_alvo_angular(self._mola.value, alvo), -teto, teto)
         self._mola.update(dt, alvo)
         # Clamp de segurança: a mola pode ultrapassar o alvo no transiente; o nó
         # de giro nunca deve passar do limite para não sair do envelope da janela.
-        self._mola.value = clamp(
-            self._mola.value, -self.LIMITE_GRAUS, self.LIMITE_GRAUS
-        )
+        self._mola.value = clamp(self._mola.value, -teto, teto)
         return self._mola.value
 
 

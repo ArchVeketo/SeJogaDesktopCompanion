@@ -10,7 +10,7 @@ poses completas, as molas operam sobre deltas menores.
 
 from __future__ import annotations
 
-from math import cos, radians, sin, tau
+from math import cos, degrees, radians, sin, tau
 
 from sejoga.animacao import locomocao_tuning as loc
 from sejoga.animacao import movimento_corpo_tuning as tune
@@ -20,6 +20,7 @@ from sejoga.animacao.clipes_animacao import amostrar_clipe, ciclo_da_fase
 from sejoga.animacao.clipes_ocioso import camada_respiracao, sample_idle, sample_track
 from sejoga.animacao.movimento_corpo import BodyPose
 from sejoga.animacao.pose_repouso import REPOUSO
+from sejoga.animacao.ruido_procedural import delta_micro_ruido_idle
 from sejoga.nucleo.esqueleto import IdlePersonality, Rotation3
 
 #: Base de repouso (graus) dos grupos de braço, a mesma que ``sample_idle``
@@ -264,8 +265,10 @@ def _somar_z(rot: Rotation3, z_graus: float) -> Rotation3:
     return Rotation3(rot.x, rot.y, rot.z + radians(z_graus))
 
 
-def delta_walk(fase: float, run: bool = False) -> dict[str, Rotation3]:
-    """Delta aditivo do estado de caminhada/corrida.
+def delta_walk(
+    fase: float, run: bool = False, personalidade: str = "calm"
+) -> dict[str, Rotation3]:
+    """Delta aditivo do estado de caminhada/corrida com modulação por personalidade.
 
     Parameters
     ----------
@@ -274,12 +277,14 @@ def delta_walk(fase: float, run: bool = False) -> dict[str, Rotation3]:
         balançam em contrafase às pernas porque partilham este relógio.
     run:
         Se True, corrida (mais amplitude).
+    personalidade:
+        Personalidade do idle ativa para variar o estilo de caminhada.
 
     Returns
     -------
     Delta em radianos a ser somado à pose de repouso.
     """
-    clipe = amostrar_clipe("run" if run else "walk", ciclo_da_fase(fase))
+    clipe = amostrar_clipe("run" if run else "walk", ciclo_da_fase(fase), personalidade)
 
     return {
         grupo: Rotation3(radians(x), radians(y), radians(z))
@@ -374,13 +379,15 @@ def delta_fall(
     return delta
 
 
-def delta_sleep(t: float) -> dict[str, Rotation3]:
-    """Delta aditivo do estado de sono.
+def delta_sleep(t: float, modo: str = "em_pe") -> dict[str, Rotation3]:
+    """Delta aditivo do estado de sono nos 3 modos: em_pe, sentado, deitado.
 
     Parameters
     ----------
     t:
         Tempo do clock (segundos).
+    modo:
+        "em_pe" (padrão), "sentado" ou "deitado".
 
     Returns
     -------
@@ -390,7 +397,63 @@ def delta_sleep(t: float) -> dict[str, Rotation3]:
     afunda = 0.5 - 0.5 * cos(tau * t / sono.SONO_AFUNDA_PERIODO_S)
     curl = sono.SONO_DEDOS_CURL + respiracao * sono.SONO_DEDOS_RESPIRACAO
 
-    # Braços relaxados junto ao corpo, baixos: vêm do alvo de mão de sono (IK).
+    if modo == "sentado":
+        delta = {
+            "body": Rotation3(
+                radians(sono.SONO_SENTADO_CORPO_X + respiracao * sono.SONO_RESPIRACAO_PEITO),
+                0,
+                radians(-3.0),
+            ),
+            "cintura": Rotation3(radians(4.0), 0, 0),
+            "abdomen": Rotation3(radians(6.0), 0, 0),
+            "peitoral": Rotation3(radians(8.0), 0, 0),
+            "head": Rotation3(
+                radians(sono.SONO_SENTADO_CABECA_X + respiracao * sono.SONO_RESPIRACAO_CABECA + _cochilo(t)),
+                0,
+                radians(sono.SONO_SENTADO_CABECA_Z),
+            ),
+            "coxa-direita": Rotation3(radians(sono.SONO_SENTADO_COXA_GRAUS), 0, 0),
+            "coxa-esquerda": Rotation3(radians(sono.SONO_SENTADO_COXA_GRAUS), 0, 0),
+            "canela-direita": Rotation3(radians(sono.SONO_SENTADO_CANELA_GRAUS), 0, 0),
+            "canela-esquerda": Rotation3(radians(sono.SONO_SENTADO_CANELA_GRAUS), 0, 0),
+            "joelho-direito": Rotation3(radians(sono.SONO_SENTADO_CANELA_GRAUS * 0.5), 0, 0),
+            "joelho-esquerdo": Rotation3(radians(sono.SONO_SENTADO_CANELA_GRAUS * 0.5), 0, 0),
+            "right-arm": Rotation3(radians(-12.0), radians(6.0), radians(sono.SONO_SENTADO_BRACO_Z)),
+            "left-arm": Rotation3(radians(-12.0), radians(-6.0), radians(-sono.SONO_SENTADO_BRACO_Z)),
+            "ant-arm": Rotation3(radians(-8.0), 0, radians(sono.SONO_SENTADO_ANTEBRACO_Z)),
+            "ant-arm2": Rotation3(radians(-8.0), 0, radians(-sono.SONO_SENTADO_ANTEBRACO_Z)),
+        }
+        delta.update(_delta_dedos(curl))
+        return delta
+
+    if modo == "deitado":
+        delta = {
+            "body": Rotation3(
+                radians(respiracao * sono.SONO_RESPIRACAO_PEITO * 0.8),
+                0,
+                radians(sono.SONO_DEITADO_ROLL),
+            ),
+            "cintura": Rotation3(0, 0, radians(-4.0)),
+            "head": Rotation3(
+                radians(-6.0 + respiracao * sono.SONO_RESPIRACAO_CABECA),
+                0,
+                radians(-10.0),
+            ),
+            "coxa-direita": Rotation3(radians(sono.SONO_DEITADO_COXA_GRAUS), 0, radians(8.0)),
+            "coxa-esquerda": Rotation3(radians(sono.SONO_DEITADO_COXA_GRAUS * 0.7), 0, radians(-6.0)),
+            "canela-direita": Rotation3(radians(sono.SONO_DEITADO_CANELA_GRAUS), 0, 0),
+            "canela-esquerda": Rotation3(radians(sono.SONO_DEITADO_CANELA_GRAUS * 0.8), 0, 0),
+            "joelho-direito": Rotation3(radians(sono.SONO_DEITADO_CANELA_GRAUS * 0.5), 0, 0),
+            "joelho-esquerdo": Rotation3(radians(sono.SONO_DEITADO_CANELA_GRAUS * 0.4), 0, 0),
+            "right-arm": Rotation3(radians(-10.0), 0, radians(sono.SONO_DEITADO_BRACO_Z)),
+            "left-arm": Rotation3(radians(-16.0), 0, radians(-sono.SONO_DEITADO_BRACO_Z * 0.8)),
+            "ant-arm": Rotation3(0, 0, radians(sono.SONO_DEITADO_ANTEBRACO_Z)),
+            "ant-arm2": Rotation3(0, 0, radians(-sono.SONO_DEITADO_ANTEBRACO_Z)),
+        }
+        delta.update(_delta_dedos(curl))
+        return delta
+
+    # Padrão: "em_pe" (dormir em pé)
     delta = _delta_braco_ik("sleep")
     delta["right-arm"] = _somar_z(delta["right-arm"], sono.SONO_OMBRO_CAIDO)
     delta["left-arm"] = _somar_z(delta["left-arm"], -sono.SONO_OMBRO_CAIDO)
@@ -455,13 +518,170 @@ def delta_fisica(motion: BodyPose) -> dict[str, Rotation3]:
 
         return radians(graus if limite is None else max(-limite, min(limite, graus)))
 
+    bp = _peito(motion.pitch)
+    by = _peito(motion.yaw)
+    br = _peito(motion.roll)
+    hp = radians(motion.head_pitch)
+    hr = radians(motion.head_roll)
+
     return {
-        "body": Rotation3(
-            _peito(motion.pitch), _peito(motion.yaw), _peito(motion.roll)
-        ),
-        "head": Rotation3(
-            radians(motion.head_pitch),
-            0,
-            radians(motion.head_roll),
-        ),
+        "body": Rotation3(bp, by, br),
+        "cintura": Rotation3(bp * 0.15, by * 0.15, br * 0.15),
+        "abdomen": Rotation3(bp * 0.25, by * 0.25, br * 0.25),
+        "peitoral": Rotation3(bp * 0.35, by * 0.35, br * 0.35),
+        "head": Rotation3(hp, 0, hr),
+        "fones": Rotation3(-hp * 0.18, 0.0, -hr * 0.22),
+        "antena-direita": Rotation3(-hp * 0.35, 0.0, -hr * 0.40),
+        "antena-esquerda": Rotation3(-hp * 0.35, 0.0, -hr * 0.40),
     }
+
+
+def _pulso_idle(
+    t: float,
+    period: float,
+    attack: float,
+    hold: float,
+    release: float,
+    offset: float = 0.0,
+) -> float:
+    """Pulso suavizado por hermite para gestos de mão no idle."""
+    phase = (t + offset) % period
+
+    def ease(v: float) -> float:
+        v = max(0.0, min(1.0, v))
+        return v * v * (3.0 - 2.0 * v)
+
+    if phase < attack:
+        return ease(phase / attack)
+    phase -= attack
+    if phase < hold:
+        return 1.0
+    phase -= hold
+    if phase < release:
+        return 1.0 - ease(phase / release)
+    return 0.0
+
+
+def delta_secundario(
+    t: float,
+    state: str,
+    personality: IdlePersonality,
+    delta_estado: dict[str, Rotation3],
+) -> dict[str, Rotation3]:
+    """Delta aditivo da camada secundária (FOLLOW_THROUGH) para o LayerStack.
+
+    Garante que nos estados migrados (``idle``, ``walk``, ``run``, ``drag``,
+    ``fall``, ``sleep``) os nós de coluna (``cintura``, ``abdomen``,
+    ``peitoral``), acessórios (``fones``, ``fone-direito/esquerdo``,
+    ``antena-direita/esquerda``), clavículas (``shoulder``, ``shoulder2``),
+    cotovelos (``ant-arm``, ``ant-arm2``), punhos (``hand``, ``hand2``) e dedos
+    recebam o follow-through orgânico que antes era descartado pelo LayerStack.
+    """
+    escala_ruido = 1.0 if state in ("idle", "hover") else 0.45
+    micro = delta_micro_ruido_idle(t, escala=escala_ruido)
+    cabeca = delta_estado.get("head", Rotation3())
+    corpo = delta_estado.get("body", Rotation3())
+    head_x, head_y, head_z = degrees(cabeca.x), degrees(cabeca.y), degrees(cabeca.z)
+    body_x, body_y, body_z = degrees(corpo.x), degrees(corpo.y), degrees(corpo.z)
+
+    saida: dict[str, Rotation3] = {}
+
+    # 1. Coluna distribuída (cintura -> abdomen -> peitoral) + micro-ruído
+    for nome, fracao in (
+        ("cintura", 0.22),
+        ("abdomen", 0.32),
+        ("peitoral", 0.44),
+    ):
+        r_micro = micro.get(nome, Rotation3())
+        saida[nome] = Rotation3(
+            radians(body_x * fracao) + r_micro.x,
+            radians(body_y * fracao) + r_micro.y,
+            radians(body_z * fracao) + r_micro.z,
+        )
+
+    # 2. Fones e antenas com contra-balanço em relação à cabeça + micro-ruído
+    r_fones = micro.get("fones", Rotation3())
+    saida["fones"] = Rotation3(
+        radians(-head_x * 0.14) + r_fones.x,
+        radians(-head_y * 0.10) + r_fones.y,
+        radians(-head_z * 0.18) + r_fones.z,
+    )
+    for lado_sinal, nome_fone, nome_antena in (
+        (1.0, "fone-direito", "antena-direita"),
+        (-1.0, "fone-esquerdo", "antena-esquerda"),
+    ):
+        saida[nome_fone] = Rotation3(
+            radians(-head_x * 0.10),
+            radians(-head_y * 0.08),
+            radians(-head_z * 0.20 + lado_sinal * sin(t * 1.1) * 0.6),
+        )
+        r_ant = micro.get(nome_antena, Rotation3())
+        saida[nome_antena] = Rotation3(
+            radians(-head_x * 0.32) + r_ant.x,
+            radians(-head_y * 0.24) + r_ant.y,
+            radians(-head_z * 0.42) + r_ant.z,
+        )
+
+    # 3. Ombros, cotovelos, punhos e dedos (follow-through secundário)
+    sway_scale = {
+        "idle": 2.4,
+        "hover": 2.8,
+        "walk": 4.2,
+        "run": 5.8,
+        "dance": 5.5,
+        "drag": 2.5,
+        "fall": 2.5,
+        "sleep": 0.4,
+    }.get(state, 1.8)
+
+    for forearm, shoulder, hand, fingers, side in (
+        ("ant-arm", "shoulder", "hand", "fingers", 1),
+        ("ant-arm2", "shoulder2", "hand2", "fingers2", -1),
+    ):
+        base_rep = _BASE_REPOUSO_GRAUS[forearm]
+        delta_arm = delta_estado.get(forearm, Rotation3())
+        arm_x = base_rep[0] + degrees(delta_arm.x)
+        arm_z = base_rep[2] + degrees(delta_arm.z)
+
+        saida[shoulder] = Rotation3(
+            radians(max(-4.0, min(4.0, arm_x * 0.14)) + sin(t * 0.9 - side * 0.4) * 1.1),
+            0.0,
+            radians(side * sin(t * 0.75 - side * 0.5) * 1.4),
+        )
+        if state in ("idle", "hover"):
+            saida[forearm] = Rotation3(
+                radians(sin(t * 0.8 - side * 0.45) * 2.2),
+                0.0,
+                radians(side * sin(t * 0.8 - side * 0.6) * 3.4),
+            )
+        wrist_follow = max(-10.0, min(10.0, -arm_z * 0.22))
+        hand_sway = sin(t * 0.58 - side * 0.35) * sway_scale
+        wrist_pitch = -arm_x * 0.24 + sin(t * 0.52 - side * 0.3) * 2.4
+        idle_wrist = 0.0
+        amplitude = (
+            7.5
+            if personality in (IdlePersonality.CURIOUS, IdlePersonality.PLAYFUL)
+            else 5.0
+        )
+        curl = 12.0 + sin(t * 0.62 - side * 0.3) * amplitude + wrist_follow * 0.3
+        if state == "idle":
+            if personality == IdlePersonality.CURIOUS and side == 1:
+                reach = _pulso_idle(t, 7.8, 0.65, 0.55, 0.9, offset=1.0)
+                idle_wrist += 15.0 * reach
+                curl -= 5.0 * reach
+            elif personality == IdlePersonality.PLAYFUL and side == 1:
+                flick = _pulso_idle(t, 4.8, 0.18, 0.08, 0.35, offset=0.7)
+                idle_wrist += 10.0 * flick
+                curl -= 8.0 * flick
+            elif personality == IdlePersonality.SHY:
+                fidget = _pulso_idle(t, 6.2, 0.5, 0.2, 0.6, offset=side * 0.8)
+                idle_wrist += side * 4.5 * fidget
+        saida[hand] = Rotation3(
+            radians(wrist_pitch),
+            0.0,
+            radians(wrist_follow + side * hand_sway + idle_wrist),
+        )
+        if state not in ("drag", "fall", "sleep"):
+            saida[fingers] = Rotation3(0.0, 0.0, radians(side * curl))
+
+    return saida

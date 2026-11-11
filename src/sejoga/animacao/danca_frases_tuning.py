@@ -50,41 +50,41 @@ def _fixo(trio: Trio) -> Quatro:
     return (trio, trio, trio, trio)
 
 
-#: Inclinação do tronco para trás do head bob (costas na caixa), em graus.
-HEADBOB_TRONCO_TRAS = 8.0
+#: Inclinação do tronco no head bob sentado no topo da caixa (graus).
+HEADBOB_TRONCO_TRAS = 2.0
 _HB_TRONCO: Trio = (HEADBOB_TRONCO_TRAS, 0.0, 0.0)
 
-#: Head bob: 4 batidas. Nod curto no 1, recuperação lenta com inclinação lateral
-#: no 2, segundo nod no 3 e pausa no 4. Braços cruzados à frente do peito.
+#: Head bob: 4 batidas. Mario senta no topo da jukebox com as pernas balançando
+#: e bopa a cabeça de um lado para o outro em arco estilo Girlfriend de Friday Night Funkin'.
+#: O braço esquerdo apoia na caixa de som, e o braço direito descansa no colo com groove contínuo.
 HEAD_BOB: tuple[PassoDanca, ...] = (
+    # Batida 1: Bop para a esquerda (roll positivo), nod no onset e sustentação no pico
     _passo(
-        ((-14.0, 0.0, 2.0), (-4.0, 0.0, 1.0), (-2.0, 0.0, 0.0), (2.0, 0.0, 0.0)),
-        ((HEADBOB_TRONCO_TRAS - 2.0, 0.0, 0.0), _HB_TRONCO, _HB_TRONCO, _HB_TRONCO),
-        "cruzado_dir",
-        "cruzado_esq",
+        ((-12.0, 5.0, 12.0), (-5.0, 6.0, 14.0), (-2.0, 4.0, 10.0), (0.0, 2.0, 3.0)),
+        ((-2.0, 0.0, 1.5), (-1.0, 0.0, 1.5), _HB_TRONCO, _HB_TRONCO),
+        braco_dir="colo",
+        braco_esq="apoio_caixa",
     ),
+    # Batida 2: Transição suave pelo centro
     _passo(
-        ((-4.0, 6.0, 8.0), (-2.0, 6.0, 10.0), (-2.0, 3.0, 6.0), (-3.0, 0.0, 2.0)),
-        (
-            (HEADBOB_TRONCO_TRAS, 0.0, 3.0),
-            (HEADBOB_TRONCO_TRAS, 0.0, 4.0),
-            (HEADBOB_TRONCO_TRAS, 0.0, 2.0),
-            (HEADBOB_TRONCO_TRAS, 0.0, 0.0),
-        ),
-        "cruzado_dir",
-        "cruzado_esq",
-    ),
-    _passo(
-        ((-12.0, -4.0, -3.0), (-4.0, -3.0, -1.0), (-2.0, -1.0, 0.0), (2.0, 0.0, 0.0)),
-        ((HEADBOB_TRONCO_TRAS - 2.0, 0.0, -2.0), _HB_TRONCO, _HB_TRONCO, _HB_TRONCO),
-        "cruzado_dir",
-        "cruzado_esq",
-    ),
-    _passo(
-        ((-2.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (-1.0, 0.0, 0.0)),
+        ((-4.0, 2.0, 4.0), (-1.0, 1.0, 1.0), (0.0, 0.0, 0.0), (1.0, -2.0, -3.0)),
         _fixo(_HB_TRONCO),
-        "cruzado_dir",
-        "cruzado_esq",
+        braco_dir="colo",
+        braco_esq="apoio_caixa",
+    ),
+    # Batida 3: Bop para a direita (roll negativo), nod no onset e sustentação no pico
+    _passo(
+        ((-12.0, -5.0, -12.0), (-5.0, -6.0, -14.0), (-2.0, -4.0, -10.0), (0.0, -2.0, -3.0)),
+        ((-2.0, 0.0, -1.5), (-1.0, 0.0, -1.5), _HB_TRONCO, _HB_TRONCO),
+        braco_dir="colo",
+        braco_esq="apoio_caixa",
+    ),
+    # Batida 4: Transição suave pelo centro de volta ao início
+    _passo(
+        ((-4.0, -2.0, -4.0), (-1.0, -1.0, -1.0), (0.0, 0.0, 0.0), (1.0, 2.0, 3.0)),
+        _fixo(_HB_TRONCO),
+        braco_dir="colo",
+        braco_esq="apoio_caixa",
     ),
 )
 
@@ -92,17 +92,17 @@ HEAD_BOB: tuple[PassoDanca, ...] = (
 ROCK_PUNHO_TORCAO = 180.0
 _ROCK_PUNHO = {"hand": (ROCK_PUNHO_TORCAO, 0.0, 0.0)}
 
-#: Rock: 2 batidas. Headbang para baixo (cabeça e tronco) no acento, braço
-#: direito alto com a mão em chifre, esquerdo baixo. Meio-tempo se BPM > 150.
+#: Rock: 2 batidas. Headbang enérgico para baixo (cabeça e tronco) no acento, braço
+#: direito alto com a mão em chifre, esquerdo com atitude. Meio-tempo se BPM > 150.
 ROCK: tuple[PassoDanca, ...] = (
     _passo(
-        ((-26.0, 0.0, 3.0), (-10.0, 0.0, 2.0), (-5.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        ((-25.0, 0.0, 3.0), (-12.0, 0.0, 2.0), (-4.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
         ((-7.0, 0.0, 0.0), (-3.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
         "chifre",
         extras=_ROCK_PUNHO,
     ),
     _passo(
-        ((-16.0, 0.0, -3.0), (-7.0, 0.0, -2.0), (-3.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        ((-18.0, 0.0, -3.0), (-8.0, 0.0, -2.0), (-2.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
         ((-4.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
         "chifre",
         extras=_ROCK_PUNHO,
@@ -127,7 +127,7 @@ HIP_HOP: tuple[PassoDanca, ...] = (
     _passo(
         ((-8.0, 0.0, 0.0), (-3.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (2.0, 0.0, 0.0)),
         ((-5.0, 0.0, 2.0), (-2.0, 0.0, 1.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
-        braco_esq=("contrapeso", "idle", "idle", "idle"),
+        braco_esq=("contrapeso", "contrapeso", "idle", "idle"),
     ),
     _passo(
         ((-2.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
@@ -146,13 +146,13 @@ HIP_HOP: tuple[PassoDanca, ...] = (
     _passo(
         ((-8.0, 0.0, 0.0), (-3.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (2.0, 0.0, 0.0)),
         ((-5.0, 0.0, -2.0), (-2.0, 0.0, -1.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
-        braco_dir=("contrapeso", "idle", "idle", "idle"),
+        braco_dir=("contrapeso", "contrapeso", "idle", "idle"),
     ),
     _passo(
-        ((-4.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
-        ((-3.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
-        ("contrapeso", "contrapeso", "idle", "idle"),
-        ("contrapeso", "contrapeso", "idle", "idle"),
+        ((-3.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        _fixo((0.0, 0.0, 0.0)),
+        "idle",
+        "idle",
     ),
 )
 

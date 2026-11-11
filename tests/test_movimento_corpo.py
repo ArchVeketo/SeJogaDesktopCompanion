@@ -141,3 +141,48 @@ def test_impacts_keep_finite_bounded_motion_and_a_delayed_neck():
     for frame in frames:
         assert all(isfinite(value) for value in vars(frame).values())
         assert abs(frame.roll) <= 28 and abs(frame.pitch) <= 16
+
+
+@pytest.mark.parametrize(
+    ("frequency", "damping"),
+    [
+        (0.0, 0.5),
+        (-1.0, 0.5),
+        (2.0, 0.0),
+        (2.0, -0.3),
+        (2.0, 1.0),
+        (2.0, 1.5),
+    ],
+)
+def test_spring_rejects_out_of_range_parameters(frequency, damping):
+    with pytest.raises(ValueError):
+        Spring(frequency, damping)
+
+
+def test_spring_ignores_non_positive_or_non_finite_dt():
+    spring = Spring(2.0, 0.7, value=3.5, velocity=1.2)
+    for dt in (0.0, -0.1, float("nan"), float("inf")):
+        assert spring.update(dt, 10.0) == 3.5
+        assert spring.velocity == 1.2
+
+
+def test_mola_critica_converges_without_overshoot_and_is_fps_independent():
+    from sejoga.animacao.mola_critica import avancar_mola_critica, suavizar_exato
+
+    finais = []
+    for rate in (30, 60, 120):
+        valor, vel = 0.0, 0.0
+        for _ in range(rate):
+            valor, vel = avancar_mola_critica(valor, vel, 10.0, 0.12, 1.0 / rate)
+            assert 0.0 <= valor <= 10.0
+        finais.append((valor, vel))
+    for resultado in finais[1:]:
+        assert resultado == pytest.approx(finais[0], abs=1e-9)
+
+    suave_60 = 0.0
+    for _ in range(60):
+        suave_60 = suavizar_exato(suave_60, 10.0, 0.2, 1.0 / 60.0)
+    suave_120 = 0.0
+    for _ in range(120):
+        suave_120 = suavizar_exato(suave_120, 10.0, 0.2, 1.0 / 120.0)
+    assert suave_60 == pytest.approx(suave_120, abs=1e-12)

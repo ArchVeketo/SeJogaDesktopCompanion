@@ -13,5 +13,11 @@ Ficam em ``nucleo`` para que ``cinematica`` não importe ``animacao``;
 #: ``ant-arm.x`` em torno desta base (somada pelo renderer e pela FK).
 TORCAO_BASE_ANTEBRACO_GRAUS = 90.0
 
+#: Pronação anatômica base (graus, em P/``Rotation3.x``) do punho (``hand``/``hand2``).
+#: Compensa a torção de +90° do antebraço para que a palma da luva fique voltada
+#: para dentro (em direção à coxa/corpo) e o polegar aponte para a frente, em vez
+#: de deixar a palma chapada para a câmera.
+TORCAO_BASE_MAO_GRAUS = -68.0
+
 #: Norma abaixo da qual um vetor é tratado como nulo (direção degenerada).
 EPSILON_DEGENERADO = 1e-9

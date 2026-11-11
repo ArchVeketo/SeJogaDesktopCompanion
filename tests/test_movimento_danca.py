@@ -26,12 +26,11 @@ AUDIO_DO_ESTILO = {
 }
 #: Teto de jerk (graus/s^3) por estilo. O limiar global (8000) não vale para o
 #: acento no onset da batida: o nod/headbang é um golpe por projeto e as molas de
-#: 4,5 Hz só o amortecem. O teto fica abaixo do pior caso do código anterior
-#: (rock 227 mil, hip hop 146 mil, break 60 mil) e protege contra saltos novos.
-#: O hip hop sobe um pouco: o ombro troca de alvo (idle <-> contrapeso) em 0,35 batida.
-TETO_JERK = {"head_bob": 1.0e5, "hip_hop": 1.8e5, "rock": 2.3e5, "breakdance": 1.5e5}
+#: 4,5 Hz só o amortecem. Com o repouso solto natural (~14.5° em vez dos antigos 39.3° dobrados),
+#: o curso até o contrapeso/apoio no hip hop e breakdance é mais amplo.
+TETO_JERK = {"head_bob": 1.5e5, "hip_hop": 2.8e5, "rock": 2.5e5, "breakdance": 1.8e5}
 #: Maior variação (graus) de um eixo entre dois quadros de 60 fps.
-SALTO_MAXIMO_GRAUS = 6.0
+SALTO_MAXIMO_GRAUS = 7.5
 
 
 def _contribuicoes(estilo: str) -> list[dict[str, Rotation3]]:
