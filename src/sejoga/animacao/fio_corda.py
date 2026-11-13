@@ -78,79 +78,109 @@ def _interpolar(a: Vetor3, b: Vetor3, t: float) -> Vetor3:
 # --------------------------------------------------------------------------- #
 # Colisão ponto-colisor (empurra o centro da corda para fora)
 # --------------------------------------------------------------------------- #
+def _ponto_no_segmento(
+    ponto: Vetor3, a: Vetor3, b: Vetor3
+) -> tuple[Vetor3, Vetor3]:
+    """Retorna o ponto mais próximo em ``a..b`` e o vetor eixo ``b - a``."""
+    px, py, pz = ponto
+    ax, ay, az = a
+    bx, by, bz = b
+    ex, ey, ez = bx - ax, by - ay, bz - az
+    comp2 = ex * ex + ey * ey + ez * ez
+    t = 0.0
+    if comp2 > EPSILON:
+        t = ((px - ax) * ex + (py - ay) * ey + (pz - az) * ez) / comp2
+        t = max(0.0, min(1.0, t))
+    return (ax + ex * t, ay + ey * t, az + ez * t), (ex, ey, ez)
+
+
 def empurrar_ponto_de_capsula(ponto: Vetor3, capsula: Capsula, folga: float) -> Vetor3:
     """Afasta ``ponto`` da cápsula até ficar ``folga`` além do raio dela."""
-    eixo = _sub(capsula.b, capsula.a)
-    comprimento_quadrado = _dot(eixo, eixo)
-    t = 0.0
-
-    if comprimento_quadrado > EPSILON:
-        t = max(
-            0.0, min(1.0, _dot(_sub(ponto, capsula.a), eixo) / comprimento_quadrado)
-        )
-
-    mais_proximo = _soma(capsula.a, _esc(eixo, t))
-    saida = _sub(ponto, mais_proximo)
+    (mx, my, mz), eixo = _ponto_no_segmento(ponto, capsula.a, capsula.b)
+    px, py, pz = ponto
+    sx, sy, sz = px - mx, py - my, pz - mz
     limite = capsula.raio + folga
-
-    if _norma(saida) >= limite:
+    dist2 = sx * sx + sy * sy + sz * sz
+    if dist2 >= limite * limite:
         return ponto
-
+    dist = sqrt(dist2)
+    if dist >= EPSILON:
+        fator = limite / dist
+        return (mx + sx * fator, my + sy * fator, mz + sz * fator)
     referencia = (1.0, 0.0, 0.0) if abs(eixo[2]) > abs(eixo[0]) else ESCAPE_PADRAO
     perpendicular = _normalizar(_cruz(eixo, referencia))
-    return _soma(mais_proximo, _esc(_normalizar(saida, perpendicular), limite))
+    return (
+        mx + perpendicular[0] * limite,
+        my + perpendicular[1] * limite,
+        mz + perpendicular[2] * limite,
+    )
+
+
+def _empurrar_local_caixa(
+    l0: float,
+    l1: float,
+    l2: float,
+    mx: float,
+    my: float,
+    mz: float,
+    folga: float,
+) -> Vetor3 | None:
+    """Resolve empurrão no espaço local da caixa; retorna ``None`` se já livre."""
+    ex0, ex1, ex2 = abs(l0) - mx, abs(l1) - my, abs(l2) - mz
+    if ex0 > 0.0 or ex1 > 0.0 or ex2 > 0.0:
+        pr0 = -mx if l0 < -mx else (mx if l0 > mx else l0)
+        pr1 = -my if l1 < -my else (my if l1 > my else l1)
+        pr2 = -mz if l2 < -mz else (mz if l2 > mz else l2)
+        d0, d1, d2 = l0 - pr0, l1 - pr1, l2 - pr2
+        dist2 = d0 * d0 + d1 * d1 + d2 * d2
+        if dist2 >= folga * folga or dist2 <= 0.0:
+            return None
+        fator = folga / sqrt(dist2)
+        return (pr0 + d0 * fator, pr1 + d1 * fator, pr2 + d2 * fator)
+
+    dl0, dl1, dl2 = l0, l1, l2
+    if ex0 >= ex1 and ex0 >= ex2:
+        dl0 = copysign(mx + folga, l0 or 1.0)
+    elif ex1 >= ex2:
+        dl1 = copysign(my + folga, l1 or 1.0)
+    else:
+        dl2 = copysign(mz + folga, l2 or 1.0)
+    return (dl0, dl1, dl2)
 
 
 def empurrar_ponto_de_caixa(
     ponto: Vetor3, caixa: CaixaOrientada, folga: float
 ) -> Vetor3:
     """Afasta ``ponto`` da caixa até ficar ``folga`` fora da superfície."""
-    relativo = _sub(ponto, caixa.centro)
-    locais = [_dot(relativo, eixo) for eixo in caixa.eixos]
-    meias = caixa.meias_dim
-    excessos = [abs(local) - meia for local, meia in zip(locais, meias, strict=True)]
-
-    if max(excessos) > 0.0:
-        destino = _destino_fora_da_caixa(locais, meias, folga)
-    else:
-        destino = _destino_saida_por_dentro(locais, meias, excessos, folga)
-
-    if destino is None:
+    px, py, pz = ponto
+    cx, cy, cz = caixa.centro
+    rx, ry, rz = px - cx, py - cy, pz - cz
+    mx, my, mz = caixa.meias_dim
+    limite_esfera = sqrt(mx * mx + my * my + mz * mz) + folga
+    if rx * rx + ry * ry + rz * rz >= limite_esfera * limite_esfera:
         return ponto
 
-    resultado = caixa.centro
-
-    for local, eixo in zip(destino, caixa.eixos, strict=True):
-        resultado = _soma(resultado, _esc(eixo, local))
-
-    return resultado
-
-
-def _destino_fora_da_caixa(
-    locais: list[float], meias: Vetor3, folga: float
-) -> list[float] | None:
-    """Ponto fora da caixa: só move se estiver mais perto que ``folga``."""
-    presos = [
-        max(-meia, min(meia, local)) for local, meia in zip(locais, meias, strict=True)
-    ]
-    delta = [local - preso for local, preso in zip(locais, presos, strict=True)]
-    distancia = sqrt(sum(d * d for d in delta))
-
-    if distancia >= folga:
-        return None
-
-    fator = folga / distancia
-    return [preso + d * fator for preso, d in zip(presos, delta, strict=True)]
-
-
-def _destino_saida_por_dentro(
-    locais: list[float], meias: Vetor3, excessos: list[float], folga: float
-) -> list[float]:
-    """Ponto dentro da caixa: sai pela face mais próxima."""
-    eixo_saida = max(range(len(excessos)), key=lambda i: excessos[i])
-    destino = list(locais)
-    destino[eixo_saida] = copysign(meias[eixo_saida] + folga, locais[eixo_saida] or 1.0)
-    return destino
+    e0, e1, e2 = caixa.eixos
+    e0x, e0y, e0z = e0
+    e1x, e1y, e1z = e1
+    e2x, e2y, e2z = e2
+    empurrado = _empurrar_local_caixa(
+        rx * e0x + ry * e0y + rz * e0z,
+        rx * e1x + ry * e1y + rz * e1z,
+        rx * e2x + ry * e2y + rz * e2z,
+        mx,
+        my,
+        mz,
+        folga,
+    )
+    if empurrado is None:
+        return ponto
+    dl0, dl1, dl2 = empurrado
+    return (
+        cx + dl0 * e0x + dl1 * e1x + dl2 * e2x,
+        cy + dl0 * e0y + dl1 * e1y + dl2 * e2y,
+        cz + dl0 * e0z + dl1 * e1z + dl2 * e2z,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -291,13 +321,21 @@ class FioFone:
 
     def _integrar(self, passo: float, aceleracao: Vetor3) -> None:
         mantida = tuning.VELOCIDADE_RESTANTE_POR_SEGUNDO**passo
-        deslocamento_gravidade = _esc(aceleracao, passo * passo)
+        p2 = passo * passo
+        gx = aceleracao[0] * p2
+        gy = aceleracao[1] * p2
+        gz = aceleracao[2] * p2
+        posicoes = self.posicoes
+        anteriores = self._anteriores
 
-        for indice, atual in enumerate(self.posicoes):
-            velocidade = _esc(_sub(atual, self._anteriores[indice]), mantida)
-            self._anteriores[indice] = atual
-            self.posicoes[indice] = _soma(
-                _soma(atual, velocidade), deslocamento_gravidade
+        for indice in range(len(posicoes)):
+            ax, ay, az = posicoes[indice]
+            px, py, pz = anteriores[indice]
+            anteriores[indice] = (ax, ay, az)
+            posicoes[indice] = (
+                ax + (ax - px) * mantida + gx,
+                ay + (ay - py) * mantida + gy,
+                az + (az - pz) * mantida + gz,
             )
 
     def _prender(self, ancoras: tuple[Vetor3, Vetor3, Vetor3]) -> None:
@@ -309,33 +347,45 @@ class FioFone:
         for a, b, comprimento in self._ligacoes:
             self._corrigir_par(a, b, comprimento, 1.0, esticar=True)
 
+        rigidez = tuning.RIGIDEZ_DOBRA
         for a, b, minimo in self._dobras:
-            self._corrigir_par(a, b, minimo, tuning.RIGIDEZ_DOBRA, esticar=False)
+            self._corrigir_par(a, b, minimo, rigidez, esticar=False)
 
     def _corrigir_par(
         self, a: int, b: int, alvo: float, forca: float, *, esticar: bool
     ) -> None:
         """Move as duas partículas para a distância ``alvo`` (``esticar``: nos dois sentidos)."""
-        diferenca = _sub(self.posicoes[b], self.posicoes[a])
-        distancia = _norma(diferenca)
-
-        if distancia < EPSILON or (not esticar and distancia >= alvo):
+        posicoes = self.posicoes
+        ax, ay, az = posicoes[a]
+        bx, by, bz = posicoes[b]
+        dx = bx - ax
+        dy = by - ay
+        dz = bz - az
+        dist2 = dx * dx + dy * dy + dz * dz
+        if dist2 < EPSILON * EPSILON:
             return
+        if not esticar and dist2 >= alvo * alvo:
+            return
+        distancia = sqrt(dist2)
 
-        livres_a = a not in self._fixos
-        livres_b = b not in self._fixos
+        fixos = self._fixos
+        livres_a = a not in fixos
+        livres_b = b not in fixos
         peso_total = livres_a + livres_b
 
         if peso_total == 0:
             return
 
-        correcao = _esc(diferenca, forca * (distancia - alvo) / distancia / peso_total)
+        k = forca * (distancia - alvo) / (distancia * peso_total)
+        cx = dx * k
+        cy = dy * k
+        cz = dz * k
 
         if livres_a:
-            self.posicoes[a] = _soma(self.posicoes[a], correcao)
+            posicoes[a] = (ax + cx, ay + cy, az + cz)
 
         if livres_b:
-            self.posicoes[b] = _sub(self.posicoes[b], correcao)
+            posicoes[b] = (bx - cx, by - cy, bz - cz)
 
     def _colidir(self, caixas: list[CaixaOrientada], capsulas: list[Capsula]) -> None:
         folga = tuning.RAIO_COLISAO_FIO_U

@@ -20,8 +20,8 @@ class HandMotion:
         self.clock += dt
         result = dict(pose)
         energy = {
-            "idle": 0.65,
-            "hover": 0.8,
+            "idle": 1.20,
+            "hover": 1.05,
             "walk": 1.15,
             "run": 1.35,
             "dance": 1.35,
@@ -47,11 +47,16 @@ class HandMotion:
             lag_x = max(-radians(8), min(radians(8), -speed_x * 0.04)) * energy
             lag_z = max(-radians(9), min(radians(9), -speed_z * 0.045)) * energy
             phase = self.clock * 1.35 - side * 0.75
+            relaxado = state in ("idle", "hover")
+            variacao = sin(self.clock * 0.54 + side * 1.6) if relaxado else 0.0
             targets = {
                 upper_arm: (
                     radians(1.6) * sin(phase + 0.3) * energy,
-                    radians(2.2) * sin(phase * 0.85 - side * 0.4) * side * energy,
-                    radians(2.4) * sin(phase - 0.2) * side * energy,
+                    radians(2.2 + 3.8 * relaxado)
+                    * sin(phase * 0.85 - side * 0.4)
+                    * side
+                    * energy,
+                    radians(2.4 + 1.7 * relaxado) * sin(phase - 0.2) * side * energy,
                 ),
                 shoulder: (
                     radians(1.2) * sin(phase + 0.5) * energy,
@@ -65,8 +70,11 @@ class HandMotion:
                     + lag_z * 0.45,
                 ),
                 wrist: (
-                    lag_x + radians(2.8) * sin(phase - 0.45) * energy,
-                    radians(3.6) * sin(phase - 0.5) * energy,
+                    lag_x
+                    + radians(4.0 + 5.0 * relaxado)
+                    * sin(phase - 0.65 + variacao)
+                    * energy,
+                    radians(5.5) * sin(phase - 0.5) * energy,
                     lag_z + radians(4.5) * sin(phase - 0.8) * side * energy,
                 ),
                 fingers: (

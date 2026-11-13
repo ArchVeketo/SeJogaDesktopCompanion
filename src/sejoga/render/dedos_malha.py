@@ -11,6 +11,8 @@ Cada pivô guarda no tag ``TAG_EIXO`` o eixo de dobra no referencial do pivô.
 
 from __future__ import annotations
 
+import math
+
 from panda3d.core import (
     Geom,
     GeomNode,
@@ -29,9 +31,11 @@ from sejoga.nucleo import malha_corte as mc
 
 TAG_EIXO = "eixo-dobra"
 TAG_ABERTURA = "eixo-abertura"
+TAG_COMPRIMENTO = "eixo-comprimento"
 NOME_JUNTA = "dedo-{mesh}-junta{junta}"
 NOME_MALHA = "mesh{mesh}"
-#: Índice do indicador na tupla de malhas da mão: define o eixo de dobra do polegar.
+#: Índice do dedo médio na tupla de malhas da mão (eixo longitudinal mais limpo dos 4 dedos).
+INDICE_REFERENCIA_LONGO = 2
 INDICE_REFERENCIA_EIXO = 1
 INDICE_POLEGAR = 0
 #: Nomes das colunas do asset (o UV do glTF é ``texcoord.0``).
@@ -109,13 +113,26 @@ def _para_tupla(v: Vec3) -> mc.Vec3:
     return (float(v.x), float(v.y), float(v.z))
 
 
-def _fatiar_malha(  # noqa: PLR0915  # TODO convenção: fatiar sem prova visual na GPU arrisca mudar o movimento; lote próprio com caracterização
+def _direcao_longitudinal_malha(model_np: NodePath, mesh: int) -> tuple[NodePath, mc.Vec3] | None:
+    malha = model_np.find("**/" + NOME_MALHA.format(mesh=mesh))
+    if malha.isEmpty():
+        return None
+    pai = malha.getParent()
+    triangulos = _ler_triangulos(malha.node())
+    pontos = [(v[0], v[1], v[2]) for t in triangulos for v in t]
+    origem_mao = _para_tupla(pai.getParent().getPos(pai))
+    direcao = mc.orientar_para_ponta(mc.eixo_principal(pontos), pontos, origem_mao)
+    return pai, direcao
+
+
+def _fatiar_malha(  # noqa: PLR0915
     model_np: NodePath,
     mesh: int,
     fracoes: tuple[float, ...],
-    eixo_modelo: mc.Vec3 | None,
-) -> mc.Vec3 | None:
-    """Troca ``meshN`` pela cadeia de pivôs. Devolve o eixo de dobra no referencial do modelo."""
+    referencia_longitudinal: tuple[NodePath, mc.Vec3] | None = None,
+    pronacao_graus: float = 0.0,
+) -> None:
+    """Troca a malha do dedo por uma cadeia que dobra no eixo dela."""
     malha = model_np.find("**/" + NOME_MALHA.format(mesh=mesh))
 
     if malha.isEmpty():
@@ -126,13 +143,14 @@ def _fatiar_malha(  # noqa: PLR0915  # TODO convenção: fatiar sem prova visual
     triangulos = _ler_triangulos(geom_node)
     pontos = [(v[0], v[1], v[2]) for t in triangulos for v in t]
     origem_mao = _para_tupla(pai.getParent().getPos(pai))
-    direcao = mc.orientar_para_ponta(mc.eixo_principal(pontos), pontos, origem_mao)
-
-    if eixo_modelo is None:
-        eixo = mc.eixo_de_flexao(direcao)
-        eixo_modelo = _para_tupla(model_np.getRelativeVector(pai, Vec3(*eixo)))
+    if referencia_longitudinal is not None:
+        ref_pai, ref_dir = referencia_longitudinal
+        eixo_local = _para_tupla(pai.getRelativeVector(ref_pai, Vec3(*ref_dir)))
+        direcao = mc.orientar_para_ponta(eixo_local, pontos, origem_mao)
     else:
-        eixo = _para_tupla(pai.getRelativeVector(model_np, Vec3(*eixo_modelo)))
+        direcao = mc.orientar_para_ponta(mc.eixo_principal(pontos), pontos, origem_mao)
+
+    eixo = mc.eixo_de_flexao(direcao)
 
     segmentos = mc.cortar_cadeia(
         triangulos,
@@ -150,21 +168,35 @@ def _fatiar_malha(  # noqa: PLR0915  # TODO convenção: fatiar sem prova visual
     eixo_dobra = Vec3(*mc.ortogonalizar(eixo, direcao))
     eixo_abertura = Vec3(*direcao).cross(eixo_dobra)
     eixo_abertura.normalize()
+    if pronacao_graus:
+        # Pronação anatômica simétrica (direita -X, esquerda +X) faz a flexão
+        # do polegar dobrar em direção à palma/indicador em vez de cair reto em -Z.
+        phi = math.radians(pronacao_graus)
+        c, s = math.cos(phi), math.sin(phi)
+        sinal_lado = 1.0 if direcao[0] < 0.0 else -1.0
+        eixo_dobra = eixo_dobra * c + eixo_abertura * (sinal_lado * s)
+        eixo_dobra.normalize()
 
     for k, segmento in enumerate(segmentos):
         pivo = anterior.attachNewNode(nome_junta(mesh, k))
         pivo.setPos(*(c - a for c, a in zip(segmento.pivo, pivo_anterior, strict=True)))
         pivo.setTag(TAG_EIXO, " ".join(map(str, eixo_dobra)))
+        pivo.setTag(TAG_COMPRIMENTO, " ".join(map(str, direcao)))
         if k == 0:
             pivo.setTag(TAG_ABERTURA, " ".join(map(str, eixo_abertura)))
+        superficie = list(segmento.superficie or segmento.triangulos)
         no = GeomNode(NOME_MALHA.format(mesh=mesh) + f"-seg{k}")
-        no.addGeom(_montar_geom(modelo, segmento.triangulos, segmento.pivo), estado)
+        no.addGeom(_montar_geom(modelo, superficie, segmento.pivo), estado)
         pivo.attachNewNode(no)
+        # Tampas internas dos cortes ficam num nó separado para serem removidas
+        # do contorno (evita pontas rosas extrudadas ao dobrar os dedos).
+        if segmento.tampas:
+            no_tampa = GeomNode(NOME_MALHA.format(mesh=mesh) + f"-seg{k}-tampa")
+            no_tampa.addGeom(_montar_geom(modelo, list(segmento.tampas), segmento.pivo), estado)
+            pivo.attachNewNode(no_tampa)
         anterior, pivo_anterior = pivo, segmento.pivo
 
     malha.removeNode()
-
-    return eixo_modelo
 
 
 def pivos_da_cadeia(raiz: NodePath, mesh: int) -> list[tuple[NodePath, Vec3]]:
@@ -188,7 +220,7 @@ def girar_pivo(
     pivo: NodePath, eixo: Vec3, graus: float, abertura: float = 0.0,
     normal_palmar: Vec3 | None = None,
 ) -> None:
-    """Gira o pivô em ``graus`` em torno do eixo dado."""
+    """Gira o pivô em ``graus`` em torno do eixo dado com abertura palmar."""
     rotacao = Quat()
     rotacao.setFromAxisAngle(graus, eixo)
     if normal_palmar is not None:
@@ -198,10 +230,52 @@ def girar_pivo(
     pivo.setQuat(rotacao)
 
 
+def medir_direcao_polegar(renderer) -> Vec3:
+    """Direção longitudinal do polegar direito em coordenadas da mão."""
+    hand = renderer._rig_nodes.get("hand")
+    thumb_mesh = renderer.model_np.find("**/mesh32")
+    if hand is not None and not thumb_mesh.isEmpty():
+        bounds = thumb_mesh.getTightBounds(hand)
+        pivots = pivos_da_cadeia(renderer.model_np, 32)
+        if bounds and pivots:
+            base = pivots[0][0].getPos(hand)
+            center = (bounds[0] + bounds[1]) * 0.5
+            vec = center - base
+            if vec.lengthSquared() > 1e-6:
+                vec.normalize()
+                return vec
+    vec = Vec3(0.713, 0.673, -0.194)
+    vec.normalize()
+    return vec
+
+
+def alinhar_pulso_polegar(hand: NodePath, model_np: NodePath, thumb_local_dir: Vec3, presentation: float) -> None:
+    """Alinha o eixo real do polegar à vertical do modelo para joinha/pistolinha."""
+    from math import acos, degrees
+
+    alvo = hand.getRelativeVector(model_np, (0, -0.12, 1.0))
+    if alvo.lengthSquared() <= 1e-5:
+        return
+    alvo.normalize()
+    dot = max(-1.0, min(1.0, thumb_local_dir.dot(alvo)))
+    eixo = thumb_local_dir.cross(alvo)
+    if eixo.lengthSquared() > 1e-7:
+        eixo.normalize()
+        angulo = degrees(acos(dot))
+    else:
+        eixo = Vec3(0, 0, 1) if dot < 0.0 else Vec3(0, 1, 0)
+        angulo = 180.0 if dot < 0.0 else 0.0
+    dq = Quat()
+    dq.setFromAxisAngle(angulo * presentation, eixo)
+    hand.setQuat(hand, dq)
+
+
 def fatiar_dedos(model_np: NodePath) -> None:
-    """Fatia os 5 dedos de cada mão (polegar por último, com o eixo do indicador)."""
+    """Fatia os 5 dedos de cada mão com eixo consistente nos dedos longos."""
     for meshes in (tuning_dedos.MESH_DEDOS_DIREITA, tuning_dedos.MESH_DEDOS_ESQUERDA):
-        eixo_mao: mc.Vec3 | None = None
+        ref_longa = _direcao_longitudinal_malha(
+            model_np, meshes[INDICE_REFERENCIA_LONGO]
+        )
         ordem = [*meshes[INDICE_REFERENCIA_EIXO:], meshes[INDICE_POLEGAR]]
 
         for mesh in ordem:
@@ -211,9 +285,10 @@ def fatiar_dedos(model_np: NodePath) -> None:
                 if polegar
                 else tuning_dedos.FRACOES_SEGMENTOS_DEDO
             )
-            resultado = _fatiar_malha(
-                model_np, mesh, fracoes, eixo_mao if polegar else None
+            _fatiar_malha(
+                model_np,
+                mesh,
+                fracoes,
+                referencia_longitudinal=None if polegar else ref_longa,
+                pronacao_graus=tuning_dedos.PRONACAO_POLEGAR_GRAUS if polegar else 0.0,
             )
-
-            if not polegar and eixo_mao is None:
-                eixo_mao = resultado

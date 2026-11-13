@@ -1,11 +1,10 @@
 """Independent hip/knee motion, in degrees; no engine dependencies."""
 
-from dataclasses import dataclass
-from math import cos, sin, tanh, tau
+from dataclasses import astuple, dataclass
+from math import acos, atan2, cos, degrees, hypot, pi, radians, sin, tanh, tau
 
 from sejoga.animacao import danca_tuning as dtune
-from sejoga.animacao.mola_tuning import amortecimento_de, frequencia_de
-from sejoga.animacao.movimento_corpo import Spring
+from sejoga.animacao.interpolacao import suavizar_quintico
 
 # --------------------------------------------------------------------------- #
 # Calibração das pernas (graus/ganhos/tempos autorais por estado). Extraídos da
@@ -18,31 +17,31 @@ DT_MAXIMO = 0.1
 
 # Locomoção: avanço de fase e amplitude de passada por estado.
 FASE_CORRIDA = 2.2
-FASE_CAMINHADA = 1.35
-AMPLITUDE_CORRIDA = 20.0
-AMPLITUDE_CAMINHADA = 12.0
-PASSADA_JOELHO = 22.0
-PASSADA_LIFT = 0.035
+FASE_CAMINHADA = 1.25
+AMPLITUDE_CORRIDA = 32.0
+AMPLITUDE_CAMINHADA = 27.0
+PASSADA_JOELHO = 32.0
+PASSADA_LIFT = 0.028
 
 # Queda: descida/deriva/chute a partir da velocidade de física.
-QUEDA_DESCIDA_ESCALA = 320.0
-QUEDA_DERIVA_ESCALA = 700.0
-QUEDA_FASE = 1.05
-QUEDA_QUADRIL_ESQ = (-7.0, 9.0, 4.0, 5.0)  # base, descida, deriva, chute
-QUEDA_QUADRIL_DIR = (4.0, 7.0, 3.0, 4.0)
-QUEDA_JOELHO_ESQ = (17.0, 13.0, 4.0)  # base, descida, chute
-QUEDA_JOELHO_DIR = (12.0, 10.0, 4.0)
-QUEDA_LIFT_ESQ = 0.018
-QUEDA_LIFT_DIR = 0.016
+QUEDA_DESCIDA_ESCALA = 260.0
+QUEDA_DERIVA_ESCALA = 550.0
+QUEDA_FASE = 2.4
+QUEDA_QUADRIL_ESQ = (-10.0, 12.0, 8.0, 16.0)  # base, descida, deriva, chute
+QUEDA_QUADRIL_DIR = (8.0, 10.0, 7.0, 15.0)
+QUEDA_JOELHO_ESQ = (20.0, 18.0, 24.0)  # base, descida, chute
+QUEDA_JOELHO_DIR = (16.0, 16.0, 24.0)
+QUEDA_LIFT_ESQ = 0.024
+QUEDA_LIFT_DIR = 0.022
 
 # Arrasto: resposta ao balanço (sway).
 DRAG_QUADRIL = (-3.0, 0.65, 2.0, 0.5)  # esq_base, esq_ganho, dir_base, dir_ganho
 DRAG_JOELHO = (5.0, 0.22, 4.0, 0.18)
 
 # Aterrissagem/pancada: compressão temporal.
-IMPACTO_DURACAO = 0.45
-IMPACTO_QUADRIL = 8.0
-IMPACTO_JOELHO = 16.0
+IMPACTO_DURACAO = 0.50
+IMPACTO_QUADRIL = 24.0
+IMPACTO_JOELHO = 46.0
 
 # Dança: passo base e poses por estilo.
 DANCA_FASE = 1.3
@@ -60,10 +59,10 @@ DANCA_BREAK_QUADRIL = 8.0
 DANCA_BREAK_QUADRIL_FLOOR = (35.0, 30.0)  # esq, dir
 DANCA_BREAK_JOELHO = (8.0, 20.0, 12.0)  # base, floor_esq, floor_dir
 
-# Idle/hover: pequeno peso lateral.
+# Idle/hover: pequeno peso lateral e respiração orgânica.
 IDLE_SWAY_ESCALA = 5.0
-IDLE_QUADRIL = 2.0
-IDLE_JOELHO = 4.0
+IDLE_QUADRIL = 3.5
+IDLE_JOELHO = 7.0
 
 
 @dataclass(frozen=True)
@@ -76,31 +75,33 @@ class LegPose:
     right_knee: float = 0
     left_lift: float = 0
     right_lift: float = 0
+    left_yaw: float = 0
+    right_yaw: float = 0
+    left_roll: float = 0
+    right_roll: float = 0
+
+
+def apoiar_passada(quadril, joelho, coxa, canela, elevacao):
+    """Mantém o arco horizontal do FK e resolve o apoio vertical por IK."""
+    y = coxa * sin(radians(quadril)) + canela * sin(radians(quadril + joelho))
+    z = coxa + canela - elevacao
+    alcance = min(coxa + canela - 1e-5, max(abs(coxa - canela) + 1e-5, hypot(y, z)))
+    flexao = acos((alcance**2 - coxa**2 - canela**2) / (2 * coxa * canela))
+    direcao = atan2(y, z)
+    correcao = atan2(canela * sin(flexao), coxa + canela * cos(flexao))
+    return degrees(direcao - correcao), degrees(flexao)
 
 
 class LegMotion:
-    """Fase e molas das pernas na caminhada, corrida e dança."""
+    """Fase da passada e transições entre poses das pernas."""
 
     def __init__(self):
         """Inicia as pernas paradas."""
         self.pose = LegPose()
         self.phase = 0.0
-        # Uma mola por campo de LegPose. Quadris e joelhos usam a tensão de
-        # 'legs' (âncora firme); os lifts dos pés usam a tensão de 'left-feet'
-        # /'right-feet' (mais solta), tudo lido de spring_tuning. A resposta
-        # analítica da Spring mantém o movimento independente do framerate.
-        freq_pernas = frequencia_de("legs")
-        amort_pernas = amortecimento_de("legs")
-        self._mola_left = Spring(freq_pernas, amort_pernas)
-        self._mola_right = Spring(freq_pernas, amort_pernas)
-        self._mola_left_knee = Spring(freq_pernas, amort_pernas)
-        self._mola_right_knee = Spring(freq_pernas, amort_pernas)
-        self._mola_left_lift = Spring(
-            frequencia_de("left-feet"), amortecimento_de("left-feet")
-        )
-        self._mola_right_lift = Spring(
-            frequencia_de("right-feet"), amortecimento_de("right-feet")
-        )
+        self._transicao_de = self.pose
+        self._transicao_tempo = 0.0
+        self._estado = None
 
     def update(  # noqa: C901, PLR0915  # TODO convenção: fatiar sem prova visual na GPU arrisca mudar o movimento; lote próprio com caracterização
         self,
@@ -112,71 +113,75 @@ class LegMotion:
         dance_phase=None,
         dance_strength=1.0,
         dance_style="head_bob",
-        personality="calm",
         modo_sono="em_pe",
     ):
         """Avança as pernas um passo e devolve a pose resultante."""
         dt = max(0, min(DT_MAXIMO, dt))
         target = LegPose()
         if state in ("walk", "run"):
-            self.phase += (
-                dt * tau * (FASE_CORRIDA if state == "run" else FASE_CAMINHADA)
+            vx = abs(velocity[0]) if velocity else 0.0
+            vel_ref = 285.0 if state == "run" else 160.0
+            # Acopla cadência e amplitude ao deslocamento real quando há velocidade horizontal
+            # (sem alterar testes estáticos que passam velocity=(0, 0)).
+            escala_vel = (
+                max(0.72, min(1.55, vx / vel_ref)) if vx > 5.0 else 1.0
             )
-            fator_amp = 1.0
-            fator_joelho = 1.0
-            fator_lift = 1.0
-            if personality == "fighter":
-                fator_amp, fator_joelho, fator_lift = 0.95, 1.25, 1.2
-            elif personality == "street":
-                fator_amp, fator_joelho, fator_lift = 1.2, 0.95, 0.9
-            elif personality == "playful":
-                fator_amp, fator_joelho, fator_lift = 1.1, 1.35, 1.45
-            elif personality == "shy":
-                fator_amp, fator_joelho, fator_lift = 0.8, 0.75, 0.7
-            elif personality == "stylish":
-                fator_amp, fator_joelho, fator_lift = 1.1, 1.1, 1.1
-            elif personality == "confident":
-                fator_amp, fator_joelho, fator_lift = 1.15, 1.0, 1.0
-            elif personality == "rhythm":
-                fator_amp, fator_joelho, fator_lift = 1.05, 1.2, 1.25
-
-            stride = sin(self.phase)
-            amplitude = (AMPLITUDE_CORRIDA if state == "run" else AMPLITUDE_CAMINHADA) * fator_amp
-            p_joelho = PASSADA_JOELHO * fator_joelho
-            p_lift = PASSADA_LIFT * fator_lift
+            escala_amp = 0.78 + 0.22 * min(1.35, escala_vel)
+            self.phase += (
+                dt * tau * (FASE_CORRIDA if state == "run" else FASE_CAMINHADA) * escala_vel
+            )
+            # ``left < 0`` gira a coxa para a frente (-Y local); com ``-sin`` a
+            # perna erguida no balanço (cos > 0) avança de trás para a frente,
+            # sincronizada com a contrafase dos braços (braço dir. à frente em pi/2).
+            stride = -sin(self.phase)
+            amplitude = (
+                AMPLITUDE_CORRIDA if state == "run" else AMPLITUDE_CAMINHADA
+            ) * escala_amp
+            # Flexão no começo do balanço, extensão antes de apoiar a sola.
+            balanco_esq = max(0, cos(self.phase))
+            balanco_dir = max(0, -cos(self.phase))
             target = LegPose(
                 stride * amplitude,
                 -stride * amplitude,
-                max(0, stride) * p_joelho,
-                max(0, -stride) * p_joelho,
-                max(0, stride) * p_lift,
-                max(0, -stride) * p_lift,
+                balanco_esq * PASSADA_JOELHO,
+                balanco_dir * PASSADA_JOELHO,
+                balanco_esq * PASSADA_LIFT,
+                balanco_dir * PASSADA_LIFT,
             )
         elif state == "fall":
             descent = 0.5 + 0.5 * tanh(velocity[1] / QUEDA_DESCIDA_ESCALA)
             drift = tanh(velocity[0] / QUEDA_DERIVA_ESCALA)
             self.phase += dt * tau * QUEDA_FASE
-            kick = sin(self.phase)
+            kick = sin(self.phase + 0.45)
+            panic = max(0.45, min(1.0, hypot(velocity[0], velocity[1]) / 450.0))
             qe, qd = QUEDA_QUADRIL_ESQ, QUEDA_QUADRIL_DIR
             je, jd = QUEDA_JOELHO_ESQ, QUEDA_JOELHO_DIR
             target = LegPose(
-                qe[0] - qe[1] * descent + qe[2] * drift + qe[3] * kick,
-                qd[0] - qd[1] * descent - qd[2] * drift - qd[3] * kick,
-                je[0] + je[1] * descent + je[2] * max(0, kick),
-                jd[0] + jd[1] * descent + jd[2] * max(0, -kick),
+                qe[0] - qe[1] * descent + qe[2] * drift + qe[3] * kick * panic,
+                qd[0] - qd[1] * descent - qd[2] * drift - qd[3] * kick * panic,
+                je[0] + je[1] * descent + je[2] * max(0, kick) * panic,
+                jd[0] + jd[1] * descent + jd[2] * max(0, -kick) * panic,
                 max(0, kick) * QUEDA_LIFT_ESQ,
                 max(0, -kick) * QUEDA_LIFT_DIR,
+                left_roll=drift * 6.0 + kick * 5.0 * panic,
+                right_roll=drift * 6.0 - kick * 5.0 * panic,
             )
         elif state == "drag":
-            dq, dj = DRAG_QUADRIL, DRAG_JOELHO
+            # Esperneio cômico e ativo no ar: pernas pedalando
+            pedal_fase = time * 12.0
+            pedal_esq = sin(pedal_fase) * 16.0
+            pedal_dir = -sin(pedal_fase) * 16.0
+            joelho_pedal_esq = max(6.0, cos(pedal_fase) * 24.0)
+            joelho_pedal_dir = max(6.0, -cos(pedal_fase) * 24.0)
             target = LegPose(
-                dq[0] + sway * dq[1],
-                dq[2] + sway * dq[3],
-                dj[0] + abs(sway) * dj[1],
-                dj[2] + abs(sway) * dj[3],
+                pedal_esq + sway * 0.5,
+                pedal_dir + sway * 0.5,
+                joelho_pedal_esq + abs(sway) * 0.2,
+                joelho_pedal_dir + abs(sway) * 0.2,
             )
         elif state in ("land", "hit"):
-            compress = sin(min(1, time / IMPACTO_DURACAO) * 3.14159265)
+            progresso = max(0.0, min(1.0, time / IMPACTO_DURACAO))
+            compress = sin((progresso**0.65) * 3.14159265)
             target = LegPose(
                 -IMPACTO_QUADRIL * compress,
                 -IMPACTO_QUADRIL * compress,
@@ -200,13 +205,15 @@ class LegMotion:
             if dance_style == "head_bob":
                 # Mario sentado no topo da jukebox estilo FNF Girlfriend:
                 # Coxas apoiadas à frente no topo da caixa e pernas balançando alternadas ao som
-                balanco_canelas = sin(self.phase * 0.5) * 16.0 * max(0.4, dance_strength)
+                balanco_canelas = (
+                    sin(self.phase * 0.5) * 9.0 * max(0.4, dance_strength)
+                )
                 quique_assento = (0.5 + 0.5 * cos(self.phase)) * 2.5 * dance_strength
                 target = LegPose(
-                    -68.0 + quique_assento,
-                    -68.0 + quique_assento,
-                    78.0 + balanco_canelas,
-                    78.0 - balanco_canelas,
+                    -88.0 + quique_assento,
+                    -88.0 + quique_assento,
+                    62.0 + balanco_canelas,
+                    62.0 - balanco_canelas,
                 )
             elif dance_style == "hip_hop":
                 quique = (0.5 + 0.5 * cos(self.phase)) * DANCA_HIPHOP_JOELHO
@@ -227,6 +234,41 @@ class LegMotion:
                     absorve,
                     absorve,
                 )
+            elif dance_style == "cyber_bounce":
+                bounce = (0.5 + 0.5 * cos(self.phase)) ** 2 * 14.0 * max(0.5, dance_strength)
+                target = LegPose(
+                    step * 9.0,
+                    -step * 9.0,
+                    bounce + max(0, step) * 8.0,
+                    bounce + max(0, -step) * 8.0,
+                    max(0, step) * 0.016,
+                    max(0, -step) * 0.016,
+                )
+            elif dance_style == "street_groove":
+                beat = (self.phase / tau) % 2.0
+                fase_d = suavizar_quintico(sin(pi * min(1.0, max(0.0, beat))))
+                fase_e = suavizar_quintico(sin(pi * min(1.0, max(0.0, beat - 1.0))))
+                quique = (0.5 + 0.5 * cos(self.phase * 2.0)) * 7.5
+                target = LegPose(
+                    left=-16.0 * fase_e + 6.0 * fase_d,
+                    right=-16.0 * fase_d + 6.0 * fase_e,
+                    left_knee=quique + 20.0 * fase_e,
+                    right_knee=quique + 20.0 * fase_d,
+                    left_lift=0.024 * fase_e,
+                    right_lift=0.024 * fase_d,
+                    left_yaw=-14.0 * fase_e,
+                    right_yaw=14.0 * fase_d,
+                    left_roll=14.0 * fase_e,
+                    right_roll=-14.0 * fase_d,
+                )
+            elif dance_style == "graffiti_dance":
+                apoio = (0.5 + 0.5 * cos(self.phase * 0.5)) * 7.0
+                target = LegPose(
+                    step * 6.0,
+                    -step * 6.0,
+                    apoio + 6.0,
+                    apoio + 6.0,
+                )
             elif dance_style == "breakdance":
                 beat = self.phase / tau % dtune.FRASE_BATIDAS
                 floor = max(
@@ -245,25 +287,82 @@ class LegMotion:
                     bj[0] + floor * bj[1],
                     bj[0] + floor * bj[2],
                 )
+        elif state == "virtual_insanity":
+            # Base baixa e plantada estilo Jamiroquai: joelhos flexionados e zero quique.
+            deslize = sin(time * 2.2) * 2.0
+            target = LegPose(
+                left=-14.0 + deslize,
+                right=12.0 - deslize,
+                left_knee=22.0,
+                right_knee=20.0,
+                left_yaw=-8.0,
+                right_yaw=8.0,
+                left_roll=5.0,
+                right_roll=-5.0,
+            )
+        elif state == "blue_balls":
+            # Choque elétrico inicial seguido de agachamento dobrado com joelhos travados.
+            if time < 0.28:
+                tremor = sin(time * 48.0) * 3.0
+                target = LegPose(
+                    left=4.0 + tremor,
+                    right=4.0 - tremor,
+                    left_knee=8.0,
+                    right_knee=8.0,
+                )
+            else:
+                latejo = max(0.0, sin((time - 0.28) * 9.0)) * 4.5
+                target = LegPose(
+                    left=-18.0,
+                    right=-18.0,
+                    left_knee=40.0 + latejo,
+                    right_knee=40.0 + latejo,
+                    left_yaw=8.0,
+                    right_yaw=-8.0,
+                    left_roll=-6.0,
+                    right_roll=6.0,
+                )
         elif state == "sleep":
+            entrada = suavizar_quintico((time - 0.30) / 1.75)
+            # Poses de sono com joelhos dobrados naturalmente e pés firmes no chão
             target = {
-                "sentado": LegPose(-65.0, -65.0, 15.0, 15.0),
+                "sentado": LegPose(-82.0 * entrada, -80.0 * entrada, 78.0 * entrada, 76.0 * entrada),
                 "deitado": LegPose(-30.0, -22.0, 45.0, 40.0),
             }.get(modo_sono, LegPose(0.0, 0.0, 4.0, 4.0))
         elif state in ("idle", "hover"):
-            shift = max(-1, min(1, sway / IDLE_SWAY_ESCALA))
+            # Completa o pouso do passo se acabou de sair de walk/run antes do repouso.
+            if self._estado and self._estado[0] in ("walk", "run"):
+                passo_neutro = round(self.phase / pi) * pi
+                erro_passo = passo_neutro - self.phase
+                if abs(erro_passo) > 0.05:
+                    self.phase += erro_passo * min(1.0, dt * 14.0)
+            # Transferência de peso orgânica e micro-respiração nos joelhos
+            balanco_tempo = sin(time * 0.9) * 0.6 + sin(time * 0.35) * 0.4
+            shift = max(-1.0, min(1.0, sway / IDLE_SWAY_ESCALA + balanco_tempo * 0.7))
+            respiro_joelho = (0.5 + 0.5 * cos(time * 1.5)) * 3.5
             target = LegPose(
                 IDLE_QUADRIL * shift,
                 -IDLE_QUADRIL * shift,
-                max(0, shift) * IDLE_JOELHO,
-                max(0, -shift) * IDLE_JOELHO,
+                max(0.0, shift) * IDLE_JOELHO + respiro_joelho,
+                max(0.0, -shift) * IDLE_JOELHO + respiro_joelho,
             )
-        self.pose = LegPose(
-            self._mola_left.update(dt, target.left),
-            self._mola_right.update(dt, target.right),
-            self._mola_left_knee.update(dt, target.left_knee),
-            self._mola_right_knee.update(dt, target.right_knee),
-            self._mola_left_lift.update(dt, target.left_lift),
-            self._mola_right_lift.update(dt, target.right_lift),
+        chave = ("idle", None) if state == "hover" else (
+            state, dance_style if state == "dance" else modo_sono if state == "sleep" else None
         )
+        if chave != self._estado:
+            self._estado = chave
+            self._transicao_de = self.pose
+            self._transicao_tempo = 0.0
+        duracao = 0.14 if state in ("drag", "fall", "hit", "blue_balls") else (
+            0.20 if state == "virtual_insanity" else 0.32
+        )
+        self._transicao_tempo = min(duracao, self._transicao_tempo + dt)
+        peso = suavizar_quintico(self._transicao_tempo / duracao)
+        if peso < 1.0:
+            self.pose = LegPose(*(
+                origem + (alvo - origem) * peso
+                for origem, alvo in zip(astuple(self._transicao_de), astuple(target), strict=True)
+            ))
+        else:
+            self.pose = target
         return self.pose

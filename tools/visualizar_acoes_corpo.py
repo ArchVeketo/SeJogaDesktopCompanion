@@ -14,11 +14,14 @@ def main():  # noqa: C901, PLR0915  # TODO convenção: ferramenta de captura/GP
     profile = Path(tempfile.mkdtemp(prefix="sejoga-body-actions-"))
     configuracao.default_config_path = lambda: profile / "config.toml"
     import win32gui
-    from panda3d.core import Filename
     from PIL import Image, ImageDraw, ImageGrab
 
     from sejoga.animacao.controlador_animacao import AnimationController
     from sejoga.render.janela import OverlayApp
+
+    # isort: split
+    # O overlay carrega as DLLs do Qt antes do Panda3D no Windows.
+    from panda3d.core import Filename
 
     settings = configuracao.Settings()
     settings.physics.enabled = settings.music.enabled = False
@@ -33,6 +36,7 @@ def main():  # noqa: C901, PLR0915  # TODO convenção: ferramenta de captura/GP
         ("stretch", {}),
         ("fall", {"grounded": False, "gravity_active": True}),
         ("walk", {"velocity": (250, 0)}),
+        ("run", {"velocity": (800, 0)}),
         ("hover", {"hovered": True, "look_direction": 0.7}),
         ("drag", {"dragging": True, "drag_direction": 0.8, "drag_intensity": 0.8}),
         ("dance", {"music_playing": True, "music_intensity": 0.5, "dance_chance": 1.0}),
@@ -83,7 +87,6 @@ def main():  # noqa: C901, PLR0915  # TODO convenção: ferramenta de captura/GP
         for kind, args in cases:
             animation = AnimationController(app.renderer.rig)
             app.animation_controller = animation
-            animation._ambient_in = animation._peek_in = 10000
             if kind.startswith("music-"):
                 for _ in range(240):
                     animation.update(1 / 60, **args)
@@ -135,7 +138,7 @@ def main():  # noqa: C901, PLR0915  # TODO convenção: ferramenta de captura/GP
                     dragging=params.get("dragging", False),
                 )
                 app.renderer.update_appendages(dt, False)
-                app._fit_pose_window(dt)
+                app._sincronizar_desktop(dt)
                 app.taskMgr.step()
                 if frame % 6 == 0 or frame in key_frames:
                     file = profile / f"{kind}-{frame}.png"

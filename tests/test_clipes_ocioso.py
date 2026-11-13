@@ -26,16 +26,17 @@ def test_idle_tracks_close_with_zero_velocity(style):
 
 
 @pytest.mark.parametrize("style", CLIPS)
-def test_style_persists_and_manual_choice_stays_locked(style):
+def test_manual_style_persists_and_auto_restores_default(style):
     settings = Settings.model_validate({"behavior": {"idle_personality": style}})
     animation = AnimationController(Rig(rest={g: Rotation3() for g in ALL_GROUPS}))
     animation.set_idle_personality(settings.behavior.idle_personality)
-    animation._ambient_in = animation._peek_in = 1000
-    for _ in range(300):
+    for _ in range(400):
         animation.update(0.1)
     assert animation.idle_personality.value == style
     animation.set_idle_personality("auto")
-    assert not animation._personality_locked
+    for _ in range(400):
+        animation.update(0.1)
+    assert animation.idle_personality == IdlePersonality.CALM
 
 
 def test_secondary_motion_keeps_authored_hand_pitch_and_finger_gesture():

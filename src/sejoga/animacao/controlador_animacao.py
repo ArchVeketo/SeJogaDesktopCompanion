@@ -13,6 +13,7 @@ from math import degrees
 from typing import ClassVar
 
 from sejoga.animacao import movimento_corpo_tuning as tune
+from sejoga.animacao.agencia import Agencia
 from sejoga.animacao.braco_hpr import braco_hpr_graus
 from sejoga.animacao.camadas_animacao import (
     MASCARA_MUSICA,
@@ -38,7 +39,7 @@ from sejoga.animacao.gestos_tuning import (
     ALONGAR_DURACAO_S,
     CUTUCAR_DURACAO_S,
 )
-from sejoga.animacao.mola_tuning import amortecimento_de, frequencia_de
+from sejoga.animacao.interpolacao import suavizar_quintico
 from sejoga.animacao.molas_juntas import (
     CADEIA_COLUNA,
     CADEIA_DIREITA,
@@ -55,12 +56,14 @@ from sejoga.animacao.pacotes_animacao import (
     ANGULO_POR_ORIENTACAO,
     AgendadorPacotes,
     EstadoProfundidade,
+    ItemPacote,
     NivelProfundidade,
     OrientacaoCorpo,
     PacoteOlharTela,
 )
 from sejoga.animacao.pose_repouso import REPOUSO
 from sejoga.animacao.poses_base import (
+    pose_blue_balls,
     pose_drag,
     pose_flourish,
     pose_idle,
@@ -70,13 +73,19 @@ from sejoga.animacao.poses_base import (
     pose_sneeze,
     pose_throw_release,
     pose_thrown,
+    pose_virtual_insanity,
     pose_walk,
 )
 from sejoga.animacao.resolvedor_poses import PoseResolver
-from sejoga.animacao.respiracao import Respiracao
-from sejoga.animacao.respiracao_tuning import parametros_de
+from sejoga.animacao.respiracao import Respiracao, amostrar_respiracao_repouso
 from sejoga.animacao.sono_tuning import SONO_TRANSICAO_S
-from sejoga.nucleo.esqueleto import ALL_GROUPS, IdlePersonality, Rig, Rotation3
+from sejoga.animacao.teimosia_pose import (
+    aplicar_fase as aplicar_pose_teimosia,
+)
+from sejoga.animacao.teimosia_pose import (
+    fase_do_tempo as fase_teimosia_do_tempo,
+)
+from sejoga.nucleo.esqueleto import IdlePersonality, Rig, Rotation3
 from sejoga.nucleo.modelo import Model
 
 #: Braço no arraste: o z=62 original era REPOUSO.BRACO_Z - 6 (afasta um pouco).
@@ -111,9 +120,14 @@ class AnimationState(StrEnum):
     THUMBS_UP = "thumbs_up"
     ROCK = "rock"
     FINGER_GUN = "finger_gun"
+    PEACE = "peace"
     OPEN_HANDS = "open_hands"
     CLOSE_FISTS = "close_fists"
+    BLUE_BALLS = "blue_balls"
+    VIRTUAL_INSANITY = "virtual_insanity"
     SURPRISE = "surprise"
+    # Teimosia: manifesto §1.4 — resistência → repreensão → bote → roubo do mouse
+    TEIMOSIA = "teimosia"
 
 
 class AnimationController:
@@ -135,15 +149,10 @@ class AnimationController:
         self._idle_clock = 0.0
         self.clock = 0.0
         self.idle_personality = IdlePersonality.CALM
-        # Respiração sob demanda (engine-agnóstica): o oscilador lento e a
-        # mola seguem avançando a cada frame, mas o valor exposto só sai de
-        # zero enquanto houver impulso de empurrar_respiracao ativo. No idle
-        # normal o tórax fica parado; o renderer lê 0.0 até alguém empurrar.
-        self.respiracao = self._criar_respiracao(self.idle_personality)
+        self.respiracao = Respiracao(frequencia=0.0)
+        self._peso_repouso = 0.0
         self.respiracao_valor = 0.0
         self._personality_rng = random.Random()
-        self._personality_elapsed = 0.0
-        self._personality_interval = self._personality_rng.uniform(24.0, 36.0)
         # Start in a composed idle pose. Starting every joint at zero exposes
         # the asset's T-pose during the first state crossfade.
         rig.reset()
@@ -153,22 +162,30 @@ class AnimationController:
         rig.reset()
         self._reaction: AnimationState | None = None
         self._reaction_time = 0.0
+        self._reaction_direction = 1.0
+        self._pending_intent: tuple[str, float | None, float] | None = None
         self._cooldowns: dict[str, float] = {}
         self._look_direction = 0.0
         self._look_vertical = 0.0
-        self._ambient_in = 28.0
+        self._idle_torso_look_dir = 0.0
+        self._idle_torso_look_vert = 0.0
+        self._hover_enter_timer = 0.0
+        self._hover_exit_timer = 0.0
         self.appendage_remaining = 0.0
-        self._peek_in = self._personality_rng.uniform(180, 360)
+        self._cursor_anterior: tuple[float, float] | None = None
+        self._quietude = 0.0
         self.modo_sono: str = "em_pe"
         self._sleep_locked: bool = False
         self._dance_remaining = 0.0
+        self._music_grace = 0.0
         self._dance_decision_in = 0.0
         self._previous_beat = False
         self._dance_rng = random.Random()
         self.drag_intensity = 0.0
         self._release_time = 1.0
         self._release_grip = 0.0
-        self._personality_locked = False
+        self._was_grounded: bool | None = None
+        self._peak_fall_vy: float = 0.0
         self.body_motion = BodyMotion()
         self.leg_motion = LegMotion()
         self.hand_motion = HandMotion()
@@ -192,22 +209,8 @@ class AnimationController:
             self.cadeia_coluna,
         ):
             _c.definir(dict(self._pose))
-        # Crossfade, colisão e clamps delegados ao PoseResolver.
-        # As tensões de crossfade vêm de spring_tuning: âncora firme, ponta
-        # solta. EXCEÇÃO: legs, left-feet e right-feet recebem a tensão FIRME
-        # do corpo, porque o movimento real vem do IK de lower_body via
-        # leg_motion (fora do mixer): não se duplica amortecimento aqui.
-        firme = (frequencia_de("body"), amortecimento_de("body"))
-        tensoes_crossfade = {
-            grupo: (
-                firme
-                if grupo in ("legs", "left-feet", "right-feet")
-                else (frequencia_de(grupo), amortecimento_de(grupo))
-            )
-            for grupo in ALL_GROUPS
-        }
         self._collision_model = model
-        self.pose_resolver = PoseResolver(tensoes_crossfade=tensoes_crossfade)
+        self.pose_resolver = PoseResolver()
         self.pose_resolver.iniciar_transicao(
             dict(self._pose), transition_seconds=self.transition_seconds
         )
@@ -216,11 +219,24 @@ class AnimationController:
         # Pacotes de animação, profundidade visual e orientação manual (Fases 3-4).
         self.profundidade = EstadoProfundidade()
         self.pacote_olhar_tela = PacoteOlharTela()
-        self.agendador_pacotes = AgendadorPacotes()
+        self.agendador_pacotes = AgendadorPacotes(
+            (
+                ItemPacote("olhar_tela", peso=0.75, resfriamento_s=180.0),
+                ItemPacote("caminhar_fundo", peso=0.45, resfriamento_s=210.0),
+            ),
+            intervalo_base_s=95.0,
+        )
+        self._curiosidade_fundo_restante: float = 0.0
         self.orientacao_manual: OrientacaoCorpo | None = None
         self.angulo_giro_pedido: float | None = None
         self.permitir_giro_costas: bool = False
-        self.pedido_caminhada_autonoma: str | None = None
+        self._fonte_atencao: str | None = None
+
+        # ── Sistema de agência (manifesto §4.1 — Camada 1) ──────────────
+        self.agencia = Agencia()
+        self._teimosia_fase: str = "resistencia"  # resistencia → repreensao → bote → roubo → cospe
+        self._teimosia_tempo = 0.0
+        self._cursor_oculto = False  # Track if we hid the cursor via Win32
 
     def iniciar_pacote_olhar_tela(self, lado: float | None = None) -> None:
         """Dispara o pacote 'Olhar a tela' (olhar por cima do ombro -> costas -> frente)."""
@@ -234,6 +250,7 @@ class AnimationController:
 
     def definir_profundidade(self, nivel: NivelProfundidade | str) -> None:
         """Define o nível de profundidade visual (`perto`, `medio` ou `longe`)."""
+        self._curiosidade_fundo_restante = 0.0
         self.profundidade.definir_nivel(nivel)
 
     def caminhar_para_fundo(self) -> NivelProfundidade:
@@ -255,6 +272,7 @@ class AnimationController:
 
     def voltar_ao_plano(self) -> None:
         """Retorna imediatamente ao plano frontal (`perto` e `frente`)."""
+        self._curiosidade_fundo_restante = 0.0
         self.pacote_olhar_tela.interromper()
         self.orientacao_manual = None
         self.angulo_giro_pedido = 0.0
@@ -263,7 +281,10 @@ class AnimationController:
 
     def preview_dance(self, style):
         """Força a prévia de um estilo de dança por alguns segundos."""
-        if style not in ("head_bob", "hip_hop", "rock", "breakdance"):
+        if style not in (
+            "head_bob", "hip_hop", "rock", "breakdance",
+            "street_groove", "graffiti_dance", "cyber_bounce",
+        ):
             return
         self._dance_preview_remaining = 15.0
         self._dance_preview_style = style
@@ -295,48 +316,21 @@ class AnimationController:
                 dict(self._pose), transition_seconds=self.transition_seconds
             )
 
-    @staticmethod
-    def _criar_respiracao(personality: IdlePersonality) -> Respiracao:
-        """Cria a respiração calibrada pelos parâmetros da personalidade."""
-        parametros = parametros_de(personality)
-        return Respiracao(
-            frequencia=parametros.frequencia,
-            amplitude=parametros.amplitude,
-            amortecimento=1.0 - parametros.bounce,
-        )
-
-    def _recalibrar_respiracao(self, personality: IdlePersonality) -> None:
-        """Recria a respiração para a nova personalidade, começando no repouso."""
-        self.respiracao = self._criar_respiracao(personality)
-        self.respiracao_valor = 0.0
-
     def empurrar_respiracao(self, quantidade: float) -> None:
-        """Ativa a respiração sob demanda, inflando o tórax por evento.
-
-        A respiração não ocorre mais no idle; este é o único gancho que a
-        liga. Chamar ``empurrar_respiracao(quantidade)`` a partir de um estado
-        ou evento (ex.: inspiração antes do espirro) faz ``respiracao_valor``
-        subir por alguns frames e decair sozinho de volta a 0.0, sem precisar
-        desligar nada. Delega a ``Respiracao.empurrar``. TODO: ligar ao estado
-        SNEEZE quando a FEAT do espirro existir. NÃO implementar o sneeze aqui.
-        """
+        """Soma uma inspiração breve ao movimento em curso."""
         self.respiracao.empurrar(quantidade)
 
     def set_idle_personality(self, personality: IdlePersonality | str | None) -> None:
-        """Escolhe uma personalidade ou devolve o idle à rotação automática."""
-        if personality is None or personality == "auto":
-            self._personality_locked = False
-            self._personality_elapsed = 0.0
-            self._personality_interval = self._personality_rng.uniform(24.0, 36.0)
-            return
-        selected = IdlePersonality(personality)
-        if selected == self.idle_personality and self._personality_locked:
+        """Seleciona uma variação ou retorna ao repouso padrão."""
+        selected = (
+            IdlePersonality.CALM
+            if personality is None or personality == "auto"
+            else IdlePersonality(personality)
+        )
+        if selected == self.idle_personality:
             return
         self.idle_personality = selected
-        self._recalibrar_respiracao(selected)
         self._idle_clock = 0.0
-        self._personality_locked = True
-        self._personality_elapsed = 0.0
         self.pose_resolver.iniciar_transicao(
             dict(self._pose), transition_seconds=max(self.transition_seconds, 1.0)
         )
@@ -346,17 +340,19 @@ class AnimationController:
     REACTION_SECONDS: ClassVar[dict[AnimationState, float]] = {
         **{
             AnimationState(k): 3.2
-            for k in ("hang_loose", "thumbs_up", "rock", "finger_gun")
+            for k in ("hang_loose", "thumbs_up", "rock", "finger_gun", "peace")
         },
         AnimationState.OPEN_HANDS: 2.5,
         AnimationState.CLOSE_FISTS: 2.5,
+        AnimationState.BLUE_BALLS: 2.4,
+        AnimationState.VIRTUAL_INSANITY: 2.4,
         AnimationState.SNEEZE: 9.0,
         AnimationState.CLICK: 0.5,
         AnimationState.DOUBLE_CLICK: 1.4,
         AnimationState.PET: 1.5,
         AnimationState.POKE: CUTUCAR_DURACAO_S,
         AnimationState.WAKE: 1.2,
-        AnimationState.LAND: 0.45,
+        AnimationState.LAND: 0.50,
         AnimationState.WAVE: ACENO_DURACAO_S,
         AnimationState.STRETCH: ALONGAR_DURACAO_S,
         AnimationState.PEEK: 9.0,
@@ -365,7 +361,15 @@ class AnimationController:
         # Duração CALIBRÁVEL (validar na GPU): curta o bastante para parecer um
         # susto, longa o bastante para o retorno ser visível.
         AnimationState.SURPRISE: 0.7,
+        # TEIMOSIA: manifesto §1.4 — sequência completa (bote → roubo → cospe)
+        AnimationState.TEIMOSIA: 6.0,
     }
+
+    def _registrar_humor_interacao(self, kind: str, strength: float) -> None:
+        if kind in ("pet", "double_click"):
+            self.agencia.registrar_interacao_positiva()
+        elif kind in ("hit", "poke"):
+            self.agencia.registrar_interacao_negativa(strength)
 
     def interact(
         self, kind: str, *, direction: float | None = None, strength: float = 1.0
@@ -377,22 +381,38 @@ class AnimationController:
             return
         if kind == "drag_start":
             self._reaction = None
+            if self.agencia.tem_meta_ativa or self.agencia.teimosia_ativa:
+                self.agencia.registrar_interrupcao()
             return
         if self.state == AnimationState.SLEEP:
             kind = "wake"
-        if kind not in self.REACTION_SECONDS or self.clock < self._cooldowns.get(
-            kind, 0.0
+        sem_cooldown = ("blue_balls", "virtual_insanity", "peace", "open_hands", "hit")
+        if kind not in self.REACTION_SECONDS or (
+            kind not in sem_cooldown and self.clock < self._cooldowns.get(kind, 0.0)
         ):
+            return
+        # Continuidade pós-queda (Rain World): guarda intenções não-emergenciais
+        # recebidas durante FALL/DRAG/LAND para retomá-las após amortecer o pouso.
+        em_queda = (
+            self.state in (AnimationState.FALL, AnimationState.DRAG)
+            or self._reaction == AnimationState.LAND
+        )
+        if kind not in ("hit", "land", "wake") and em_queda:
+            self._pending_intent = (kind, direction, strength)
             return
         self.body_motion.impulse(
             kind, self._look_direction if direction is None else direction, strength
         )
         if kind == "wake":
             self._sleep_locked = False
+        self._registrar_humor_interacao(kind, strength)
         self._reaction = AnimationState(kind)
         self._reaction_time = 0.0
+        dir_ref = self._look_direction if direction is None else direction
+        self._reaction_direction = 1.0 if dir_ref >= 0.0 else -1.0
+        recuo_min = 6.0 if kind == "surprise" else 0.5
         self._cooldowns[kind] = self.clock + max(
-            self.REACTION_SECONDS[self._reaction], 0.5
+            self.REACTION_SECONDS[self._reaction], recuo_min
         )
 
     @staticmethod
@@ -404,6 +424,7 @@ class AnimationController:
         dragging: bool,
         music_playing: bool,
         music_intensity: float,
+        current_state: AnimationState | None = None,
     ) -> AnimationState:
         if dragging:
             return AnimationState.DRAG
@@ -411,9 +432,11 @@ class AnimationController:
             return AnimationState.FALL
         if music_playing and music_intensity > 0.01:
             return AnimationState.DANCE
-        if grounded and speed > 700.0:
+        limiar_run = 560.0 if current_state == AnimationState.RUN else 700.0
+        if grounded and speed > limiar_run:
             return AnimationState.RUN
-        if grounded and speed > 120.0:
+        limiar_walk = 75.0 if current_state == AnimationState.WALK else 120.0
+        if grounded and speed > limiar_walk:
             return AnimationState.WALK
         return AnimationState.IDLE
 
@@ -439,6 +462,7 @@ class AnimationController:
         hovered: bool = False,
         look_direction: float = 0.0,
         look_vertical: float = 0.0,
+        fonte_atencao: str | None = None,
         pointer_position: tuple[float, float] | None = None,
         grab_part: str = "body",
     ) -> dict[str, Rotation3]:
@@ -453,21 +477,45 @@ class AnimationController:
                 "hip_hop": (0.5, 0.3, 95),
                 "rock": (0.6, 0.15, 135),
                 "breakdance": (0.9, 0.6, 145),
-            }[self._dance_preview_style]
+                "street_groove": (0.65, 0.4, 108),
+                "graffiti_dance": (0.55, 0.25, 100),
+                "cyber_bounce": (0.75, 0.5, 124),
+            }.get(self._dance_preview_style, (0.5, 0.25, 100))
             self.dance_motion.override = self._dance_preview_style
             self._dance_remaining = 1.0
         self.clock += dt
         self.delta_time = dt
-        # Avança a respiração com o dt já saturado (o oscilador e o impulso de
-        # empurrar precisam evoluir todo frame), mas só expõe o valor centrado
-        # ENQUANTO houver impulso ativo. Sem empurrar, fica 0.0: o idle não
-        # respira sozinho (respiração sob demanda).
-        self.respiracao.atualizar(dt)
-        self.respiracao_valor = (
-            self.respiracao.centrada if self.respiracao.impulso_ativo else 0.0
-        )
+        self._music_grace = 0.65 if music_playing else max(0.0, self._music_grace - dt)
+        music_playing = self._music_grace > 0
         self.music_active = music_playing
+        if self.orientacao_manual == OrientacaoCorpo.COSTAS or (
+            self.permitir_giro_costas and abs(self.angulo_giro_pedido or 0) > 90
+        ):
+            look_direction = -look_direction
         self.appendage_remaining = max(0, self.appendage_remaining - dt)
+
+        # ── Sistema de agência: atualizar cérebro do Mário ──────────────
+        cursor_parado = False
+        if pointer_position is not None:
+            if self._cursor_anterior is None:
+                self._cursor_anterior = pointer_position
+                self.agencia.registrar_cursor_movimento()
+            else:
+                dx = pointer_position[0] - self._cursor_anterior[0]
+                dy = pointer_position[1] - self._cursor_anterior[1]
+                if dx * dx + dy * dy <= 16.0:
+                    cursor_parado = True
+                else:
+                    self._cursor_anterior = pointer_position
+                    self.agencia.registrar_cursor_movimento()
+        else:
+            self._cursor_anterior = None
+        self.agencia.atualizar(dt)
+
+        # Direção da meta ativa para resistência durante arraste
+        meta_dir = self.agencia.direcao_meta
+        resistencia = self.agencia.resistencia_ao_arraste
+
         self.body_motion.update(
             dt,
             pointer=pointer_position,
@@ -477,6 +525,8 @@ class AnimationController:
             grounded=grounded,
             velocity=velocity,
             grab_part=grab_part,
+            meta_direcao=meta_dir,
+            resistencia_nivel=resistencia,
         )
         if self.state == AnimationState.DRAG and not dragging:
             self._release_time = 0.0
@@ -506,10 +556,50 @@ class AnimationController:
         self._look_vertical += (
             max(-1.0, min(1.0, look_vertical)) - self._look_vertical
         ) * min(1.0, dt * 10.0)
+        # Tronco acompanha o olhar com atraso suave (ação sobreposta).
+        self._idle_torso_look_dir += (
+            self._look_direction - self._idle_torso_look_dir
+        ) * min(1.0, dt * 3.5)
+        self._idle_torso_look_vert += (
+            self._look_vertical - self._idle_torso_look_vert
+        ) * min(1.0, dt * 3.5)
         if self._reaction is not None:
             self._reaction_time += dt
             if self._reaction_time >= self.REACTION_SECONDS[self._reaction]:
+                if self._reaction == AnimationState.TEIMOSIA:
+                    self.agencia.interrupcoes.resetar()
+                    self.agencia._teimosia_ativa = False
+                    self.agencia._teimosia_nivel = 0.0
+                    self._teimosia_fase = "resistencia"
                 self._reaction = None
+                if (
+                    grounded
+                    and not dragging
+                    and self._pending_intent is not None
+                ):
+                    pending = self._pending_intent
+                    self._pending_intent = None
+                    self.interact(
+                        pending[0], direction=pending[1], strength=pending[2]
+                    )
+
+        if not grounded and not dragging:
+            self._peak_fall_vy = max(self._peak_fall_vy, abs(velocity[1]))
+        if (
+            self._was_grounded is False
+            and grounded
+            and not dragging
+            and (self.state == AnimationState.FALL or self._peak_fall_vy > 100.0)
+        ):
+            forca = max(0.75, min(1.8, self._peak_fall_vy / 480.0))
+            self.interact(
+                "land",
+                direction=max(-1.0, min(1.0, velocity[0] / 400.0)),
+                strength=forca,
+            )
+        self._was_grounded = grounded
+        if grounded:
+            self._peak_fall_vy = 0.0
 
         speed = (velocity[0] ** 2 + velocity[1] ** 2) ** 0.5
         next_state = self._choose_state(
@@ -519,35 +609,49 @@ class AnimationController:
             dragging=dragging,
             music_playing=music_playing and self._dance_remaining > 0,
             music_intensity=music_intensity,
+            current_state=self.state,
         )
-        if (
-            next_state == AnimationState.IDLE
-            and self.state == AnimationState.IDLE
+        condicao_quietude = (
+            cursor_parado
             and grounded
             and idle_enabled
             and not hovered
             and not music_playing
             and not dragging
-        ):
-            self._peek_in -= dt
-            if self._peek_in <= 0 and self._reaction is None:
-                self.appendage_remaining = 5.5
-                self._peek_in = self._personality_rng.uniform(180, 360)
-        elif next_state in (AnimationState.SLEEP, AnimationState.DRAG, AnimationState.FALL):
-            self.appendage_remaining = 0.0
+            and self._reaction is None
+        )
         if (
-            next_state == AnimationState.IDLE
-            and grounded
-            and idle_enabled
-            and not hovered
+            condicao_quietude
+            and next_state == AnimationState.IDLE
+            and self.state == AnimationState.IDLE
         ):
-            self._ambient_in -= dt
-            if self._ambient_in <= 0 and self._reaction is None:
-                self._reaction = self._personality_rng.choice(
-                    [AnimationState.WAVE, AnimationState.STRETCH]
+            if self.appendage_remaining <= 0.0:
+                anterior = self._quietude
+                self._quietude += dt
+                # Tentáculos saem quando Mário acha que ninguém está olhando (Manifesto §1.3 C)
+                if anterior < 14.0 <= self._quietude:
+                    self.appendage_remaining = 5.5
+                    self._quietude = 0.0
+        elif not (
+            condicao_quietude
+            and (
+                next_state == AnimationState.WALK
+                or (
+                    self.state == AnimationState.WALK
+                    and next_state == AnimationState.IDLE
                 )
-                self._reaction_time = 0.0
-                self._ambient_in = self._personality_rng.uniform(32.0, 48.0)
+            )
+        ):
+            self._quietude = 0.0
+            if next_state in (AnimationState.SLEEP, AnimationState.DRAG, AnimationState.FALL):
+                self.appendage_remaining = 0.0
+        if hovered:
+            self._hover_enter_timer += dt
+            self._hover_exit_timer = 0.0
+        else:
+            self._hover_exit_timer += dt
+            self._hover_enter_timer = 0.0
+
         if next_state != AnimationState.DRAG and (
             next_state != AnimationState.FALL or self._reaction == AnimationState.HIT
         ):
@@ -555,13 +659,29 @@ class AnimationController:
                 next_state != AnimationState.DANCE
                 or self._reaction in (
                     AnimationState.HIT,
+                    AnimationState.LAND,
                     AnimationState.SNEEZE,
                     AnimationState.OPEN_HANDS,
                     AnimationState.CLOSE_FISTS,
+                    AnimationState.BLUE_BALLS,
+                    AnimationState.VIRTUAL_INSANITY,
                 )
             ):
                 next_state = self._reaction
-            elif hovered and next_state == AnimationState.IDLE:
+            elif next_state == AnimationState.IDLE and (
+                (
+                    hovered
+                    and (
+                        self.state == AnimationState.HOVER
+                        or self._hover_enter_timer >= 0.05
+                    )
+                )
+                or (
+                    not hovered
+                    and self.state == AnimationState.HOVER
+                    and self._hover_exit_timer < 0.16
+                )
+            ):
                 next_state = AnimationState.HOVER
         if self._sleep_locked:
             if next_state in (AnimationState.DRAG, AnimationState.FALL):
@@ -583,38 +703,43 @@ class AnimationController:
         else:
             self.idle_time = 0.0
 
+        # ── Teimosia: se agência detectou 3+ interrupções, acionar TEIMOSIA ─
         if (
-            next_state in (AnimationState.IDLE, AnimationState.HOVER)
-            and idle_enabled
-            and not self._personality_locked
+            self.agencia.teimosia_ativa
+            and self.state
+            not in (
+                AnimationState.TEIMOSIA,
+                AnimationState.DRAG,
+                AnimationState.FALL,
+                AnimationState.LAND,
+            )
+            and self._reaction not in (AnimationState.TEIMOSIA, AnimationState.LAND)
         ):
-            self._personality_elapsed += dt
-            if self._personality_elapsed >= self._personality_interval:
-                choices = [
-                    personality
-                    for personality in IdlePersonality
-                    if personality != self.idle_personality
-                ]
-                self.idle_personality = self._personality_rng.choice(choices)
-                self._recalibrar_respiracao(self.idle_personality)
-                self._idle_clock = 0.0
-                self._personality_elapsed = 0.0
-                self._personality_interval = self._personality_rng.uniform(24.0, 36.0)
-                self._active_transition_seconds = max(self.transition_seconds, 1.4)
-                self.pose_resolver.iniciar_transicao(
-                    dict(self._pose), transition_seconds=self._active_transition_seconds
-                )
-                self.state_time = 0.0
-        elif next_state != AnimationState.IDLE:
-            self._personality_elapsed = 0.0
+            self._reaction = AnimationState.TEIMOSIA
+            self._reaction_time = 0.0
+            self._cooldowns["teimosia"] = self.clock + 6.0
+            next_state = AnimationState.TEIMOSIA
+
+        if (
+            self._reaction == AnimationState.TEIMOSIA
+            and 2.0 <= self._reaction_time <= 5.2
+        ):
+            self.appendage_remaining = max(
+                self.appendage_remaining, 5.2 - self._reaction_time
+            )
 
         if next_state != self.state:
-            self._active_transition_seconds = (
-                min(self.transition_seconds, 0.22)
-                if next_state
-                in (AnimationState.DRAG, AnimationState.FALL, AnimationState.HIT)
-                else self.transition_seconds
-            )
+            if next_state == AnimationState.FALL:
+                self._active_transition_seconds = min(self.transition_seconds, 0.11)
+            elif next_state in (
+                AnimationState.DRAG,
+                AnimationState.HIT,
+                AnimationState.BLUE_BALLS,
+                AnimationState.VIRTUAL_INSANITY,
+            ):
+                self._active_transition_seconds = min(self.transition_seconds, 0.14)
+            else:
+                self._active_transition_seconds = self.transition_seconds
 
             if next_state == AnimationState.SLEEP:
                 # Adormecer é lento: crossfade longo para o corpo não cair de uma vez.
@@ -631,13 +756,22 @@ class AnimationController:
             self.state_time += dt
 
         self.rig.reset()
+        em_repouso = idle_enabled and self.state in (AnimationState.IDLE, AnimationState.HOVER)
+        passo = dt / 0.55
+        self._peso_repouso = (
+            min(1.0, self._peso_repouso + passo)
+            if em_repouso
+            else max(0.0, self._peso_repouso - passo)
+        )
+        peso_repouso = suavizar_quintico(self._peso_repouso)
+        ciclo = amostrar_respiracao_repouso(self.clock)
+        impulso = self.respiracao.atualizar(dt)
+        self.respiracao_valor = max(
+            -1.0, min(1.0, ciclo * peso_repouso + impulso)
+        )
         if self.state in (AnimationState.IDLE, AnimationState.HOVER):
             if idle_enabled:
                 self._idle_clock += dt
-                # A respiração é sob demanda: respiracao_valor fica 0.0 no idle
-                # normal, então pose_idle recebe 0.0 e NÃO infla o tórax. Só
-                # quando empurrar_respiracao é chamado o valor sobe por alguns
-                # frames. Walk/run/drag/fall/dance/sleep seguem sem respiração.
                 pose_idle(
                     self.rig,
                     self._idle_clock,
@@ -661,14 +795,10 @@ class AnimationController:
         elif self.state == AnimationState.FALL:
             pose_thrown(self.rig, self.state_time, velocity)
         elif self.state == AnimationState.DANCE:
-            # A dança não autora mais a base: avança as molas e obtém a
-            # contribuição, que vira a camada aditiva 'musica' adiante. O rig
-            # recebe a pose crua suavizada para que pose_secondary leia os
-            # mesmos valores de antes (continuidade de mãos/ombros).
             contribuicao_danca = self.dance_motion.contribuicao(self.rig)
             self.rig.current = dict(contribuicao_danca)
         elif self.state == AnimationState.SLEEP:
-            pose_sleep(self.rig, self.clock, self.modo_sono)
+            pose_sleep(self.rig, self.clock, self.modo_sono, self.state_time)
         elif self.state in (AnimationState.OPEN_HANDS, AnimationState.CLOSE_FISTS):
             palma_aberta = self.state == AnimationState.OPEN_HANDS
             for lado, mao, dedos, sinal in (
@@ -679,19 +809,42 @@ class AnimationController:
                     self.rig.set_rotation(grupo, x=x, y=y, z=z)
                 self.rig.set_rotation(mao, x=36 if palma_aberta else -16, z=sinal * 6)
                 self.rig.set_rotation(dedos)
-        elif self.state.value in ("hang_loose", "thumbs_up", "rock", "finger_gun"):
+        elif self.state.value in ("hang_loose", "thumbs_up", "rock", "finger_gun", "peace"):
             pose_idle(self.rig, self.clock, self.idle_personality)
-            # Gesto de mão (hang loose/joinha/rock/finger gun): ergue o braço à
-            # frente a partir do alvo de interação (IK) para a mão ficar visível.
-            _ik = braco_hpr_graus("right", "interaction")
-            _g, _ge = _ik["right-arm"], _ik["ant-arm"]
-            self.rig.set_rotation("right-arm", x=_g[0] - 20, y=_g[1], z=_g[2])
-            # Cotovelo do IK (o -60 antigo era hiperextensão na FK real).
-            self.rig.set_rotation("ant-arm", x=_ge[0] - 8, z=_ge[2])
-            self.rig.set_rotation("hand", x=180, y=0, z=0)
+            # Cada gesto posiciona o braço e o antebraço para exibir a silhueta correta.
+            if self.state.value == "rock":
+                self.rig.set_rotation("right-arm", x=90.0, y=-15.0, z=25.0)
+                self.rig.set_rotation("ant-arm", x=0.0, z=70.0)
+                self.rig.set_rotation("hand", x=0.0, y=0.0, z=0.0)
+            elif self.state.value == "hang_loose":
+                self.rig.set_rotation("right-arm", x=90.0, y=-15.0, z=25.0)
+                self.rig.set_rotation("ant-arm", x=0.0, z=46.0)
+                self.rig.set_rotation("hand", x=0.0, y=0.0, z=0.0)
+            elif self.state.value == "peace":
+                self.rig.set_rotation("right-arm", x=86.0, y=-14.0, z=24.0)
+                self.rig.set_rotation("ant-arm", x=0.0, z=62.0)
+                self.rig.set_rotation("hand", x=0.0, y=0.0, z=0.0)
+            elif self.state.value == "thumbs_up":
+                self.rig.set_rotation("right-arm", x=62.0, y=-22.0, z=25.0)
+                self.rig.set_rotation("ant-arm", x=0.0, z=62.0)
+                self.rig.set_rotation("hand", x=0.0, y=0.0, z=0.0)
+            else:
+                # finger_gun
+                self.rig.set_rotation("right-arm", x=38.0, y=-28.0, z=30.0)
+                self.rig.set_rotation("ant-arm", x=0.0, z=52.0)
+                self.rig.set_rotation("hand", x=0.0, y=0.0, z=0.0)
             self.rig.set_rotation("fingers", z=0)
+        elif self.state == AnimationState.BLUE_BALLS:
+            pose_blue_balls(self.rig, self._reaction_time)
+        elif self.state == AnimationState.VIRTUAL_INSANITY:
+            pose_virtual_insanity(
+                self.rig, self._reaction_time, self._reaction_direction
+            )
         elif self.state == AnimationState.SNEEZE:
             pose_sneeze(self.rig, self._reaction_time)
+        elif self.state == AnimationState.TEIMOSIA:
+            # Manifesto §1.4: teimosia com fases (bote → roubo → cospe)
+            self._aplicar_pose_teimosia()
         elif self.state in (
             AnimationState.WAVE,
             AnimationState.STRETCH,
@@ -821,27 +974,32 @@ class AnimationController:
         amostra_olhar = self.pacote_olhar_tela.atualizar(
             dt, interromper=interromper_pacote
         )
-        elegivel_pacote = (
+        self._fonte_atencao = fonte_atencao
+        if self._curiosidade_fundo_restante > 0.0:
+            self._curiosidade_fundo_restante = max(0.0, self._curiosidade_fundo_restante - dt)
+            if self._curiosidade_fundo_restante <= 0.0 or dragging:
+                self._curiosidade_fundo_restante = 0.0
+                self.profundidade.definir_nivel(NivelProfundidade.PERTO)
+
+        elegivel_curiosidade = (
             self.state == AnimationState.IDLE
             and grounded
             and idle_enabled
-            and not hovered
             and not dragging
             and not amostra_olhar.ativo
-            and self._reaction is None
             and self.orientacao_manual is None
+            and self._curiosidade_fundo_restante <= 0.0
         )
-        pacote_sorteado = self.agendador_pacotes.atualizar(dt, elegivel=elegivel_pacote)
-        if pacote_sorteado == "olhar_tela":
-            self.iniciar_pacote_olhar_tela()
-            amostra_olhar = self.pacote_olhar_tela.atualizar(0.0)
-        elif pacote_sorteado == "caminhar_fundo":
-            if self.profundidade.nivel_alvo == NivelProfundidade.LONGE:
-                self.caminhar_para_frente()
-            else:
+        pacote_sorteado = self.agendador_pacotes.atualizar(
+            dt, elegivel=elegivel_curiosidade
+        )
+        if pacote_sorteado in ("olhar_tela", "caminhar_fundo"):
+            lado_olhar = 1.0 if look_direction >= 0 else -1.0
+            if pacote_sorteado == "caminhar_fundo":
                 self.caminhar_para_fundo()
-        elif pacote_sorteado == "caminhar_lado":
-            self.pedido_caminhada_autonoma = "aleatorio"
+                self._curiosidade_fundo_restante = 16.0
+            self.iniciar_pacote_olhar_tela(lado=lado_olhar)
+            amostra_olhar = self.pacote_olhar_tela.atualizar(0.0)
 
         if dragging:
             self.angulo_giro_pedido = None
@@ -916,7 +1074,10 @@ class AnimationController:
                 CamadaDelta(
                     nome="fisica",
                     prioridade=Prioridade.FISICA,
-                    delta=delta_fisica(motion),
+                    delta=delta_fisica(
+                        motion,
+                        pendurado=dragging and motion.hanging > tune.PENDURADO_LIMIAR,
+                    ),
                 )
             )
 
@@ -957,29 +1118,40 @@ class AnimationController:
             composed = MixerCamadas.compor(camadas)
 
         # Crossfade, colisão e clamps delegados ao PoseResolver.
-        # O resolver aplica crossfade com molas (continuidade de velocidade),
-        # correção de colisão (se model injetado) e clamps finais.
         self._pose = self.pose_resolver.resolver(
-            dt, composed, model=self._collision_model, state_time=self.state_time
+            dt, composed, model=self._collision_model, state_time=self.state_time,
         )
         displayed_pose = self.hand_motion.apply(self._pose, dt, self.state.value)
-        displayed_pose = self._aplicar_interacao(displayed_pose, dt)
+        peso_tatil = 1.0 if self.state in (AnimationState.DRAG, AnimationState.FALL) else 0.0
+        displayed_pose = self._aplicar_interacao(displayed_pose, dt, peso_tatil)
         self.rig.current = dict(displayed_pose)
+        roubo_ativo = self.state == AnimationState.TEIMOSIA and self._teimosia_fase == "roubo"
         estado_pernas = (
-            AnimationState.WALK.value
+            AnimationState.RUN.value
+            if roubo_ativo
+            else AnimationState.WALK.value
             if amostra_olhar.ativo and amostra_olhar.em_passo
             else self.state.value
         )
         vel_pernas = (
-            (160.0 * self.pacote_olhar_tela.lado, 0.0)
+            (240.0, 0.0)
+            if roubo_ativo
+            else (160.0 * self.pacote_olhar_tela.lado, 0.0)
             if amostra_olhar.ativo and amostra_olhar.em_passo
             else velocity
+        )
+        tempo_pernas = (
+            self._idle_clock
+            if self.state in (AnimationState.IDLE, AnimationState.HOVER)
+            else self.state_time
+            if self.state in (AnimationState.DRAG, AnimationState.SLEEP, AnimationState.FALL, AnimationState.LAND)
+            else self._reaction_time
         )
         self.leg_motion.update(
             dt,
             estado_pernas,
             vel_pernas,
-            self._reaction_time,
+            tempo_pernas,
             self.body_motion.snapshot.limb_swing
             if dragging
             else self.body_motion.snapshot.roll
@@ -991,13 +1163,12 @@ class AnimationController:
             ),
             dance_strength=self.dance_motion.strength,
             dance_style=self.dance_motion.style,
-            personality=self.idle_personality.value,
             modo_sono=self.modo_sono,
         )
         return displayed_pose
 
     def _aplicar_interacao(
-        self, pose: dict[str, Rotation3], dt: float
+        self, pose: dict[str, Rotation3], dt: float, peso: float
     ) -> dict[str, Rotation3]:
         """Camada 'interacao': soma o atraso das cadeias dos braços à pose.
 
@@ -1029,11 +1200,17 @@ class AnimationController:
                 alvo = alvos[grupo]
                 base = resultado[grupo]
                 resultado[grupo] = Rotation3(
-                    base.x + (atrasada.x - alvo.x),
-                    base.y + (atrasada.y - alvo.y),
-                    base.z + (atrasada.z - alvo.z),
+                    base.x + (atrasada.x - alvo.x) * peso,
+                    base.y + (atrasada.y - alvo.y) * peso,
+                    base.z + (atrasada.z - alvo.z) * peso,
                 )
         return resultado
+
+    def _aplicar_pose_teimosia(self) -> None:
+        """Aplica a pose de teimosia conforme manifesto §1.4 (delegado a teimosia_pose.py)."""
+        t = self._reaction_time
+        self._teimosia_fase = fase_teimosia_do_tempo(t)
+        aplicar_pose_teimosia(self.rig, t, self._look_direction)
 
     @staticmethod
     def _blend(start: Rotation3, end: Rotation3, amount: float) -> Rotation3:
@@ -1059,21 +1236,19 @@ class AnimationController:
         motion = self.body_motion.snapshot
 
         if state in (AnimationState.IDLE, AnimationState.HOVER):
-            return delta_idle(t, self.idle_personality, self.respiracao_valor)
+            return delta_idle(
+                t,
+                self.idle_personality,
+                self.respiracao_valor,
+                look_direction=self._look_direction,
+                look_vertical=self._look_vertical,
+                torso_look_direction=self._idle_torso_look_dir,
+                torso_look_vertical=self._idle_torso_look_vert,
+            )
         if state == AnimationState.DRAG:
             return delta_drag(motion, grab_part, self.drag_intensity)
-        if state == AnimationState.WALK:
-            return delta_walk(
-                self.leg_motion.phase,
-                run=False,
-                personalidade=self.idle_personality.value,
-            )
-        if state == AnimationState.RUN:
-            return delta_walk(
-                self.leg_motion.phase,
-                run=True,
-                personalidade=self.idle_personality.value,
-            )
+        if state in (AnimationState.WALK, AnimationState.RUN):
+            return delta_walk(self.leg_motion.phase, run=state == AnimationState.RUN)
         if state == AnimationState.FALL:
             return delta_fall(self.state_time, velocity)
         if state == AnimationState.SLEEP and self.modo_sono == "em_pe":

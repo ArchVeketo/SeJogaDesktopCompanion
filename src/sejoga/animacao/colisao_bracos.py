@@ -126,11 +126,15 @@ FOLGA_PENETRACAO_U = 0.01
 #: shortcut: busca por coordenadas em Python puro, com picos de ~41 ms durante
 #: correções; trocar por gradiente analítico ou cápsula-caixa fechada se o
 #: usuário notar engasgos ao entrar/sair de gestos.
-ITERACOES_POR_QUADRO = 1
+#: Passos de melhoria por quadro, combinados com limite suave de variação por eixo
+#: para contornar o tronco gradualmente sem saltos nem travar em mínimos locais.
+ITERACOES_POR_QUADRO = 6
 #: Deslocamento máximo acumulado (graus) por grau de liberdade.
 DESLOCAMENTO_MAXIMO_GRAUS = 70.0
+#: Variação máxima (graus/quadro) permitida em roços leves.
+MAX_VARIACAO_POR_QUADRO_GRAUS = 4.5
 #: Fração do deslocamento mantida por quadro quando a pose já está livre.
-RELAXAMENTO_POR_QUADRO = 0.88
+RELAXAMENTO_POR_QUADRO = 0.85
 #: Deslocamento (graus) abaixo do qual o relaxamento zera de vez.
 DESLOCAMENTO_DESPREZIVEL_GRAUS = 0.05
 #: Graus de liberdade corrigidos: P, H, R do ombro e flexão do cotovelo.
@@ -142,11 +146,19 @@ _GRUPOS = {
 }
 
 
+_RAIZ_ISENTA_CACHE: dict[int, tuple[object, float]] = {}
+
+
 def raiz_isenta(model: Model) -> float:
     """Comprimento da raiz do braço que fica no tronco por construção do asset."""
+    key = id(model)
+    cached = _RAIZ_ISENTA_CACHE.get(key)
+    if cached is not None and cached[0] is model:
+        return cached[1]
     x_ombro = abs(cin.posicao_no(model, _GRUPOS["right"][0])[0])
-
-    return max(0.0, MEIA_LARGURA_TRONCO_U + RAIO_BRACO_U - x_ombro)
+    valor = max(0.0, MEIA_LARGURA_TRONCO_U + RAIO_BRACO_U - x_ombro)
+    _RAIZ_ISENTA_CACHE[key] = (model, valor)
+    return valor
 
 
 def capsulas_do_braco(
@@ -296,54 +308,98 @@ class ResolvedorBracos:
             do_outro=self._do_outro,
         )
 
-    def _resolver_lado(  # noqa: C901  # TODO convenção: fatiar sem prova visual na GPU arrisca mudar o movimento; lote próprio com caracterização
-        self, pose: dict[str, Rotation3], lado: str
-    ) -> dict[str, Rotation3]:
-        desloc = self._deslocamento[lado]
-        outro = "left" if lado == "right" else "right"
-        self._do_outro = capsulas_do_braco(self.model, outro, pose)
-        atual = self._penetracao(pose, lado, desloc)
+    def _testar_eixos_passo(
+        self,
+        pose: dict[str, Rotation3],
+        lado: str,
+        desloc: list[float],
+        desloc_inicial: list[float],
+        limite_var: float,
+        passo: float,
+        melhor_pen: float,
+    ) -> tuple[list[float] | None, float]:
+        """Avalia +-passo em cada grau de liberdade respeitando o limite do quadro."""
+        melhor: list[float] | None = None
+        for eixo in range(GRAUS_DE_LIBERDADE):
+            min_v = max(-DESLOCAMENTO_MAXIMO_GRAUS, desloc_inicial[eixo] - limite_var)
+            max_v = min(DESLOCAMENTO_MAXIMO_GRAUS, desloc_inicial[eixo] + limite_var)
+            for sinal in (1.0, -1.0):
+                tentativa = list(desloc)
+                tentativa[eixo] = max(min_v, min(max_v, tentativa[eixo] + sinal * passo))
+                if tentativa[eixo] == desloc[eixo]:
+                    continue
+                pen = self._penetracao(pose, lado, tentativa)
+                if pen < melhor_pen - 1e-6:
+                    melhor, melhor_pen = tentativa, pen
+        return melhor, melhor_pen
 
-        for _ in range(ITERACOES_POR_QUADRO):  # noqa: PLR1702  # TODO convenção: fatiar sem prova visual na GPU arrisca mudar o movimento; lote próprio com caracterização
+    def _buscar_correcao(
+        self,
+        pose: dict[str, Rotation3],
+        lado: str,
+        desloc: list[float],
+        atual: float,
+    ) -> float:
+        """Executa busca em grade decrescente para afastar o braço da colisão."""
+        desloc_inicial = list(desloc)
+        limite_var = MAX_VARIACAO_POR_QUADRO_GRAUS if atual <= 0.02 else 28.0
+        for _ in range(ITERACOES_POR_QUADRO):
             if atual <= FOLGA_PENETRACAO_U:
                 break
-
-            melhor, melhor_pen = None, atual
-
+            melhor: list[float] | None = None
+            melhor_pen = atual
             for passo in PASSOS_BUSCA_GRAUS:
-                for eixo in range(GRAUS_DE_LIBERDADE):
-                    for sinal in (1.0, -1.0):
-                        tentativa = list(desloc)
-                        tentativa[eixo] = max(
-                            -DESLOCAMENTO_MAXIMO_GRAUS,
-                            min(
-                                DESLOCAMENTO_MAXIMO_GRAUS,
-                                tentativa[eixo] + sinal * passo,
-                            ),
-                        )
-                        pen = self._penetracao(pose, lado, tentativa)
-
-                        if pen < melhor_pen:
-                            melhor, melhor_pen = tentativa, pen
-
+                melhor, melhor_pen = self._testar_eixos_passo(
+                    pose, lado, desloc, desloc_inicial, limite_var, passo, melhor_pen
+                )
                 if melhor is not None:
                     break  # o menor passo que melhora vence (correção mínima)
-
             if melhor is None:
                 break  # sem progresso (mínimo local ou limite): aceita o que há
-
             desloc[:] = melhor
             atual = melhor_pen
+        return atual
 
-        if atual <= FOLGA_PENETRACAO_U and any(desloc):
-            relaxado = [
-                0.0
-                if abs(v * RELAXAMENTO_POR_QUADRO) < DESLOCAMENTO_DESPREZIVEL_GRAUS
-                else v * RELAXAMENTO_POR_QUADRO
-                for v in desloc
-            ]
+    def _relaxar_eixo(
+        self, pose: dict[str, Rotation3], lado: str, desloc: list[float], eixo: int
+    ) -> None:
+        """Relaxa um eixo individualmente para não congelar os demais."""
+        for fator in (RELAXAMENTO_POR_QUADRO, 0.5 * (1.0 + RELAXAMENTO_POR_QUADRO)):
+            novo = desloc[eixo] * fator
+            valor = 0.0 if abs(novo) < DESLOCAMENTO_DESPREZIVEL_GRAUS else novo
+            tentativa = list(desloc)
+            tentativa[eixo] = valor
+            if self._penetracao(pose, lado, tentativa) <= FOLGA_PENETRACAO_U:
+                desloc[eixo] = valor
+                return
 
-            if self._penetracao(pose, lado, relaxado) <= FOLGA_PENETRACAO_U:
-                desloc[:] = relaxado
+    def _relaxar_deslocamento(
+        self, pose: dict[str, Rotation3], lado: str, desloc: list[float]
+    ) -> None:
+        """Retorna suavemente o deslocamento ao repouso quando fora de colisão."""
+        relaxado = [
+            0.0 if abs(v * RELAXAMENTO_POR_QUADRO) < DESLOCAMENTO_DESPREZIVEL_GRAUS else v * RELAXAMENTO_POR_QUADRO
+            for v in desloc
+        ]
+        if self._penetracao(pose, lado, relaxado) <= FOLGA_PENETRACAO_U:
+            desloc[:] = relaxado
+            return
+        for eixo in range(GRAUS_DE_LIBERDADE):
+            if desloc[eixo] != 0.0:
+                self._relaxar_eixo(pose, lado, desloc, eixo)
 
+    def _resolver_lado(
+        self, pose: dict[str, Rotation3], lado: str
+    ) -> dict[str, Rotation3]:
+        """Resolve a colisão do braço esquerdo ou direito mantendo o movimento mínimo."""
+        desloc = self._deslocamento[lado]
+        if COLISAO_ENTRE_BRACOS:
+            outro = "left" if lado == "right" else "right"
+            self._do_outro = capsulas_do_braco(self.model, outro, pose)
+        else:
+            self._do_outro = ()
+        atual = self._penetracao(pose, lado, desloc)
+        atual = self._buscar_correcao(pose, lado, desloc, atual)
+        if any(desloc) and atual <= FOLGA_PENETRACAO_U:
+            self._relaxar_deslocamento(pose, lado, desloc)
         return _com_deslocamento(pose, lado, desloc)

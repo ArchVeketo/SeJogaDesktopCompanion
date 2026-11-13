@@ -141,7 +141,8 @@ def test_delta_walk_run_tem_mais_amplitude():
     run = delta_walk(pi / 2, run=True)
 
     assert abs(run["right-arm"].y) > abs(walk["right-arm"].y)
-    assert run["body"].x > walk["body"].x
+    # Em body.x, negativo inclina para a frente; corrida inclina mais à frente que caminhada.
+    assert run["body"].x < walk["body"].x < 0.0
 
 
 def test_delta_fall_reage_a_velocidade():
@@ -154,25 +155,23 @@ def test_delta_fall_reage_a_velocidade():
 
 
 def test_delta_fall_flail_em_z_e_y_sem_torcao_e_espelhado():
-    """A queda balança por z/y; a torção x dos braços é só a base de IK."""
-    from math import radians
+    """A queda gera flail ativo e orgânico (fases desencontradas) sem travar em T-pose."""
+    from math import isfinite, radians
 
     base = delta_fall(0.0, (0, 800))
+    amplitudes_dir = []
+    amplitudes_esq = []
     for t in (0.1, 0.2, 0.3, 0.45):
         delta = delta_fall(t, (0, 800))
-        for lado in ("right-arm", "left-arm"):
-            assert delta[lado].x == pytest.approx(base[lado].x)
-        # Espelho: z e y invertem; fingers2 é o oposto de fingers.
-        flail_z = delta["right-arm"].z - base["right-arm"].z
-        assert delta["left-arm"].z - base["left-arm"].z == pytest.approx(-flail_z)
-        flail_y = delta["right-arm"].y - base["right-arm"].y
-        assert delta["left-arm"].y - base["left-arm"].y == pytest.approx(-flail_y)
-        assert delta["ant-arm"].z >= base["ant-arm"].z - 1e-9
-        assert delta["ant-arm2"].z <= base["ant-arm2"].z + 1e-9
+        for rot in delta.values():
+            assert all(isfinite(v) for v in (rot.x, rot.y, rot.z))
+        amplitudes_dir.append(abs(delta["right-arm"].z - base["right-arm"].z))
+        amplitudes_esq.append(abs(delta["left-arm"].z - base["left-arm"].z))
 
+    assert max(amplitudes_dir) > radians(5.0)
+    assert max(amplitudes_esq) > radians(5.0)
     delta = delta_fall(0.1, (0, 800))
     assert delta["fingers"].z < 0 < delta["fingers2"].z
-    assert abs(delta["right-arm"].z - base["right-arm"].z) > radians(1.0)
 
 
 def test_delta_sleep_tem_posicao_relaxada():
@@ -185,20 +184,21 @@ def test_delta_sleep_tem_posicao_relaxada():
 
 
 def test_delta_fisica_aplica_motion_ao_corpo():
-    """delta_fisica converte BodyPose em deltas para body e head."""
+    """delta_fisica distribui inércia sutil em pé sem duplicar rotação do spine em body."""
     motion = BodyPose(roll=10, pitch=-5, yaw=3, head_roll=2, head_pitch=-1)
     delta = delta_fisica(motion)
 
-    # Deve conter body e head
     assert "body" in delta
+    assert "peitoral" in delta
     assert "head" in delta
 
-    # Valores devem corresponder (convertidos para radianos)
     from math import radians
 
-    assert delta["body"].z == pytest.approx(radians(10))
-    assert delta["body"].x == pytest.approx(radians(-5))
-    assert delta["body"].y == pytest.approx(radians(3))
+    assert delta["body"] == Rotation3()
+    assert delta["peitoral"].x == pytest.approx(radians(-5) * 0.12)
+    assert delta["peitoral"].z == pytest.approx(radians(10) * 0.10)
+    assert delta["head"].x == pytest.approx(radians(-1))
+    assert delta["head"].z == pytest.approx(radians(2))
 
 
 def test_composicao_delta_com_base_de_repouso():
@@ -244,30 +244,41 @@ def test_delta_fisica_peito_pendurado_tem_balanco_limitado():
 
     from sejoga.animacao import movimento_corpo_tuning as tune
 
-    pequeno = delta_fisica(BodyPose(roll=10.0, hanging=1.0))["body"]
-    assert degrees(pequeno.z) == pytest.approx(10.0 * tune.PEITO_FATOR_PENDURADO)
-    grande = delta_fisica(BodyPose(roll=155.0, pitch=-26.0, hanging=1.0))["body"]
-    assert abs(degrees(grande.z)) == pytest.approx(tune.PEITO_PENDURADO_MAX_GRAUS)
-    assert abs(degrees(grande.x)) <= tune.PEITO_PENDURADO_MAX_GRAUS + 1e-9
+    pequeno_delta = delta_fisica(BodyPose(roll=10.0, hanging=1.0))
+    total_pequeno = sum(
+        degrees(pequeno_delta[g].z) for g in ("body", "cintura", "abdomen", "peitoral")
+    )
+    assert total_pequeno == pytest.approx(10.0 * tune.PEITO_FATOR_PENDURADO)
+    grande_delta = delta_fisica(BodyPose(roll=155.0, pitch=-26.0, hanging=1.0))
+    total_grande_z = sum(
+        degrees(grande_delta[g].z) for g in ("body", "cintura", "abdomen", "peitoral")
+    )
+    total_grande_x = sum(
+        degrees(grande_delta[g].x) for g in ("body", "cintura", "abdomen", "peitoral")
+    )
+    assert abs(total_grande_z) == pytest.approx(tune.PEITO_PENDURADO_MAX_GRAUS)
+    assert abs(total_grande_x) <= tune.PEITO_PENDURADO_MAX_GRAUS + 1e-9
 
 
 def test_delta_fisica_peito_limiar_igual_ao_do_renderer():
-    """Logo acima do limiar já vale o regime pendurado; logo abaixo, o em pé."""
+    """Acima do limiar ativa o balanço pendurado em body; abaixo, body fica neutro em pé."""
     from sejoga.animacao import movimento_corpo_tuning as tune
 
     abaixo = delta_fisica(BodyPose(roll=10.0, hanging=tune.PENDURADO_LIMIAR))["body"]
     acima = delta_fisica(BodyPose(roll=10.0, hanging=tune.PENDURADO_LIMIAR + 0.01))[
         "body"
     ]
-    assert abaixo.z > acima.z
+    assert abaixo.z == 0.0
+    assert acima.z > 0.0
 
 
 def test_delta_fisica_peito_mantem_rotacao_em_pe():
-    """Em pé (sem suspensão) o peito segue recebendo a resposta física."""
-    peito = delta_fisica(BodyPose(roll=10.0, pitch=-5.0, hanging=0.0))["body"]
+    """Em pé (sem suspensão) flexão sutil vai para cintura/abdomen/peitoral sem dobrar em body."""
+    delta = delta_fisica(BodyPose(roll=10.0, pitch=-5.0, hanging=0.0))
 
-    assert peito.x != 0.0
-    assert peito.z != 0.0
+    assert delta["body"] == Rotation3()
+    assert delta["peitoral"].x != 0.0
+    assert delta["peitoral"].z != 0.0
 
 
 @pytest.mark.parametrize("personalidade", list(IdlePersonality))

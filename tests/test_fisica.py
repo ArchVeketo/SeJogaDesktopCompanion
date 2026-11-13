@@ -170,3 +170,17 @@ def test_only_exposed_parts_of_background_window_are_shelves():
         (100, 400),
         (600, 900),
     ]
+
+
+def test_caminhada_no_chao_progride_com_atrito_a_cada_passo():
+    p = physics()
+    p.set_gravity(True)
+    advance(p)
+    assert p.state.grounded
+    inicio = p.state.position[0]
+    p.walk_velocity_x = 180
+    for _ in range(60):
+        anterior = p.state.position[0]
+        p.step(1 / 120)
+        assert p.state.position[0] > anterior
+    assert p.state.position[0] - inicio > 60

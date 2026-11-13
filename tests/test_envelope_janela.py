@@ -182,3 +182,12 @@ def test_extensao_necessaria_centrada_com_folga():
 def test_extensao_ignora_pontos_nao_finitos():
     pontos = [(math.inf, 0), (50, 0), (0, 40)]
     assert extensao_necessaria(pontos) == 50 * 2 + 32
+
+
+def test_pequenas_oscilacoes_do_idle_nao_encolhem_a_janela():
+    estado = EstadoEnvelope()
+    fronteira = BASE - MARGEM_ANTICORTE
+    size = escolher_tamanho(fronteira + 1, BASE, BASE, estado, 0.1)
+    assert size == 2 * BASE
+    size = escolher_tamanho(fronteira - 1, size, BASE, estado, COOLDOWN)
+    assert size == 2 * BASE

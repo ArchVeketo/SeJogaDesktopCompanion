@@ -140,22 +140,17 @@ def test_ponta_solta_tem_mais_velocidade_que_a_ancora_apos_degrau():
     assert abs(dedos.x.velocity) > abs(corpo.x.velocity)
 
 
-def test_iniciar_transicao_preserva_velocidade_das_molas():
+def test_transicao_preserva_primeira_pose_e_alcanca_o_alvo_no_prazo():
     from sejoga.animacao.resolvedor_poses import PoseResolver
 
     resolver = PoseResolver()
-    resolver.definir_pose({"right-arm": Rotation3()})
-    for _ in range(15):
-        pose = resolver.resolver(1 / 60, {"right-arm": Rotation3(z=0.8)})
-    vel_antes = resolver.molas["right-arm"].z.velocity
-    assert abs(vel_antes) > 0.1
-
-    resolver.iniciar_transicao(pose, transition_seconds=0.55)
-    assert resolver.molas["right-arm"].z.velocity == pytest.approx(vel_antes)
-    pose_trans = resolver.resolver(1 / 60, {"right-arm": Rotation3(z=-0.2)})
-    assert pose_trans["right-arm"] == pose["right-arm"]
-    assert resolver.molas["right-arm"].z.velocity == pytest.approx(vel_antes)
-
+    origem = {"body": Rotation3(x=0.8)}
+    destino = {"body": Rotation3(x=-0.2)}
+    resolver.iniciar_transicao(origem, transition_seconds=0.5)
+    assert resolver.resolver(0.1, destino, state_time=0.0) == origem
+    meio = resolver.resolver(0.1, destino, state_time=0.25)
+    assert meio["body"].x == pytest.approx(0.3)
+    assert resolver.resolver(0.1, destino, state_time=0.5) == destino
 
 def test_limitar_suave_preserva_centro_e_amortece_extremos():
     from sejoga.animacao.resolvedor_poses import limitar_suave

@@ -320,6 +320,8 @@ class ScreenSpacePhysics:
 
         # Callbacks
         self.on_state_change: Callable[[PhysicsState], None] | None = None
+        self.walk_velocity_x: float | None = None
+        self._walk_speed = 0.0
         self.on_collision: Callable[[str, tuple[float, float]], None] | None = None
 
         # Cache
@@ -638,6 +640,12 @@ class ScreenSpacePhysics:
         # Accumulator para step fixo
         self._accumulator += max(0.0, min(dt, FISICA.DT_MAXIMO))  # clamp dt
         while self._accumulator >= FIXED_DT:
+            if self.walk_velocity_x is not None and self.state.grounded:
+                delta = max(-9.0, min(9.0, self.walk_velocity_x - self._walk_speed))
+                self._walk_speed += delta
+                self.body.velocity = (self._walk_speed, self.body.velocity.y)
+            else:
+                self._walk_speed = self.body.velocity.x
             self.space.step(FIXED_DT)
             self._accumulator -= FIXED_DT
 

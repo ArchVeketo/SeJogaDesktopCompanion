@@ -67,6 +67,7 @@ ALVO_DANCE = AlvoBraco(alvo=(0.15, 0.08, 0.17))
 
 #: SLEEP/sono: braços relaxados junto ao corpo, mãos recolhidas à frente.
 ALVO_SLEEP = AlvoBraco(alvo=(0.135, -0.205, 0.095))
+ALVO_LIMPAR_PORTA = AlvoBraco(alvo=(0.06, 0.08, 0.20), polo=(0.6, -0.7, -0.8))
 
 #: THROWN/arremesso: mãos à frente e para fora, silhueta aérea legível.
 ALVO_THROWN = AlvoBraco(alvo=(0.16, 0.02, 0.16))
@@ -88,7 +89,7 @@ ALVO_CRUZADO_DIR = AlvoBraco(alvo=(0.10, -0.04, 0.21))
 ALVO_CRUZADO_ESQ = AlvoBraco(alvo=(0.10, -0.06, 0.16))
 
 #: Chifre do rock: braço erguido e cotovelo dobrado (~52°) ao lado do fone.
-ALVO_CHIFRE = AlvoBraco(alvo=(0.24, 0.08, 0.05))
+ALVO_CHIFRE = AlvoBraco(alvo=(0.17, 0.18, 0.08))
 
 #: Contrapeso do hip hop: braço aberto com cotovelo flexionado (~52°) no groove.
 ALVO_CONTRAPESO = AlvoBraco(alvo=(0.185, -0.085, 0.145))
@@ -97,10 +98,39 @@ ALVO_CONTRAPESO = AlvoBraco(alvo=(0.185, -0.085, 0.145))
 ALVO_APOIO_CHAO = AlvoBraco(alvo=(0.175, -0.145, 0.120))
 
 #: Apoio na caixa de som (head bob estilo FNF): mão apoiada ao lado do quadril no topo da caixa.
-ALVO_APOIO_CAIXA = AlvoBraco(alvo=(0.18, -0.19, -0.04), polo=(0.20, -0.60, -0.50))
+ALVO_APOIO_CAIXA = AlvoBraco(alvo=(0.19, -0.15, 0.08), polo=(0.20, -0.60, -0.50))
 
 #: Mão descansando no colo / coxa ao sentar no head bob.
 ALVO_COLO = AlvoBraco(alvo=(0.14, -0.16, 0.14), polo=(0.14, -0.70, -0.40))
+
+#: Virtual Insanity (Jamiroquai): braço dianteiro estendido direto para a câmera, palma aberta.
+ALVO_VIRTUAL_ALCANCE = AlvoBraco(
+    alvo=(0.12, 0.05, 0.22), polo=(0.14, -0.65, -0.55)
+)
+
+#: Virtual Insanity (Jamiroquai): braço traseiro relaxado junto ao quadril mantendo o equilíbrio.
+ALVO_VIRTUAL_APOIO = AlvoBraco(alvo=(0.145, -0.225, 0.05), polo=(0.12, -0.85, -0.45))
+
+#: FNF Blue Balls: ambas as mãos fechadas descendo à frente para segurar a região pélvica.
+ALVO_BLUE_BALLS = AlvoBraco(alvo=(0.08, -0.175, 0.195), polo=(0.24, -0.65, -0.55))
+
+#: BRC — Street groove: braço solto balançando com o passo, punho relaxado.
+ALVO_STREET_SOLTO = AlvoBraco(alvo=(0.16, -0.18, 0.08), polo=(0.10, -0.75, -0.40))
+
+#: BRC — Street groove: braço estendido com atitude, cotovelo levemente flexionado.
+ALVO_STREET_ATITUDE = AlvoBraco(alvo=(0.20, -0.06, 0.12), polo=(0.15, -0.65, -0.50))
+
+#: BRC — Graffiti: braço em gesto de spray, cotovelo dobrado, punho à frente.
+ALVO_GRAFFITI_SPRAY = AlvoBraco(alvo=(0.12, 0.02, 0.22), polo=(0.20, -0.55, -0.60))
+
+#: BRC — Graffiti: braço descrevendo arco largo, cotovelo alto.
+ALVO_GRAFFITI_ARCO = AlvoBraco(alvo=(0.18, 0.10, 0.14), polo=(0.10, -0.70, -0.55))
+
+#: BRC — Cyber bounce: braço em ângulo agudo (pose de skate), cotovelo para fora.
+ALVO_CYBER_ANGULAR = AlvoBraco(alvo=(0.16, 0.04, 0.16), polo=(0.25, -0.60, -0.50))
+
+#: BRC — Cyber bounce: braço baixo e relaxado no bounce.
+ALVO_CYBER_BAIXO = AlvoBraco(alvo=(0.14, -0.20, 0.06), polo=(0.12, -0.80, -0.45))
 
 
 #: Registro por nome (facilita consumo e documentação).
@@ -112,6 +142,7 @@ ALVOS: dict[str, AlvoBraco] = {
     "stretch": ALVO_STRETCH,
     "dance": ALVO_DANCE,
     "sleep": ALVO_SLEEP,
+    "limpar_porta": ALVO_LIMPAR_PORTA,
     "thrown": ALVO_THROWN,
     "fall": ALVO_FALL,
     "interaction": ALVO_INTERACTION,
@@ -122,6 +153,18 @@ ALVOS: dict[str, AlvoBraco] = {
     "apoio_chao": ALVO_APOIO_CHAO,
     "apoio_caixa": ALVO_APOIO_CAIXA,
     "colo": ALVO_COLO,
+    "virtual_alcance": ALVO_VIRTUAL_ALCANCE,
+    "virtual_apoio": ALVO_VIRTUAL_APOIO,
+    "blue_balls_clutch": ALVO_BLUE_BALLS,
+    # BRC — Street groove
+    "street_solto": ALVO_STREET_SOLTO,
+    "street_attitude": ALVO_STREET_ATITUDE,
+    # BRC — Graffiti dance
+    "graffiti_spray": ALVO_GRAFFITI_SPRAY,
+    "graffiti_arco": ALVO_GRAFFITI_ARCO,
+    # BRC — Cyber bounce
+    "cyber_angular": ALVO_CYBER_ANGULAR,
+    "cyber_baixo": ALVO_CYBER_BAIXO,
 }
 
 #: Alvos autorais anteriores (antes da medição de colisão), para o relatório.

@@ -28,7 +28,7 @@ LIMIAR_SAIDA_PORTA_GRAUS = 50.0
 # --- Abrir: empurrão ---------------------------------------------------------
 
 #: Revelação do empurrador em que a ponta encosta na porta e começa a abri-la.
-REVELACAO_INICIO_CONTATO = 0.10
+REVELACAO_INICIO_CONTATO = 0.18
 #: Revelação em que o empurrão termina; a porta chega ao ângulo do temperamento.
 REVELACAO_FIM_EMPURRAO = 0.35
 
@@ -37,15 +37,15 @@ REVELACAO_FIM_EMPURRAO = 0.35
 #: Tempo com a porta aberta e nenhum tentáculo fora, antes do puxador sair.
 ATRASO_ESQUECIMENTO_S = 1.6
 #: Tempo do puxador para alcançar a borda livre da porta.
-TEMPO_ALCANCE_PUXAO_S = 0.7
-#: Velocidade da porta enquanto puxada (rápida).
-VELOCIDADE_PUXAO_GRAUS_S = 300.0
+TEMPO_ALCANCE_PUXAO_S = 0.85
+#: Velocidade da porta enquanto puxada (decidida, porém legível).
+VELOCIDADE_PUXAO_GRAUS_S = 160.0
 #: Ângulo em que o puxador solta a porta e começa a voltar.
-ANGULO_SOLTAR_PUXAO_GRAUS = 18.0
+ANGULO_SOLTAR_PUXAO_GRAUS = 25.0
 #: Velocidade com que a porta termina de fechar depois de solta.
-VELOCIDADE_FECHAR_FINAL_GRAUS_S = 40.0
-#: Duração do puxador recolhendo (o fechamento final dura algo parecido).
-VOLTA_PUXADOR_S = 0.5
+VELOCIDADE_FECHAR_FINAL_GRAUS_S = 30.0
+#: Duração do puxador recolhendo (conclui dentro da head antes do fechamento total).
+VOLTA_PUXADOR_S = 0.22
 #: Fração do comprimento que o puxador pode estender (como o estado curioso, porém maior).
 ALCANCE_PUXADOR = 1.0
 #: Mola e amortecedor do puxador: rápidos para a ponta acompanhar a porta.
@@ -80,19 +80,19 @@ class SaidaTuning:
 
 #: Calmo preserva a temporização anterior (1,8 s e 0,48 s). Ângulo > LIMIAR_SAIDA_PORTA_GRAUS.
 SAIDA_CALMA = SaidaTuning(
-    duracao_s=1.8, escalonamento_s=0.48, angulo_empurrao_graus=60.0
+    duracao_s=1.8, escalonamento_s=0.48, angulo_empurrao_graus=78.0
 )
 SAIDA_CURIOSA = SaidaTuning(
-    duracao_s=1.3, escalonamento_s=0.36, angulo_empurrao_graus=66.0
+    duracao_s=1.3, escalonamento_s=0.36, angulo_empurrao_graus=82.0
 )
 SAIDA_AGITADA = SaidaTuning(
-    duracao_s=0.55, escalonamento_s=0.12, angulo_empurrao_graus=85.0
+    duracao_s=0.55, escalonamento_s=0.12, angulo_empurrao_graus=92.0
 )
 SAIDA_TIMIDA = SaidaTuning(
-    duracao_s=2.6, escalonamento_s=0.70, angulo_empurrao_graus=55.0
+    duracao_s=2.6, escalonamento_s=0.70, angulo_empurrao_graus=74.0
 )
 SAIDA_CONFIANTE = SaidaTuning(
-    duracao_s=0.9, escalonamento_s=0.24, angulo_empurrao_graus=75.0
+    duracao_s=0.9, escalonamento_s=0.24, angulo_empurrao_graus=86.0
 )
 
 #: Espirro = saída violenta levada ao extremo: revelação quase instantânea, porta já aberta pela rajada.
@@ -111,6 +111,8 @@ SAIDA_POR_TEMPERAMENTO: dict[IdlePersonality, SaidaTuning] = {
     IdlePersonality.FIGHTER: SAIDA_CONFIANTE,
     IdlePersonality.RHYTHM: SAIDA_CALMA,
     IdlePersonality.STYLISH: SAIDA_CURIOSA,
+    IdlePersonality.BRC_STANCE: SAIDA_CONFIANTE,
+    IdlePersonality.VIBING: SAIDA_CALMA,
 }
 
 
@@ -143,6 +145,10 @@ class CoreografiaPorta:
     def iniciar_empurrao(self) -> None:
         """Inicia o empurrão da porta."""
         self._entrar(FasePorta.EMPURRANDO)
+
+    def assumir_aberta(self) -> None:
+        """Retoma a coreografia depois de uma ação que abriu a porta."""
+        self._entrar(FasePorta.ABERTA)
 
     def cancelar(self) -> None:
         """Cancela a coreografia em curso."""

@@ -286,3 +286,19 @@ Critérios de aprovação:
 ### Validação da entrada da caixa — 05/11/2026
 
 A ferramenta `preview_music_scene.py` foi removida (limpeza ponytail); esta sequência: preparação, arremesso, pouso e pose final, vista em `tools/visualizar_acoes_corpo.py`. Descrição original: preparação, arremesso, pouso e pose final em perfil isolado. Três tentáculos empurram alvos externos distintos na caixa e se recolhem; gosma rosa sólida low-poly escorre e desaparece até 6,5 s. A dança continua durante a sequência. Cones pulsam radialmente; ondas e tremor seguem energia/graves. Prévia permanece silenciosa; o pouso em música real respeita volume e áudio habilitado.
+
+## Investigação de Bomb Rush Cyberfunk
+
+No build Steam 20272977, `DanceAbility.Init` prepara hashes das danças. `DanceAbility.SetState` consulta a seleção e chama `Player.PlayAnim`. Esse método chega a `Animator.CrossFade`. O código controla seleção, estado e transição. Os movimentos vêm dos clipes nos bundles do jogo. O mod Bunch of Emotes documenta seleção de emotes do jogo e carregamento de emotes externos. [Bunch of Emotes](https://github.com/Dragsun/BunchOfEmotes)
+
+Leitura local dos bundles Unity 2021.3.20f1:
+
+| Bundle | Clipe | Dados densos |
+|---|---|---|
+| `mocap_animation` | `popping` | 568 amostras a 60 Hz e 149 canais |
+| `mocap_animation_two` | `housedanceLoop` | 152 amostras a 30 Hz e 81 canais |
+| `mocap_animation_two` | `BreakingLoop` | 60 amostras a 30 Hz e 81 canais |
+
+`BreakingLoop` usa bindings de humanoide com canais densos e constantes. A lista de curvas de rotação por osso está vazia. O bundle `characters` contém os Avatares. O teste de viabilidade seguinte é avaliar um clipe com seu Avatar compatível, registrar transformações do esqueleto e conferir um ciclo completo antes de transferir as poses. A Unity expõe a representação de pose humanoide em `HumanPoseHandler`. [Unity HumanPoseHandler](https://docs.unity3d.com/2021.3/Documentation/ScriptReference/HumanPoseHandler.html)
+
+Para o Mario, converter rotações relativas à pose de repouso, calibrar os eixos locais e transportar alvos de mãos, pés e quadril na escala do rig. O FK reproduz poses e arcos. O IK mantém os contatos. O controlador atual continua responsável por batida, transições, dedos e apêndices. Testar primeiro um ciclo curto fora do palco para validar os apoios. O runtime já amostra pistas autorais. A interpolação quíntica atual zera velocidade em cada chave e serve para sustentar poses marcadas. Um clipe de mocap precisa preservar a velocidade das curvas amostradas entre quadros. A adaptação de um clipe externo ainda precisa ser implementada e verificada.

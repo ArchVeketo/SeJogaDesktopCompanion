@@ -67,7 +67,7 @@ IMPULSO_IMPACTO_ROLL = 48.0
 #: Pitch de pancada/aterrissagem: o tronco cede bastante.
 IMPULSO_IMPACTO_PITCH = 28.0
 #: Compressão de pancada/aterrissagem: o corpo agacha no impacto.
-IMPULSO_IMPACTO_COMPRESSION = 4.5
+IMPULSO_IMPACTO_COMPRESSION = 6.5
 
 #: Limites de normalização dos parâmetros do impulso.
 IMPULSO_DIRECAO_MIN = -1.0
@@ -134,10 +134,10 @@ HOVER_YAW_GANHO_OLHAR = 3.0
 # --------------------------------------------------------------------------- #
 # Alvos/clamps por estado: queda/no ar (not grounded).
 # --------------------------------------------------------------------------- #
-QUEDA_ROLL_GANHO = 0.004
-QUEDA_ROLL = FaixaClamp(minimo=-9.0, maximo=9.0)
-QUEDA_PITCH_GANHO = 0.002
-QUEDA_PITCH = FaixaClamp(minimo=-4.0, maximo=4.0)
+QUEDA_ROLL_GANHO = 0.015
+QUEDA_ROLL = FaixaClamp(minimo=-16.0, maximo=16.0)
+QUEDA_PITCH_GANHO = 0.016
+QUEDA_PITCH = FaixaClamp(minimo=-14.0, maximo=12.0)
 
 
 # --------------------------------------------------------------------------- #
@@ -204,7 +204,7 @@ TRONCO_OLHAR_YAW_SINAL = -1.0
 #: Altura (u, referencial de autoria) do pivô da coluna: cintura do mascote.
 TRONCO_PIVO_Z = 0.44  # A_CONFIRMAR (C5)
 #: Quanto o pivô da coluna desce por unidade de compressão (agachar no impacto).
-TRONCO_COMPRESSAO_DESCIDA = 0.06  # A_CONFIRMAR (C5)
+TRONCO_COMPRESSAO_DESCIDA = 0.015  # Mantém a camisa assentada sobre a cintura
 
 # --------------------------------------------------------------------------- #
 # Peito durante arrasto/pendurado (Parte 4).

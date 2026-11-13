@@ -323,6 +323,8 @@ class SegmentoCortado:
 
     triangulos: list[Triangulo]
     pivo: Vec3
+    superficie: tuple[Triangulo, ...] = ()
+    tampas: tuple[Triangulo, ...] = ()
 
 
 def _secao(triangulos: list[Triangulo], direcao: Vec3, s: float) -> list[Vec3]:
@@ -373,16 +375,25 @@ def cortar_cadeia(
         s_min = -inf if k == 0 else juntas[k]
         s_max = inf if k == ultimo else fins[k] + extensoes[k + 1]
         faixa = recortar_faixa(triangulos, ORIGEM, direcao, s_min, s_max)
+        superficie = tuple(faixa)
+        tampas: list[Triangulo] = []
 
         if k > 0:
-            faixa += tampa_no_plano(faixa, ORIGEM, direcao, juntas[k], -1.0, uv_raiz)
+            tampas += tampa_no_plano(faixa, ORIGEM, direcao, juntas[k], -1.0, uv_raiz)
 
         if k < ultimo:
-            faixa += tampa_no_plano(faixa, ORIGEM, direcao, s_max, 1.0, uv_ponta)
+            tampas += tampa_no_plano(faixa, ORIGEM, direcao, s_max, 1.0, uv_ponta)
 
         s_pivo = juntas[0] + fracao_secao_raiz * comprimento if k == 0 else juntas[k]
         pontos = _secao(triangulos, direcao, s_pivo)
-        segmentos.append(SegmentoCortado(faixa, centro_da_caixa(pontos)))
+        segmentos.append(
+            SegmentoCortado(
+                faixa + tampas,
+                centro_da_caixa(pontos),
+                superficie=superficie,
+                tampas=tuple(tampas),
+            )
+        )
 
     return segmentos
 
@@ -408,5 +419,8 @@ def _vetorial(a: Vec3, b: Vec3) -> Vec3:
 
 def _normalizar(v: Vec3) -> Vec3:
     n = sqrt(_escalar(v, v))
+
+    if n < 1e-12:
+        return (0.0, 0.0, 0.0)
 
     return (v[0] / n, v[1] / n, v[2] / n)

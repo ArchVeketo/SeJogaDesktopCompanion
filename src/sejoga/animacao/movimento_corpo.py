@@ -247,8 +247,15 @@ class BodyMotion:
         grounded=True,
         velocity=(0.0, 0.0),
         grab_part="body",
+        # Resistência orientada por objetivo (manifesto §1.2 — Tensão Viva)
+        meta_direcao=None,       # (alvo_x, alvo_y) em coordenadas da janela
+        resistencia_nivel=0.0,   # 0..1: quanto Mário resiste ao arraste
     ):
-        """Avança as molas do corpo um passo e devolve a pose resultante."""
+        """Avança as molas do corpo um passo e devolve a pose resultante.
+
+        Quando ``resistencia_nivel > 0`` durante arraste, o corpo tensiona na
+        direção da meta ativa em vez de ficar passivo como um pano (manifesto §1.2).
+        """
         dt = clamp(dt, 0.0, tune.DT_MAXIMO) if isfinite(dt) else 0.0
         if dt == 0:
             return self.snapshot
@@ -272,9 +279,29 @@ class BodyMotion:
             for old, new in zip(self.pointer_velocity, raw, strict=True)
         )
         vx, vy = self.pointer_velocity
+
+        # ── Resistência orientada por objetivo (manifesto §1.2) ──────────
+        # Quando Mário tem uma meta e está sendo arrastado, ele tensiona o corpo
+        # na direção do alvo em vez de ficar passivo.
+        resistencia_roll = 0.0
+        resistencia_pitch = 0.0
+        resistencia_yaw = 0.0
+        if dragging and resistencia_nivel > 0.05 and meta_direcao is not None:
+            # Direção da meta relativa ao centro da janela
+            mx, my = meta_direcao
+            # Normaliza para -1..1 (assumindo janela ~480px)
+            norm = 240.0
+            dir_x = clamp(mx / norm, -1.0, 1.0)
+            dir_y = clamp(my / norm, -1.0, 1.0)
+            # O corpo se inclina NA DIREÇÃO DA META, contra a força do arraste
+            resistencia_roll = dir_x * resistencia_nivel * 25.0
+            resistencia_pitch = -dir_y * resistencia_nivel * 20.0
+            resistencia_yaw = dir_x * resistencia_nivel * 15.0
+
         if dragging:
             roll_target = clamp(
-                vx * tune.DRAG_ROLL_GANHO, tune.DRAG_ROLL.minimo, tune.DRAG_ROLL.maximo
+                vx * tune.DRAG_ROLL_GANHO + resistencia_roll,
+                tune.DRAG_ROLL.minimo, tune.DRAG_ROLL.maximo
             )
             if grab_part in ("left-feet", "right-feet", "legs"):
                 roll_target += (
@@ -294,12 +321,13 @@ class BodyMotion:
                 else tune.DRAG_PITCH_BASE_OUTRO
             )
             pitch_target = clamp(
-                pitch_base - vy * tune.DRAG_PITCH_GANHO,
+                pitch_base - vy * tune.DRAG_PITCH_GANHO + resistencia_pitch,
                 tune.DRAG_PITCH.minimo,
                 tune.DRAG_PITCH.maximo,
             )
             yaw_target = clamp(
-                -vx * tune.DRAG_YAW_GANHO, tune.DRAG_YAW.minimo, tune.DRAG_YAW.maximo
+                -vx * tune.DRAG_YAW_GANHO + resistencia_yaw,
+                tune.DRAG_YAW.minimo, tune.DRAG_YAW.maximo
             )
         elif hovered:
             roll_target = clamp(

@@ -66,6 +66,9 @@ class SettingsDialog(QDialog):
         self.scale_input.setSingleStep(const_desktop.ESCALA_PASSO)
         self.scale_input.setDecimals(const_desktop.ESCALA_CASAS)
         self.scale_input.setValue(settings.window.scale)
+        self.scale_input.setToolTip(
+            "Aumentar a escala amplia a área renderizada e pode reduzir o FPS."
+        )
 
         self.outline_input = QCheckBox("Mostrar contorno")
         self.outline_input.setChecked(settings.window.outline_enabled)
@@ -103,7 +106,7 @@ class SettingsDialog(QDialog):
 
         self.personality_input = QComboBox()
         for key, label in (
-            ("auto", "Automática"),
+            ("auto", "Padrão"),
             ("calm", "Tranquila"),
             ("curious", "Curiosa"),
             ("playful", "Brincalhona"),
@@ -170,6 +173,34 @@ class SettingsDialog(QDialog):
         self.dance_style_input.setCurrentIndex(
             self.dance_style_input.findData(settings.music.dance_style)
         )
+
+        self.intro_animation_input = QComboBox()
+        for key, label in (
+            ("padrao", "Instantânea (padrão)"),
+            ("fade_in", "Fade in (dissolver)"),
+            ("virtual_insanity_in", "Virtual Insanity (deslizando)"),
+            ("run_from_depth", "Correndo do fundo"),
+            ("kagebunshin_in", "Entrada ninja (Kage Bunshin)"),
+            ("aleatoria", "Aleatória ao abrir"),
+        ):
+            self.intro_animation_input.addItem(label, key)
+        idx_intro = self.intro_animation_input.findData(settings.window.intro_animation)
+        self.intro_animation_input.setCurrentIndex(idx_intro if idx_intro >= 0 else 0)
+
+        self.exit_animation_input = QComboBox()
+        for key, label in (
+            ("classic", "Clássica (arremesso)"),
+            ("sonic_classic", "Sonic Classic (pulo e queda)"),
+            ("fnf_blue_balls", "FNF Blue Balls"),
+            ("lego_disassemble", "Desmontar LEGO"),
+            ("thanos_snap", "Desintegrar (Thanos)"),
+            ("peace_fade_out", "Fade out Peace Sign"),
+            ("virtual_insanity_out", "Virtual Insanity (deslizando)"),
+            ("aleatoria", "Aleatória ao encerrar"),
+        ):
+            self.exit_animation_input.addItem(label, key)
+        idx_exit = self.exit_animation_input.findData(settings.window.exit_animation)
+        self.exit_animation_input.setCurrentIndex(idx_exit if idx_exit >= 0 else 0)
 
         # Canal de atualização (persistido em settings.update.channel).
         self.channel_input = QComboBox()
@@ -266,6 +297,8 @@ class SettingsDialog(QDialog):
         form.addRow("Estilo de dança", self.dance_style_input)
         form.addRow("FPS alvo", self.fps_input)
         form.addRow("Monitor preferido", self.monitor_input)
+        form.addRow("Animação de abertura", self.intro_animation_input)
+        form.addRow("Animação de encerramento", self.exit_animation_input)
         form.addRow(self.autostart_input)
         form.addRow(self.diagnostic_input)
         form.addRow("Canal de atualização", self.channel_input)
@@ -403,6 +436,8 @@ class SettingsDialog(QDialog):
         updated.update.channel = self.channel_input.currentData()
         updated.window.fps = self.fps_input.value()
         updated.window.preferred_monitor = self.monitor_input.currentData()
+        updated.window.intro_animation = self.intro_animation_input.currentData()
+        updated.window.exit_animation = self.exit_animation_input.currentData()
         updated.window.diagnostic_colorkey = self.diagnostic_input.isChecked()
         updated.window.autostart = self.autostart_input.isChecked()
         updated.logging.level = self.log_level_input.currentData()
@@ -545,7 +580,7 @@ class HotkeyManager:
             try:
                 modifiers, key = self._parse_shortcut(shortcut)
             except ValueError as exc:
-                print(f"[hotkeys] {exc}")
+                logging.getLogger("sejoga").warning("Hotkey error: %s", exc)
                 continue
             hotkey_id = _HOTKEY_ID_BASE + index
             self._shortcuts.append(
@@ -602,7 +637,9 @@ class HotkeyManager:
                 self._registered_ids.append(hotkey_id)
             else:
                 self.unavailable_shortcuts.append(shortcut)
-                print(f"[hotkeys] shortcut unavailable: {shortcut}")
+                logging.getLogger("sejoga").warning(
+                    "Shortcut unavailable: %s", shortcut
+                )
         self._ready.set()
 
         while True:
@@ -622,7 +659,7 @@ class HotkeyManager:
             callback()
 
     def close(self) -> None:
-        """Remove o ícone da bandeja."""
+        """Encerra o loop de mensagens de atalhos globais."""
         if self._thread_id:
             ctypes.windll.user32.PostThreadMessageW(self._thread_id, _WM_QUIT, 0, 0)
         if self._thread.is_alive():

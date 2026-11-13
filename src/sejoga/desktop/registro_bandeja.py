@@ -68,6 +68,7 @@ class TrayRegistration:
         self.icon_path = icon_path
         self.tooltip = tooltip
         self._icon = None
+        self._cached_hwnd = None
         self.last_status = {"registered": False, "rect": None, "hwnd": None}
         shell = ctypes.WinDLL("shell32", use_last_error=True)
         self._get_rect = shell.Shell_NotifyIconGetRect
@@ -91,6 +92,7 @@ class TrayRegistration:
                 _, owner = win32process.GetWindowThreadProcessId(hwnd)
                 if (
                     owner == pid
+                    and "TrayIcon" in win32gui.GetClassName(hwnd)
                     and win32gui.GetWindowText(hwnd) == "QTrayIconMessageWindow"
                 ):
                     found.append(hwnd)
@@ -102,7 +104,14 @@ class TrayRegistration:
 
     def status(self, pid=None):
         """Consulta o estado do ícone na bandeja."""
-        hwnd = self.find_window(pid)
+        hwnd = self._cached_hwnd if pid is None else None
+        if hwnd is not None and not win32gui.IsWindow(hwnd):
+            hwnd = None
+            self._cached_hwnd = None
+        if hwnd is None:
+            hwnd = self.find_window(pid)
+            if pid is None and hwnd is not None:
+                self._cached_hwnd = hwnd
         result = {"registered": False, "rect": None, "hwnd": hwnd}
         if hwnd:
             identifier = IconIdentifier()
@@ -111,11 +120,14 @@ class TrayRegistration:
             rect = wintypes.RECT()
             code = self._get_rect(ctypes.byref(identifier), ctypes.byref(rect))
             # S_FALSE is also a valid registered icon in the hidden overflow.
+            registered = code >= 0
+            if not registered and pid is None:
+                self._cached_hwnd = None
             result.update(
-                registered=code >= 0,
+                registered=registered,
                 hresult=code,
                 rect=[rect.left, rect.top, rect.right, rect.bottom]
-                if code >= 0
+                if registered
                 else None,
             )
         self.last_status = result

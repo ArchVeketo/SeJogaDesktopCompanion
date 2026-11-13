@@ -76,12 +76,11 @@ FRACAO_NUCLEO_BRACO = 0.5
 #: largas que o tecido) têm folga; cabeça, fone e o outro braço seguem
 #: estritos (folga 0).
 FOLGA_EXTRA_CAIXA_U = {
-    "tronco": 0.045,
+    "tronco": 0.068,
     "quadril": 0.045,
     "pe_direito": 0.035,
     "pe_esquerdo": 0.035,
 }
-#: Passos (graus) da busca em cada grau de liberdade: o fino ajusta, os grossos
-#: saltam mínimos locais (ex.: antebraço dobrado contra o peito). Cada passo é o
-#: triplo do anterior, o bastante para sair de um mínimo local em 3 tentativas.
-PASSOS_BUSCA_GRAUS = (3.0, 9.0, 27.0)
+#: Passos (graus) da busca em cada grau de liberdade: finos e progressivos para
+#: evitar trancos de 9°-27° num único quadro e ainda contornar mínimos locais.
+PASSOS_BUSCA_GRAUS = (0.75, 2.5, 8.0)

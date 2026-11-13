@@ -79,6 +79,14 @@ RESPIRACAO_POR_PERSONALIDADE: dict[IdlePersonality, ParametrosRespiracao] = {
     IdlePersonality.STYLISH: ParametrosRespiracao(
         frequencia=0.27, amplitude=0.95, bounce=0.15
     ),
+    # BRC Stance: postura de rua, respiração visível no peito.
+    IdlePersonality.BRC_STANCE: ParametrosRespiracao(
+        frequencia=0.28, amplitude=1.1, bounce=0.18
+    ),
+    # Vibing: groove interno domina, respiração sutil.
+    IdlePersonality.VIBING: ParametrosRespiracao(
+        frequencia=0.35, amplitude=0.6, bounce=0.25
+    ),
 }
 
 

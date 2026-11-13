@@ -65,11 +65,16 @@ def delta_idle(
     t: float,
     personality: IdlePersonality,
     respiracao: float = 0.0,
+    look_direction: float = 0.0,
+    look_vertical: float = 0.0,
+    torso_look_direction: float | None = None,
+    torso_look_vertical: float | None = None,
 ) -> dict[str, Rotation3]:
     """Delta aditivo do estado idle sobre a pose de repouso.
 
     A base é ``rig_base.pose_repouso`` (IK do alvo de idle).
-    Idle só adiciona a oscilação própria da personalidade.
+    Idle adiciona a oscilação própria da personalidade, respiração e olhar
+    vivo com sobreposição (cabeça guia, peitoral/ombros acompanham depois).
 
     Parameters
     ----------
@@ -78,7 +83,11 @@ def delta_idle(
     personality:
         Personalidade ativa do idle (calm, curious, playful, etc.).
     respiracao:
-        Valor centrado (-1..1) da respiração sob demanda. Default 0.
+        Valor centrado (-1..1) da respiração. Default 0.
+    look_direction, look_vertical:
+        Direção do foco de atenção (-1..1) para cabeça em repouso.
+    torso_look_direction, torso_look_vertical:
+        Versão atrasada do foco para ação sobreposta do tronco superior.
 
     Returns
     -------
@@ -97,7 +106,28 @@ def delta_idle(
             radians(z - base[2]),
         )
 
-    # Respiração sob demanda (adicional sobre o delta de personalidade)
+    # Olhar em repouso: micro-pausa com vida, cabeça guia e peitoral/ombros seguem com atraso.
+    dir_c = max(-1.0, min(1.0, look_direction))
+    ver_c = max(-1.0, min(1.0, look_vertical))
+    dir_t = dir_c if torso_look_direction is None else max(-1.0, min(1.0, torso_look_direction))
+    ver_t = ver_c if torso_look_vertical is None else max(-1.0, min(1.0, torso_look_vertical))
+    if abs(dir_c) > 1e-4 or abs(ver_c) > 1e-4 or abs(dir_t) > 1e-4 or abs(ver_t) > 1e-4:
+        pulso_vida = 1.0 + 0.08 * sin(t * 0.9)
+        acrescimos = {
+            "head": (-ver_c * 13.0 * pulso_vida, dir_c * 20.0 * pulso_vida, dir_c * 2.5),
+            "peitoral": (-ver_t * 2.2, dir_t * 3.8, dir_t * 1.2),
+            "shoulder": (0.0, 0.0, -dir_t * 1.4),
+            "shoulder2": (0.0, 0.0, -dir_t * 1.4),
+        }
+        for grupo, (ax, ay, az) in acrescimos.items():
+            base_delta = delta.get(grupo, Rotation3())
+            delta[grupo] = Rotation3(
+                base_delta.x + radians(ax),
+                base_delta.y + radians(ay),
+                base_delta.z + radians(az),
+            )
+
+    # Respiração sobre a pose do estilo ativo.
     if respiracao:
         camada_resp = camada_respiracao(respiracao, 1.0)
         for grupo, (ex, ey, ez) in camada_resp.items():
@@ -266,10 +296,8 @@ def _somar_z(rot: Rotation3, z_graus: float) -> Rotation3:
     return Rotation3(rot.x, rot.y, rot.z + radians(z_graus))
 
 
-def delta_walk(
-    fase: float, run: bool = False, personalidade: str = "calm"
-) -> dict[str, Rotation3]:
-    """Delta aditivo do estado de caminhada/corrida com modulação por personalidade.
+def delta_walk(fase: float, run: bool = False) -> dict[str, Rotation3]:
+    """Delta aditivo do estado de caminhada ou corrida.
 
     Parameters
     ----------
@@ -278,14 +306,12 @@ def delta_walk(
         balançam em contrafase às pernas porque partilham este relógio.
     run:
         Se True, corrida (mais amplitude).
-    personalidade:
-        Personalidade do idle ativa para variar o estilo de caminhada.
 
     Returns
     -------
     Delta em radianos a ser somado à pose de repouso.
     """
-    clipe = amostrar_clipe("run" if run else "walk", ciclo_da_fase(fase), personalidade)
+    clipe = amostrar_clipe("run" if run else "walk", ciclo_da_fase(fase))
 
     return {
         grupo: Rotation3(radians(x), radians(y), radians(z))
@@ -328,53 +354,94 @@ def delta_dance(
     }
 
 
+def _parametros_voo_queda(
+    t: float, velocity: tuple[float, float]
+) -> tuple[float, float, float, float, float, float, float, float, float, float]:
+    """Calcula parâmetros cinemáticos de pânico, flail e inclinação para ``delta_fall``."""
+    vx, vy = velocity
+    ascending = vy < 0
+
+    speed_norm = min(1.0, (abs(vx) * 0.6 + abs(vy)) / loc.QUEDA_VENTO_SATURACAO)
+    # Não espera velocidade terminal para mexer os braços: começa já no início do drop.
+    panic = max(0.38, speed_norm)
+    head_tilt = (
+        -loc.QUEDA_CABECA_INCLINACAO * (0.5 + 0.5 * speed_norm)
+        if ascending
+        else loc.QUEDA_CABECA_INCLINACAO * (0.45 + 0.55 * speed_norm)
+    )
+
+    fase_dir = t * loc.QUEDA_FLAIL_VELOCIDADE
+    fase_esq = fase_dir + 2.2
+    flail_dir = sin(fase_dir) * loc.QUEDA_FLAIL_Z * panic
+    flail_esq = sin(fase_esq) * loc.QUEDA_FLAIL_Z * panic
+    flail_y_dir = cos(fase_dir) * loc.QUEDA_FLAIL_Z * loc.QUEDA_FLAIL_Y_FRACAO * panic
+    flail_y_esq = cos(fase_esq) * loc.QUEDA_FLAIL_Z * loc.QUEDA_FLAIL_Y_FRACAO * panic
+    cotovelo_dir = flail_dir**2 / loc.QUEDA_FLAIL_Z * loc.QUEDA_FLAIL_COTOVELO_FRACAO
+    cotovelo_esq = flail_esq**2 / loc.QUEDA_FLAIL_Z * loc.QUEDA_FLAIL_COTOVELO_FRACAO
+    tumble = max(
+        -loc.QUEDA_TUMBLE_MAX_GRAUS,
+        min(loc.QUEDA_TUMBLE_MAX_GRAUS, vx * loc.QUEDA_TUMBLE_GRAUS_POR_PX),
+    )
+    assimetria = (flail_dir - flail_esq) * 0.14
+    arqueado = -5.0 * (1.0 if ascending else -0.6) * panic
+    return (
+        head_tilt,
+        flail_dir,
+        flail_esq,
+        flail_y_dir,
+        flail_y_esq,
+        cotovelo_dir,
+        cotovelo_esq,
+        tumble,
+        assimetria,
+        arqueado,
+    )
+
+
 def delta_fall(
     t: float, velocity: tuple[float, float] = (0, 0)
 ) -> dict[str, Rotation3]:
     """Delta aditivo do estado de queda.
 
-    Parameters
-    ----------
-    t:
-        Tempo no estado de queda (segundos).
-    velocity:
-        Velocidade (vx, vy) em pixels/segundo.
-
-    Returns
-    -------
-    Delta em radianos a ser somado à pose de repouso.
+    Combina reação imediata de susto no início da soltura, braços em
+    moinho assimétrico no ar, torção distribuída da coluna e antecipação
+    aérea proporcional à velocidade de descida.
     """
-    vx, vy = velocity
-    # Velocidade vertical determina se está subindo ou descendo
-    ascending = vy < 0
-
-    wind_effect = min(1.0, (abs(vx) + abs(vy)) / loc.QUEDA_VENTO_SATURACAO)
-    head_tilt = (
-        -loc.QUEDA_CABECA_INCLINACAO if ascending else loc.QUEDA_CABECA_INCLINACAO
-    )
-
-    # Flail dos braços em z (elevação) e y (azimute), nunca em x (torção). Base:
-    # mãos abertas para fora (silhueta aérea), vinda do alvo de queda.
-    flail = sin(t * loc.QUEDA_FLAIL_VELOCIDADE) * loc.QUEDA_FLAIL_Z * wind_effect
-    flail_y = flail * loc.QUEDA_FLAIL_Y_FRACAO
-    # Quadrado: sempre >= 0 e sem a quina de abs() (que daria tranco).
-    cotovelo = flail**2 / loc.QUEDA_FLAIL_Z * loc.QUEDA_FLAIL_COTOVELO_FRACAO
-    tumble = max(
-        -loc.QUEDA_TUMBLE_MAX_GRAUS,
-        min(loc.QUEDA_TUMBLE_MAX_GRAUS, vx * loc.QUEDA_TUMBLE_GRAUS_POR_PX),
-    )
+    (
+        head_tilt,
+        flail_dir,
+        flail_esq,
+        flail_y_dir,
+        flail_y_esq,
+        cotovelo_dir,
+        cotovelo_esq,
+        tumble,
+        assimetria,
+        arqueado,
+    ) = _parametros_voo_queda(t, velocity)
 
     delta = _delta_braco_ik("fall")
     delta["head"] = Rotation3(
-        radians(head_tilt), 0, radians(flail * loc.QUEDA_FLAIL_CABECA_FRACAO)
+        radians(head_tilt),
+        radians(-assimetria * 0.8),
+        radians((flail_dir + flail_esq) * 0.3 * loc.QUEDA_FLAIL_CABECA_FRACAO),
     )
-    delta["body"] = Rotation3(0, 0, radians(tumble))
-    # Espelho (x, -y, -z): y e z invertem no braço esquerdo; x ficaria igual.
-    delta["right-arm"] = _somar(delta["right-arm"], y=flail_y, z=flail)
-    delta["left-arm"] = _somar(delta["left-arm"], y=-flail_y, z=-flail)
-    # Cotovelo só flexiona mais (direito z+, esquerdo z-): sem hiperextensão.
-    delta["ant-arm"] = _somar(delta.get("ant-arm", Rotation3()), z=cotovelo)
-    delta["ant-arm2"] = _somar(delta.get("ant-arm2", Rotation3()), z=-cotovelo)
+    delta["body"] = Rotation3(
+        radians(arqueado * 0.5),
+        radians(assimetria * 0.6),
+        radians(tumble),
+    )
+    delta["cintura"] = Rotation3(radians(arqueado * 0.35), radians(assimetria * 0.45), 0.0)
+    delta["abdomen"] = Rotation3(radians(arqueado * 0.35), radians(-assimetria * 0.35), 0.0)
+    delta["peitoral"] = Rotation3(radians(arqueado * 0.4), radians(assimetria * 0.65), 0.0)
+    # Espelho (x, -y, -z): fases desencontradas entre os dois braços evitam T-pose.
+    delta["right-arm"] = _somar(delta["right-arm"], y=flail_y_dir, z=flail_dir)
+    delta["left-arm"] = _somar(delta["left-arm"], y=-flail_y_esq, z=-flail_esq)
+    delta["ant-arm"] = _somar(delta.get("ant-arm", Rotation3()), z=cotovelo_dir)
+    delta["ant-arm2"] = _somar(delta.get("ant-arm2", Rotation3()), z=-cotovelo_esq)
+    delta["fones"] = Rotation3(radians(-head_tilt * 0.25), 0.0, radians(-assimetria * 0.35))
+    delta["antena-direita"] = Rotation3(radians(-head_tilt * 0.45), 0.0, radians(-assimetria * 0.6))
+    delta["antena-esquerda"] = Rotation3(radians(-head_tilt * 0.45), 0.0, radians(assimetria * 0.6))
     delta.update(_delta_dedos(loc.QUEDA_DEDOS_ABERTOS))
 
     return delta
@@ -491,45 +558,52 @@ def _cochilo(t: float) -> float:
     return amostrar_pista(chaves, t % sono.SONO_COCHILO_PERIODO_S)[0]
 
 
-def delta_fisica(motion: BodyPose) -> dict[str, Rotation3]:
+def delta_fisica(motion: BodyPose, *, pendurado: bool | None = None) -> dict[str, Rotation3]:
     """Delta da camada de física (roll, pitch, compression do BodyMotion).
 
     Esta camada representa a resposta física pura do corpo à inércia e
     movimento, independente do estado de animação.
-
-    Parameters
-    ----------
-    motion:
-        Snapshot do BodyMotion.
-
-    Returns
-    -------
-    Delta em radianos a ser aplicado sobre a pose composta.
     """
     # Pendurado/arrastado, o renderer já gira o mascote INTEIRO (pivô rígido no
     # ponto de pega). Somar a mesma rotação só no peito o giraria em dobro,
     # dessincronizado de braços e pernas: nesse regime o peito recebe só um
-    # balanço pequeno e limitado (a condição é a mesma do renderer).
-    pendurado = motion.hanging > tune.PENDURADO_LIMIAR
-    fator_peito = tune.PEITO_FATOR_PENDURADO if pendurado else 1.0
-    limite = tune.PEITO_PENDURADO_MAX_GRAUS if pendurado else None
+    # balanço pequeno e limitado. Na queda livre (`pendurado=False`), o tronco
+    # articula completo com a coluna flexível.
+    if pendurado is None:
+        pendurado = motion.hanging > tune.PENDURADO_LIMIAR
+    if pendurado:
+        fator_peito = tune.PEITO_FATOR_PENDURADO
+        limite = tune.PEITO_PENDURADO_MAX_GRAUS
 
-    def _peito(graus: float) -> float:
-        graus *= fator_peito
+        def _peito(graus: float) -> float:
+            graus *= fator_peito
+            return radians(max(-limite, min(limite, graus)))
 
-        return radians(graus if limite is None else max(-limite, min(limite, graus)))
+        bp = _peito(motion.pitch)
+        by = _peito(motion.yaw)
+        br = _peito(motion.roll)
+        body_rot = Rotation3(bp * 0.35, by * 0.35, br * 0.35)
+        cint_rot = Rotation3(bp * 0.20, by * 0.20, br * 0.20)
+        abd_rot = Rotation3(bp * 0.22, by * 0.22, br * 0.22)
+        pei_rot = Rotation3(bp * 0.23, by * 0.23, br * 0.23)
+    else:
+        # Em pé, apply_body_motion já gira soft-spine-pivot com yaw/pitch/roll;
+        # evita multiplicar a mesma rotação em body + cintura + abdomen + peitoral.
+        bp = radians(motion.pitch)
+        br = radians(motion.roll)
+        body_rot = Rotation3()
+        cint_rot = Rotation3(bp * 0.06, 0.0, br * 0.06)
+        abd_rot = Rotation3(bp * 0.10, 0.0, br * 0.08)
+        pei_rot = Rotation3(bp * 0.12, 0.0, br * 0.10)
 
-    bp = _peito(motion.pitch)
-    by = _peito(motion.yaw)
-    br = _peito(motion.roll)
     hp = radians(motion.head_pitch)
     hr = radians(motion.head_roll)
 
     return {
-        "body": Rotation3(bp, by, br),
-        "cintura": Rotation3(bp * 0.15, by * 0.15, br * 0.15),
-        "abdomen": Rotation3(bp * 0.25, by * 0.25, br * 0.25),
-        "peitoral": Rotation3(bp * 0.35, by * 0.35, br * 0.35),
+        "body": body_rot,
+        "cintura": cint_rot,
+        "abdomen": abd_rot,
+        "peitoral": pei_rot,
         "head": Rotation3(hp, 0, hr),
         "fones": Rotation3(-hp * 0.18, 0.0, -hr * 0.22),
         "antena-direita": Rotation3(-hp * 0.35, 0.0, -hr * 0.40),
@@ -581,8 +655,8 @@ def _gesto_punho_idle(t, personality, side, curl):
 
 def _delta_bracos_secundarios(saida, state, delta_estado, t, personality):
     sway_scale = {
-        "idle": 2.4,
-        "hover": 2.8,
+        "idle": 1.2,
+        "hover": 2.4,
         "walk": 4.2,
         "run": 5.8,
         "dance": 5.5,
@@ -601,24 +675,26 @@ def _delta_bracos_secundarios(saida, state, delta_estado, t, personality):
         arm_z = base_rep[2] + degrees(delta_arm.z)
 
         saida[shoulder] = Rotation3(
-            radians(max(-4.0, min(4.0, arm_x * 0.14)) + sin(t * 0.9 - side * 0.4) * 1.1),
+            radians(max(-4.0, min(4.0, arm_x * 0.14)) + sin(t * 0.9 - side * 0.4) * 0.7),
             0.0,
-            radians(side * sin(t * 0.75 - side * 0.5) * 1.4),
+            radians(side * sin(t * 0.75 - side * 0.5) * 0.8),
         )
-        fase_braco = t * 1.35 - side * 0.85
+        fase_braco = t * 1.15 - side * 0.85
+        amp_ombro = 3.2 if state == "idle" else 7.5
+        amp_cot = 3.0 if state == "idle" else 7.5
         if state in ("idle", "hover"):
             # Heading no ombro avança o braço; roll no antebraço dobra o cotovelo.
-            saida[upper_arm] = Rotation3(0.0, radians(side * 9.0 * sin(fase_braco)), 0.0)
+            saida[upper_arm] = Rotation3(0.0, radians(side * amp_ombro * sin(fase_braco)), 0.0)
             saida[forearm] = Rotation3(
-                radians(3.0 * sin(fase_braco - 0.35)),
+                radians((1.4 if state == "idle" else 2.8) * sin(fase_braco - 0.35)),
                 0.0,
-                radians(side * (3.0 + 9.0 * sin(fase_braco - 0.55))),
+                radians(side * (2.0 + amp_cot * sin(fase_braco - 0.55))),
             )
         wrist_follow = max(-10.0, min(10.0, -arm_z * 0.22))
         hand_sway = sin(t * 0.58 - side * 0.35) * sway_scale
-        wrist_pitch = -arm_x * 0.24 + sin(t * 0.52 - side * 0.3) * 2.4
+        wrist_pitch = -arm_x * 0.24 + sin(t * 0.52 - side * 0.3) * (1.4 if state == "idle" else 2.4)
         if state in ("idle", "hover"):
-            wrist_pitch += 7.0 * sin(fase_braco - 0.85)
+            wrist_pitch += (2.5 if state == "idle" else 6.0) * sin(fase_braco - 0.85)
         idle_wrist = 0.0
         amplitude = (
             7.5
@@ -656,19 +732,11 @@ def _delta_antenas(saida, micro, t, head_x, head_y, head_z):
 
 
 def _delta_coluna(saida, micro, corpo):
-    body_x, body_y, body_z = degrees(corpo.x), degrees(corpo.y), degrees(corpo.z)
-    # 1. Coluna distribuída (cintura -> abdomen -> peitoral) + micro-ruído
-    for nome, fracao in (
-        ("cintura", 0.22),
-        ("abdomen", 0.32),
-        ("peitoral", 0.44),
-    ):
-        r_micro = micro.get(nome, Rotation3())
-        saida[nome] = Rotation3(
-            radians(body_x * fracao) + r_micro.x,
-            radians(body_y * fracao) + r_micro.y,
-            radians(body_z * fracao) + r_micro.z,
-        )
+    del corpo  # clipes já animam cintura/peitoral; não multiplicar body na coluna
+    for nome in ("cintura", "abdomen", "peitoral"):
+        r_micro = micro.get(nome)
+        if r_micro is not None:
+            saida[nome] = Rotation3(r_micro.x, r_micro.y, r_micro.z)
 
 
 def delta_secundario(

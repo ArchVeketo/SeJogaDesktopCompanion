@@ -56,12 +56,12 @@ def test_perfil_invalido_preserva_campos_validos_e_copia_diagnostico(tmp_path):
     assert (tmp_path / "config.invalido.toml").read_bytes() == original
 
 
-def test_corrupted_file_falls_back_to_defaults(tmp_path, capsys):
+def test_corrupted_file_falls_back_to_defaults(tmp_path, caplog):
     path = tmp_path / "config.toml"
     path.write_text("isto nao e toml = = =", encoding="utf-8")
     s = load_settings(path)
     assert s.window.mode == "overlay"
-    assert "config inválido" in capsys.readouterr().out
+    assert "Config inválido" in caplog.text
 
 
 def test_unknown_fields_are_ignored(tmp_path):

@@ -12,7 +12,7 @@ from math import radians
 import pytest
 
 from fk_bracos import punho
-from sejoga.animacao.estados_delta import delta_dance, delta_fall
+from sejoga.animacao.estados_delta import delta_dance
 from sejoga.animacao.pose_repouso import REPOUSO, pose_repouso
 from sejoga.animacao.poses_base import pose_idle, pose_sleep
 from sejoga.nucleo.esqueleto import ALL_GROUPS, IdlePersonality, Rig, Rotation3
@@ -34,6 +34,8 @@ ASSIMETRIAS_INTENCIONAIS = frozenset(
         "curious",
         "playful",
         "confident",
+        "brc_stance",
+        "vibing",
     }
 )
 #: Tolerância (u) da posição do punho espelhado.
@@ -67,7 +69,7 @@ def test_sono_e_espelhado():
 
 
 @pytest.mark.parametrize(
-    "delta_de", [lambda t: delta_dance(t, 0.8), lambda t: delta_fall(t, (0, 400))]
+    "delta_de", [lambda t: delta_dance(t, 0.8)]
 )
 def test_deltas_simetricos_preservam_o_espelho(delta_de):
     base = pose_repouso()

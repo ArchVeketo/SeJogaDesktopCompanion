@@ -124,6 +124,28 @@ class WindowSettings(BaseModel):
     preferred_monitor: int | None = None
     """Índice do monitor na ordem de ``EnumDisplayMonitors``; ``None`` = automático."""
 
+    intro_animation: Literal[
+        "padrao",
+        "fade_in",
+        "virtual_insanity_in",
+        "run_from_depth",
+        "kagebunshin_in",
+        "aleatoria",
+    ] = "padrao"
+    """Animação executada ao abrir o aplicativo."""
+
+    exit_animation: Literal[
+        "classic",
+        "sonic_classic",
+        "fnf_blue_balls",
+        "lego_disassemble",
+        "thanos_snap",
+        "peace_fade_out",
+        "virtual_insanity_out",
+        "aleatoria",
+    ] = "classic"
+    """Animação executada ao fechar/encerrar o aplicativo."""
+
 
 class PhysicsSettings(BaseModel):
     """Física de tela (espaço 2D) para arrastar e arremessar."""
@@ -174,6 +196,8 @@ class BehaviorSettings(BaseModel):
         "fighter",
         "rhythm",
         "stylish",
+        "brc_stance",
+        "vibing",
     ] = "auto"
     wander: bool = True
     react_to_click: bool = True
@@ -181,7 +205,7 @@ class BehaviorSettings(BaseModel):
     # Olhar/atenção: o mascote segue pontos de atenção não-invasivos (cursor
     # global, troca de foco, batida, borda do monitor, ambiente espontâneo).
     react_to_attention: bool = True
-    sleep_after_idle_seconds: int = Field(default=90, ge=0)
+    sleep_after_idle_seconds: int = Field(default=240, ge=0)
 
 
 class AudioSettings(BaseModel):
@@ -235,14 +259,18 @@ def load_settings(path: Path | None = None) -> Settings:
         try:
             data = tomllib.loads(path.read_text(encoding="utf-8"))
         except tomllib.TOMLDecodeError as exc:  # config corrompido não derruba o app
-            print(f"[sejoga] config inválido em {path}: {exc}; usando defaults")
+            logging.getLogger("sejoga").warning(
+                "Config inválido em %s: %s; usando defaults", path, exc
+            )
             data = {}
     try:
         return Settings(**data)
     except ValidationError as exc:
         erros = exc.errors()
     campos = ", ".join(".".join(map(str, erro["loc"])) for erro in erros)
-    print(f"[sejoga] config inválido em {path} ({campos}); usando defaults nesses campos")
+    logging.getLogger("sejoga").warning(
+        "Config inválido em %s (%s); usando defaults nesses campos", path, campos
+    )
     _preservar_config_invalido(path)
     return _recuperar_valores_validos(data, erros)
 
@@ -276,7 +304,10 @@ def _recuperar_valores_validos(data: dict, erros: list) -> Settings:
             return Settings(**data)
         except ValidationError as exc:
             erros = exc.errors()
-    return Settings.model_construct()
+    logging.getLogger("sejoga").warning(
+        "Não foi possível recuperar valores válidos do config; usando defaults"
+    )
+    return Settings()
 
 
 def save_settings(settings: Settings, path: Path | None = None) -> Path:

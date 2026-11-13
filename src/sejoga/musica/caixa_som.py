@@ -1,193 +1,82 @@
-"""Palco e jukebox 3D renderizados com os modelos Blockbench originais.
+"""Palco musical montado a partir do GLTF exportado pelo Blockbench."""
 
-Carrega o BoomboxGRANDE central e duas caixas laterais BoomboxSIde1 anguladas,
-formando o palco do mascote. No head bob (estilo Girlfriend do FNF), o mascote
-senta diretamente no topo da jukebox central com as pernas balançando sobre a frente;
-nas outras danças (rock, hip hop, breakdance), as caixas emolduram o fundo do palco.
-"""
+from math import cos, exp, pi, sin
 
-from __future__ import annotations
+import gltf
+from panda3d.core import NodePath, Point3, TransparencyAttrib, Vec3
 
-import json
-from math import cos, exp, sin
-from pathlib import Path
+from sejoga.animacao.interpolacao import suavizar_quintico
+from sejoga.musica.efeitos_caixa_som import SpeakerEffects
+from sejoga.nucleo.recursos import model_dir
 
-from panda3d.core import (
-    Geom,
-    GeomNode,
-    GeomTriangles,
-    GeomVertexData,
-    GeomVertexFormat,
-    GeomVertexWriter,
-    NodePath,
-    PNMImage,
-    Point3,
-    StringStream,
-    Texture,
-    Vec3,
+PRIMEIRO_ARREMESSO_S = 1.65
+INTERVALO_ARREMESSOS_S = 0.95
+VOO_CAIXA_S = 0.8
+BATIDAS_ARREMESSO_S = tuple(
+    PRIMEIRO_ARREMESSO_S + index * INTERVALO_ARREMESSOS_S for index in range(3)
 )
-
-from sejoga.nucleo.recursos import assets_dir
-
-FACING_MASCOTE_GRAUS = 0.0
-FACING_CAIXA_EXTRA_GRAUS = 0.0
-
-
-def _texturizar_bbmodel(np, texture_path, name):
-    pnm = PNMImage()
-    if texture_path.exists() and pnm.read(
-        StringStream(texture_path.read_bytes()), texture_path.name
-    ):
-        tex = Texture(name + "_tex")
-        tex.load(pnm)
-        tex.setMinfilter(Texture.FTNearest)
-        tex.setMagfilter(Texture.FTNearest)
-        np.setTexture(tex, 1)
-
-
-def _escrever_faces(faces, verts, scale, resolucao, writers, vert_idx):
-    tex_w, tex_h = resolucao
-    vwriter, nwriter, twriter, tris = writers
-    for face in faces.values():
-        f_verts = face.get("vertices", [])
-        f_uv = face.get("uv", {})
-        if len(f_verts) != 4:
-            continue
-
-        # Blockbench Y é altura e Z é profundidade. No Panda os eixos se invertem.
-        p_pts = [Vec3(x * scale, z * scale, y * scale) for x, y, z in (verts[vid] for vid in f_verts)]
-
-        v0, v1, v2 = p_pts[0], p_pts[1], p_pts[2]
-        n = (v1 - v0).cross(v2 - v0)
-        if n.lengthSquared() > 1e-6:
-            n.normalize()
-        else:
-            n = Vec3(0, -1, 0)
-
-        for vid, ponto in zip(f_verts, p_pts, strict=True):
-            uv = f_uv.get(vid, [0, 0])
-            u = uv[0] / tex_w
-            v = 1.0 - uv[1] / tex_h
-            vwriter.addData3(ponto)
-            nwriter.addData3(n)
-            twriter.addData2(u, v)
-
-        tris.addVertices(vert_idx, vert_idx + 1, vert_idx + 2)
-        tris.addVertices(vert_idx, vert_idx + 2, vert_idx + 3)
-        vert_idx += 4
-    return vert_idx
-
-
-def _build_bbmodel_node(
-    bbmodel_path: Path,
-    texture_path: Path,
-    scale: float = 0.024,
-    name: str = "boombox",
-) -> NodePath:
-    """Carrega geometria e textura de um modelo Blockbench (.bbmodel) em um NodePath Panda3D."""
-    data = json.loads(bbmodel_path.read_text(encoding="utf-8"))
-    res = data.get("resolution", {"width": 16, "height": 16})
-    tex_w, tex_h = float(res.get("width", 16)), float(res.get("height", 16))
-
-    vdata = GeomVertexData(name, GeomVertexFormat.getV3n3t2(), Geom.UHStatic)
-    vwriter = GeomVertexWriter(vdata, "vertex")
-    nwriter = GeomVertexWriter(vdata, "normal")
-    twriter = GeomVertexWriter(vdata, "texcoord")
-    tris = GeomTriangles(Geom.UHStatic)
-
-    vert_idx = 0
-    for elem in data.get("elements", []):
-        verts = elem.get("vertices", {})
-        faces = elem.get("faces", {})
-
-        vert_idx = _escrever_faces(
-            faces, verts, scale, (tex_w, tex_h), (vwriter, nwriter, twriter, tris), vert_idx
-        )
-
-    geom = Geom(vdata)
-    geom.addPrimitive(tris)
-    gnode = GeomNode(name)
-    gnode.addGeom(geom)
-    np = NodePath(gnode)
-
-    _texturizar_bbmodel(np, texture_path, name)
-    np.setTwoSided(True)
-    return np
+FIM_ARREMESSOS_S = BATIDAS_ARREMESSO_S[-1] + VOO_CAIXA_S
+INICIO_SALTO_S = FIM_ARREMESSOS_S + 0.65
+DURACAO_SALTO_S = 1.05
 
 
 class MusicSpeaker:
-    """Caixa de som / jukebox que surge durante a dança do mascote."""
+    """Três caixas com base no chão e arremessos escalonados."""
 
-    def _montar_caixas(self):
-        # 1. Caixa central grande (BoomboxGRANDE)
-        bb_grande_model = (
-            assets_dir() / "assets" / "boomboxgrande" / "BoomboxGRANDE.bbmodel"
-        )
-        bb_grande_tex = assets_dir() / "assets" / "boomboxgrande" / "texture.png"
-        self.center_box = _build_bbmodel_node(
-            bb_grande_model,
-            bb_grande_tex,
-            scale=self.stage_scale,
-            name="boombox-center",
-        )
-        self.center_box.reparentTo(self.geometry)
-        self.center_box.setPos(0, 0, 0)
-
-        # 2. Caixas laterais anguladas (BoomboxSIde1)
-        bb_side_model = assets_dir() / "assets" / "BoomboxSIde1.bbmodel"
-        bb_side_tex = assets_dir() / "assets" / "texture.png"
-
-        self.left_box = _build_bbmodel_node(
-            bb_side_model,
-            bb_side_tex,
-            scale=self.stage_scale,
-            name="boombox-side-left",
-        )
-        self.left_box.reparentTo(self.geometry)
-        self.left_box.setPos(-0.80, 0.12, 0)
-        self.left_box.setH(-17.5)
-
-        self.right_box = _build_bbmodel_node(
-            bb_side_model,
-            bb_side_tex,
-            scale=self.stage_scale,
-            name="boombox-side-right",
-        )
-        self.right_box.reparentTo(self.geometry)
-        self.right_box.setPos(0.80, 0.12, 0)
-        self.right_box.setH(15.0)
-
-    def __init__(self, renderer):
-        """Monta a geometria da jukebox 3D sob o renderer."""
+    def __init__(self, renderer):  # noqa: PLR0915
+        """Carrega e calibra as caixas pela altura do mascote em repouso."""
         self.renderer = renderer
         self._measure_character()
-
-        # Dimensões gerais do palco (baseadas no layout das 3 caixas em escala grande)
-        self.stage_scale = 0.044
-        self.width = 2.20
-        self.height = 1.25
-        self.depth = 1.35
-        self.final_position = Point3(0.0, 0.05, self.floor_z)
-
         self.root = renderer.model_anchor.attachNewNode("music-speaker")
-        self.root.setLightOff(1)
-        self.root.setShaderOff(1)
+        self.root.setTransparency(TransparencyAttrib.MAlpha)
         self.root.setCollideMask(0)
-
-        self.geometry = self.root.attachNewNode("speaker-stage")
-
-        self._montar_caixas()
-
-        from sejoga.musica.efeitos_caixa_som import SpeakerEffects
-
-        self.effects = SpeakerEffects(self.geometry)
+        asset = NodePath(gltf.load_model(str(model_dir() / "Boomboxes.gltf")))
+        self.boxes = []
+        self.destinations = []
+        self.bounds = []
+        limites_x = []
+        self.scales = []
+        self.effects = []
+        self.launch_origin = Point3(0.23, -0.12, 0.94)
+        height = self.character_size.z
+        for name, ratio in (("meio", 2.0), ("esquerda", 1.0), ("direita", 1.0)):
+            box = asset.find("Caixa de som " + name)
+            offset = box.getPos()
+            box.reparentTo(self.root)
+            box.setPos(0, 0, 0)
+            box.setH(box.getH() + 180)
+            low, high = box.getTightBounds()
+            box.setScale(height * ratio / (high.z - low.z))
+            low, high = box.getTightBounds(self.root)
+            self.boxes.append(box)
+            self.scales.append(box.getSx())
+            box_low, box_high = box.getTightBounds(box)
+            self.bounds.append((box_low, box_high))
+            effects_anchor = box.attachNewNode("speaker-effects")
+            effects_anchor.setPos(0, box_high.y, box_low.z)
+            effects_anchor.setScale((box_high.z - box_low.z) / 1.75)
+            self.effects.append(SpeakerEffects(effects_anchor))
+            self.destinations.append(
+                Point3(
+                    height * 0.48 + offset.x * height * 1.10,
+                    max(0.24 - low.y, 1.15 * height + offset.y * height),
+                    self.floor_z - low.z,
+                )
+            )
+            limites_x.append((self.destinations[-1].x + low.x, self.destinations[-1].x + high.x))
+            if name == "meio":
+                self.seat = Point3(
+                    self.destinations[0].x,
+                    self.destinations[0].y + low.y - 0.12,
+                    self.floor_z + high.z - low.z,
+                )
+        self.limites_x = (min(lo for lo, _ in limites_x), max(hi for _, hi in limites_x))
         self.age = 0.0
         self.visibility = 0.0
         self.was_dancing = False
         self.ejecting = False
-        self.landed = False
+        self.throw_index = -1
         self._landing_sound_played = False
-        self.current_position = Point3(0, 0.19, 0.86)
         self.root.hide()
 
     def _measure_character(self):
@@ -218,128 +107,111 @@ class MusicSpeaker:
         self.renderer.apply_rig_pose(previous)
         rig.current = previous
 
-    def _matriz_visivel(self):
-        """Matriz do referencial visível do mascote."""
-        from panda3d.core import TransformState
-
-        model_np = self.renderer.model_np
-        transform = TransformState.makePosHprScale(
-            model_np.getPos(),
-            (FACING_MASCOTE_GRAUS, 0.0, 0.0),
-            model_np.getScale(),
-        )
-        return transform.getMat()
-
-    @property
-    def settle(self):
-        """Assenta o palco após a descida."""
-        value = max(0, min(1, (self.age - 2.0) / 0.8))
-        return value * value * (3 - 2 * value)
-
-    @property
-    def support_plane(self):
-        """Devolve o plano de apoio superior da caixa central."""
-        return Point3(0.0, 0.0, self.floor_z + 0.44)
-
-    def support_in_stage(self):
-        """Devolve o apoio no palco para contatos."""
-        point = Point3(0, 0, self.floor_z + 0.44)
-        point = self.renderer.model_anchor.getRelativePoint(self.root, point)
-        normal = (
-            self.root.getQuat(self.renderer.model_anchor)
-            .xform(Vec3(0, 0, 1))
-            .normalized()
-        )
-        return point, normal
-
-    def _posicao_de_entrada(self, controller):
-        style = getattr(controller.dance_motion, "style", "head_bob") if controller else "head_bob"
-
-        # Posição final: diretamente sob o mascote no head_bob (ele senta em cima);
-        # levemente atrás no rock/hip_hop/breakdance para emoldurar o mascote no palco.
-        if style == "head_bob":
-            target_y = 15 * self.stage_scale - 0.08
-            target_z = (self.floor_z + 0.38) - (27 * self.stage_scale)
-            target_pos = Point3(0.0, target_y, target_z)
-        else:
-            target_y = 15 * self.stage_scale + 0.15
-            target_z = self.floor_z - (16 * self.stage_scale)
-            target_pos = Point3(0.0, target_y, target_z)
-
-        u = max(0, min(1, (self.age - 1.35) / 0.65))
-        ease = u * u * (3 - 2 * u)
-        start = Point3(0, 0.20, 0.86)
-        position = start * (1 - ease) + target_pos * ease
-        position.z += self.height * 0.15 * sin(u * 3.14159265)
-
-        if 1.95 <= self.age < 2.25:
-            position.z += (
-                self.height * 0.03 * sin((self.age - 1.95) / 0.30 * 3.14159265)
-            )
-        self.current_position = Point3(position)
-        return position, ease
-
-    def _aplicar_transformacao(self, position, ease, phase, strength):
-        if self.age > 2.1:
-            position.x += self.width * 0.002 * sin(phase * 8) * strength
-            position.y += self.depth * 0.005 * sin(phase * 6) * strength
-
-        self.root.setPos(self._matriz_visivel().xformPoint(position))
-        self.root.setH(FACING_MASCOTE_GRAUS + FACING_CAIXA_EXTRA_GRAUS)
-        self.root.setScale(
-            self.renderer.model_np.getScale().x
-            * max(0.005, self.visibility * (0.10 + 0.90 * ease))
-        )
-        self.root.setR((1 - ease) * -90)
-
-    def _aplicar_pulso(self, pulse, strength):
-        # Pulso rítmico nas caixas com o grave e o beat
-        if self.age > 2.1:
-            box_scale = 1.0 + pulse * 0.035 * strength
-            self.center_box.setScale(box_scale, box_scale, box_scale)
-            side_scale = 1.0 + pulse * 0.025 * strength
-            self.left_box.setScale(side_scale, side_scale, side_scale)
-            self.right_box.setScale(side_scale, side_scale, side_scale)
-        else:
-            self.center_box.setScale(1.0, 1.0, 1.0)
-            self.left_box.setScale(1.0, 1.0, 1.0)
-            self.right_box.setScale(1.0, 1.0, 1.0)
-
-    def update(self, dt, dancing, phase, energy, bass=0):
-        """Atualiza a visibilidade, animação e pulso das caixas de som."""
+    def update(self, dt, dancing, phase, energy, bass=0):  # noqa: PLR0915
+        """Atualiza os arremessos, os efeitos e o retorno do palco."""
         if dancing and not self.was_dancing:
             self.age = 0.0
             self._landing_sound_played = False
-            self.current_position = Point3(0, 0.19, 0.86)
         self.was_dancing = dancing
-        self.age += dt
+        if dancing:
+            self.age += dt
         self.visibility += ((1 if dancing else 0) - self.visibility) * (
             1 - exp(-dt * 5)
         )
-        self.ejecting = dancing and 0.55 <= self.age < 2.1
-        self.landed = self.age >= 2.1 and self.visibility > 0.95
-
-        if self.visibility < 0.005 or (dancing and self.age < 1.35):
+        self.ejecting = dancing and 0.65 <= self.age < FIM_ARREMESSOS_S
+        self.throw_index = -1
+        if self.visibility < 0.005 or self.age < PRIMEIRO_ARREMESSO_S - 0.27:
             self.root.hide()
             return
         self.root.show()
-
-        controller = getattr(self.renderer.showbase, "animation_controller", None)
-        position, ease = self._posicao_de_entrada(controller)
-
-        pulse = max(0, cos(phase)) ** 6
+        model = self.renderer.model_np
+        self.root.setPos(model.getPos())
+        self.root.setScale(model.getScale())
         strength = max(0, min(1, energy * 0.7 + bass * 0.9))
-
-        self._aplicar_transformacao(position, ease, phase, strength)
-
-        self._aplicar_pulso(pulse, strength)
-
-        self.effects.update(self.age, phase, strength)
-
-        if self.age >= 1.95 and not self._landing_sound_played:
+        ajuste_x = self._ajustar_palco_na_tela()
+        for index, (box, destination) in enumerate(
+            zip(self.boxes, self.destinations, strict=True)
+        ):
+            elapsed = self.age - BATIDAS_ARREMESSO_S[index]
+            (box.show if elapsed >= 0 else box.hide)()
+            u = max(0, min(1, elapsed / VOO_CAIXA_S))
+            if dancing and -0.27 <= elapsed < VOO_CAIXA_S - 0.04:
+                self.throw_index = index
+            pos = self.launch_origin + (destination - self.launch_origin) * u
+            pos.x += ajuste_x * u
+            arc = sin(pi * u)
+            pos.z += arc * 0.55
+            grow = 0.07 + 0.93 * suavizar_quintico(u / 0.86)
+            # A face da caixa passa atrás da silhueta durante o voo.
+            low, high = self.bounds[index]
+            box.setR(-75 * (1 - u))
+            box.setScale(self.scales[index] * grow)
+            if u >= 1:
+                self._pulso_no_chao(index, box, pos, phase, strength, elapsed - VOO_CAIXA_S)
+            else:
+                vertical = box.getQuat().conjugate().xform(Vec3(0, 0, 1))
+                base_rotacionada = sum(
+                    min(a * v, b * v) * scale
+                    for a, b, v, scale in zip(low, high, vertical, box.getScale(), strict=True)
+                )
+                pos.z = max(pos.z, self.floor_z - base_rotacionada)
+            axis = box.getQuat().conjugate().xform(Vec3(0, 1, 0))
+            front = sum(
+                min(a * v, b * v) * scale
+                for a, b, v, scale in zip(low, high, axis, box.getScale(), strict=True)
+            )
+            pos.y = max(pos.y + arc * 0.36, 0.24 - front)
+            box.setPos(pos)
+            if u >= 1 and index == 0:
+                borda = box.getQuat().xform(Vec3(0, high.y * box.getSy() + 0.12, 0))
+                self.seat.set(pos.x + borda.x, pos.y + borda.y, pos.z + high.z * box.getSz())
+            box.setColorScale(1, 1, 1, self.visibility)
+            self.effects[index].update(elapsed - VOO_CAIXA_S)
+        if (
+            self.age >= PRIMEIRO_ARREMESSO_S + VOO_CAIXA_S
+            and not self._landing_sound_played
+        ):
             self._landing_sound_played = True
-            settings = self.renderer.showbase.settings.audio
-            if settings.enabled and controller and controller._dance_preview_remaining <= 0:
+            app = self.renderer.showbase
+            if (
+                app.settings.audio.enabled
+                and app.animation_controller._dance_preview_remaining <= 0
+            ):
                 from sejoga.musica.efeitos_sonoros import play_speaker_landing
 
-                play_speaker_landing(settings.master_volume)
+                play_speaker_landing(app.settings.audio.master_volume)
+
+    def _ajustar_palco_na_tela(self):
+        r = self.renderer
+        x = getattr(r, "_scene_x_px", None)
+        if x is None:
+            return 0.0
+        pixels = r.width * r.model_np.getSx() / r._view_width
+        low, high = self.limites_x
+        esquerda = (18 - x) / pixels - low
+        direita = (r.width - 18 - x) / pixels - high
+        return max(esquerda, min(direita, 0.0))
+
+    def _pulso_no_chao(self, index, box, pos, phase, strength, idade_pouso):
+        low, _ = self.bounds[index]
+        escala = self.scales[index]
+        acento = (0.5 + 0.5 * cos(phase - index * 0.22)) ** 6 * strength
+        impacto = sin(idade_pouso * 21) * exp(-idade_pouso * 11)
+        compressao = 1 - 0.045 * acento - 0.085 * impacto
+        altura = escala * compressao
+        lateral = escala / compressao**0.5
+        box.setScale(lateral, lateral, altura)
+        pos.x += 0.036 * sin(phase * 9 + index) * acento
+        pos.z = self.floor_z - low.z * altura
+
+    @property
+    def jump_progress(self):
+        """Fração percorrida do salto."""
+        return max(0, min(1, (self.age - INICIO_SALTO_S) / DURACAO_SALTO_S))
+
+    @property
+    def turn(self):
+        """Ângulo lateral durante a saída das caixas."""
+        turn_out = suavizar_quintico(self.age / 1.35)
+        turn_back = suavizar_quintico((self.age - INICIO_SALTO_S) / 0.65)
+        return 76 * turn_out * (1 - turn_back)

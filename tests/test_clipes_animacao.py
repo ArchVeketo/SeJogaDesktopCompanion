@@ -35,10 +35,11 @@ def test_tracks_fecham_com_velocidade_continua(nome):
 def test_bracos_balancam_por_y_em_contrafase_no_ciclo(nome):
     frente = amostrar_clipe(nome, 0.0)
     tras = amostrar_clipe(nome, 0.5)
-    # Os dois braços trocam de lado entre t=0 e t=0.5.
+    # Os dois braços trocam de lado entre t=0 e t=0.5 em amplitude espelhada no mundo.
     assert frente["right-arm"][1] > 0 > tras["right-arm"][1]
-    # Esquerdo é o espelho: o mesmo delta y significa braço no lado oposto.
-    assert frente["left-arm"][1] == frente["right-arm"][1]
+    assert frente["left-arm"][1] > 0 > tras["left-arm"][1]
+    assert frente["left-arm"][1] == -tras["right-arm"][1]
+    assert tras["left-arm"][1] == -frente["right-arm"][1]
     # A torção (x) não é usada no balanço.
     assert frente["right-arm"][0] == 0.0
     assert tras["left-arm"][0] == 0.0

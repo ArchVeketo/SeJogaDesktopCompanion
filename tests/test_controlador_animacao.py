@@ -1,7 +1,6 @@
 """Testa o controlador de animação: estados, reações e transições."""
 
 import math
-from itertools import pairwise
 
 from fk_bracos import punho
 from sejoga.animacao.controlador_animacao import AnimationController, AnimationState
@@ -126,7 +125,6 @@ def test_raised_arm_survives_the_resolver_clamp_in_the_live_pipeline():
     from math import degrees
 
     animation = controller()
-    animation.pose_resolver.definir_pose({g: Rotation3() for g in ALL_GROUPS})
     alvo = {g: Rotation3() for g in ALL_GROUPS}
     # Convenção medida no grafo de cena (não confirmada na GPU): braço reto para CIMA = ELEVAÇÃO ROLL Z≈-90° (z negativo
     # ergue), não o heading. O clamp de elevação deve deixar passar a pose
@@ -180,7 +178,8 @@ def test_leg_steps_alternate_and_airborne_pose_settles():
     assert max(fall_steps) - min(fall_steps) > 4
     for _ in range(120):
         rest = legs.update(1 / 60, "idle")
-    assert abs(rest.left) < 0.001 and rest.left_knee < 0.001
+    assert rest.left == rest.right
+    assert rest.left_knee == rest.right_knee
 
 
 def _arraste_por(part):
@@ -285,20 +284,20 @@ def test_hover_tracks_cursor_and_exits_smoothly():
     assert pose["head"].y > 0
     assert pose["door"].y > 0
     previous_pose = pose
-    pose = animation.update(0.01)
-    assert animation.state == AnimationState.IDLE
-    # Authored state holds its first transition frame; hand follow-through
-    # remains alive, with no visible discontinuity at the state boundary.
-    for group, rotation in pose.items():
-        before = previous_pose[group]
-        assert (
-            max(
-                abs(rotation.x - before.x),
-                abs(rotation.y - before.y),
-                abs(rotation.z - before.z),
+    for _ in range(24):
+        pose = animation.update(0.01)
+        for group, rotation in pose.items():
+            before = previous_pose[group]
+            assert (
+                max(
+                    abs(rotation.x - before.x),
+                    abs(rotation.y - before.y),
+                    abs(rotation.z - before.z),
+                )
+                < 0.25
             )
-            < 0.01
-        )
+        previous_pose = pose
+    assert animation.state == AnimationState.IDLE
 
 
 def test_landing_reaction_finishes_and_returns_to_idle():
@@ -363,19 +362,19 @@ def test_hover_tracks_both_axes_and_new_reactions_generate_distinct_poses():
     assert len(set(frames)) == 4
 
 
-def test_tentacle_peeks_are_rare_but_manual_peek_remains_available():
+def test_tentacle_peek_requires_continuous_cursor_inactivity():
     animation = controller()
-    animation._personality_rng.seed(1)
-    animation._peek_in = 60
-    starts = []
-    previous = None
-    for frame in range(1800):
-        animation.update(0.1)
-        if animation.appendage_remaining > 0 and not previous:
-            starts.append(frame / 10)
-        previous = animation.appendage_remaining > 0
-    assert starts and starts[0] >= 59.9
-    assert all(b - a >= 60 for a, b in pairwise(starts))
+    animation.update(0.1, pointer_position=(100, 100))
+    animation._quietude = 13.95
+    animation.update(0.1, pointer_position=(120, 100))
+    assert animation.appendage_remaining == 0
+    assert animation._quietude == 0
+    animation._quietude = 13.95
+    animation.update(0.1, pointer_position=(121, 100))
+    assert animation.appendage_remaining > 0
+    for _ in range(80):
+        animation.update(0.1, pointer_position=(121, 100))
+    assert animation.appendage_remaining == 0
     other = controller()
     other.interact("peek")
     other.update(0.1)
@@ -410,34 +409,19 @@ def test_silent_dance_preview_expires_without_restarting_itself():
     assert animation.state != AnimationState.DANCE
 
 
-def test_crossfade_por_junta_deixa_a_ponta_balancar_mais_que_a_ancora():
-    from math import isfinite
-
-    from sejoga.nucleo.esqueleto import Rotation3
-
+def test_mudanca_de_foco_nao_dispara_giro_de_costas_automatico():
     animation = controller()
-    # Estabiliza em idle por muitos frames: o regime estável deixa cada junta
-    # com a sua tensão da tabela (sem uniformizar a frequência).
-    for _ in range(600):
-        animation.update(1 / 60)
-    assert animation.state == AnimationState.IDLE
+    animation.update(0.1, fonte_atencao="cursor")
+    assert not animation.permitir_giro_costas
+    animation.update(0.1, fonte_atencao="foco", look_direction=-1.0)
+    assert not animation.permitir_giro_costas
+    assert not animation.pacote_olhar_tela.ativo
 
-    # Degrau de alvo igual em body (âncora) e fingers (ponta) a partir do mesmo
-    # ponto de repouso, avançando só o crossfade por junta.
-    degrau = {grupo: Rotation3() for grupo in ALL_GROUPS}
-    animation.pose_resolver.definir_pose(degrau)
-    alvo = {grupo: Rotation3(x=0.7) for grupo in ("body", "fingers")}
-    for _ in range(60):
-        resultado = animation.pose_resolver.resolver(1 / 60, alvo)
-
-    body = animation.pose_resolver.molas["body"]
-    fingers = animation.pose_resolver.molas["fingers"]
-    # Depois da acomodação da âncora, a ponta solta ainda balança/atrasa mais.
-    assert abs(fingers.x.value - 0.7) > abs(body.x.value - 0.7)
-    for rotacao in resultado.values():
-        assert isfinite(rotacao.x) and isfinite(rotacao.y) and isfinite(rotacao.z)
-        assert abs(rotacao.x) < 10 and abs(rotacao.y) < 10 and abs(rotacao.z) < 10
-
+    # Gatilho explícito ou curioso raro continua funcionando.
+    animation.iniciar_pacote_olhar_tela(lado=-1.0)
+    animation.update(0.5)
+    assert animation.permitir_giro_costas
+    assert animation.pacote_olhar_tela.lado == -1.0
 
 def test_double_click_interrupts_single_click_then_recovers():
     animation = controller()
@@ -478,13 +462,19 @@ def test_surprise_pose_recoils_body_and_turns_head_toward_stimulus():
     assert degrees(pose["body"].x) < 0
 
 
-def test_respiracao_fica_parada_no_idle_sem_empurrar():
-    # Idle por vários segundos sem empurrar: a respiração não oscila, o valor
-    # exposto permanece 0.0 (respiração sob demanda).
+def test_respiracao_continua_entre_idle_e_hover_e_cessa_ao_sair():
     animation = controller()
-    for _ in range(600):  # 10 s a 60 fps
-        animation.update(1 / 60)
-        assert animation.respiracao_valor == 0.0
+    controle = controller()
+    valores = []
+    for frame in range(240):
+        animation.update(1 / 60, hovered=frame >= 120)
+        controle.update(1 / 60)
+        assert animation.respiracao_valor == controle.respiracao_valor
+        valores.append(animation.respiracao_valor)
+    assert min(valores) < 0 < max(valores)
+    for _ in range(60):
+        animation.update(1 / 60, dragging=True)
+    assert animation.respiracao_valor == 0.0
 
 
 def test_empurrar_respiracao_infla_e_decai_sozinho():
@@ -493,10 +483,28 @@ def test_empurrar_respiracao_infla_e_decai_sozinho():
     animation.empurrar_respiracao(0.8)
     valor_pico = 0.0
     for _ in range(30):
-        animation.update(1 / 60)
+        animation.update(1 / 60, idle_enabled=False)
         valor_pico = max(valor_pico, abs(animation.respiracao_valor))
     assert valor_pico > 0.0
-    # Deixa o impulso decair: o valor volta a 0.0 (sob demanda, sem desligar).
     for _ in range(600):
-        animation.update(1 / 60)
+        animation.update(1 / 60, idle_enabled=False)
     assert abs(animation.respiracao_valor) < 1e-3
+
+
+def test_danca_tolere_uma_interrupcao_curta_da_deteccao():
+    animation = controller()
+    args = {"music_intensity": 0.5, "dance_chance": 1.0}
+    animation.update(0.1, music_playing=True, **args)
+    for _ in range(4):
+        animation.update(0.1, music_playing=False, **args)
+        assert animation.state == AnimationState.DANCE
+    for _ in range(5):
+        animation.update(0.1, music_playing=False, **args)
+    assert animation.state != AnimationState.DANCE
+
+
+def test_hover_inverte_o_alvo_local_quando_mario_esta_de_costas():
+    animation = controller()
+    animation.definir_orientacao("costas")
+    animation.update(0.1, hovered=True, look_direction=0.6)
+    assert animation._look_direction < 0

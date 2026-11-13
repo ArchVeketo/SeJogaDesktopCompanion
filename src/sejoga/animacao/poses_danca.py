@@ -84,7 +84,9 @@ def amostrar_passo(
         faixa = tuple((quando, _trio_do_grupo(pose, grupo)) for quando, pose in chaves)
         trio = amostrar_pista(faixa, u)
         saida[grupo] = (
-            tuple(v * ganho for v in trio) if grupo in GRUPOS_COM_GANHO else trio
+            (trio[0] * ganho, trio[1] * ganho, trio[2] * ganho)
+            if grupo in GRUPOS_COM_GANHO
+            else trio
         )
 
     return saida

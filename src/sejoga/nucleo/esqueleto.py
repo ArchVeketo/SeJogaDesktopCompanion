@@ -77,6 +77,9 @@ class IdlePersonality(StrEnum):
     FIGHTER = "fighter"
     RHYTHM = "rhythm"
     STYLISH = "stylish"
+    # BRC — posturas inspiradas em Bomb Rush Cyberfunk
+    BRC_STANCE = "brc_stance"
+    VIBING = "vibing"
 
 
 @dataclass(frozen=True, slots=True)

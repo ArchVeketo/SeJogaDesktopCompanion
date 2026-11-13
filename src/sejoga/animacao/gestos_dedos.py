@@ -5,17 +5,24 @@ gesto + movimento secundário, repartidos entre as juntas base, meio e ponta. O
 asset segue intacto; o contorno recebe os mesmos ângulos nos pivôs copiados.
 """
 
-from math import exp, sin
+from math import atan2, degrees, exp, sin
 
 from sejoga.animacao import dedos_cascata as cascata
 from sejoga.animacao import dedos_tuning as tuning_dedos
-from sejoga.render.dedos_malha import eixo_abertura, girar_pivo, pivos_da_cadeia
+from sejoga.render.dedos_malha import (
+    alinhar_pulso_polegar,
+    eixo_abertura,
+    girar_pivo,
+    medir_direcao_polegar,
+    pivos_da_cadeia,
+)
 
 GESTURES = {
     "hang_loose": (0, 75, 75, 75, 0),
     "thumbs_up": (0, 80, 80, 80, 80),
     "rock": (65, 0, 80, 80, 0),
     "finger_gun": (0, 0, 80, 80, 80),
+    "peace": (42, 0, 0, 80, 80),
 }
 #: (lado, grupo do bloco dos dedos, malhas polegar..mindinho). Gestos só na mão direita.
 MAOS = (
@@ -23,7 +30,12 @@ MAOS = (
     (-1, "fingers2", tuning_dedos.MESH_DEDOS_ESQUERDA),
 )
 LADO_DOS_GESTOS = 1
-PEGADAS = {"open_hands": -1.0, "close_fists": 1.0}
+PEGADAS = {
+    "open_hands": -1.0,
+    "close_fists": 1.0,
+    "blue_balls": 1.0,
+    "virtual_insanity": -0.86,
+}
 
 
 def _girar_cadeias(cadeias, angulos, abertura) -> None:
@@ -54,10 +66,21 @@ def _pegada_natural(estado, relogio, fase_danca, lado, dedo):
     if estado in PEGADAS:
         return PEGADAS[estado]
     atraso = lado * 0.9 + dedo * 0.17
+    if estado in GESTURES and lado == LADO_DOS_GESTOS:
+        if estado == "rock" and dedo == 0:
+            return 0.55
+        if estado == "peace" and dedo in (1, 2):
+            # Indicador abre para fora e médio afasta para formar o V do peace sign.
+            return -1.0 if dedo == 1 else -0.85
+        if dedo == 0 or GESTURES[estado][dedo] == 0:
+            return -0.65 if dedo == 0 else -0.35
+        return 0.0
     if fase_danca is not None:
         # Alterna abertura e pegada ao longo de dois tempos, com atraso nos dedos.
         return 0.67 * sin(fase_danca * 0.5 - atraso)
-    amplitude = {"idle": 0.24, "hover": 0.28, "wave": 0.5, "stretch": 0.45}.get(estado, 0.0)
+    amplitude = {"idle": 0.24, "hover": 0.28, "wave": 0.5, "stretch": 0.45}.get(
+        estado, 0.0
+    )
     return amplitude * sin(relogio * 1.7 - atraso)
 
 
@@ -68,6 +91,7 @@ class FingerGestures:
         """Localiza os nós dos dedos no renderer."""
         self.renderer = renderer
         self.presentation = 0.0
+        self.wrist_twist = 0.0
         self.amounts = [0.0] * 5
         self.relogio = 0.0
         # cadeias[(lado, dedo)] = uma lista de pivôs por raiz (modelo e contorno).
@@ -82,7 +106,9 @@ class FingerGestures:
                 self.cadeias[chave] = [
                     [
                         (pivo, eixo, eixo_abertura(pivo) if junta == 0 else None)
-                        for junta, (pivo, eixo) in enumerate(pivos_da_cadeia(raiz, mesh))
+                        for junta, (pivo, eixo) in enumerate(
+                            pivos_da_cadeia(raiz, mesh)
+                        )
                     ]
                     for raiz in (renderer.model_np, renderer.outline_np)
                 ]
@@ -95,6 +121,7 @@ class FingerGestures:
             self._abertura_maxima.update(
                 ((lado, dedo), abertura) for dedo, abertura in enumerate(valores)
             )
+        self._thumb_local_dir = medir_direcao_polegar(renderer)
 
     def _giro_do_bloco(self, lado, grupo):
         """Giro do nó do bloco (graus), positivo = fechando, para os dois lados."""
@@ -107,6 +134,22 @@ class FingerGestures:
 
         return lado * ((delta + 180.0) % 360.0 - 180.0)
 
+    def _alinhar_pulso(self, gesture, blend: float) -> None:
+        renderer = self.renderer
+        hand = renderer._rig_nodes["hand"]
+        if gesture in ("thumbs_up", "finger_gun"):
+            alinhar_pulso_polegar(
+                hand, renderer.model_np, self._thumb_local_dir, self.presentation
+            )
+        else:
+            frente = hand.getRelativeVector(renderer.model_np, (0, -1, 0))
+            if frente.y * frente.y + frente.z * frente.z > 1e-5:
+                giro = degrees(atan2(frente.y, -frente.z))
+                delta = (giro - self.wrist_twist + 180.0) % 360.0 - 180.0
+                self.wrist_twist += delta * blend
+            hand.setP(hand, self.wrist_twist * self.presentation)
+        renderer._outline_nodes["hand"].setMat(hand.getMat())
+
     def update(self, dt, gesture, *, fase_danca=None):
         """Avança o gesto de dedos um passo de ``dt``."""
         passo = max(0.0, min(tuning_dedos.PASSO_MAXIMO_S, dt))
@@ -118,18 +161,9 @@ class FingerGestures:
         ) * blend
 
         if self.presentation > 0.001:
-            # Resolve the wrist in model space: elbow rotations must not turn
-            # the palm edge-on to the fixed frontal camera.
-            renderer = self.renderer
-            hand = renderer._rig_nodes["hand"]
-            current = hand.getHpr(renderer.model_np)
-            desired = (0, 180, 90 if gesture != "finger_gun" else 0)
-            values = [
-                a + ((b - a + 180) % 360 - 180) * self.presentation
-                for a, b in zip(current, desired, strict=True)
-            ]
-            hand.setHpr(renderer.model_np, *values)
-            renderer._outline_nodes["hand"].setHpr(renderer.outline_np, *values)
+            self._alinhar_pulso(gesture, blend)
+        else:
+            self.wrist_twist = 0.0
 
         self.amounts = [
             a + (b - a) * blend for a, b in zip(self.amounts, target, strict=True)
@@ -149,13 +183,18 @@ class FingerGestures:
             chave = lado, dedo
             self.angulos[chave] = cascata.suavizar(self.angulos[chave], alvo, passo)
             abertura_maxima = self._abertura_maxima[chave]
-            if dedo == 0 and pegada > 0:
+            if dedo == 0 and (pegada > 0 or gesto >= 50):
                 # O polegar cruza o indicador e pousa sobre o punho.
                 abertura_maxima = -tuning_dedos.OPOSICAO_POLEGAR_GRAUS * (
                     1 if abertura_maxima >= 0 else -1
                 )
-                abertura = abertura_maxima * pegada
+                abertura = abertura_maxima * max(pegada, min(1.0, gesto / 75.0))
+            elif estado == "peace" and dedo == 2 and lado == LADO_DOS_GESTOS:
+                # Afasta o dedo médio em direção oposta ao indicador para abrir o V.
+                abertura = -10.5
             else:
                 abertura = abertura_maxima * max(0.0, -pegada)
             self.aberturas[chave] += (abertura - self.aberturas[chave]) * blend
-            _girar_cadeias(self.cadeias[chave], self.angulos[chave], self.aberturas[chave])
+            _girar_cadeias(
+                self.cadeias[chave], self.angulos[chave], self.aberturas[chave]
+            )

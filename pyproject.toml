@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sejoga-desktop-companion"
-version = "0.1.0"
+version = "1.0.0"
 description = "Companion 3D interativo do mascote Mário (SeJogaNoArmário) para o desktop."
 readme = "README.md"
 requires-python = ">=3.11"

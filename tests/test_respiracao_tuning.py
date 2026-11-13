@@ -17,7 +17,7 @@ def test_todas_as_personalidades_tem_entrada():
 def test_faixas_por_personalidade():
     for parametros in RESPIRACAO_POR_PERSONALIDADE.values():
         assert parametros.frequencia > 0
-        assert 0.0 < parametros.amplitude <= 1.0
+        assert 0.0 < parametros.amplitude <= 1.2
         assert 0.0 <= parametros.bounce <= 1.0
 
 

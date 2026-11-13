@@ -1,18 +1,12 @@
-"""Dança guiada por áudio: passos de quatro poses por batida e molas por junta.
-
-O estilo escolhido pelo áudio toca uma frase de passos (``danca_frases_tuning``)
-amostrada por ``poses_danca``: o acento cai no onset da batida (u = 0). O
-resultado por junta é suavizado por molas amortecidas, dando peso e recuperação
-naturais.
-"""
+"""Coreografia de poses autorais sincronizada com a música."""
 
 from math import cos, exp, floor, sin, tau
 
 from sejoga.animacao import danca_tuning as tune
 from sejoga.animacao.danca_frases_tuning import frase_do_estilo
-from sejoga.animacao.mola_tuning import DANCA_AMORTECIMENTO, DANCA_FREQUENCIA
-from sejoga.animacao.molas_juntas import SpringPose
+from sejoga.animacao.interpolacao import suavizar_quintico
 from sejoga.animacao.poses_danca import amostrar_passo
+from sejoga.nucleo.esqueleto import Rotation3
 
 
 class DanceMotion:
@@ -25,20 +19,15 @@ class DanceMotion:
         self.style = "head_bob"
         self.dwell = 0.0
         self.pose = {}
-        self.dt = 0.0
+        self._pose_anterior = {}
         self.tempo = 90.0
         self.strength = 0.0
         self.override = "auto"
         self.style_beats = 0.0
-        # Acento do downbeat (0..1) e molas por junta para a saída.
         self.acento = 0.0
-        self._molas = SpringPose(
-            frequencia=DANCA_FREQUENCIA, amortecimento=DANCA_AMORTECIMENTO
-        )
 
     def update(self, dt, level, bass, bpm=None, beat=False):
         """Avança a coreografia com o nível, o grave e o BPM da música."""
-        self.dt = dt
         blend = 1 - exp(-max(0, dt) * tune.SUAVIZACAO_AUDIO)
         self.energy += (max(0, min(1, level)) - self.energy) * blend
         self.bass += (max(0, min(1, bass)) - self.bass) * blend
@@ -68,6 +57,7 @@ class DanceMotion:
         if self.override != "auto":
             desired = self.override
         if desired != self.style and self.dwell > tune.DWELL_MINIMO and bar_boundary:
+            self._pose_anterior = self.pose
             self.style, self.dwell = desired, 0.0
             self.style_beats = 0.0
         target_strength = (
@@ -110,6 +100,9 @@ class DanceMotion:
 
         bx, by, bz = pose.get("body", (0.0, 0.0, 0.0))
         hx, hy, hz = pose.get("head", (0.0, 0.0, 0.0))
+        if self.style == "head_bob":
+            hx -= 6.0 * pulso**4 * energia_ef
+            rig.set_rotation("head", x=hx, y=hy, z=hz)
 
         # 1. Cadeia da coluna (cintura -> abdomen -> peitoral)
         rig.set_rotation(
@@ -189,7 +182,7 @@ class DanceMotion:
         rig.set_rotation("shoulder", x=pulso * 2.0, y=0.0, z=-pulso * 2.5)
         rig.set_rotation("shoulder2", x=pulso * 2.0, y=0.0, z=pulso * 2.5)
         rig.set_rotation("hand", x=-onda * 9.0, y=meia_onda * 4.0, z=onda * 6.0)
-        rig.set_rotation("hand2", x=onda * 3.5, y=meia_onda * 3.0, z=-onda * 4.0)
+        rig.set_rotation("hand2", x=12.0 + onda * 5.0, y=meia_onda * 2.0, z=-onda * 4.0)
         rig.set_rotation("fingers", z=4.0 + pulso * 4.0)
         rig.set_rotation("fingers2", z=-4.0)
 
@@ -220,7 +213,7 @@ class DanceMotion:
         hx_m, hy_m, hz_m = pose.get("hand", (0.0, 0.0, 0.0))
         rig.set_rotation(
             "hand",
-            x=hx_m + onda * 20.0,
+            x=hx_m + onda * 9.0,
             y=hy_m + meia_onda * 4.5,
             z=hz_m - pulso * 7.0,
         )
@@ -298,6 +291,142 @@ class DanceMotion:
         rig.set_rotation("hand", x=-onda * (9.0 + 9.0 * toprock), y=0.0, z=meia_onda * 10.0)
         rig.set_rotation("hand2", x=onda * (9.0 + 9.0 * toprock), y=0.0, z=-meia_onda * 10.0)
 
+    @staticmethod
+    def _groove_street_groove(rig, pose, pulso, onda, meia_onda):
+        # BRC Street groove: braços soltos com follow-through, ombros com sway,
+        # punhos com micro-ruído orgânico. Estilo toprock fluido.
+        rx, ry, rz = pose.get("right-arm", (0.0, 0.0, 0.0))
+        lx, ly, lz = pose.get("left-arm", (0.0, 0.0, 0.0))
+        arx, ary, arz = pose.get("ant-arm", (0.0, 0.0, 0.0))
+        alx, aly, alz = pose.get("ant-arm2", (0.0, 0.0, 0.0))
+
+        rig.set_rotation(
+            "right-arm",
+            x=rx + onda * 3.5,
+            y=ry + meia_onda * 8.0,
+            z=rz - pulso * 4.0,
+        )
+        rig.set_rotation(
+            "left-arm",
+            x=lx - onda * 3.5,
+            y=ly + meia_onda * 8.0,
+            z=lz + pulso * 4.0,
+        )
+        rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + pulso * 8.0)
+        rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - pulso * 8.0)
+        rig.set_rotation(
+            "shoulder",
+            x=onda * 2.0,
+            y=0.0,
+            z=-pulso * 2.5 + meia_onda * 1.5,
+        )
+        rig.set_rotation(
+            "shoulder2",
+            x=-onda * 2.0,
+            y=0.0,
+            z=pulso * 2.5 + meia_onda * 1.5,
+        )
+        rig.set_rotation(
+            "hand", x=-onda * 12.0, y=meia_onda * 5.0, z=pulso * 6.0
+        )
+        rig.set_rotation(
+            "hand2", x=onda * 12.0, y=meia_onda * 5.0, z=-pulso * 6.0
+        )
+        rig.set_rotation("fingers", z=2.0 + onda * 3.0)
+        rig.set_rotation("fingers2", z=-2.0 - onda * 3.0)
+
+    @staticmethod
+    def _groove_graffiti(rig, pose, pulso, onda, meia_onda):
+        # BRC Graffiti dance: braços descrevem arcos largos, punhos com torque
+        # de spray, ombros com atitude. Porta vibra no ritmo.
+        rx, ry, rz = pose.get("right-arm", (0.0, 0.0, 0.0))
+        lx, ly, lz = pose.get("left-arm", (0.0, 0.0, 0.0))
+        arx, ary, arz = pose.get("ant-arm", (0.0, 0.0, 0.0))
+        alx, aly, alz = pose.get("ant-arm2", (0.0, 0.0, 0.0))
+
+        rig.set_rotation(
+            "right-arm",
+            x=rx + onda * 5.0,
+            y=ry + meia_onda * 10.0,
+            z=rz - pulso * 6.0,
+        )
+        rig.set_rotation(
+            "left-arm",
+            x=lx - onda * 5.0,
+            y=ly + meia_onda * 10.0,
+            z=lz + pulso * 6.0,
+        )
+        rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + pulso * 10.0)
+        rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - pulso * 10.0)
+        rig.set_rotation(
+            "shoulder",
+            x=onda * 3.0,
+            y=0.0,
+            z=-pulso * 3.5 + meia_onda * 2.0,
+        )
+        rig.set_rotation(
+            "shoulder2",
+            x=-onda * 3.0,
+            y=0.0,
+            z=pulso * 3.5 + meia_onda * 2.0,
+        )
+        rig.set_rotation(
+            "hand", x=-onda * 18.0, y=meia_onda * 7.0, z=pulso * 12.0
+        )
+        rig.set_rotation(
+            "hand2", x=onda * 18.0, y=meia_onda * 7.0, z=-pulso * 12.0
+        )
+        rig.set_rotation("fingers", z=4.0 + pulso * 5.0)
+        rig.set_rotation("fingers2", z=-4.0 - pulso * 5.0)
+
+    @staticmethod
+    def _groove_cyber_bounce(rig, pose, pulso, onda, meia_onda):
+        # BRC Cyber bounce: braços angulares com squash & stretch,
+        # antenas vibram com o bounce, ombros com impacto acentuado.
+        rx, ry, rz = pose.get("right-arm", (0.0, 0.0, 0.0))
+        lx, ly, lz = pose.get("left-arm", (0.0, 0.0, 0.0))
+        arx, ary, arz = pose.get("ant-arm", (0.0, 0.0, 0.0))
+        alx, aly, alz = pose.get("ant-arm2", (0.0, 0.0, 0.0))
+
+        # Bounce: pulso vai de 0 a 1, criando squash/stretch rítmico
+        bounce = pulso ** 2  # Acentua o impacto no fundo
+
+        rig.set_rotation(
+            "right-arm",
+            x=rx + onda * 4.0,
+            y=ry + meia_onda * 6.0,
+            z=rz - bounce * 10.0,
+        )
+        rig.set_rotation(
+            "left-arm",
+            x=lx - onda * 4.0,
+            y=ly + meia_onda * 6.0,
+            z=lz + bounce * 10.0,
+        )
+        # Antenas vibram com o bounce — amplitude alta
+        rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + bounce * 20.0)
+        rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - bounce * 20.0)
+        rig.set_rotation(
+            "shoulder",
+            x=bounce * 5.0,
+            y=0.0,
+            z=-pulso * 4.0,
+        )
+        rig.set_rotation(
+            "shoulder2",
+            x=bounce * 5.0,
+            y=0.0,
+            z=pulso * 4.0,
+        )
+        rig.set_rotation(
+            "hand", x=-onda * 15.0, y=0.0, z=bounce * 10.0
+        )
+        rig.set_rotation(
+            "hand2", x=onda * 15.0, y=0.0, z=-bounce * 10.0
+        )
+        rig.set_rotation("fingers", z=3.0 + bounce * 6.0)
+        rig.set_rotation("fingers2", z=-3.0 - bounce * 6.0)
+
     def _groove_bracos(self, rig, pose, pulso, onda, meia_onda):
         if self.style == "head_bob":
             self._groove_head_bob(rig, pose, pulso, onda, meia_onda)
@@ -305,16 +434,17 @@ class DanceMotion:
             self._groove_rock(rig, pose, pulso, onda, meia_onda)
         elif self.style == "hip_hop":
             self._groove_hip_hop(rig, pose, pulso, onda, meia_onda)
+        elif self.style == "street_groove":
+            self._groove_street_groove(rig, pose, pulso, onda, meia_onda)
+        elif self.style == "graffiti_dance":
+            self._groove_graffiti(rig, pose, pulso, onda, meia_onda)
+        elif self.style == "cyber_bounce":
+            self._groove_cyber_bounce(rig, pose, pulso, onda, meia_onda)
         else:
             self._groove_breakdance(rig, pose, pulso, onda, meia_onda)
 
     def _montar_alvo(self, rig):
-        """Autora a pose crua da dança no rig e devolve o snapshot alvo.
-
-        Compartilhado por apply (que grava no rig) e contribuicao (que apenas
-        lê o resultado suavizado por molas), garantindo o mesmo resultado.
-        Cabeça e tronco escalam com a energia; os braços vão aos alvos de mão.
-        """
+        """Monta a pose do passo e o movimento secundário da batida."""
         passos = frase_do_estilo(self.style)
         indice, u = self._posicao_na_frase(passos)
         ganho = tune.GANHO_PASSO_BASE + self.energy * tune.GANHO_PASSO_ENERGIA
@@ -332,27 +462,24 @@ class DanceMotion:
         rig.set_rotation("door", y=0)
         return rig.pose()
 
-    def _suavizar(self, rig):
-        """Avança as molas por junta sobre o alvo cru e grava em self.pose."""
-        target = self._montar_alvo(rig)
-        # Molas por junta: o corpo "pesa" no acento e recupera suavemente,
-        # em vez de um blend exponencial uniforme para todas as juntas.
-        if not self.pose:
-            self._molas.definir(target)
-        self.pose = self._molas.atualizar(max(0.0, self.dt), target)
-        return self.pose
-
     def apply(self, rig):
         """Aplica a pose de dança atual no rig."""
-        rig.current = dict(self._suavizar(rig))
+        rig.current = self.contribuicao(rig)
 
     def contribuicao(self, rig):
-        """Pose de dança suavizada por molas, sem mutar o rig do controlador.
-
-        Usa o rig recebido apenas como scratch para montar o alvo (o chamador
-        deve passar um rig em reset); devolve o mesmo dict que apply gravaria.
-        """
-        return dict(self._suavizar(rig))
+        """Amostra a coreografia e interpola a entrada de um novo estilo."""
+        alvo = self._montar_alvo(rig)
+        if self._pose_anterior and self.style_beats < 1.0:
+            peso = suavizar_quintico(self.style_beats)
+            for grupo, rotacao in alvo.items():
+                origem = self._pose_anterior.get(grupo, rotacao)
+                alvo[grupo] = Rotation3(
+                    origem.x + (rotacao.x - origem.x) * peso,
+                    origem.y + (rotacao.y - origem.y) * peso,
+                    origem.z + (rotacao.z - origem.z) * peso,
+                )
+        self.pose = alvo
+        return dict(alvo)
 
     @property
     def lean_amount(self):

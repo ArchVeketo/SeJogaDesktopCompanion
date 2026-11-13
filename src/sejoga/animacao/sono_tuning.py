@@ -42,9 +42,9 @@ SONO_DEDOS_CURL = 6.0
 #: Quanto a respiração mexe nos dedos (graus).
 SONO_DEDOS_RESPIRACAO = 0.5
 
-#: Duração mínima (s) do crossfade na entrada do sono. O mínimo de 1,2 s evita
+#: Duração mínima (s) do crossfade na entrada do sono. Uma transição lenta evita
 #: que o corpo "caia" de uma vez ao adormecer.
-SONO_TRANSICAO_S = 1.2
+SONO_TRANSICAO_S = 2.6
 
 # --------------------------------------------------------------------------- #
 # Modos de Sono: "em_pe", "sentado", "deitado"

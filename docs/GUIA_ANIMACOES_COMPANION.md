@@ -554,3 +554,37 @@ Blockbench 5.x
 ---
 
 *Fim do guia de animações. Para o roadmap vigente, consulte [STATUS_E_PROXIMOS_PASSOS.md](STATUS_E_PROXIMOS_PASSOS.md).*
+
+## FK, IK e os 12 princípios no companion
+
+> **Diretriz canônica completa:** Consulte [docs/DIRETRIZ_12_PRINCIPIOS_ANIMACAO.md](DIRETRIZ_12_PRINCIPIOS_ANIMACAO.md) para a matriz integral onde **todos os 12 princípios são aplicados simultaneamente a cada ação do mascote** (idle, locomoção, física, interações, sono e dança), eliminando a fragmentação por categorias isoladas.
+
+Os princípios orientam todas as ações e suas transições de forma integrada e simultânea. Na passada, FK define a trajetória horizontal do tornozelo. IK resolve a altura do apoio e a flexão a partir desse alvo. Nos braços, IK coloca o punho e FK conduz a palma, os dedos e o atraso de cada elo. [Referência dos 12 princípios da Disney](https://a.dolimg.com/media/en-US/disneyeducationalproductions/noma/pdf/DE1775_NOMA_TG.pdf)
+
+| Princípio | Aplicação no runtime |
+|---|---|
+| Compressão e extensão | As caixas cedem no pouso e expandem lateralmente para preservar o volume. Joelho e canela sobrepõem as bordas da malha na dobra. |
+| Antecipação | O tronco prepara a descida antes de sentar. O espirro musical vira para abrir espaço à ejeção. |
+| Encenação | As caixas passam atrás da silhueta e saem em sequência. A janela cobre o desktop para a pose caber durante a ação. |
+| Ação direta e pose a pose | O cochilo passa por poses de preparação, descida e repouso. A física e as molas avançam os movimentos secundários a cada quadro. |
+| Continuidade e sobreposição | Cotovelo, pulso, dedos e cabeça chegam em instantes diferentes. A caixa ainda se acomoda depois de pousar. |
+| Aceleração e desaceleração | A interpolação quíntica desacelera ao entrar e sair das poses. |
+| Arcos | O pé descreve um arco em FK e o IK regula a altura. O salto e as caixas usam trajetórias curvas. |
+| Ação secundária | Mãos relaxam, dedos articulam e o fio do fone acompanha a ação principal. |
+| Timing | Os apoios alternam na passada. A batida conduz o head bob e o cochilo usa um tempo mais longo. |
+| Exagero | A ejeção amplia os tentáculos e o impacto exagera a compressão da caixa. |
+| Desenho sólido | Pivôs, volumes, sombras e contato preservam a leitura das formas no espaço. |
+| Apelo | As personalidades modulam o idle. O gesto, a silhueta e o movimento secundário preservam o jeito do Mario. |
+
+### Revisão por ação
+
+| Ação | O que conferir em movimento |
+|---|---|
+| Idle e hover | Peso nos pés, olhar antes do tronco, braços e dedos em tempos diferentes e retorno legível ao repouso. |
+| Caminhar, correr, virar e parar | Preparação antes da saída, transferência de peso, arco do pé livre, apoio estável por IK, freada e assentamento. |
+| Arrastar, cair e aterrissar | Membro preso mantém contato, corpo e acessórios atrasam, impacto comprime e recupera o volume. |
+| Cutucar, acariciar, acenar e espirrar | Antecipação, silhueta clara no acento, trajetórias de punho e reação secundária de cabeça, dedos e tentáculos. |
+| Sentar, dormir e acordar | Descida sustentada, contato com o chão, pausa, respiração e recuperação em etapas. A pose deitada aguarda referência. |
+| Dançar, usar objetos e sair | Poses-chave reconhecíveis, timing ligado à intenção, arcos, contato com a cena, entrada, interrupção e saída. |
+
+Conferir cada ação em início, acento, sustentação e recuperação, de frente e de perfil quando houver contato. Exagero e apelo dependem da leitura de cada ação. A pose e a transição precisam de revisão visual além do teste numérico.

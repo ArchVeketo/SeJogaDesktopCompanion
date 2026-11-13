@@ -144,7 +144,7 @@ def escolher_tamanho(
         return atual
 
     # Encolher: bloqueado durante o arraste e sob cooldown simétrico.
-    if dragging or estado.cooldown > 0.0:
+    if dragging or estado.cooldown > 0.0 or necessario + 2 * MARGEM_ANTICORTE > alvo:
         return atual
 
     estado.cooldown = COOLDOWN

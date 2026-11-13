@@ -55,6 +55,7 @@ def _par(
 
 def _clipe_passada(
     braco_y: float,
+    braco_recuo: float,
     braco_z: float,
     cotovelo: float,
     giro: float,
@@ -74,9 +75,15 @@ def _clipe_passada(
     return ClipeAnim(
         1.0,
         {
-            # Braço à frente sobe (z negativo ergue); ao voltar, desce.
-            "right-arm": _par((0.0, braco_y, -braco_z), (0.0, -braco_y, braco_z)),
-            "left-arm": _par((0.0, braco_y, -braco_z), (0.0, -braco_y, braco_z)),
+            # Braço à frente sobe (z negativo ergue); recuo equilibra o balanço frente/trás.
+            "right-arm": _par(
+                (0.0, braco_y - braco_recuo, -braco_z),
+                (0.0, -braco_y - braco_recuo, braco_z),
+            ),
+            "left-arm": _par(
+                (0.0, braco_y + braco_recuo, -braco_z),
+                (0.0, -braco_y + braco_recuo, braco_z),
+            ),
             # Cotovelo flexiona mais com o braço à frente; nunca hiperestende.
             "ant-arm": _par((0.0, 0.0, cotovelo), (0.0, 0.0, 0.0)),
             "ant-arm2": _par((0.0, 0.0, 0.0), (0.0, 0.0, -cotovelo)),
@@ -104,6 +111,7 @@ def _clipe_passada(
 CLIPES = {
     "walk": _clipe_passada(
         loc.BRACO_AZIMUTE_CAMINHADA,
+        loc.BRACO_RECUO_CAMINHADA,
         loc.BRACO_ELEVACAO_CAMINHADA,
         loc.COTOVELO_CAMINHADA,
         loc.TRONCO_GIRO_CAMINHADA,
@@ -113,6 +121,7 @@ CLIPES = {
     ),
     "run": _clipe_passada(
         loc.BRACO_AZIMUTE_CORRIDA,
+        loc.BRACO_RECUO_CORRIDA,
         loc.BRACO_ELEVACAO_CORRIDA,
         loc.COTOVELO_CORRIDA,
         loc.TRONCO_GIRO_CORRIDA,
@@ -123,44 +132,15 @@ CLIPES = {
 }
 
 
-MODIFICADORES_PASSADA_PERSONALIDADE: dict[str, dict[str, float]] = {
-    "fighter": {"braco": 0.6, "cotovelo": 2.0, "inclinacao": 3.0, "quique": 1.4},
-    "street": {"braco": 1.3, "giro": 1.5, "quique": 1.3},
-    "playful": {"braco": 1.2, "quique": 1.8, "contragiro": 1.6},
-    "shy": {"braco": 0.6, "cotovelo": 0.5, "giro": 0.6, "quique": 0.7},
-    "stylish": {"braco": 0.9, "giro": 1.4, "inclinacao": -1.0},
-    "curious": {"contragiro": 1.8, "quique": 1.2},
-    "confident": {"braco": 1.15, "inclinacao": -1.5, "giro": 1.2},
-    "rhythm": {"quique": 1.6, "giro": 1.3},
-    "calm": {},
-}
-
-
-def amostrar_clipe(
-    nome: str, t: float, personalidade: str = "calm"
-) -> dict[str, tuple[float, float, float]]:
+def amostrar_clipe(nome: str, t: float) -> dict[str, tuple[float, float, float]]:
     """Amostra o delta do clipe cíclico no tempo normalizado ``t`` (ciclos)."""
     clipe = CLIPES[nome]
     local = t % clipe.duracao
-    mods = MODIFICADORES_PASSADA_PERSONALIDADE.get(personalidade, {})
     pose: dict[str, tuple[float, float, float]] = {}
 
     for chave, keys in clipe.tracks.items():
         grupo = chave.split(_SEPARADOR_ROTULO)[0]
         x, y, z = amostrar_pista(keys, local)
-        if grupo in ("right-arm", "left-arm"):
-            fator_braco = mods.get("braco", 1.0)
-            y *= fator_braco
-            z *= fator_braco
-        elif grupo in ("ant-arm", "ant-arm2"):
-            z *= mods.get("cotovelo", 1.0)
-        elif grupo in ("body", "cintura", "abdomen", "peitoral"):
-            y *= mods.get("giro", 1.0)
-            x += mods.get("inclinacao", 0.0) * 0.3
-        elif grupo == "head":
-            y *= mods.get("contragiro", 1.0)
-            x *= mods.get("quique", 1.0)
-
         ax, ay, az = pose.get(grupo, (0.0, 0.0, 0.0))
         pose[grupo] = (ax + x, ay + y, az + z)
 

@@ -52,9 +52,11 @@ captures/
 scratch/
 temp_pytest_run/
 
-# Artefatos de agente / workflows (não versionar)
+# Artefatos de agente / workflows / IDEs (não versionar)
 .worktrees/
 .agents/tasks/
+.idea/
+.junie/
 
 # Venv de build local (gerar bundle/instalador)
 .venv-build/

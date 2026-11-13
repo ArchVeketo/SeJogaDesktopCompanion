@@ -38,7 +38,7 @@ TETO_JERK = {
     "wave": 6.0e4,
     "poke": 2.5e6,
     "stretch": aa.LIMIAR_JERK_TRANCO,
-    "wake": 1.2e4,
+    "wake": 6.0e4,
 }
 GESTOS = {
     "wave": (tuning_gestos.ACENO_DURACAO_S, "flourish"),

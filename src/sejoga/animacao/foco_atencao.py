@@ -99,7 +99,7 @@ class GatilhoAtencao:
 
     fonte: str
     ponto: tuple[float, float]
-    prioridade: int
+    prioridade: float
     forca: float = 1.0
 
 
@@ -131,7 +131,11 @@ class GateAtencao:
     _ambiente_restante: float = 0.0
     _ambiente_ponto: tuple[float, float] | None = None
     _direcao_anterior: float | None = None
+    _surpresa_cooldown: float = 0.0
     _inicializado: bool = False
+    _cursor_ultimo_ponto: tuple[float, float] | None = None
+    _cursor_tempo_parado: float = 0.0
+    _cursor_novidade: float = 1.0
 
     def _sortear_intervalo_ambiente(self) -> float:
         return self.rng.uniform(AMBIENTE_INTERVALO_MIN, AMBIENTE_INTERVALO_MAX)
@@ -146,6 +150,15 @@ class GateAtencao:
             origem_janela[0] + self.rng.uniform(-margem_x, margem_x),
             origem_janela[1] + self.rng.uniform(-margem_y, margem_y),
         )
+
+    def _consumir_surpresa(self, direcao: float, vencedor: GatilhoAtencao) -> bool:
+        """Registra direcao anterior (exceto beat/ambiente) e aplica cooldown de susto."""
+        surpresa = self._detectar_surpresa(direcao, vencedor.forca, vencedor.fonte)
+        if vencedor.fonte not in ("beat", "ambiente"):
+            self._direcao_anterior = direcao
+        if surpresa:
+            self._surpresa_cooldown = 6.0
+        return surpresa
 
     def atualizar(
         self,
@@ -173,12 +186,36 @@ class GateAtencao:
         if not habilitado:
             # Feature desligada: zera tudo e não produz movimento nem susto.
             self._direcao_anterior = None
+            self._surpresa_cooldown = 0.0
             self._ambiente_restante = 0.0
             return AlvoAtencao()
 
+        self._surpresa_cooldown = max(0.0, self._surpresa_cooldown - max(0.0, dt))
         self._avancar_ambiente(dt, origem_janela, largura, altura, ambiente_habilitado)
 
-        candidatos = list(gatilhos)
+        cursor_gatilho = next((g for g in gatilhos if g.fonte == "cursor"), None)
+        self._atualizar_novidade_cursor(dt, cursor_gatilho)
+
+        candidatos = []
+        for g in gatilhos:
+            if g.fonte == "cursor" and self._cursor_novidade < 0.999:
+                # Decaimento de novidade (estilo ObjectLooker / Rain World):
+                # cursor imóvel por > 2s perde destaque para que olhares ambientais respirem.
+                novidade = self._cursor_novidade
+                peso_prioridade = (
+                    (PRIORIDADE_AMBIENTE * 0.9) * (1.0 - novidade)
+                    + g.prioridade * novidade
+                )
+                candidatos.append(
+                    GatilhoAtencao(
+                        g.fonte,
+                        g.ponto,
+                        peso_prioridade,
+                        g.forca * (0.35 + 0.65 * novidade),
+                    )
+                )
+            else:
+                candidatos.append(g)
         if (
             ambiente_habilitado
             and self._ambiente_restante > 0
@@ -197,8 +234,9 @@ class GateAtencao:
             vencedor.ponto, origem_janela, largura, altura
         )
 
-        surpresa = self._detectar_surpresa(direcao, vencedor.forca)
-        self._direcao_anterior = direcao
+        # Batidas musicais e olhares espontâneos não geram susto nem apagam a
+        # referência direcional anterior (evita falso susto ao voltar para o cursor).
+        surpresa = self._consumir_surpresa(direcao, vencedor)
 
         return AlvoAtencao(
             direcao=direcao,
@@ -207,6 +245,34 @@ class GateAtencao:
             forca=vencedor.forca,
             surpresa=surpresa,
         )
+
+    def _atualizar_novidade_cursor(
+        self, dt: float, cursor: GatilhoAtencao | None
+    ) -> None:
+        """Regula novidade do cursor: movimento reacende atenção; repouso longo decai."""
+        if cursor is None:
+            self._cursor_ultimo_ponto = None
+            self._cursor_tempo_parado = 0.0
+            self._cursor_novidade = min(1.0, self._cursor_novidade + dt * 0.5)
+            return
+        ponto = cursor.ponto
+        if self._cursor_ultimo_ponto is None:
+            self._cursor_ultimo_ponto = ponto
+            self._cursor_tempo_parado = 0.0
+            self._cursor_novidade = 1.0
+            return
+        dx = ponto[0] - self._cursor_ultimo_ponto[0]
+        dy = ponto[1] - self._cursor_ultimo_ponto[1]
+        dist = (dx * dx + dy * dy) ** 0.5
+        self._cursor_ultimo_ponto = ponto
+        if dist >= 6.0:
+            self._cursor_tempo_parado = 0.0
+            self._cursor_novidade = min(1.0, self._cursor_novidade + max(0.35, dist / 45.0))
+        else:
+            self._cursor_tempo_parado += max(0.0, dt)
+            if self._cursor_tempo_parado > 2.0:
+                excesso = self._cursor_tempo_parado - 2.0
+                self._cursor_novidade = max(0.15, min(1.0, 2.718281828 ** (-excesso * 0.45)))
 
     def _avancar_ambiente(
         self,
@@ -232,8 +298,12 @@ class GateAtencao:
             )
             self._ambiente_em = self._sortear_intervalo_ambiente()
 
-    def _detectar_surpresa(self, direcao: float, forca: float) -> bool:
-        """Susto quando o olhar salta muito para um gatilho forte."""
+    def _detectar_surpresa(
+        self, direcao: float, forca: float, fonte: str | None = None
+    ) -> bool:
+        """Susto quando o olhar salta muito para um gatilho forte (fora beat/ambiente)."""
+        if fonte in ("beat", "ambiente") or self._surpresa_cooldown > 0.0:
+            return False
         if forca < SURPRESA_FORCA_MINIMA:
             return False
         if self._direcao_anterior is None:

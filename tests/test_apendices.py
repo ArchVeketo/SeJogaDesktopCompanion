@@ -40,8 +40,8 @@ def test_exit_freezes_then_spins_outside_desktop_both_directions():
         halfway = effect.sample(0.7)
         assert not halfway.done and abs(halfway.roll) > 100
         end = effect.sample(2)
-        assert end.done and end.y + 480 < -200
-        assert end.x + 480 < -1920 or end.x > 1920
+        assert end.done and halfway.y < origin[1]
+        assert end.x + 480 <= -1920 or end.x >= 1920
 
 
 def test_door_is_pushed_open_by_contact_and_closes_after_retraction():

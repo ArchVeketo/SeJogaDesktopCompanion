@@ -79,7 +79,6 @@ def test_resolvedor_tira_o_braco_do_tronco_e_relaxa_depois(modelo):
 def test_pose_resolver_aplica_o_anti_atravessamento_com_model(modelo):
     resolver = PoseResolver()
     invasora = dict(_pose_simetrica(modelo, "idle"), **POSE_INVASORA)
-    resolver.definir_pose(invasora)
 
     for _ in range(QUADROS_CORRECAO):
         pose = resolver.resolver(1 / 60, invasora, model=modelo)

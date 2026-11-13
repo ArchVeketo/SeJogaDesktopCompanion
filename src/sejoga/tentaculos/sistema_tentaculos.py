@@ -10,9 +10,8 @@ import math
 import random
 from dataclasses import dataclass, field
 from enum import StrEnum
-from itertools import pairwise
 
-from panda3d.core import GeomVertexRewriter, NodePath, Quat, Vec3
+from panda3d.core import GeomVertexRewriter, Mat3, NodePath, Quat, Vec3
 
 from sejoga.nucleo.esqueleto import IdlePersonality, Rig
 from sejoga.tentaculos import coreografia_porta as coreo
@@ -32,6 +31,11 @@ EPSILON_BASE_FRENTE = 1e-6
 # ============================================================
 # Configuração visual / física
 # ============================================================
+
+TOTAL_ENXURRADA = 10
+# Mesmo corpo para as três curvas: a base sustenta o peso e a ponta afina.
+PERFIL_TENTACULO = (0.062, 0.076, 0.074, 0.065, 0.052, 0.038, 0.023, 0.001)
+CURVATURAS = (0.28, -0.39, 0.48)
 
 DEFAULT_SEGMENTS = 24  # segmentos por tentáculo
 SEGMENT_LENGTH = 8.0  # px por segmento
@@ -62,19 +66,30 @@ for _style, _base in (
     (IdlePersonality.FIGHTER, IdlePersonality.CONFIDENT),
     (IdlePersonality.RHYTHM, IdlePersonality.CALM),
     (IdlePersonality.STYLISH, IdlePersonality.CURIOUS),
+    (IdlePersonality.BRC_STANCE, IdlePersonality.CONFIDENT),
+    (IdlePersonality.VIBING, IdlePersonality.CALM),
 ):
     SPRING_PARAMS[_style] = dict(SPRING_PARAMS[_base])
 
 # Parâmetros por estado comportamental
 STATE_PARAMS = {
     "dormant": dict(max_len=0.0, reach_speed=0.0, curl=0.0, jitter=0.0),
-    "curious": dict(max_len=0.40, reach_speed=400.0, curl=0.1, jitter=0.05),
-    "reaching": dict(max_len=1.0, reach_speed=900.0, curl=0.2, jitter=0.1),
-    "grabbing": dict(max_len=1.0, reach_speed=600.0, curl=0.85, jitter=0.05),
-    "spitting": dict(max_len=1.15, reach_speed=-800.0, curl=0.0, jitter=0.15),
-    "frenzy": dict(max_len=1.2, reach_speed=2200.0, curl=0.4, jitter=0.35),
+    "curious": dict(max_len=1.05, reach_speed=400.0, curl=0.14, jitter=0.05),
+    "reaching": dict(max_len=1.05, reach_speed=900.0, curl=0.2, jitter=0.1),
+    "grabbing": dict(max_len=1.05, reach_speed=600.0, curl=0.85, jitter=0.05),
+    "spitting": dict(max_len=1.2, reach_speed=-800.0, curl=0.0, jitter=0.15),
+    "frenzy": dict(max_len=1.25, reach_speed=2200.0, curl=0.4, jitter=0.35),
     "retracting": dict(max_len=0.0, reach_speed=-600.0, curl=0.0, jitter=0.0),
 }
+
+# Morfologias autorais: alterna base larga, chicotes segmentados de espirro,
+# clavas sensoriais e cristas dorsais para eliminar tubos repetitivos e esticados.
+TENTACLE_MORPHOLOGIES = (
+    "musculoso",
+    "chicote_longo",
+    "clava_lula",
+    "espinhoso_abissal",
+)
 
 
 # ============================================================
@@ -142,12 +157,16 @@ class Tentacle:
     retract_reveal: float = 0.0
     frames: list = field(default_factory=list)
     axis_nodes: list = field(default_factory=list)
-    reference_front: Vec3 = field(default_factory=lambda: Vec3(0, 1, 0))
+    reference_front: Vec3 = field(default_factory=lambda: Vec3(0, -1, 0))
     contacts: TentacleContacts | None = None
 
+    perfil: int = 0
+    morfologia: str = "musculoso"
+    enxurrada: bool = False
     length_scale: float = 1.0
     girth_scale: float = 1.0
     speaker_throw: bool = False
+    local_target: Vec3 | None = None
 
     # Ondulação: tuning do temperamento atual, relógio próprio (sem salto ao
     # recolher) e parâmetros do estado anterior, usados enquanto recolhe.
@@ -245,6 +264,8 @@ class TentaclePool:
             impulse_chance=sp["impulse_chance"],
             impulse_strength=sp["impulse_strength"],
             seed=seed,
+            perfil=index % len(CURVATURAS),
+            morfologia=TENTACLE_MORPHOLOGIES[(index + (index // 4)) % len(TENTACLE_MORPHOLOGIES)],
             unit_scale=self.unit_scale,
         )
 
@@ -259,6 +280,11 @@ class TentaclePool:
             t.duracao_revelacao_s = None
             t.duracao_recolher_s = None
             t.mola_forcada = None
+            t.enxurrada = False
+            t.local_target = None
+            t.length_scale = t.girth_scale = 1.0
+            for segment in t.segments:
+                segment.length = SEGMENT_LENGTH * self.unit_scale
         return selected
 
     def release(self, tentacle: Tentacle) -> None:
@@ -299,7 +325,7 @@ class TentaclePool:
 class TentacleDirector:
     """Comportamento de alto nível: decide o que os tentáculos fazem."""
 
-    def __init__(  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
+    def __init__(  # noqa: PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
         self,
         pool: TentaclePool,
         rig: Rig,
@@ -338,6 +364,7 @@ class TentacleDirector:
         self._alvo_atuador: Vec3 | None = None
         self._angulo_coreografado: float | None = None
         self._pedido_porta_externo = 0.0
+        self._fechar_apos_ejecao = False
         self._borda_porta_local: Vec3 | None = None
         self.speaker_throw_remaining = 0.0
         self.speaker_throw_limbs: list[Tentacle] = []
@@ -368,38 +395,47 @@ class TentacleDirector:
         self.swallow_time = duration
         self._spawn_swallow()
 
-    def trigger_curious(self) -> None:
+    def trigger_curious(self, count: int | None = None) -> None:
         """Força um momento curious (espiada)."""
         self._spawn_curious(
-            count=self.rng.choices((1, 2, 3, 4, 6), weights=(16, 44, 25, 12, 3), k=1)[
-                0
-            ],
+            count=count if count is not None else self.rng.choices(
+                (1, 2, 3, 4, 6, TOTAL_ENXURRADA), weights=(16, 41, 24, 12, 3, 4), k=1
+            )[0],
             coreografar=True,
         )
 
     def trigger_speaker_throw(self):
         """Dispara os tentáculos que arremessam a caixa de som."""
-        self.speaker_throw_remaining = 1.5
-        self.speaker_throw_limbs = self._spawn_curious(3)
-        for index, limb in enumerate(self.speaker_throw_limbs):
+        for limb in self.speaker_throw_limbs:
+            limb.speaker_throw = False
+            limb.duracao_recolher_s = 0.5
+            self.pool.release(limb)
+        self.speaker_throw_remaining = 1.04
+        self.speaker_throw_limbs = self._spawn_curious(1)
+        for limb in self.speaker_throw_limbs:
             limb.speaker_throw = True
-            limb.state_time = -0.08 * index
             limb.params["max_len"] = 1.1
+            limb.length_scale = 3.4
+            limb.girth_scale = 1.65
             for segment in limb.segments:
-                segment.length *= 1.2  # intencional: loop de 1 statement compacto
+                segment.length = SEGMENT_LENGTH * limb.unit_scale * limb.length_scale
+
+    def cobrir_roupa(self):
+        """Estende duas curvas pela frente do tronco enquanto a roupa muda."""
+        limbs = self._spawn_curious(2)
+        for index, limb in enumerate(limbs):
+            limb.target = Vec3((-1 if index == 0 else 1) * 0.35, -0.44, 0.24)
+            limb.state_time = 0
+            limb.duracao_revelacao_s = 0.65
+            limb.girth_scale = 3.4
+            for segment in limb.segments:
+                segment.length = SEGMENT_LENGTH * limb.unit_scale * 2.8
+        return limbs
 
     def trigger_sneeze(self):
         """Dispara os tentáculos do espirro."""
         self.burst = True
-        self._spawn_curious(6)
-        for limb in self.pool.tentacles:
-            if limb.state == TentacleState.CURIOUS:
-                limb.state_time = 0
-                limb.target = limb.anchor + (limb.target - limb.anchor) * 2.0
-                for segment in limb.segments:
-                    segment.length *= 2.0
-                limb.spring = 260
-                limb.damper = 27
+        self._spawn_curious(TOTAL_ENXURRADA)
         self._door_requested = coreo.SAIDA_ESPIRRO.angulo_empurrao_graus
 
     def update(self, dt: float, personality: IdlePersonality) -> None:  # noqa: C901, PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
@@ -410,13 +446,21 @@ class TentacleDirector:
             if self.speaker_throw_remaining == 0:
                 for limb in self.speaker_throw_limbs:
                     limb.speaker_throw = False
+                    limb.duracao_recolher_s = 0.5
                     self.pool.release(limb)
                 self.speaker_throw_limbs = []
 
         # Atualiza pool
         self.pool.update_personality(personality)
         if self._outro_dono_da_porta():
+            self._fechar_apos_ejecao |= self.burst or getattr(
+                self, "music_ejection", False
+            )
             self._cancelar_coreografia()
+        elif self._fechar_apos_ejecao:
+            self._fechar_apos_ejecao = False
+            if self._door_current >= coreo.LIMIAR_SAIDA_PORTA_GRAUS:
+                self.coreografia.assumir_aberta()
 
         # Frenzy
         if self.frenzy_mode:
@@ -436,14 +480,20 @@ class TentacleDirector:
                 self._retract_all()
 
         # Atualiza cada tentáculo ativo
+        any_active = False
         for tentacle in self.pool.tentacles:
             if tentacle.state != TentacleState.DORMANT:
+                any_active = True
                 self._update_tentacle(tentacle, dt)
+        if not any_active and self.burst and not self.frenzy_mode and not self.swallowing:
+            self.burst = False
         self._separate_tentacles()
 
-        # Door sync
+        # Door sync: atualiza o ângulo da porta antes de apontar o atuador para
+        # que ``door_node`` reflita a abertura atual (em vez de ficar em 0° do rig).
         self._avancar_coreografia(dt)
         self._update_door(dt)
+        self._apontar_atuador()
 
     # ------------------------------------------------------------------
     # Internals
@@ -480,13 +530,19 @@ class TentacleDirector:
             self._retract_all()
             return
         for tentaculo in self.pool.tentacles:
-            if tentaculo.state is TentacleState.CURIOUS and tentaculo is not self._atuador:
+            if (
+                tentaculo.state is TentacleState.CURIOUS
+                and tentaculo is not self._atuador
+                and not tentaculo.speaker_throw
+            ):
                 self.pool.release(tentaculo)
 
     def _retract_all(self) -> None:
+        self._fechar_apos_ejecao = False
         self._cancelar_coreografia()
         for t in self.pool.tentacles:
             if t.state != TentacleState.DORMANT:
+                t.duracao_recolher_s = 0.28
                 self.pool.release(t)
         self._door_requested = 0.0
 
@@ -501,21 +557,28 @@ class TentacleDirector:
         tentacle.state_time += dt
 
         if tentacle.state == TentacleState.RETRACTING:
-            duracao_recolher = 1.5
+            duracao_recolher = 1.1
             if self.burst:
                 duracao_recolher = 0.45
             elif tentacle.duracao_recolher_s is not None:
                 duracao_recolher = tentacle.duracao_recolher_s
             progress = min(1.0, max(0.0, tentacle.state_time / duracao_recolher))
             eased = progress**3 * (10 - 15 * progress + 6 * progress * progress)
-            tentacle.reveal = tentacle.retract_reveal * (1 - eased)
+            tentacle.reveal = tentacle.retract_reveal * max(0.0, 1 - eased)
             if progress >= 1.0:
                 tentacle.state = TentacleState.DORMANT
                 tentacle.params = dict(STATE_PARAMS["dormant"])
                 tentacle.retract_from.clear()
                 tentacle.target = None
+                tentacle.local_target = None
                 tentacle.reveal = 0.0
+                self._resetar_segmentos_ancora(tentacle)
                 return
+            if tentacle.target is not None:
+                _, front_dir, _ = _base_frente(tentacle)
+                inside_target = tentacle.anchor + front_dir * 0.03
+                pull = 1.0 - math.exp(-dt * 8.0)
+                tentacle.target = tentacle.target + (inside_target - tentacle.target) * pull
             if tentacle.params_antes_recolher:
                 self._atualizar_segmentos(tentacle, dt, tentacle.params_antes_recolher)
             return
@@ -550,6 +613,15 @@ class TentacleDirector:
     def _atualizar_segmentos(self, tentacle: Tentacle, dt: float, p: dict) -> None:  # noqa: C901, PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
         """Mola dos segmentos rumo à curva-alvo, com a onda da base à ponta."""
         max_len = p["max_len"]
+        lateral, forward, up = _base_frente(tentacle)
+        curve = CURVATURAS[tentacle.perfil]
+        curl_tip = (
+            tentacle.target is not None
+            and tentacle is not self._atuador
+            and not tentacle.speaker_throw
+            and tentacle.state in (TentacleState.CURIOUS, TentacleState.RETRACTING)
+        )
+
         reach_speed = p["reach_speed"]
         target_curl = p["curl"]
         tentacle.tempo_onda += dt
@@ -589,14 +661,36 @@ class TentacleDirector:
                 # The cross section keeps its volume instead of growing from zero.
                 seg_progress = t_param
                 delta = tentacle.target - tentacle.anchor
-                lateral, forward, up = _base_frente(tentacle)
-                a = tentacle.anchor + forward * 0.22 + Vec3(0, 0, 0.02)
+                a = tentacle.anchor + forward * (0.28 * tentacle.length_scale) + up * 0.015
                 b = (
                     tentacle.anchor
                     + delta * 1.15
                     + forward * 0.08
                     + Vec3(0, 0, 0.06 + target_curl * 0.04)
                 )
+                if tentacle is not self._atuador and not tentacle.speaker_throw:
+                    # Canaliza a saída pelo vão livre à frente da porta antes de abrir em leque,
+                    # abrindo já na direção do setor alvo para evitar entrelaçamento central.
+                    delta_lat = delta.dot(lateral)
+                    delta_up = delta.dot(up)
+                    lat_sign = 1.0 if delta_lat >= 0.0 else -1.0
+                    passagem = max(0.24, 0.30 * tentacle.length_scale)
+                    a = (
+                        tentacle.anchor
+                        + forward * (0.22 * tentacle.length_scale)
+                        + lateral * (delta_lat * 0.16 - 0.015 * tentacle.length_scale)
+                        + up * (delta_up * 0.12 + 0.022)
+                    )
+                    espalhamento = (
+                        lateral * (lat_sign * abs(curve) * 0.42)
+                        + up * ((0.22 if delta_up >= -0.05 else -0.14) * abs(curve))
+                    ) * delta.length()
+                    b = (
+                        tentacle.anchor
+                        + forward * passagem
+                        + delta * 0.56
+                        + espalhamento
+                    )
                 u = seg_progress
                 v = 1 - u
                 target_pos = (
@@ -605,6 +699,31 @@ class TentacleDirector:
                     + b * (3 * v * u * u)
                     + tentacle.target * (u**3)
                 )
+                if curl_tip and u > 0.74:
+                    start = 0.74
+                    remaining = 1 - start
+                    base = (
+                        tentacle.anchor * remaining**3
+                        + a * (3 * remaining**2 * start)
+                        + b * (3 * remaining * start**2)
+                        + tentacle.target * start**3
+                    )
+                    tangent = (
+                        (a - tentacle.anchor) * remaining**2
+                        + (b - a) * (2 * remaining * start)
+                        + (tentacle.target - b) * start**2
+                    ) * 3
+                    along = tangent.normalized()
+                    bend = (
+                        up * (0.85 if delta.dot(up) >= -0.05 else -0.55)
+                        + lateral * ((1.0 if delta.dot(lateral) >= 0.0 else -1.0) * abs(curve))
+                    )
+                    bend = (bend - along * bend.dot(along)).normalized()
+                    turn = (1.35 + curve * 0.45) if self.burst else (2.35 + curve * 0.55)
+                    angle = (u - start) * turn
+                    target_pos = base + (
+                        along * math.sin(angle) + bend * (1 - math.cos(angle))
+                    ) * (tangent.length() / max(0.35, turn))
                 arch = math.sin(math.pi * t_param)
                 # Onda serpenteante da base à ponta, no plano da frente da cabeça.
                 # O espirro usa a mesma onda com intensidade de rajada.
@@ -614,7 +733,9 @@ class TentacleDirector:
                     tentacle.tempo_onda,
                     tentacle.seed * FASE_POR_SEMENTE_RAD,
                 )
-                escala_onda = tentacle.unit_scale * tentacle.length_scale
+                escala_onda = tentacle.unit_scale * math.sqrt(tentacle.length_scale)
+                if curl_tip:
+                    escala_onda *= 1 - 0.55 * t_param**4
                 target_pos += lateral * (onda_lateral * escala_onda) + up * (
                     onda_cima * escala_onda
                 )
@@ -643,11 +764,18 @@ class TentacleDirector:
                 )
                 seg.vel += impulse
 
-            # Spring-damper
-            force = (target_pos - seg.pos) * spring
-            damping = -seg.vel * damper
-            seg.vel += (force + damping) * dt
-            seg.pos += seg.vel * dt
+            if tentacle.enxurrada and tentacle is not self._atuador:
+                # A onda autorada chega à ponta por último, mesmo na rajada.
+                previous_pos = seg.pos
+                follow = 1 - math.exp(-dt * (34 - 19 * t_param))
+                seg.pos = previous_pos + (target_pos - previous_pos) * follow
+                if dt > 0:
+                    seg.vel = (seg.pos - previous_pos) / dt
+            else:
+                force = (target_pos - seg.pos) * spring
+                damping = -seg.vel * damper
+                seg.vel += (force + damping) * dt
+                seg.pos += seg.vel * dt
 
             # Clamp length (não passa do max_len)
             from_anchor = seg.pos - tentacle.anchor
@@ -664,10 +792,10 @@ class TentacleDirector:
 
             # Rotação aponta na direção do movimento
             if seg.vel.length() > 0.5 * tentacle.unit_scale:
-                forward = seg.vel.normalized()
-                up = Vec3(0, 0, 1)
-                axis = up.cross(forward)
-                dot = max(-1.0, min(1.0, up.dot(forward)))
+                seg_vel_dir = seg.vel.normalized()
+                world_up = Vec3(0, 0, 1)
+                axis = world_up.cross(seg_vel_dir)
+                dot = max(-1.0, min(1.0, world_up.dot(seg_vel_dir)))
                 if axis.lengthSquared() > 1e-10:
                     axis.normalize()
                     seg.rot = Quat()
@@ -687,88 +815,196 @@ class TentacleDirector:
             # Sucker phase para animação visual
             seg.sucker_phase += dt * 3.0
 
-    def _separate_tentacles(self):  # noqa: C901  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
+    @staticmethod
+    def _coletar_esferas_tentaculo(
+        limb: Tentacle,
+    ) -> tuple[tuple[float, float, float, float, float, float], list[list]]:
+        """Coleta esferas de colisão e AABB com margem dos elos expostos do tentáculo."""
+        segments = limb.segments
+        n = len(segments)
+        inv_span = 1.0 / max(1, n - 1)
+        girth = limb.girth_scale
+        segs: list[list] = []
+        min_x = min_y = min_z = 1e9
+        max_x = max_y = max_z = -1e9
+        # As raízes compartilham espaço dentro do armário.
+        first = 5 if limb.enxurrada else 2
+        last = min(n, 1 + math.ceil(limb.reveal * (n - 1)))
+        for i in range(first, last, 2 if limb.enxurrada else 1):
+            seg = segments[i]
+            sp = seg.pos
+            px, py, pz = float(sp.x), float(sp.y), float(sp.z)
+            min_x, max_x = min(min_x, px), max(max_x, px)
+            min_y, max_y = min(min_y, py), max(max_y, py)
+            min_z, max_z = min(min_z, pz), max(max_z, pz)
+            r = raio_tentaculo(i * inv_span / limb.reveal) * girth * 0.56 * compressao_saida(limb, sp)
+            segs.append([seg, px, py, pz, r])
+        margin = 0.12 * girth
+        aabb = (min_x - margin, max_x + margin, min_y - margin, max_y + margin, min_z - margin, max_z + margin)
+        return aabb, segs
+
+    @staticmethod
+    def _resolver_par_esferas(entry_a: list, entry_b: list) -> None:
+        """Empurra dois segmentos sobrepostos e amortece a velocidade de aproximação."""
+        seg_a, px, py, pz, ra = entry_a
+        seg_b, ox, oy, oz, rb = entry_b
+        dx, dy, dz = px - ox, py - oy, pz - oz
+        min_dist = ra + rb
+        squared = dx * dx + dy * dy + dz * dz
+        if squared >= min_dist * min_dist:
+            return
+        distance = math.sqrt(squared)
+        if distance > 1e-7:
+            inv_d = 1.0 / distance
+            nx, ny, nz = dx * inv_d, dy * inv_d, dz * inv_d
+        else:
+            nx, ny, nz = 1.0, 0.0, 0.0
+        mag = min(0.022, (min_dist - distance) * 0.65)
+        px, py, pz = px + nx * mag, py + ny * mag, pz + nz * mag
+        ox, oy, oz = ox - nx * mag, oy - ny * mag, oz - nz * mag
+        entry_a[1], entry_a[2], entry_a[3] = px, py, pz
+        entry_b[1], entry_b[2], entry_b[3] = ox, oy, oz
+        seg_a.pos = Vec3(px, py, pz)
+        seg_b.pos = Vec3(ox, oy, oz)
+        va, vb = seg_a.vel, seg_b.vel
+        closing = (va.x - vb.x) * nx + (va.y - vb.y) * ny + (va.z - vb.z) * nz
+        if closing < 0.0:
+            c2 = closing * 0.5
+            seg_a.vel = Vec3(va.x - nx * c2, va.y - ny * c2, va.z - nz * c2)
+            seg_b.vel = Vec3(vb.x + nx * c2, vb.y + ny * c2, vb.z + nz * c2)
+
+    @classmethod
+    def _separar_par_tentaculos(cls, segs_a: list[list], segs_b: list[list]) -> None:
+        """Resolve colisões esfera-a-esfera entre todos os pares de elos de dois tentáculos."""
+        for entry_a in segs_a:
+            for entry_b in segs_b:
+                cls._resolver_par_esferas(entry_a, entry_b)
+
+    @classmethod
+    def _resolver_pares_ativos(cls, active: list[Tentacle]) -> None:
+        """Executa separação par-a-par entre tentáculos cujas AABBs se sobrepõem."""
+        coletados = [cls._coletar_esferas_tentaculo(limb) for limb in active]
+        count = len(coletados)
+        for a in range(count):
+            ax0, ax1, ay0, ay1, az0, az1 = coletados[a][0]
+            segs_a = coletados[a][1]
+            for b in range(a + 1, count):
+                bx0, bx1, by0, by1, bz0, bz1 = coletados[b][0]
+                if ax1 < bx0 or ax0 > bx1 or ay1 < by0 or ay0 > by1 or az1 < bz0 or az0 > bz1:
+                    continue
+                cls._separar_par_tentaculos(segs_a, coletados[b][1])
+
+    def _separate_tentacles(self):
+        """Separa tentáculos ativos entre si e resolve contatos contra o corpo."""
         # Preserve embedded roots; solve the visible bodies as tapered spheres.
         active = [
             t
             for t in self.pool.tentacles
             if t.state != TentacleState.DORMANT and t.reveal > 0.15
         ]
-        # Spatial bins discard distant pairs before narrow-phase checks.
-        cell = 0.18
-        for _ in range(2):  # noqa: PLR1702  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
-            bins = {}
-            for owner, limb in enumerate(active):
-                for i, segment in enumerate(limb.segments[2:], 2):
-                    radius = (
-                        0.072 * (1 - 0.88 * i / (len(limb.segments) - 1)) + 0.008
-                    ) * limb.girth_scale
-                    key = tuple(math.floor(segment.pos[k] / cell) for k in range(3))
-                    for x in range(key[0] - 1, key[0] + 2):
-                        for y in range(key[1] - 1, key[1] + 2):
-                            for z in range(key[2] - 1, key[2] + 2):
-                                for other_owner, other, other_radius in bins.get(
-                                    (x, y, z), ()
-                                ):
-                                    if owner == other_owner:
-                                        continue
-                                    delta = segment.pos - other.pos
-                                    squared = delta.lengthSquared()
-                                    if squared >= (radius + other_radius) ** 2:
-                                        continue
-                                    distance = math.sqrt(squared)
-                                    normal = (
-                                        delta / distance
-                                        if distance > 1e-7
-                                        else Vec3(1, 0, 0)
-                                    )
-                                    correction = normal * min(
-                                        0.012, (radius + other_radius - distance) * 0.5
-                                    )
-                                    segment.pos += correction
-                                    other.pos -= correction
-                                    closing = (segment.vel - other.vel).dot(normal)
-                                    if closing < 0:
-                                        segment.vel -= normal * closing * 0.5
-                                        other.vel += normal * closing * 0.5
-                    bins.setdefault(key, []).append((owner, segment, radius))
+        if len(active) > 1:
+            self._resolver_pares_ativos(active)
         for limb in self.pool.tentacles:
             if limb.state != TentacleState.DORMANT:
                 self._solve_contacts(limb)
 
+    @staticmethod
+    def _relaxar_corrente_tentaculo(segments: list[TentacleSegment], *, dividir_elos: bool) -> None:
+        n = len(segments)
+        for index in range(1, n):
+            segment = segments[index]
+            previous = segments[index - 1]
+            if not dividir_elos and index + 1 < n:
+                midpoint = (previous.pos + segments[index + 1].pos) * 0.5
+                segment.pos += (midpoint - segment.pos) * 0.18
+            delta = segment.pos - previous.pos
+            limit = segment.length * 1.06
+            dist_sq = delta.lengthSquared()
+            if dist_sq <= limit * limit:
+                continue
+            dist = math.sqrt(dist_sq)
+            excess = delta * ((dist - limit) / dist)
+            if not dividir_elos or index <= 4:
+                segment.pos -= excess
+            else:
+                previous.pos += excess * 0.32
+                segment.pos -= excess * 0.68
+
+    @staticmethod
+    def _projetar_sem_recuo(
+        tentacle: Tentacle,
+        point: Vec3,
+        radius: float,
+        nearby: list,
+        front_dir: Vec3,
+    ) -> Vec3:
+        projected = tentacle.contacts.project(point, radius, nearby)
+        correction = projected - point
+        if (
+            (point - tentacle.anchor).dot(front_dir) < 0.36
+            and correction.dot(front_dir) < 0.0
+        ):
+            # Impede que quina de porta ou gabinete trave ou empurre o trecho emergente para trás.
+            correction -= front_dir * correction.dot(front_dir)
+        return correction
+
+    def _passo_colisao_tentaculo(
+        self,
+        tentacle: Tentacle,
+        nearby: list,
+        radii: list[float],
+        front_dir: Vec3,
+        passo: int,
+    ) -> None:
+        segments = tentacle.segments
+        n = len(segments)
+        for index in range(1, n):
+            segment = segments[index]
+            previous = segments[index - 1]
+            if index + 1 < n:
+                midpoint = (previous.pos + segments[index + 1].pos) * 0.5
+                segment.pos += (midpoint - segment.pos) * 0.16
+            if index < 4 or (segment.pos - tentacle.anchor).dot(front_dir) <= 0.09:
+                continue
+            if passo == 0:
+                midpoint = (previous.pos + segment.pos) * 0.5
+                segment.pos += self._projetar_sem_recuo(
+                    tentacle, midpoint, radii[index] * 0.85, nearby, front_dir
+                )
+            correction = self._projetar_sem_recuo(
+                tentacle, segment.pos, radii[index], nearby, front_dir
+            )
+            segment.pos += correction
+            if correction.lengthSquared() > 1e-12:
+                normal = correction.normalized()
+                incoming = segment.vel.dot(normal)
+                if incoming < 0:
+                    segment.vel -= normal * incoming
+
     def _solve_contacts(self, tentacle):
         if not tentacle.contacts:
             return
-        # Alternate smoothing, link-length limits and swept-sphere projection.
-        # Radii include the suction cups and the mantle, not only the centerline.
+        segments = tentacle.segments
+        if len(segments) < 2:
+            return
         nearby = tentacle.contacts.region(
-            [segment.pos for segment in tentacle.segments], 0.13
+            [seg.pos for seg in segments], 0.09 * tentacle.girth_scale
         )
-        for _ in range(3):  # noqa: PLR1702  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
-            for index in range(1, len(tentacle.segments)):
-                segment = tentacle.segments[index]
-                u = index / (len(tentacle.segments) - 1)
-                radius = (0.072 * (1 - 0.88 * u) + 0.008) * tentacle.girth_scale
-                previous = tentacle.segments[index - 1]
-                if index + 1 < len(tentacle.segments):
-                    midpoint = (previous.pos + tentacle.segments[index + 1].pos) * 0.5
-                    segment.pos += (midpoint - segment.pos) * 0.18
-                delta = segment.pos - previous.pos
-                limit = segment.length * 0.65
-                if delta.lengthSquared() > limit * limit:
-                    segment.pos = previous.pos + delta.normalized() * limit
-                # Mid-link samples prevent a link cutting through a thin door.
-                midpoint = (previous.pos + segment.pos) * 0.5
-                projected_mid = tentacle.contacts.project(midpoint, radius, nearby)
-                segment.pos += projected_mid - midpoint
-                before = Vec3(segment.pos)
-                segment.pos = tentacle.contacts.project(segment.pos, radius, nearby)
-                correction = segment.pos - before
-                if correction.lengthSquared() > 1e-12:
-                    normal = correction.normalized()
-                    incoming = segment.vel.dot(normal)
-                    if incoming < 0:
-                        segment.vel -= normal * incoming
+        if not nearby:
+            for _ in range(2):
+                self._relaxar_corrente_tentaculo(segments, dividir_elos=False)
+            return
+        span = max(1.0, (len(segments) - 1) * tentacle.reveal)
+        radii = [
+            raio_tentaculo(idx / span)
+            * tentacle.girth_scale * (0.40 if idx < 7 else 0.52)
+            * compressao_saida(tentacle, segment.pos)
+            for idx, segment in enumerate(segments)
+        ]
+        _, front_dir, _ = _base_frente(tentacle)
+        for passo in range(2):
+            self._passo_colisao_tentaculo(tentacle, nearby, radii, front_dir, passo)
+            self._relaxar_corrente_tentaculo(segments, dividir_elos=True)
 
     def _check_state_transition(self, tentacle: Tentacle) -> None:  # noqa: C901, PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
         st = tentacle.state
@@ -776,7 +1012,7 @@ class TentacleDirector:
         if st == TentacleState.CURIOUS:
             # O atuador só é solto pela coreografia.
             if tentacle is not self._atuador and tentacle.state_time > (
-                0.95 if self.burst else 4.8
+                1.75 if self.burst else 4.8
             ):
                 self.pool.release(tentacle)
 
@@ -875,46 +1111,78 @@ class TentacleDirector:
             )
         return Vec3(0, 0, 0)
 
+    # Concept silhouette: crown, side curl, then lower tendrils.
+    # Targets have independent depth so the limbs do not form a flat fan.
+    _OFFSETS_CURIOUS: tuple[tuple[int, int, int], ...] = (
+        (82, 66, 46),
+        (-86, 62, 34),
+        (68, 66, -28),
+        (-70, 64, -32),
+        (104, 58, 12),
+        (-106, 58, 14),
+        (40, 72, 72),
+        (-42, 70, 68),
+        (78, 60, -52),
+        (-80, 60, -50),
+    )
+
+    @staticmethod
+    def _offset_curioso_enxurrada(index: int) -> tuple[float, float, float]:
+        """Distribui tentáculos de enxurrada em dois anéis alternados para não entrelaçar."""
+        anel_externo = index % 2 == 0
+        setor = index // 2
+        n_setores = max(1, (TOTAL_ENXURRADA + 1) // 2)
+        angulo = math.tau * (setor + (0.5 if not anel_externo else 0.0)) / n_setores
+        raio_cone = 108.0 if anel_externo else 66.0
+        x = raio_cone * math.cos(angulo)
+        z = raio_cone * 0.78 * math.sin(angulo) + (28.0 if anel_externo else 18.0)
+        y = 66.0 if anel_externo else 88.0
+        return x, y, z
+
+    def _configurar_tentaculo_curioso(
+        self,
+        t: Tentacle,
+        index: int,
+        enxurrada: bool,
+    ) -> None:
+        scale = 1.65 if enxurrada else 0.95
+        t.length_scale = t.girth_scale = scale
+        t.enxurrada = enxurrada
+        if enxurrada:
+            t.duracao_revelacao_s = 0.62 + 0.05 * t.perfil
+        for segment in t.segments:
+            segment.length = SEGMENT_LENGTH * self.pool.unit_scale * t.length_scale
+        t.state = TentacleState.CURIOUS
+        # Stagger the pair so the second tentacle follows the first.
+        t.state_time = -t.saida.escalonamento_s * index
+        t.params = dict(STATE_PARAMS["curious"])
+        if enxurrada:
+            t.state_time = -0.055 * index
+            t.params["max_len"] = 1.0
+        # Offsets autorais (x lateral, y frente, z cima) seguem a frente da cabeça,
+        # não o espaço do modelo, que já vem com o giro assado no asset.
+        lateral, frente, cima = _base_frente(t)
+        x, y, z = (
+            self._offset_curioso_enxurrada(index)
+            if enxurrada
+            else self._OFFSETS_CURIOUS[index % len(self._OFFSETS_CURIOUS)]
+        )
+
+        local_dir = Vec3(x, y, z).normalized()
+        alvo_escala = (148 if enxurrada else 108) * self.pool.unit_scale * t.length_scale
+        t.local_target = local_dir * alvo_escala
+        offset = (
+            lateral * t.local_target.x + frente * t.local_target.y + cima * t.local_target.z
+        )
+        t.target = t.anchor + offset
+
     def _spawn_curious(self, count: int, coreografar: bool = False) -> list[Tentacle]:
-        self.appearance_count = count
         active = self.pool.get_available(count)
+        if active:
+            self.appearance_count = len(active)
+        enxurrada = count >= TOTAL_ENXURRADA
         for index, t in enumerate(active):
-            t.length_scale = (
-                self.rng.uniform(1.02, 1.22)
-                if index % 2 == 0
-                else self.rng.uniform(0.60, 0.78)
-            )
-            t.girth_scale = (
-                self.rng.uniform(0.95, 1.10)
-                if index % 2 == 0
-                else self.rng.uniform(0.62, 0.78)
-            )
-            for segment in t.segments:
-                segment.length = SEGMENT_LENGTH * self.pool.unit_scale * t.length_scale
-            t.state = TentacleState.CURIOUS
-            # Stagger the pair so the second tentacle follows the first.
-            t.state_time = -t.saida.escalonamento_s * index
-            t.params = dict(STATE_PARAMS["curious"])
-            # Concept silhouette: crown, side curl, then lower tendrils.
-            # Targets have independent depth so the limbs do not form a flat fan.
-            offsets = (
-                (-48, 55, 46),
-                (58, 38, -32),
-                (-64, 32, 8),
-                (32, 68, -48),
-                (42, 44, 50),
-                (-30, 76, -40),
-            )
-            # Offsets autorais (x lateral, y frente, z cima) seguem a frente da cabeça,
-            # não o espaço do modelo, que já vem com o giro assado no asset.
-            lateral, frente, cima = _base_frente(t)
-            x, y, z = offsets[index % len(offsets)]
-            offset = (
-                (lateral * x + frente * y + cima * z)
-                * self.pool.unit_scale
-                * t.length_scale
-            )
-            t.target = t.anchor + offset
+            self._configurar_tentaculo_curioso(t, index, enxurrada)
         self._door_requested = max(self._door_requested, 85.0)
         if coreografar and active:
             self._iniciar_empurrao(active[0])
@@ -923,6 +1191,19 @@ class TentacleDirector:
     # ------------------------------------------------------------------
     # Coreografia tentáculos x porta
     # ------------------------------------------------------------------
+
+    @property
+    def coreografia_ativa(self) -> bool:
+        """Indica se a coreografia de abertura/fechamento da porta está ativa."""
+        return self.coreografia.fase is not coreo.FasePorta.FECHADA
+
+    def _resetar_segmentos_ancora(self, tentacle: Tentacle) -> None:
+        """Reposiciona todos os segmentos na âncora para evitar salto ao reutilizar."""
+        seg_len = SEGMENT_LENGTH * self.pool.unit_scale * tentacle.length_scale
+        for segment in tentacle.segments:
+            segment.pos = Vec3(tentacle.anchor)
+            segment.vel = Vec3(0)
+            segment.length = seg_len
 
     def _outro_dono_da_porta(self) -> bool:
         """Rajada, caixa de som, fúria, engolir ou pedido do rig: a porta não é nossa."""
@@ -955,10 +1236,10 @@ class TentacleDirector:
             ):
                 self._cancelar_coreografia()
             return
-        if (
-            self._outro_dono_da_porta()
-            or self._door_current >= coreo.LIMIAR_PORTA_FECHADA_GRAUS
-        ):
+        if self._outro_dono_da_porta():
+            return
+        if self._door_current >= coreo.LIMIAR_PORTA_FECHADA_GRAUS:
+            self.coreografia.assumir_aberta()
             return
         borda = self._ponto_borda_porta()
         if borda is None:
@@ -1002,10 +1283,9 @@ class TentacleDirector:
             atuador.duracao_recolher_s = coreo.VOLTA_PUXADOR_S
             self.pool.release(atuador)
             self._atuador = None
-        self._apontar_atuador()
 
     def _apontar_atuador(self) -> None:
-        """Mira o atuador na borda livre da porta, que se move com ela."""
+        """Mira o atuador na borda livre da porta (ou envolve a borda ao puxar)."""
         atuador = self._atuador
         borda = self._ponto_borda_porta()
         if atuador is None or borda is None:
@@ -1016,6 +1296,11 @@ class TentacleDirector:
             atuador.target = (
                 atuador.anchor + (borda - atuador.anchor) / coreo.REVELACAO_FIM_EMPURRAO
             )
+        elif self.coreografia.fase in (
+            coreo.FasePorta.ALCANCANDO,
+            coreo.FasePorta.PUXANDO,
+        ):
+            atuador.target = self._ponto_pegada_externa_porta() or borda
         else:
             atuador.target = borda
 
@@ -1024,17 +1309,42 @@ class TentacleDirector:
         if not disponiveis:
             self._cancelar_coreografia()
             return
-        puxador = disponiveis[0]
-        puxador.length_scale = 1.0
-        puxador.girth_scale = 1.0
-        for segmento in puxador.segments:
-            segmento.length = SEGMENT_LENGTH * self.pool.unit_scale
+        # Prefere o tentáculo mais à esquerda do armário para sair pela fresta aberta.
+        puxador = min(disponiveis, key=lambda t: float(t.anchor.x))
         puxador.state_time = 0.0
+        puxador.reveal = 0.0
+        puxador.local_target = None
+        puxador.enxurrada = False
+        # Comprimento proporcional à distância até a porta para formar arco limpo, sem embolar.
+        puxador.length_scale = 0.45
+        puxador.girth_scale = 0.72
+        puxador.duracao_recolher_s = None
         puxador.params = dict(STATE_PARAMS["curious"])
-        puxador.params["max_len"] = coreo.ALCANCE_PUXADOR
+        puxador.params["max_len"] = max(coreo.ALCANCE_PUXADOR, 0.55)
+        puxador.params["wiggle_amp"] = min(float(puxador.params.get("wiggle_amp", 0.04)), 0.04)
         puxador.duracao_revelacao_s = coreo.TEMPO_ALCANCE_PUXAO_S
         puxador.mola_forcada = (coreo.MOLA_PUXADOR, coreo.AMORTECEDOR_PUXADOR)
+        self._resetar_segmentos_ancora(puxador)
         self._atuador = puxador
+
+    def _ponto_pegada_externa_porta(self) -> Vec3 | None:
+        """Contorna a borda livre pela fresta e engancha a ponta na frente da porta."""
+        if not self.door_node:
+            return None
+        if self._borda_porta_local is None and self._ponto_borda_porta() is None:
+            return None
+        borda_local = self._borda_porta_local
+        assert borda_local is not None
+        sinal_x = 1.0 if borda_local.x >= 0.0 else -1.0
+        # Durante ALCANCANDO, primeiro sai pela fresta aberta e depois dobra sobre a borda frontal.
+        if self.coreografia.fase is coreo.FasePorta.ALCANCANDO and self._atuador is not None:
+            t_curva = max(0.0, min(1.0, (self._atuador.reveal - 0.55) / 0.40))
+        else:
+            t_curva = 1.0
+        extra_x = (0.068 + (0.044 - 0.068) * t_curva) * sinal_x
+        extra_y = -0.015 + (0.022 - (-0.015)) * t_curva
+        pegada_local = Vec3(borda_local.x + extra_x, borda_local.y + extra_y, borda_local.z)
+        return self.model_np.getRelativePoint(self.door_node, pegada_local)
 
     def _ponto_borda_porta(self) -> Vec3 | None:
         """Borda livre da porta (oposta à dobradiça, na altura do meio), no espaço do modelo."""
@@ -1053,6 +1363,31 @@ class TentacleDirector:
             borda[eixo] = extremo
             self._borda_porta_local = borda
         return self.model_np.getRelativePoint(self.door_node, self._borda_porta_local)
+
+    def sincronizar_ancora_e_frente(
+        self, tentacle: Tentacle, anchor: Vec3, front: Vec3
+    ) -> None:
+        """Atualiza âncora, segmentos e alvo local conforme o giro atual da cabeça."""
+        delta = anchor - tentacle.anchor
+        tentacle.anchor = Vec3(anchor)
+        for segment in tentacle.segments:
+            segment.pos += delta
+        tentacle.reference_front = Vec3(front)
+        empurrando_porta = tentacle is self._atuador and self.coreografia.fase in (
+            coreo.FasePorta.EMPURRANDO,
+            coreo.FasePorta.ALCANCANDO,
+            coreo.FasePorta.PUXANDO,
+        )
+        if not empurrando_porta and tentacle.local_target is not None:
+            lateral, frente, cima = _base_frente(tentacle)
+            offset = (
+                lateral * tentacle.local_target.x
+                + frente * tentacle.local_target.y
+                + cima * tentacle.local_target.z
+            )
+            tentacle.target = tentacle.anchor + offset
+        elif tentacle.target is not None:
+            tentacle.target += delta
 
 
 def _base_frente(tentacle: Tentacle) -> tuple[Vec3, Vec3, Vec3]:
@@ -1078,13 +1413,69 @@ def _base_frente(tentacle: Tentacle) -> tuple[Vec3, Vec3, Vec3]:
 # ============================================================
 
 
+def raio_tentaculo(u: float) -> float:
+    """Interpola as seções contínuas da base até a ponta."""
+    raios = PERFIL_TENTACULO
+    amostra = max(0.0, min(1.0, u)) * (len(raios) - 1)
+    i = min(int(amostra), len(raios) - 2)
+    return (raios[i] + (raios[i + 1] - raios[i]) * (amostra - i)) * 1.15
+
+
+def compressao_saida(tentacle: Tentacle, center: Vec3) -> float:
+    """Mantém base firme na saída sem achatar o corpo alongado na boca do armário."""
+    if not tentacle.enxurrada:
+        return 1.0
+    distance = (center - tentacle.anchor).dot(tentacle.reference_front)
+    t = max(0.0, min(1.0, (distance - 0.04) / 0.24))
+    return 0.72 + 0.28 * t * t * (3 - 2 * t)
+
+
+def _modulado_morfologia(
+    morfologia: str, u: float, angle: float
+) -> tuple[float, float, float, float]:
+    """Retorna ``(escala_radial, oval_x, oval_y, realce_junta)`` para a variação."""
+    # Colarinho muscular na raiz (u <= 0.16): base anatômica espessa saindo do gabinete.
+    base_collar = 1.0
+    if u < 0.16:
+        collar_phase = math.sin((u / 0.16) * math.pi)
+        base_collar = 1.0 + 0.26 * collar_phase
+    groove = 1.0
+    oval_x, oval_y = 1.0, 1.0
+    if morfologia == "chicote_longo":
+        # Nós musculares intermediários que preservam volume mesmo bem estendidos.
+        wave = math.sin(u * math.tau * 3.5)
+        body_boost = 1.0 + (0.28 * max(0.0, 1.0 - abs(u - 0.55) / 0.45))
+        ring_swell = 1.0 + 0.16 * wave
+        groove = 0.88 if wave < -0.55 else (1.12 if wave > 0.55 else 1.0)
+        return base_collar * body_boost * ring_swell, 1.04, 0.96, groove
+    if morfologia == "clava_lula":
+        # Haste esguia intermediária abrindo numa clava achatada cheia de ventosas.
+        club = math.exp(-((u - 0.68) / 0.14) ** 2)
+        stalk = 0.86 if 0.18 < u < 0.48 else 1.0
+        scale = base_collar * (stalk + 0.52 * club)
+        oval_x = 1.0 + 0.28 * club
+        oval_y = 1.0 - 0.14 * club
+        groove = 1.14 if club > 0.45 else 0.94
+        return scale, oval_x, oval_y, groove
+    if morfologia == "espinhoso_abissal":
+        # Anéis serrilhados com crista dorsal pronunciada (lado -Y local = costas).
+        crest = 1.0 + 0.14 * math.sin(u * math.tau * 5.0)
+        dorsal = max(0.0, -math.sin(angle))
+        spine_flare = 1.0 + 0.34 * (dorsal**3) * (0.5 + 0.5 * math.cos(u * math.tau * 5.0))
+        groove = 0.86 + 0.22 * (1.0 - dorsal)
+        return base_collar * crest * spine_flare, 0.96, 1.08, groove
+    # musculoso (padrão robusto)
+    swell = 1.0 + 0.12 * math.sin(u * math.tau * 2.5)
+    return base_collar * swell, 1.02, 0.98, 1.0
+
+
 def create_tentacle_geometry(  # noqa: C901, PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
     tentacle: Tentacle,
     parent: NodePath,
     outline_parent: NodePath,
     color: tuple[float, float, float, float] = (0.2, 0.6, 1.0, 0.9),
 ) -> None:
-    """Cria a malha grossa aprovada com poucos anéis e ventosas articuláveis."""
+    """Cria malha low-poly articulada com base muscular, segmentos intermediários e variações."""
     from panda3d.core import (
         Geom,
         GeomNode,
@@ -1093,6 +1484,7 @@ def create_tentacle_geometry(  # noqa: C901, PLR0915  # TODO convenção: fatiar
         GeomVertexFormat,
         GeomVertexWriter,
         LineSegs,
+        Material,
         Texture,
     )
 
@@ -1101,11 +1493,11 @@ def create_tentacle_geometry(  # noqa: C901, PLR0915  # TODO convenção: fatiar
     colors: list = []
     indices: list[int] = []
 
-    def add_vertex(point, normal, color):
+    def add_vertex(point, normal, v_color):
         index = len(vertices)
         vertices.append(point)
         normals.append(normal)
-        colors.append(color)
+        colors.append(v_color)
         return index
 
     def add_triangle(a, b, c):
@@ -1115,37 +1507,74 @@ def create_tentacle_geometry(  # noqa: C901, PLR0915  # TODO convenção: fatiar
         add_triangle(a, b, c)
         add_triangle(a, c, d)
 
-    profile = [
-        (0, 0.044, 0),
-        (0.075, 0.083, -0.007),
-        (0.15, 0.071, -0.006),
-        (0.23, 0.056, 0.005),
-        (0.31, 0.041, 0.025),
-        (0.39, 0.023, 0.056),
-        (0.48, 0.001, 0.10),
-    ]
-    profile = [(z * 0.9, radius * 1.15, bend * 1.15) for z, radius, bend in profile]
-    palette = [
-        (0.78, 0.045, 0.23, 1),
-        (0.94, 0.08, 0.32, 1),
-        (1, 0.16, 0.42, 1),
-        (0.86, 0.06, 0.28, 1),
-        (0.60, 0.025, 0.15, 1),
-        (0.42, 0.012, 0.085, 1),
-        (0.49, 0.018, 0.11, 1),
-        (0.66, 0.03, 0.18, 1),
-    ]
-    sides = 8
+    palettes = {
+        "musculoso": [
+            (0.84, 0.22, 0.42, 1),
+            (0.92, 0.32, 0.52, 1),
+            (0.96, 0.42, 0.60, 1),
+            (0.88, 0.25, 0.46, 1),
+            (0.68, 0.16, 0.34, 1),
+            (0.56, 0.14, 0.28, 1),
+        ],
+        "chicote_longo": [
+            (0.88, 0.20, 0.44, 1),
+            (0.95, 0.30, 0.54, 1),
+            (0.98, 0.40, 0.62, 1),
+            (0.90, 0.24, 0.48, 1),
+            (0.72, 0.16, 0.36, 1),
+            (0.58, 0.14, 0.30, 1),
+        ],
+        "clava_lula": [
+            (0.82, 0.24, 0.40, 1),
+            (0.90, 0.34, 0.50, 1),
+            (0.95, 0.44, 0.58, 1),
+            (0.86, 0.28, 0.45, 1),
+            (0.66, 0.18, 0.33, 1),
+            (0.54, 0.15, 0.27, 1),
+        ],
+        "espinhoso_abissal": [
+            (0.76, 0.18, 0.38, 1),
+            (0.86, 0.26, 0.47, 1),
+            (0.92, 0.34, 0.55, 1),
+            (0.80, 0.21, 0.42, 1),
+            (0.60, 0.15, 0.30, 1),
+            (0.48, 0.14, 0.25, 1),
+        ],
+    }
+    morfologia = getattr(tentacle, "morfologia", "musculoso")
+    palette = palettes.get(morfologia, palettes["musculoso"])
+    sides = 6
     rings = []
-    for z, radius, bend in profile:
+    intervalos = 10
+    comprimento_molde = 0.432
+    for i in range(intervalos + 1):
+        u = i / intervalos
+        z = u * comprimento_molde
+        base_radius = raio_tentaculo(u)
         ring = []
         for side in range(sides):
-            angle = side * math.tau / sides - math.pi / 8
+            angle = side * math.tau / sides + math.pi / 6
+            mod_r, oval_x, oval_y, groove_tone = _modulado_morfologia(
+                morfologia, u, angle
+            )
+            radius = base_radius * mod_r
+            collar_shade = 0.84 if u < 0.08 else groove_tone
+            cr, cg, cb, ca = palette[side % len(palette)]
+            v_col = (
+                min(1.0, cr * collar_shade),
+                min(1.0, cg * collar_shade),
+                min(1.0, cb * collar_shade),
+                ca,
+            )
             ring.append(
                 add_vertex(
-                    (bend + radius * math.cos(angle), radius * math.sin(angle), z),
+                    (
+                        radius * oval_x * math.cos(angle),
+                        radius * oval_y * math.sin(angle),
+                        z,
+                    ),
                     (math.cos(angle), math.sin(angle), 0),
-                    palette[side],
+                    v_col,
                 )
             )
         rings.append(ring)
@@ -1158,65 +1587,102 @@ def create_tentacle_geometry(  # noqa: C901, PLR0915  # TODO convenção: fatiar
                 rings[row + 1][nxt],
                 rings[row + 1][side],
             )
-    center = add_vertex((0, 0, 0), (0, 0, -1), (0.42, 0.012, 0.085, 1))
+    center = add_vertex((0, 0, 0), (0, 0, -1), (0.52, 0.15, 0.28, 1))
     for side in range(sides):
         add_triangle(center, rings[0][(side + 1) % sides], rings[0][side])
 
-    # Four raised hexagonal cups sit on the camera-facing side of the mantle.
-    for z, body_radius, bend, radius in (
-        (0.09, 0.080, -0.007, 0.026),
-        (0.18, 0.065, 0, 0.024),
-        (0.275, 0.047, 0.017, 0.020),
-        (0.355, 0.030, 0.042, 0.015),
-    ):
-        z, body_radius, bend, radius = (
-            z * 0.9,
-            body_radius * 1.15,
-            bend * 1.15,
-            radius * 1.1,
-        )
-        base_y = body_radius * math.cos(math.pi / 8)
+    mantle = tuple(indices)
+    indices.clear()
+    # Duplica só as faces visíveis em baixa contagem poligonal (Blockbench facetado).
+    for face in range(0, len(mantle), 3):
+        a, b, c = mantle[face : face + 3]
+        va, vb, vc = (Vec3(*vertices[index]) for index in (a, b, c))
+        normal = (vb - va).cross(vc - va).normalized()
+        tone = (0.80, 0.92, 1.0, 1.12, 0.86)[(face // 3 * 7) % 5]
+        start = len(vertices)
+        for index in (a, b, c):
+            r, g, b, alpha = colors[index]
+            add_vertex(
+                vertices[index],
+                tuple(normal),
+                (min(1.0, r * tone), min(1.0, g * tone), min(1.0, b * tone), alpha),
+            )
+        add_triangle(start, start + 1, start + 2)
+
+    # Pastilhas hexagonais estilizadas em 2 anéis (visual low-poly, sem cavidade orgânica).
+    if morfologia == "chicote_longo":
+        sucker_us = (0.18, 0.32, 0.46, 0.60, 0.74, 0.86)
+        sucker_scale = 0.50
+    elif morfologia == "clava_lula":
+        sucker_us = (0.20, 0.38, 0.56, 0.68, 0.82)
+        sucker_scale = 0.54
+    elif morfologia == "espinhoso_abissal":
+        sucker_us = (0.18, 0.34, 0.50, 0.66, 0.82)
+        sucker_scale = 0.46
+    else:
+        sucker_us = (0.18, 0.34, 0.50, 0.66, 0.82)
+        sucker_scale = 0.50
+
+    for s_idx, u in enumerate(sucker_us):
+        mod_r, oval_x, oval_y, _ = _modulado_morfologia(morfologia, u, math.pi * 0.5)
+        body_radius = raio_tentaculo(u) * mod_r * oval_y
+        z = u * comprimento_molde
+        radius = body_radius * sucker_scale
+        if morfologia == "clava_lula" and 0.54 <= u <= 0.83:
+            radius *= 1.14
+        depth = radius * 0.48
+        az = (0.44 if s_idx % 2 == 0 else -0.44) * oval_x
+        cx_r, cy_r = math.cos(az), -math.sin(az)
+        rx_r, ry_r = math.sin(az), math.cos(az)
+        base_radial = body_radius * math.cos(math.pi / 6) - radius * 0.10
         cup_rings = []
-        for ring_radius, depth, color in (
-            (radius, 0.0, (0.90, 0.055, 0.28, 1)),
-            (radius, 0.025, (1, 0.28, 0.52, 1)),
-            (radius * 0.58, 0.026, (0.64, 0.02, 0.15, 1)),
-            (radius * 0.45, 0.006, (0.25, 0.006, 0.045, 1)),
+        for ring_radius, ring_depth, v_col, radial_n, rim_n in (
+            (radius, 0.0, (0.58, 0.15, 0.32, 1.0), 0.45, 0.85),
+            (radius * 0.84, depth, (0.94, 0.38, 0.56, 1.0), 0.90, 0.44),
         ):
             cup = []
             for side in range(6):
                 angle = side * math.tau / 6
+                ca, sa = math.cos(angle), math.sin(angle)
+                tangent_off = ring_radius * ca
+                radial_off = base_radial + ring_depth
                 point = (
-                    bend + ring_radius * math.cos(angle),
-                    base_y + depth,
-                    z + ring_radius * math.sin(angle),
+                    cx_r * tangent_off + rx_r * radial_off,
+                    cy_r * tangent_off + ry_r * radial_off,
+                    z + ring_radius * sa,
                 )
-                cup.append(add_vertex(point, (0, 1, 0), color))
+                nx = rx_r * radial_n + cx_r * (ca * rim_n)
+                ny = ry_r * radial_n + cy_r * (ca * rim_n)
+                nz = sa * rim_n
+                nlen = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
+                cup.append(add_vertex(point, (nx / nlen, ny / nlen, nz / nlen), v_col))
             cup_rings.append(cup)
-        for row in range(3):
-            for side in range(6):
-                nxt = (side + 1) % 6
-                add_quad(
-                    cup_rings[row][side],
-                    cup_rings[row + 1][side],
-                    cup_rings[row + 1][nxt],
-                    cup_rings[row][nxt],
-                )
+        for side in range(6):
+            nxt = (side + 1) % 6
+            add_quad(
+                cup_rings[0][side],
+                cup_rings[1][side],
+                cup_rings[1][nxt],
+                cup_rings[0][nxt],
+            )
+        top_d = base_radial + depth
         cup_center = add_vertex(
-            (bend, base_y + 0.006, z), (0, 1, 0), (0.25, 0.006, 0.045, 1)
+            (rx_r * top_d, ry_r * top_d, z),
+            (rx_r, ry_r, 0.0),
+            (0.98, 0.52, 0.68, 1.0),
         )
         for side in range(6):
-            add_triangle(cup_center, cup_rings[3][(side + 1) % 6], cup_rings[3][side])
+            add_triangle(cup_center, cup_rings[1][side], cup_rings[1][(side + 1) % 6])
 
     fmt = GeomVertexFormat.getV3n3c4()
     vdata = GeomVertexData("procedural-tentacle", fmt, Geom.UHDynamic)
     vw, nw, cw = (
         GeomVertexWriter(vdata, name) for name in ("vertex", "normal", "color")
     )
-    for vertex, normal, color in zip(vertices, normals, colors, strict=True):
+    for vertex, normal, v_col in zip(vertices, normals, colors, strict=True):
         vw.addData3(*vertex)
         nw.addData3(*normal)
-        cw.addData4f(*color)
+        cw.addData4f(*v_col)
     triangles = GeomTriangles(Geom.UHStatic)
     for i in range(0, len(indices), 3):
         triangles.addVertices(*indices[i : i + 3])
@@ -1226,8 +1692,10 @@ def create_tentacle_geometry(  # noqa: C901, PLR0915  # TODO convenção: fatiar
     geom_node = GeomNode("procedural-tentacle")
     geom_node.addGeom(geom)
     mesh_node = parent.attachNewNode(geom_node)
-    mesh_node.setTwoSided(True)
-    mesh_node.setName("procedural-tentacle")
+    material = Material("tentacle")
+    material.setMetallic(0)
+    material.setRoughness(0.78)
+    mesh_node.setMaterial(material, 1)
     # A real opaque white texture keeps the alpha-tested outline and exit
     # shader independent from whatever texture the cabinet inherited.
     white = Texture("tentacle-opaque")
@@ -1235,8 +1703,18 @@ def create_tentacle_geometry(  # noqa: C901, PLR0915  # TODO convenção: fatiar
     white.setRamImage(bytes((255, 255, 255, 255)))
     mesh_node.setTexture(white, 1)
 
-    outline_node = mesh_node.copyTo(outline_parent)
-    outline_node.setName("procedural-tentacle-outline")
+    # O contorno segue a silhueta externa. O relevo das ventosas recebe luz própria.
+    outline_faces = GeomTriangles(Geom.UHStatic)
+    for i in range(0, len(mantle), 3):
+        outline_faces.addVertices(*mantle[i : i + 3])
+    outline_faces.closePrimitive()
+    outline_geom = Geom(vdata)
+    outline_geom.addPrimitive(outline_faces)
+    outline = GeomNode("procedural-tentacle-outline")
+    outline.addGeom(outline_geom)
+    outline_node = outline_parent.attachNewNode(outline)
+    outline_node.setTexture(white, 1)
+    outline_node.setShaderInput("outline_color", (0.10, 0.02, 0.14, 1.0), 1)
     tentacle.mesh_node = mesh_node
     tentacle.outline_mesh_node = outline_node
     tentacle.mesh_vdata = vdata
@@ -1245,22 +1723,9 @@ def create_tentacle_geometry(  # noqa: C901, PLR0915  # TODO convenção: fatiar
     tentacle.outline_vdata = vdata
     tentacle.template_vertices = vertices
     tentacle.template_normals = normals
-    profile_center = (
-        (0, 0),
-        (0.0675, -0.00805),
-        (0.135, -0.0069),
-        (0.207, 0.00575),
-        (0.279, 0.02875),
-        (0.351, 0.0644),
-        (0.432, 0.115),
-    )
-    for x, y, z in vertices:
-        bend = 0.115
-        for (za, xa), (zb, xb) in pairwise(profile_center):
-            if z <= zb:
-                bend = xa + (xb - xa) * max(0, (z - za) / (zb - za))
-                break
-        tentacle.rest_vertices.append((z / 0.432, (x - bend) * 0.65, y * 0.65))
+    tentacle.rest_vertices = [
+        (z / comprimento_molde, x * 0.78, y * 0.78) for x, y, z in vertices
+    ]
     lines = LineSegs("tentacle-joint-axes")
     lines.setThickness(1.5)
     for color, endpoint in (
@@ -1290,82 +1755,156 @@ def update_tentacle_render(tentacle: Tentacle) -> None:  # noqa: C901, PLR0915  
     """Deforma a malha low-poly na curva procedural dos pontos da mola."""
     if not tentacle.mesh_node or not tentacle.segments or not tentacle.mesh_vdata:
         return
-    from panda3d.core import GeomVertexRewriter, Mat3, Quat, Vec3
 
     points = [Vec3(seg.pos) for seg in tentacle.segments]
-    nearby = tentacle.contacts.region(points) if tentacle.contacts else []
 
-    # Assinatura barata da entrada: sem obstáculos próximos, a malha depende
-    # só da pose dos segmentos, do reveal, da espessura, do state_time e da
-    # frente de referência. Se nada disso mudou, o recomputo daria o mesmo
-    # resultado — pula o frame. Com obstáculos, nunca pula (a projeção pode
-    # mudar sem os segmentos se moverem).
-    if not nearby:
-        signature = (
-            round(tentacle.reveal, 5),
-            round(tentacle.girth_scale, 5),
-            round(tentacle.state_time, 4),
-            tuple(round(c, 5) for c in tentacle.reference_front),
-            tuple(round(c, 4) for point in points for c in point),
-        )
-        if signature == tentacle._last_render_signature:
-            return
-        tentacle._last_render_signature = signature
-    else:
-        tentacle._last_render_signature = None
-    # Rotation-minimizing frames: carry the previous transverse axis along
-    # the curve, then add distributed twist. No camera-facing/billboard axis.
-    frames = []
-    front = Vec3(tentacle.reference_front)
-    for index, center in enumerate(points):
-        tangent = points[min(index + 1, len(points) - 1)] - points[max(0, index - 1)]
+    # Assinatura barata da entrada: a malha depende só da pose dos segmentos,
+    # do reveal, da espessura, do state_time e da frente de referência.
+    signature = (
+        round(tentacle.reveal, 5),
+        round(tentacle.girth_scale, 5),
+        tentacle.enxurrada,
+        round(tentacle.state_time, 4),
+        tuple(round(c, 5) for c in tentacle.reference_front),
+        tuple(round(c, 4) for point in points for c in point),
+    )
+    if signature == tentacle._last_render_signature:
+        return
+    tentacle._last_render_signature = signature
+
+    # Parallel transport (Bishop frames): transporta o eixo transversal por
+    # rotação mínima ao longo da curva sem acumular projeções que pinçam ou giram.
+    n_pts = len(points)
+    tangents = []
+    for index in range(n_pts):
+        tangent = points[min(index + 1, n_pts - 1)] - points[max(0, index - 1)]
         if tangent.lengthSquared() < 1e-10:
-            tangent = Vec3(0, 0, 1)
+            tangent = Vec3(tentacle.reference_front)
+        if tangent.lengthSquared() < 1e-10:
+            tangent = Vec3(0, 1, 0)
         tangent.normalize()
-        front -= tangent * front.dot(tangent)
-        if front.lengthSquared() < 1e-6:
-            front = Vec3(0, 0, 1) - tangent * tangent.z
-        if front.lengthSquared() < 1e-6:
-            front = Vec3(1, 0, 0) - tangent * tangent.x
-        front.normalize()
-        right = front.cross(tangent).normalized()
-        u = index / (len(points) - 1)
-        twist = (
-            0.45 + math.sin(tentacle.state_time * 0.85 + tentacle.seed * 0.001) * 0.3
-        ) * u
-        transverse_x = right * math.cos(twist) + front * math.sin(twist)
-        transverse_y = front * math.cos(twist) - right * math.sin(twist)
+        tangents.append(tangent)
+
+    front = Vec3(tentacle.reference_front)
+    front -= tangents[0] * front.dot(tangents[0])
+    if front.lengthSquared() < 1e-6:
+        front = Vec3(0, 0, 1) - tangents[0] * tangents[0].z
+    if front.lengthSquared() < 1e-6:
+        front = Vec3(1, 0, 0) - tangents[0] * tangents[0].x
+    front.normalize()
+    right = front.cross(tangents[0]).normalized()
+
+    twist_rate = (
+        0.45 + math.sin(tentacle.state_time * 0.85 + tentacle.seed * 0.001) * 0.3
+    )
+    frames = []
+    bishop_axes = []
+    for index, center in enumerate(points):
+        tangent = tangents[index]
+        if index > 0:
+            prev_t = tangents[index - 1]
+            rot_axis = prev_t.cross(tangent)
+            if rot_axis.lengthSquared() > 1e-10:
+                dot = max(-1.0, min(1.0, prev_t.dot(tangent)))
+                rot_q = Quat()
+                rot_q.setFromAxisAngle(math.degrees(math.acos(dot)), rot_axis.normalized())
+                front = rot_q.xform(front)
+            elif prev_t.dot(tangent) < -0.999:
+                front = -front
+            front -= tangent * front.dot(tangent)
+            if front.lengthSquared() < 1e-6:
+                front = right.cross(tangent)
+            front.normalize()
+            right = front.cross(tangent).normalized()
+        bishop_axes.append((Vec3(right), Vec3(front)))
+        u = index / max(1, n_pts - 1)
+        twist = twist_rate * u
+        cos_t, sin_t = math.cos(twist), math.sin(twist)
+        transverse_x = right * cos_t + front * sin_t
+        transverse_y = front * cos_t - right * sin_t
         frames.append((center, tangent, transverse_x, transverse_y))
         orientation = Mat3(*transverse_x, *transverse_y, *tangent)
         rotation = Quat()
         rotation.setFromMatrix(orientation)
         tentacle.segments[index].rot = rotation
-        if index < len(tentacle.axis_nodes):
+        if index < len(tentacle.axis_nodes) and not tentacle.axis_nodes[index].isHidden():
             tentacle.axis_nodes[index].setPos(center)
             tentacle.axis_nodes[index].setQuat(rotation)
     tentacle.frames = frames
-    cache = {}
+    unique_us = getattr(tentacle, "_unique_us", None)
+    vertex_table = getattr(tentacle, "_vertex_table", None)
+    if unique_us is None or vertex_table is None:
+        u_map: dict[float, int] = {}
+        u_list: list[float] = []
+        v_list = []
+        for (u, x, y), (lnx, lny, lnz) in zip(
+            tentacle.rest_vertices, tentacle.template_normals, strict=True
+        ):
+            idx = u_map.get(u)
+            if idx is None:
+                idx = len(u_list)
+                u_map[u] = idx
+                u_list.append(u)
+            v_list.append((idx, float(x), float(y), float(lnx), float(lny), float(lnz)))
+        unique_us = tuple(u_list)
+        vertex_table = tuple(v_list)
+        tentacle._unique_us = unique_us
+        tentacle._vertex_table = vertex_table
 
-    def frame_at(t: float):
-        # Slide the visible length out of the opening while preserving radius.
-        sample = max(0.0, min(1.0, t)) * tentacle.reveal * (len(points) - 1)
-        index = min(len(points) - 2, int(sample))
+    ring_table = []
+    max_seg_idx = n_pts - 2
+    reveal_span = tentacle.reveal * (n_pts - 1)
+    for u in unique_us:
+        t_clamped = 0.0 if u < 0.0 else (1.0 if u > 1.0 else u)
+        sample = t_clamped * reveal_span
+        index = int(sample)
+        if index > max_seg_idx:
+            index = max_seg_idx
         alpha = sample - index
-        p0, p1 = points[max(0, index - 1)], points[index]
-        p2, p3 = points[index + 1], points[min(len(points) - 1, index + 2)]
+        p0, p1 = points[0 if index == 0 else index - 1], points[index]
+        p2, p3 = points[index + 1], points[n_pts - 1 if index + 2 >= n_pts else index + 2]
         a = -p0 + p2
         b = p0 * 2 - p1 * 5 + p2 * 4 - p3
         c = -p0 + p1 * 3 - p2 * 3 + p3
-        center = (p1 * 2 + a * alpha + b * alpha**2 + c * alpha**3) * 0.5
-        tangent = (a + b * (2 * alpha) + c * (3 * alpha**2)) * 0.5
+        center = (p1 * 2 + a * alpha + b * (alpha * alpha) + c * (alpha * alpha * alpha)) * 0.5
+        tangent = (a + b * (2 * alpha) + c * (3 * alpha * alpha)) * 0.5
         if tangent.lengthSquared() < 1e-10:
             tangent = frames[index][1]
         tangent.normalize()
-        right = frames[index][2] * (1 - alpha) + frames[index + 1][2] * alpha
-        right -= tangent * right.dot(tangent)
-        right.normalize()
-        front = tangent.cross(right).normalized()
-        return center, tangent, right, front
+        # Interpola o eixo de Bishop sem torção antes de aplicar a torção suave.
+        r0, _ = bishop_axes[index]
+        r1, _ = bishop_axes[index + 1]
+        if r0.dot(r1) < 0.0:
+            r1 = -r1
+        base_right = r0 * (1.0 - alpha) + r1 * alpha
+        base_right -= tangent * base_right.dot(tangent)
+        if base_right.lengthSquared() < 1e-6:
+            base_right = Vec3(0, 0, 1) - tangent * tangent.z
+        if base_right.lengthSquared() < 1e-6:
+            base_right = Vec3(1, 0, 0) - tangent * tangent.x
+        base_right.normalize()
+        base_front = tangent.cross(base_right).normalized()
+        twist = twist_rate * (sample / max(1, n_pts - 1))
+        cos_t, sin_t = math.cos(twist), math.sin(twist)
+        right = base_right * cos_t + base_front * sin_t
+        front_f = base_front * cos_t - base_right * sin_t
+        ring_table.append(
+            (
+                float(center.x),
+                float(center.y),
+                float(center.z),
+                float(right.x),
+                float(right.y),
+                float(right.z),
+                float(front_f.x),
+                float(front_f.y),
+                float(front_f.z),
+                float(tangent.x),
+                float(tangent.y),
+                float(tangent.z),
+                tentacle.girth_scale * compressao_saida(tentacle, center),
+            )
+        )
 
     def deform(vdata) -> None:
         # Reaproveita os rewriters por tentáculo: eles ficam presos ao mesmo
@@ -1379,34 +1918,27 @@ def update_tentacle_render(tentacle: Tentacle) -> None:  # noqa: C901, PLR0915  
             tentacle._normal_rewriter = normal_writer
         vertex_writer.setRow(0)
         normal_writer.setRow(0)
-        for (u, x, y), local_normal in zip(
-            tentacle.rest_vertices, tentacle.template_normals, strict=True
-        ):
-            if u not in cache:
-                frame = frame_at(u)
-                center = frame[0]
-                radius = 0.09 * tentacle.girth_scale
-                ring_boxes = [
-                    box
-                    for box in nearby
-                    if box.model_low.x - radius <= center.x <= box.model_high.x + radius
-                    and box.model_low.y - radius
-                    <= center.y
-                    <= box.model_high.y + radius
-                    and box.model_low.z - radius
-                    <= center.z
-                    <= box.model_high.z + radius
-                ]
-                cache[u] = (frame, ring_boxes)
-            (center, tangent, right, front), ring_boxes = cache[u]
-            position = center + (right * x + front * y) * tentacle.girth_scale
-            for obstacle in ring_boxes:
-                position = obstacle.project(position, 0.002)
-            nx, ny, nz = local_normal
-            normal = right * nx + front * ny + tangent * nz
-            if normal.lengthSquared() > 1e-10:
-                normal.normalize()
-            vertex_writer.setData3(position)
-            normal_writer.setData3(normal)
+        sqrt = math.sqrt
+        set_pos = vertex_writer.setData3
+        set_norm = normal_writer.setData3
+        for u_idx, x, y, nx, ny, nz in vertex_table:
+            cx, cy, cz, rx, ry, rz, fx, fy, fz, tx, ty, tz, girth = ring_table[u_idx]
+            xg, yg = x * girth, y * girth
+            vx_n = rx * nx + fx * ny + tx * nz
+            vy_n = ry * nx + fy * ny + ty * nz
+            vz_n = rz * nx + fz * ny + tz * nz
+            n2 = vx_n * vx_n + vy_n * vy_n + vz_n * vz_n
+            if n2 > 1e-10:
+                inv_n = 1.0 / sqrt(n2)
+                vx_n, vy_n, vz_n = vx_n * inv_n, vy_n * inv_n, vz_n * inv_n
+            set_pos(
+                cx + rx * xg + fx * yg,
+                cy + ry * xg + fy * yg,
+                cz + rz * xg + fz * yg,
+            )
+            set_norm(vx_n, vy_n, vz_n)
 
     deform(tentacle.mesh_vdata)
+    tentacle.mesh_node.node().markInternalBoundsStale()
+    if tentacle.outline_mesh_node:
+        tentacle.outline_mesh_node.node().markInternalBoundsStale()

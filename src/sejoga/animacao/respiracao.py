@@ -1,21 +1,23 @@
-"""Matemática da respiração do mascote, independente do engine.
-
-Modela uma variável contínua ``respiracao_norm`` (0 = peito vazio, 1 = peito
-cheio) dirigida por um oscilador lento (por volta de 0.25 Hz no idle) e
-suavizada por um ``Spring`` analítico, para que o resultado não dependa do
-framerate do renderer. O método ``empurrar`` soma um impulso ao alvo da mola
-para inflar o tórax por evento (gancho futuro do espirro).
-
-Mantém a fronteira engine: nada de Panda3D/Qt/Win32 aqui. A aplicação visual
-(escalar/deslocar o nó do tórax) fica no renderer, espelhando o precedente de
-``outline_dynamics.RespiracaoContorno``.
-"""
+"""Curva autoral de repouso e resposta respiratória a impulsos."""
 
 from __future__ import annotations
 
 from math import sin, tau
 
+from sejoga.animacao.interpolacao import amostrar_pista
 from sejoga.animacao.movimento_corpo import Spring, clamp
+
+# A expiração ocupa a maior parte do ciclo.
+_CICLO_REPOUSO = (
+    (0.0, (-1.0, 0.0, 0.0)),
+    (1.35, (1.0, 0.0, 0.0)),
+    (3.6, (-1.0, 0.0, 0.0)),
+)
+
+
+def amostrar_respiracao_repouso(tempo: float) -> float:
+    """Amostra um ciclo contínuo de inspiração e expiração, entre -1 e 1."""
+    return amostrar_pista(_CICLO_REPOUSO, tempo % _CICLO_REPOUSO[-1][0])[0]
 
 # Frequência default do oscilador lento do idle (ciclos por segundo). ~0.25 Hz
 # dá uma inspiração/expiração a cada ~4 segundos, no ritmo de um corpo parado.

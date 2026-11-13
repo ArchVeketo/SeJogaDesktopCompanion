@@ -55,11 +55,12 @@ from panda3d.core import (
     WindowProperties,
 )
 
+from sejoga.animacao.animacao_entrada import IntroAnimation, IntroFrame
 from sejoga.animacao.animacao_saida import ExitAnimation
 from sejoga.animacao.atencao_hover import HoverAttention
 
 # Project imports
-from sejoga.animacao.controlador_animacao import AnimationController
+from sejoga.animacao.controlador_animacao import AnimationController, AnimationState
 from sejoga.animacao.foco_atencao import (
     PRIORIDADE_BEAT,
     PRIORIDADE_BORDA,
@@ -79,11 +80,7 @@ from sejoga.nucleo.esqueleto import IdlePersonality
 from sejoga.nucleo.recursos import brand_dir
 from sejoga.render.chroma_tuning import derivar_chroma, pixel_e_chroma
 from sejoga.render.depuracao import DebugTools, configure_logging
-from sejoga.render.envelope_janela import (
-    EstadoEnvelope,
-    escolher_tamanho,
-    extensao_necessaria,
-)
+from sejoga.render.envelope_janela import MARGEM_ANTICORTE, degrau_para
 from sejoga.render.janela_const import (
     ATENCAO_BORDA_MARGEM_PX,
     COLISAO_DIVISOR_DIRECAO,
@@ -154,6 +151,12 @@ class OverlayApp(ShowBase):
         self.debug_tools: DebugTools | None = None
         self.desktop: DesktopIntegration | None = None
         self._exit_started = None
+        self._exit_style = "classic"
+        self._exit_preview = False
+        self._exit_last_tick = time.perf_counter()
+        self._intro_started: float | None = None
+        self._intro_motion: IntroAnimation | None = None
+        self._intro_last_loco: str | None = None
         self._force_exit = False
 
         self._is_topmost = settings.window.always_on_top
@@ -221,12 +224,14 @@ class OverlayApp(ShowBase):
             size / 2,
             size - self.settings.physics.mascot_radius - OFFSET_APOIO_FISICO,
         )
-        # Dimensionamento por envelope de pior caso (ver canvas_envelope): a
-        # janela assume poucos tamanhos discretos estáveis em vez de seguir os
-        # limites vivos do rig, eliminando o resize por frame que causava o
-        # flicker. O cooldown simétrico vive no estado abaixo.
-        self._envelope_estado = EstadoEnvelope()
-        self._fit_pose_cache = None
+        self._offset_mascote = self._physics_local
+        self._mascot_screen = self._offset_mascote
+        self._desktop_rect = None
+        self._canvas_origin = None
+        self._canvas_request = None
+        self._canvas_shrink_in = 0.0
+        self._canvas_measure_in = 0.0
+        self._display_check = 0.0
         self._destino_caminhada_x: float | None = None
 
         self._init_pyside()
@@ -280,6 +285,8 @@ class OverlayApp(ShowBase):
         assert self.qt_app is not None
         self.qt_app.setWindowIcon(QIcon(str(icon)))
         self.desktop = DesktopIntegration(self.hwnd, icon)
+        if self.settings.window.intro_animation != "padrao":
+            self.start_intro(self.settings.window.intro_animation)
 
         self.logger.info("OverlayApp inicializado.")
 
@@ -314,6 +321,12 @@ class OverlayApp(ShowBase):
         self.win.setClearColorActive(True)
 
         self.disableMouse()
+
+    def windowEvent(self, win):
+        """Confirma origem, lente e framebuffer na notificação do Panda."""
+        super().windowEvent(win)
+        if win == self.win and getattr(self, "_canvas_request", None) is not None:
+            self._confirmar_canvas()
 
     def _get_hwnd(self) -> int:
         """Extract integer HWND from Panda3D WindowHandle."""
@@ -434,23 +447,8 @@ class OverlayApp(ShowBase):
         else:
             x, y = (int(start_position[0]), int(start_position[1]))
 
-        # Panda applies pending window properties on its next frame. Keep its
-        # requested origin in sync so it cannot overwrite the saved position.
-        properties = WindowProperties()
-        properties.setOrigin(x, y)
-        properties.setSize(size, size)
-        properties.setZOrder(
-            WindowProperties.ZBottom
-            if self._is_bottom
-            else WindowProperties.ZTop
-            if self._is_topmost
-            else WindowProperties.ZNormal
-        )
-        self.win.requestProperties(properties)
-        # SWP_NOZORDER | SWP_NOACTIVATE; z-order is applied separately below.
-        win32gui.SetWindowPos(
-            self.hwnd, 0, x, y, size, size, SWP_NOZORDER | SWP_NOACTIVATE
-        )
+        self._mascot_screen = (x + self._offset_mascote[0], y + self._offset_mascote[1])
+        self._sincronizar_desktop(0.0)
         self._refresh_background_mode()
         self._update_z_order()
 
@@ -496,29 +494,9 @@ class OverlayApp(ShowBase):
             settings=self.settings,
         )
 
-        # Posiciona o mascote no centro inferior da janela
-        size = self.settings.window.size
-        self._physics_local = (
-            size / 2,
-            size - self.settings.physics.mascot_radius - OFFSET_APOIO_FISICO,
-        )
-        if self.settings.window.start_position is None:
-            # Sem posição salva: ancora no canto do monitor preferido (mesmo
-            # cálculo de _apply_window_state), não dependendo da origem assíncrona.
-            left, top, right, bottom = self._retangulo_monitor_preferido()
-            origin = (
-                max(left, right - size - MARGEM_CANTO_HORIZONTAL),
-                max(top, bottom - size - MARGEM_CANTO_VERTICAL),
-            )
-        else:
-            origin = win32gui.ClientToScreen(self.hwnd, (0, 0))
-        self._set_physics_monitor(
-            (origin[0] + self._physics_local[0], origin[1] + self._physics_local[1])
-        )
-        self.physics.set_position(
-            origin[0] + self._physics_local[0],
-            origin[1] + self._physics_local[1],
-        )
+        self._set_physics_monitor(self._mascot_screen)
+        self.physics.set_position(*self._mascot_screen)
+        self.physics.set_gravity(True)
         self._last_rest_position: tuple[int, int] | None = None
         self._was_grounded = False
         self.physics.on_collision = self._on_physics_collision
@@ -536,16 +514,9 @@ class OverlayApp(ShowBase):
         if state.grounded and not self._was_grounded and self.animation_controller:
             self.animation_controller.interact("land")
         self._was_grounded = state.grounded
-        x = round(state.position[0] - self._physics_local[0])
-        y = round(state.position[1] - self._physics_local[1])
-        try:
-            win32gui.SetWindowPos(
-                self.hwnd, 0, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
-            )
-        except win32gui.error as exc:
-            if exc.winerror != 1400:
-                raise
-            return
+        self._posicionar_mascote(*state.position)
+        x = round(state.position[0] - self._offset_mascote[0])
+        y = round(state.position[1] - self._offset_mascote[1])
         self.settings.window.start_position = (x, y)
         if (
             state.grounded
@@ -579,7 +550,7 @@ class OverlayApp(ShowBase):
         now = time.perf_counter()
         dt = now - self._physics_last_tick
         self._physics_last_tick = now
-        if not self._drag_active:
+        if not self._drag_active and self._exit_started is None:
             self.physics.step(dt)
         return Task.cont
 
@@ -589,18 +560,31 @@ class OverlayApp(ShowBase):
             return
 
         state = self.physics.get_state()
-        self.renderer.set_model_screen_position(*self._physics_local)
+        # Durante drag, sempre atualiza a posição para seguir o mouse em tempo
+        # real e evitar que o personagem fique travado no ar.
+        pos = self._physics_local
+        if (
+            self._drag_active
+            or self._intro_motion is not None
+            or pos != getattr(self, "_last_model_pos", None)
+        ):
+            self._last_model_pos = pos
+            self.renderer.set_model_screen_position(*pos)
 
         vx, vy = state.velocity
+        tilt_z = getattr(self, "_last_tilt_z", None)
         if not state.grounded and math.hypot(vx, vy) > TILT_VELOCIDADE_MINIMA:
-            self.renderer.set_model_rotation(
-                z=max(
-                    -TILT_GRAUS_MAXIMO,
-                    min(TILT_GRAUS_MAXIMO, -vx / TILT_DIVISOR_VELOCIDADE),
-                )
+            new_z = max(
+                -TILT_GRAUS_MAXIMO,
+                min(TILT_GRAUS_MAXIMO, -vx / TILT_DIVISOR_VELOCIDADE),
             )
+            if new_z != tilt_z:
+                self._last_tilt_z = new_z
+                self.renderer.set_model_rotation(z=new_z)
         else:
-            self.renderer.set_model_rotation()
+            if tilt_z is not None:
+                self._last_tilt_z = None
+                self.renderer.set_model_rotation()
 
     # Janela (em segundos) em que uma troca de foreground mantém a atenção do
     # mascote virada para a janela recém-ativada. CALIBRÁVEL (validar na GPU).
@@ -608,7 +592,28 @@ class OverlayApp(ShowBase):
     # Energia mínima da batida para virar micro-reação de atenção rítmica.
     _ATENCAO_BEAT_FORCA_MINIMA = 0.15
 
-    def _resolver_alvo_atencao(self, dt, music, state):  # noqa: PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
+    def _adicionar_gatilho_beat(self, gatilhos, music, centro_tela, largura) -> None:
+        """Alterna o lado na transicao da batida musical sem sortear a cada quadro."""
+        beat_ativo = bool(
+            music
+            and music.beat_detected
+            and music.audio_level >= self._ATENCAO_BEAT_FORCA_MINIMA
+        )
+        if beat_ativo:
+            if not getattr(self, "_beat_atencao_anterior", False):
+                self._beat_atencao_lado = -getattr(self, "_beat_atencao_lado", -1.0)
+            ponto_beat = (
+                centro_tela[0] + self._beat_atencao_lado * largura,
+                centro_tela[1],
+            )
+            gatilhos.append(
+                GatilhoAtencao(
+                    "beat", ponto_beat, PRIORIDADE_BEAT, forca=music.audio_level
+                )
+            )
+        self._beat_atencao_anterior = beat_ativo
+
+    def _resolver_alvo_atencao(self, dt, music, state):  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
         """Monta os gatilhos não-invasivos e devolve o alvo de olhar do quadro.
 
         Gatilhos (nenhum lê conteúdo/pixels da tela):
@@ -617,19 +622,13 @@ class OverlayApp(ShowBase):
           cabeça para a direção/borda da nova janela por um curto tempo;
         - batida/energia (music_listener): micro-reação rítmica de atenção;
         - borda de tela mais próxima: olhar para a borda de onde "veio" algo;
-        - ambiente (timer + aleatório), tratado dentro do GateAtencao.
         """
         self._atencao_foco_restante = max(0.0, self._atencao_foco_restante - dt)
         gatilhos: list[GatilhoAtencao] = []
 
-        largura = self.renderer.width
-        altura = self.renderer.height
-        try:
-            origem = win32gui.ClientToScreen(self.hwnd, (0, 0))
-        except win32gui.error:
-            origem = (0, 0)
-
-        centro_tela = (origem[0] + largura * 0.5, origem[1] + altura * 0.5)
+        largura = altura = self.settings.window.size
+        centro_tela = (self._mascot_screen[0], self._mascot_screen[1] - altura * 0.25)
+        origem = (centro_tela[0] - largura / 2, centro_tela[1] - altura * 0.52)
 
         # Cursor global: o alvo é a posição do cursor em coordenadas de tela.
         if self._mouse_screen is not None:
@@ -654,20 +653,7 @@ class OverlayApp(ShowBase):
                 GatilhoAtencao("foco", self._atencao_foco_ponto, PRIORIDADE_FOCO)
             )
 
-        # Batida/energia: micro-reação rítmica. O ponto é a borda horizontal do
-        # monitor no lado da energia, mantendo o olhar sutil e no ritmo.
-        if (
-            music
-            and music.beat_detected
-            and music.audio_level >= self._ATENCAO_BEAT_FORCA_MINIMA
-        ):
-            lado = 1.0 if (self._gate_atencao.rng.random() < 0.5) else -1.0
-            ponto_beat = (centro_tela[0] + lado * largura, centro_tela[1])
-            gatilhos.append(
-                GatilhoAtencao(
-                    "beat", ponto_beat, PRIORIDADE_BEAT, forca=music.audio_level
-                )
-            )
+        self._adicionar_gatilho_beat(gatilhos, music, centro_tela, largura)
 
         # Borda de tela mais próxima da posição física do mascote: olhar para a
         # borda de onde "veio" algo (ex.: o mascote acabou de bater na borda).
@@ -683,7 +669,7 @@ class OverlayApp(ShowBase):
             largura=largura,
             altura=altura,
             habilitado=self.settings.behavior.react_to_attention,
-            ambiente_habilitado=self.settings.behavior.idle_animation,
+            ambiente_habilitado=False,
         )
         return alvo
 
@@ -723,6 +709,40 @@ class OverlayApp(ShowBase):
             "baixo": (x, bottom),
         }[lado]
 
+    def _atualizar_intro_e_musica(self, now: float):
+        intro_frame = None
+        if self._intro_motion is not None and self._intro_started is not None:
+            intro_frame = self._intro_motion.sample(now - self._intro_started)
+            if intro_frame.locomotion == "land" and self._intro_last_loco != "land":
+                self.animation_controller.interact("land", strength=0.9)
+            elif intro_frame.locomotion == "virtual_insanity" and (
+                self.animation_controller._reaction is None
+                or self.animation_controller._reaction.value != "virtual_insanity"
+            ):
+                self.animation_controller._cooldowns.pop("virtual_insanity", None)
+                self.animation_controller.interact(
+                    "virtual_insanity", direction=float(self._intro_motion.side)
+                )
+            elif (
+                intro_frame.locomotion == "idle"
+                and self._intro_last_loco == "virtual_insanity"
+                and self.animation_controller._reaction
+                == AnimationState.VIRTUAL_INSANITY
+            ):
+                self.animation_controller._reaction = None
+            self._intro_last_loco = intro_frame.locomotion
+            self.animation_controller.definir_orientacao("frente")
+
+        music = self.music_listener.snapshot if self.music_listener else None
+        music_playing = bool(music and music.is_playing)
+        music_intensity = music.audio_level if music else 0.0
+        if music_playing and music_intensity == 0.0:
+            music_intensity = 0.25
+        if intro_frame is not None and intro_frame.locomotion == "dance":
+            music_playing = True
+            music_intensity = 0.65
+        return intro_frame, music, music_playing, music_intensity
+
     def _animation_tick(self) -> None:  # noqa: PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
         if self._exit_started is not None:
             self._exit_tick()
@@ -734,23 +754,39 @@ class OverlayApp(ShowBase):
         dt = now - self._animation_last_tick
         self._animation_last_tick = now
         state = self.physics.get_state() if self.physics else None
-        self._atualizar_caminhada_horizontal(dt, state)
+        if self.physics:
+            self.animation_controller.agencia.definir_limites_tela(*self.physics.bounds)
+        self.renderer._physics_velocity = state.velocity if state else (0.0, 0.0)
+        self._atualizar_caminhada_horizontal(state)
         state = self.physics.get_state() if self.physics else None
-        music = self.music_listener.snapshot if self.music_listener else None
-        music_playing = bool(music and music.is_playing)
-        music_intensity = music.audio_level if music else 0.0
-        if music_playing and music_intensity == 0.0:
-            music_intensity = 0.25
+
+        intro_frame, music, music_playing, music_intensity = (
+            self._atualizar_intro_e_musica(now)
+        )
         self.animation_controller.dance_motion.override = (
             self.settings.music.dance_style
         )
         alvo = self._resolver_alvo_atencao(dt, music, state)
+        vel_ctrl = state.velocity if state else (0.0, 0.0)
+        grounded_ctrl = state.grounded if state else True
+        gravity_ctrl = state.gravity_active if state else False
+        dragging_ctrl = self._drag_active
+        if intro_frame is not None:
+            dragging_ctrl = False
+            if intro_frame.locomotion == "run":
+                vel_ctrl = (660.0 * self._intro_motion.side, 0.0)
+                grounded_ctrl = True
+                gravity_ctrl = False
+            elif intro_frame.locomotion == "fall":
+                vel_ctrl = (0.0, 380.0)
+                grounded_ctrl = False
+                gravity_ctrl = True
         pose = self.animation_controller.update(
             dt,
-            velocity=state.velocity if state else (0.0, 0.0),
-            grounded=state.grounded if state else True,
-            gravity_active=state.gravity_active if state else False,
-            dragging=self._drag_active,
+            velocity=vel_ctrl,
+            grounded=grounded_ctrl,
+            gravity_active=gravity_ctrl,
+            dragging=dragging_ctrl,
             grab_part=getattr(self, "_body_grab_part", "body"),
             drag_direction=self._drag_direction,
             drag_intensity=self._drag_intensity,
@@ -766,9 +802,14 @@ class OverlayApp(ShowBase):
             hovered=self._mouse_hovered and self.settings.behavior.react_to_click,
             look_direction=alvo.direcao,
             look_vertical=alvo.vertical,
+            fonte_atencao=alvo.fonte,
             pointer_position=self._mouse_screen,
         )
-        if alvo.surpresa and self.settings.behavior.react_to_click:
+        if (
+            alvo.surpresa
+            and self.settings.behavior.react_to_click
+            and alvo.fonte not in ("beat", "ambiente")
+        ):
             # Susto temporizado no mesmo padrão das outras reações.
             self.animation_controller.interact(
                 "surprise", direction=alvo.direcao, strength=alvo.forca
@@ -781,6 +822,7 @@ class OverlayApp(ShowBase):
         self.renderer.lower_body.apply(
             self.animation_controller.leg_motion.pose,
             bool(not self._drag_active and (state.grounded if state else True)),
+            dt=dt,
         )
         self.renderer.apply_body_motion(
             self.animation_controller.body_motion.snapshot,
@@ -798,7 +840,17 @@ class OverlayApp(ShowBase):
         self.renderer.update_appendages(
             dt, self.animation_controller.appendage_remaining > 0
         )
-        self._fit_pose_window(dt)
+        # ── Controle do cursor Win32 durante teimosia (manifesto §1.4) ───
+        self._sincronizar_cursor_teimosia()
+        self._sincronizar_desktop(dt)
+        self._sincronizar_mouse_e_abertura(state, intro_frame, dt)
+
+    def _sincronizar_mouse_e_abertura(
+        self,
+        state: Any,
+        intro_frame: IntroFrame | None,
+        dt: float,
+    ) -> None:
         if self.renderer.tentacle_director:
             mouse_world = Point3(
                 (self._mouse_local[0] - self.renderer.width / 2)
@@ -816,6 +868,17 @@ class OverlayApp(ShowBase):
             self.renderer.tentacle_director.set_mouse(mouse_local, Vec3(0))
         if state:
             self._sync_model_with_physics()
+        if intro_frame is not None:
+            self.renderer.apply_intro_effect(intro_frame)
+            if intro_frame.finished:
+                self._intro_motion = None
+                self._intro_started = None
+                self._intro_last_loco = None
+                self._last_model_pos = None
+                if self.animation_controller._reaction == AnimationState.VIRTUAL_INSANITY:
+                    self.animation_controller._reaction = None
+                self.animation_controller.definir_orientacao(None)
+                self.renderer.restore_intro_effect()
         if self.debug_tools:
             self.debug_tools.update(dt)
 
@@ -879,119 +942,294 @@ class OverlayApp(ShowBase):
                 TRAY_NOTIFICACAO_MS,
             )
 
-    def _fit_pose_window(self, dt):  # noqa: C901, PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
-        """Expand the canvas around its center while preserving pixels per unit."""
-        renderer = self.renderer
-        if not renderer or not win32gui.IsWindow(self.hwnd):
-            return
-        bounds = renderer.model_np.getTightBounds(self.render)
-        if (
-            hasattr(renderer, "music_speaker")
-            and not renderer.music_speaker.root.isHidden()
-        ):
-            speaker_bounds = renderer.music_speaker.root.getTightBounds(self.render)
-            if bounds and speaker_bounds:
-                bounds = (
-                    Vec3(*(min(bounds[0][i], speaker_bounds[0][i]) for i in range(3))),
-                    Vec3(*(max(bounds[1][i], speaker_bounds[1][i]) for i in range(3))),
-                )
-        if not bounds:
-            return
-        from panda3d.core import Point2, Point3, WindowProperties
+    def _posicionar_mascote(self, x, y):
+        self._mascot_screen = (x, y)
+        if self._canvas_origin is not None:
+            self._reposicionar_canvas()
+            self._atualizar_posicao_local()
 
-        lens = self.cam.node().getLens()
-        base = self.settings.window.size
-        current = renderer.width
-        # Projeta os 8 cantos do bounding box para medir a extensão (px) que a
-        # pose atual exige. A medição segue viva (garante anti-corte), mas NÃO
-        # é mais aplicada por frame: `escolher_tamanho` traduz a necessidade
-        # num dos poucos degraus de envelope estáveis. O cache reaproveita o
-        # resultado quando o bounding box (e a largura) não mudaram.
-        snapshot = (
-            round(bounds[0].x, 4),
-            round(bounds[0].y, 4),
-            round(bounds[0].z, 4),
-            round(bounds[1].x, 4),
-            round(bounds[1].y, 4),
-            round(bounds[1].z, 4),
-            current,
+    def _atualizar_posicao_local(self):
+        x, y = self._mascot_screen
+        left, top = self._canvas_origin
+        self._physics_local = (x - left, y - top)
+        if self._exit_started is None:
+            self.renderer.set_model_screen_position(*self._physics_local)
+        if self._mouse_screen is not None:
+            mx, my = self._mouse_screen
+            self._mouse_local = (mx - left, my - top)
+
+    def _origem_canvas(self, width, height):
+        left, top, desktop_width, desktop_height = self._desktop_rect
+        x, y = self._mascot_screen
+        margem = min(self.settings.window.size * 0.42, height * 0.25)
+        return (
+            min(left + desktop_width - width, max(left, round(x - width / 2))),
+            min(top + desktop_height - height, max(top, round(y - height + margem))),
         )
-        cached = self._fit_pose_cache
-        if cached is not None and cached[0] == snapshot:  # noqa: PLR1702  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
-            necessario = cached[1]
-        else:
-            projected = []
-            for x in (bounds[0].x, bounds[1].x):
-                for y in (bounds[0].y, bounds[1].y):
-                    for z in (bounds[0].z, bounds[1].z):
-                        pixel = Point2()
-                        lens.project(
-                            self.cam.getRelativePoint(self.render, Point3(x, y, z)),
-                            pixel,
-                        )
-                        if math.isfinite(pixel.x) and math.isfinite(pixel.y):
-                            projected.append(
-                                (
-                                    pixel.x * renderer.width / 2,
-                                    pixel.y * renderer.height / 2,
-                                )
-                            )
-            if not projected:
-                return
-            necessario = extensao_necessaria(projected)
-            self._fit_pose_cache = (snapshot, necessario)
-        # Arraste pelo PÉ: o torso rola ~155° por uma mola subamortecida e o
-        # bbox projetado oscila frame a frame, podendo pular degraus e piscar.
-        # Nesse caso fixamos o degrau (não reavalia por frame) garantindo pelo
-        # menos 2*base para comportar a pose rolada com membros estendidos.
-        arraste_por_pe = self._drag_active and getattr(
-            self, "_body_grab_part", "body"
-        ) in ("legs", "left-feet", "right-feet")
-        size = escolher_tamanho(
-            necessario,
-            current,
-            base,
-            self._envelope_estado,
-            dt,
-            dragging=self._drag_active,
-            fixar_degrau=arraste_por_pe,
-        )
-        if arraste_por_pe:
-            size = max(size, base * 2)
-        if size == current:
+
+    def _reposicionar_canvas(self, *, forcar=False):
+        if not forcar and self._canvas_request is not None:
             return
-        shift = (size - current) // 2
-        left, top = win32gui.ClientToScreen(self.hwnd, (0, 0))
-        units = renderer._view_height / renderer.height
-        lens.setFilmSize(units * size, units * size)
-        renderer.width = renderer.height = size
-        renderer._view_width = renderer._view_height = units * size
-        local = self._physics_local
-        self._physics_local = (local[0] + shift, local[1] + shift)
-        if self._drag_active:
-            self._window_start_pos = (
-                self._window_start_pos[0] - shift,
-                self._window_start_pos[1] - shift,
+        width, height = self.renderer.width, self.renderer.height
+        alvo = self._origem_canvas(width, height)
+        atual = self._canvas_origin
+        if alvo == atual:
+            return
+        if (
+            not forcar
+            and atual
+            and abs(alvo[0] - atual[0]) <= 1
+            and abs(alvo[1] - atual[1]) <= 1
+        ):
+            # Histerese mínima de 1px evita chamadas excessivas sem atraso perceptível.
+            return
+        try:
+            # No deslocamento livre durante saída (forcar=True), omitir SWP_NOREDRAW
+            # evita quadros parciais/travados no DWM quando o canvas desliza rápido.
+            flags = (
+                SWP_NOSIZE
+                | SWP_NOZORDER
+                | SWP_NOACTIVATE
+                | 0x0400
+                | (0 if forcar else win32con.SWP_NOREDRAW)
             )
-        renderer.set_model_screen_position(*self._physics_local)
-        properties = WindowProperties()
-        properties.setSize(size, size)
-        properties.setOrigin(left - shift, top - shift)
-        # Com o envelope estável os resizes passam a ser raros (troca de degrau),
-        # então deixamos o Panda aplicar `requestProperties` no ciclo normal e
-        # mantemos o clear ativo permanentemente (ligado em _create_panda_window),
-        # em vez de forçar openWindows()/RedrawWindow(ERASE) por resize — era esse
-        # repaint síncrono que exibia um frame limpo (transparente) piscando numa
-        # janela layered com color key magenta.
-        #
-        # 🔬 VALIDAÇÃO VISUAL NA GPU (esta máquina cai para p3tinydisplay):
-        # confirmar que, sem o RedrawWindow/openWindows, a assincronia do Panda
-        # não deixa "um frame no tamanho antigo" visível na troca de degrau. Se
-        # reaparecer, basta reativar o bloco abaixo (mantido comentado para ser
-        # trivial religar):
-        #     self.graphicsEngine.openWindows()
-        #     win32gui.RedrawWindow(self.hwnd, None, None, 0x0001 | 0x0004 | 0x0080)
-        self.win.requestProperties(properties)
+            win32gui.SetWindowPos(
+                self.hwnd, 0, *alvo, 0, 0,
+                flags,
+            )
+            self._canvas_origin = alvo
+        except win32gui.error as exc:
+            if exc.winerror != 1400:
+                raise
+
+    def _sincronizar_cursor_teimosia(self) -> None:
+        """Oculta/restaura o cursor Win32 durante teimosia (manifesto §1.4).
+
+        Fase 'roubo': oculta o cursor (Mário engole o mouse).
+        Fase 'cospe': restaura o cursor (Mário cospe o mouse de volta).
+        """
+        if not self.animation_controller:
+            return
+        fase = getattr(self.animation_controller, "_teimosia_fase", None)
+        cursor_oculto = getattr(self.animation_controller, "_cursor_oculto", False)
+
+        if fase == "roubo" and not cursor_oculto:
+            # Ocultar cursor do Windows
+            try:
+                win32api.ShowCursor(False)
+                self.animation_controller._cursor_oculto = True
+            except Exception:
+                pass  # Não quebrar a animação se falhar
+
+        elif fase == "cospe" and cursor_oculto:
+            # Restaurar cursor do Windows
+            try:
+                win32api.ShowCursor(True)
+                self.animation_controller._cursor_oculto = False
+            except Exception:
+                pass
+
+        # Segurança: se a teimosia terminou e o cursor ainda está oculto, restaurar
+        if self.animation_controller.state.value != "teimosia" and cursor_oculto:
+            try:
+                win32api.ShowCursor(True)
+                self.animation_controller._cursor_oculto = False
+            except Exception:
+                pass
+
+    def _sincronizar_desktop(self, dt):
+        """Atualiza topologia e posiciona a janela."""
+        if not win32gui.IsWindow(self.hwnd):
+            return
+        self._confirmar_canvas()
+        self._display_check -= dt
+        if self._display_check <= 0:
+            self._display_check = 0.5
+            self._ler_topologia()
+        if self._desktop_rect is not None and self._canvas_request is None:
+            # Ajusta tamanho apenas quando necessário (tamanho fixo por degrau)
+            # e depois só reposiciona para seguir o mascote.
+            self._ajustar_canvas(dt)
+            self._reposicionar_canvas()
+
+    def _ler_topologia(self):
+        rect = tuple(win32api.GetSystemMetrics(i) for i in (76, 77, 78, 79))
+        if min(rect[2:]) <= 0 or rect == self._desktop_rect:
+            return
+        self._desktop_rect = rect
+        x, y = self._mascot_screen
+        monitor = win32api.MonitorFromPoint((round(x), round(y)), 2)
+        info = win32api.GetMonitorInfo(monitor)
+        left, top, right, bottom = info["Monitor"]
+        if not (left <= x < right and top <= y < bottom):
+            left, top, right, bottom = info["Work"]
+            margem = self.settings.physics.mascot_radius
+            x = min(right - margem, max(left + margem, x))
+            y = min(bottom - margem, max(top + margem, y))
+        if self.physics:
+            self.physics.set_bounds(info["Work"])
+            if (x, y) != self._mascot_screen:
+                self.physics.set_position(x, y)
+        self._mascot_screen = (x, y)
+        self._canvas_measure_in = 0.0
+        if self._canvas_origin and self.renderer.width <= rect[2] and self.renderer.height <= rect[3]:
+            self._reposicionar_canvas(forcar=True)
+            self._atualizar_posicao_local()
+
+    def _confirmar_canvas(self):
+        if self._canvas_request is None:
+            return
+        width, height, origem = self._canvas_request
+        if (self.win.getXSize(), self.win.getYSize()) != (width, height):
+            return
+        if win32gui.ClientToScreen(self.hwnd, (0, 0)) != origem:
+            return
+        renderer = self.renderer
+        units = renderer._view_height / renderer.height
+        renderer.width, renderer.height = width, height
+        renderer._view_width, renderer._view_height = units * width, units * height
+        self.cam.node().getLens().setFilmSize(renderer._view_width, renderer._view_height)
+        if renderer._filter_manager is not None:
+            renderer._filter_manager.resizeBuffers()
+        self._canvas_origin = origem
+        self._canvas_request = None
+        self._atualizar_posicao_local()
+
+    def _ajustar_canvas(self, dt):
+        # Solução radical: tamanho fixo baseado no degrau de envelope.
+        # Nunca chama getTightBounds() durante animação — elimina flicker
+        # causado por variação de bounds a cada pose.
+        palco = self.renderer.music_speaker
+        grande = (
+            palco.was_dancing
+            or palco.visibility > 0.005
+            or (
+                self._intro_motion is not None
+                and self._intro_motion.style == "virtual_insanity_in"
+            )
+        )
+        base = round(self.settings.window.size * max(1.0, self.settings.window.scale))
+        # Usa degrau fixo: 2*base para normal, 3*base para dança.
+        # O degrau 2*base acomoda qualquer pose do mascote sem cortar.
+        if grande:
+            width = base * 3
+            height = round(base * 2.2)
+        elif self._drag_active:
+            width = base * 2
+            height = base * 2
+        else:
+            width = base * 2
+            height = base * 2
+        width = min(width, self._desktop_rect[2])
+        height = min(height, self._desktop_rect[3])
+        atual = (self.renderer.width, self.renderer.height)
+        tamanho = (width, height)
+        if tamanho == atual and self._canvas_origin is not None:
+            self._canvas_shrink_in = 0.0
+            return
+        if self._aguardar_encolhimento_canvas(dt, atual, tamanho):
+            return
+        self._canvas_shrink_in = 0.0
+        self._redimensionar_canvas(width, height)
+
+    def _aguardar_encolhimento_canvas(
+        self, dt: float, atual: tuple[int, int], novo: tuple[int, int]
+    ) -> bool:
+        cresce = novo[0] > atual[0] or novo[1] > atual[1]
+        corte_desktop = (
+            atual[0] > self._desktop_rect[2] or atual[1] > self._desktop_rect[3]
+        )
+        if self._canvas_origin is None or cresce or corte_desktop:
+            self._canvas_shrink_in = 0.0
+            return False
+        if self._canvas_shrink_in <= 0.0:
+            self._canvas_shrink_in = 0.6
+            return True
+        self._canvas_shrink_in -= dt
+        return self._canvas_shrink_in > 0.0
+
+    def _redimensionar_canvas(self, width, height):
+        origem = self._origem_canvas(width, height)
+        self._canvas_request = (width, height, origem)
+        if self._canvas_origin is None:
+            properties = WindowProperties()
+            properties.setOrigin(*origem)
+            properties.setSize(width, height)
+            self.win.requestProperties(properties)
+            return
+        # Resize sem SWP_NOREDRAW: o DWM compósita corretamente sem flicker.
+        # SWP_NOSENDCHANGENOTIFY (0x0400) impede WM_WINDOWPOSCHANGING/CHANGED extras.
+        win32gui.SetWindowPos(
+            self.hwnd, 0, *origem, width, height,
+            SWP_NOZORDER | SWP_NOACTIVATE | 0x0400,
+        )
+        self._confirmar_canvas()
+        if self._canvas_request is None:
+            # O primeiro quadro prepara os buffers WGL redimensionados.
+            self.graphicsEngine.renderFrame()
+
+    def _tamanho_canvas(self, base, palco):
+        if palco:
+            return base * 3, round(base * 2.2)
+        if self._drag_active:
+            return base * 2, base * 2
+        if self._canvas_origin is None:
+            return base, base
+        limites = self.renderer.model_np.getTightBounds(self.cam)
+        if not limites:
+            return base, base
+        low, high = limites
+        anchor = self.renderer.model_anchor.getPos(self.cam)
+        units = self.renderer._view_height / self.renderer.height
+        largura = 2 * max(abs(low.x - anchor.x), abs(high.x - anchor.x)) / units
+        altura = max((high.z - anchor.z) / 0.72, (anchor.z - low.z) / 0.24) / units
+        # Histerese generosa: animações como "cair" esticam o personagem muito
+        # além da pose normal. 10% ou 40px evita que variações de pose causem
+        # resize constante da janela (principal causa de flicker).
+        atual_w = self.renderer.width
+        atual_h = self.renderer.height
+        raw_lado = degrau_para(max(largura, altura) - MARGEM_ANTICORTE / 2, base)
+        diff = abs(raw_lado - atual_w)
+        if diff < max(atual_w * 0.10, 40):
+            return atual_w, atual_h
+        return raw_lado, raw_lado
+
+    def _montar_menus_previas_bandeja(self) -> None:
+        dance_preview = self.tray_menu.addMenu("Prévia de dança (sem som)")
+        for style, label in (
+            ("head_bob", "Head bob"),
+            ("hip_hop", "Hip hop"),
+            ("rock", "Rock"),
+            ("breakdance", "Breakdance"),
+        ):
+            dance_preview.addAction(label).triggered.connect(
+                lambda _checked=False, style=style: (
+                    self.animation_controller.preview_dance(style)  # type: ignore[union-attr]
+                )
+            )
+        intro_preview = self.tray_menu.addMenu("Prévia de aberturas")
+        for style, label in (
+            ("fade_in", "Fade in (dissolver)"),
+            ("virtual_insanity_in", "Virtual Insanity (deslizando)"),
+            ("run_from_depth", "Correndo do fundo"),
+            ("kagebunshin_in", "Entrada ninja (Kage Bunshin)"),
+        ):
+            intro_preview.addAction(label).triggered.connect(
+                lambda _checked=False, style=style: self.start_intro(style)
+            )
+        exit_preview = self.tray_menu.addMenu("Prévia de encerramentos")
+        for style, label in (
+            ("classic", "Clássica (arremesso)"),
+            ("sonic_classic", "Sonic Classic (morte)"),
+            ("fnf_blue_balls", "FNF Blue Balls"),
+            ("lego_disassemble", "Desmontar LEGO"),
+            ("thanos_snap", "Desintegrar (Thanos)"),
+            ("peace_fade_out", "Fade out Peace Sign"),
+            ("virtual_insanity_out", "Virtual Insanity (deslizando)"),
+        ):
+            exit_preview.addAction(label).triggered.connect(
+                lambda _checked=False, style=style: self.preview_exit(style)
+            )
 
     def _setup_tray(self) -> None:  # noqa: PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
         """Cria o ícone e o menu da bandeja do sistema."""
@@ -1007,19 +1245,7 @@ class OverlayApp(ShowBase):
         toggle_action.triggered.connect(lambda _checked=False: self.toggle_visibility())
 
         self.tray_menu.addSeparator()
-        dance_preview = self.tray_menu.addMenu("Prévia de dança (sem som)")
-        for style, label in (
-            ("head_bob", "Head bob"),
-            ("hip_hop", "Hip hop"),
-            ("rock", "Rock"),
-            ("breakdance", "Breakdance"),
-        ):
-            # callback só dispara após o init: animation_controller já definido
-            dance_preview.addAction(label).triggered.connect(
-                lambda _checked=False, style=style: (
-                    self.animation_controller.preview_dance(style)  # type: ignore[union-attr]
-                )
-            )
+        self._montar_menus_previas_bandeja()
 
         self._topmost_action = self.tray_menu.addAction("Sempre no topo")
         self._topmost_action.setCheckable(True)
@@ -1071,7 +1297,7 @@ class OverlayApp(ShowBase):
         personality_group.setExclusive(True)
         self._personality_actions = {}
         for value, label in (
-            ("auto", "Automática"),
+            ("auto", "Padrão"),
             ("calm", "Tranquila"),
             ("curious", "Curiosa"),
             ("playful", "Brincalhona"),
@@ -1210,7 +1436,7 @@ class OverlayApp(ShowBase):
         status = self.tray_registration.ensure()
         if not status["registered"]:
             self.logger.warning("Tray icon has no Shell registration: %s", status)
-        task.delayTime = 15.0 if status["registered"] else 3.0
+        task.delayTime = 60.0 if status["registered"] else 3.0
         return Task.again
 
     def _set_idle_personality(self, personality: str) -> None:
@@ -1250,30 +1476,61 @@ class OverlayApp(ShowBase):
                 _rnd.uniform(left + margem, right - margem)
             )
 
-    def _atualizar_caminhada_horizontal(self, dt: float, state: Any) -> None:
-        """Conduz a caminhada horizontal até `_destino_caminhada_x` quando ativa."""
-        if self.animation_controller and self.animation_controller.pedido_caminhada_autonoma:
-            pedido = self.animation_controller.pedido_caminhada_autonoma
-            self.animation_controller.pedido_caminhada_autonoma = None
-            if pedido == "aleatorio":
-                self.caminhar_destino_aleatorio()
+    def _velocidade_caminhada_teimosia(self, ctrl, state) -> float | None:
+        if (
+            ctrl is None
+            or ctrl.state is None
+            or ctrl.state.value != "teimosia"
+            or getattr(ctrl, "_teimosia_fase", None) != "roubo"
+        ):
+            return None
+        meta = ctrl.agencia.meta_ativa
+        alvo_x = (
+            meta.alvo_x
+            if meta is not None
+            else (self.physics.bounds[0] + self.physics.bounds[2]) * 0.5
+        )
+        dx = alvo_x - state.position[0]
+        return (240.0 if dx > 0 else -240.0) if abs(dx) > 12.0 else 0.0
 
+    def _atualizar_caminhada_horizontal(self, state: Any) -> None:
+        """Conduz a caminhada horizontal (manual, agência autônoma ou roubo do mouse)."""
+        if not self.physics:
+            return
+        self.physics.walk_velocity_x = None
         if self._drag_active:
             self._destino_caminhada_x = None
+        if state is None or not state.grounded:
             return
-        if self._destino_caminhada_x is None or not self.physics or state is None:
+
+        ctrl = self.animation_controller
+        roubo_vel = self._velocidade_caminhada_teimosia(ctrl, state)
+        if roubo_vel is not None:
+            self.physics.walk_velocity_x = roubo_vel or None
             return
-        if not state.grounded:
+
+        if self._destino_caminhada_x is not None:
+            dx = self._destino_caminhada_x - state.position[0]
+            if abs(dx) <= 4.0:
+                self._destino_caminhada_x = None
+                return
+            self.physics.walk_velocity_x = max(-180.0, min(180.0, dx * 6.0))
             return
-        dx = self._destino_caminhada_x - state.position[0]
-        if abs(dx) <= 18.0:
-            self._destino_caminhada_x = None
-            self.physics.body.velocity = (0.0, self.physics.body.velocity.y)
-            self.physics.state.velocity = (0.0, self.physics.body.velocity.y)
-            return
-        vel_x = 180.0 if dx > 0.0 else -180.0
-        self.physics.body.velocity = (vel_x, self.physics.body.velocity.y)
-        self.physics.state.velocity = (vel_x, self.physics.body.velocity.y)
+
+        # Caminhada autônoma pela Agência (vontade própria do Mário)
+        meta = ctrl.agencia.meta_ativa if (ctrl is not None and ctrl.agencia.tem_meta_ativa) else None
+        if (
+            meta is not None
+            and ctrl.state is not None
+            and ctrl.state.value in ("idle", "walk")
+            and not self._mouse_hovered
+            and meta.tipo.value in (2, 3, 4)
+        ):
+            dx = meta.alvo_x - state.position[0]
+            if abs(dx) <= 8.0:
+                ctrl.agencia.registrar_meta_alcançada()
+                return
+            self.physics.walk_velocity_x = max(-150.0, min(150.0, dx * 4.5))
 
     def _setup_timers(self) -> None:
         """Agenda a animação e bombeia os eventos do Qt junto ao loop Panda3D."""
@@ -1408,39 +1665,47 @@ class OverlayApp(ShowBase):
             self._hover_foreground = win32gui.GetForegroundWindow()
             self._mouse_hovered = False
         else:
-            dx = (self._mouse_local[0] - self.renderer.width * 0.5) / (
-                self.renderer.width * 0.95
-            )
-            dy = (self._mouse_local[1] - self.renderer.height * 0.52) / (
-                self.renderer.height * 0.85
-            )
+            size = self.settings.window.size
+            dx = (position[0] - self._mascot_screen[0]) / (size * 0.95)
+            dy = (position[1] - self._mascot_screen[1] + size * 0.25) / (size * 0.85)
+            in_hover_zone = dx * dx + dy * dy <= 1.2
+            tick = getattr(self, "_hover_poll_tick", 0)
+            self._hover_poll_tick = tick + 1
             foreground = win32gui.GetForegroundWindow()
-            typing = foreground != self.hwnd and any(
-                win32api.GetAsyncKeyState(key) & 0x8000
-                for key in (
-                    *range(0x30, 0x5B),
-                    win32con.VK_SPACE,
-                    win32con.VK_BACK,
-                    win32con.VK_RETURN,
+            focus_changed = foreground != self._hover_foreground
+            self._hover_foreground = foreground
+            if in_hover_zone or focus_changed or tick % 4 == 0:
+                typing = foreground != self.hwnd and any(
+                    win32api.GetAsyncKeyState(key) & 0x8000
+                    for key in (
+                        *range(0x30, 0x5B),
+                        win32con.VK_SPACE,
+                        win32con.VK_BACK,
+                        win32con.VK_RETURN,
+                    )
                 )
-            )
-            target = win32gui.WindowFromPoint(position)
-            target_class = win32gui.GetClassName(target) if target else ""
-            busy_cursor = target != self.hwnd and (
-                win32gui.GetCursorInfo()[1] in self._busy_cursors
-                or target_class
-                in (
-                    "#32768",
-                    "Button",
-                    "Edit",
-                    "ComboBox",
-                    "ListBox",
-                    "SysTreeView32",
-                    "SysListView32",
-                    "ToolbarWindow32",
+                target = win32gui.WindowFromPoint(position)
+                target_class = win32gui.GetClassName(target) if target else ""
+                busy_cursor = target != self.hwnd and (
+                    win32gui.GetCursorInfo()[1] in self._busy_cursors
+                    or target_class
+                    in (
+                        "#32768",
+                        "Button",
+                        "Edit",
+                        "ComboBox",
+                        "ListBox",
+                        "SysTreeView32",
+                        "SysListView32",
+                        "ToolbarWindow32",
+                    )
+                    or "Popup" in target_class
                 )
-                or "Popup" in target_class
-            )
+                self._cached_typing = bool(typing)
+                self._cached_busy_cursor = busy_cursor
+            else:
+                typing = getattr(self, "_cached_typing", False)
+                busy_cursor = getattr(self, "_cached_busy_cursor", False)
             allowed = self._hover_attention.update(
                 time.perf_counter(),
                 external_press=bool(buttons)
@@ -1448,9 +1713,8 @@ class OverlayApp(ShowBase):
                 and not self._drag_active,
                 typing=bool(typing),
                 busy_cursor=busy_cursor,
-                focus_changed=foreground != self._hover_foreground,
+                focus_changed=focus_changed,
             )
-            self._hover_foreground = foreground
             self._mouse_hovered = (
                 allowed and not self._drag_active and dx * dx + dy * dy <= 1
             )
@@ -1467,8 +1731,7 @@ class OverlayApp(ShowBase):
             elif event.kind == "drag_start":
                 self._drag_active = True
                 self._drag_start_pos = self.mouse_interaction.press_position or position
-                rect = win32gui.GetWindowRect(self.hwnd)
-                self._window_start_pos = (rect[0], rect[1])
+                self._window_start_pos = self._mascot_screen
                 if self.physics:
                     self.physics.start_drag(*self._drag_start_pos)
                 if self.animation_controller:
@@ -1480,14 +1743,8 @@ class OverlayApp(ShowBase):
                 self._drag_intensity = min(
                     1.0, math.hypot(dx, dy) / DRAG_DIVISOR_INTENSIDADE
                 )
-                win32gui.SetWindowPos(
-                    self.hwnd,
-                    0,
-                    self._window_start_pos[0] + dx,
-                    self._window_start_pos[1] + dy,
-                    0,
-                    0,
-                    SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+                self._posicionar_mascote(
+                    self._window_start_pos[0] + dx, self._window_start_pos[1] + dy
                 )
                 if self.physics:
                     self.physics.update_drag(*position)
@@ -1498,9 +1755,10 @@ class OverlayApp(ShowBase):
                 self._drag_active = False
                 self._drag_direction = 0.0
                 self._drag_intensity = 0.0
-                self.settings.window.start_position = win32gui.GetWindowRect(self.hwnd)[
-                    :2
-                ]
+                self.settings.window.start_position = tuple(
+                    round(valor - offset)
+                    for valor, offset in zip(self._mascot_screen, self._offset_mascote, strict=True)
+                )
                 self._persist_settings()
             if event.kind != "drag_move":
                 self.logger.info("Mouse %s at %s", event.kind, position)
@@ -1616,6 +1874,9 @@ class OverlayApp(ShowBase):
         self._refresh_background_mode()
         if self.renderer:
             self.renderer.set_visual_scale(updated.window.scale)
+            if previous.window.scale != updated.window.scale:
+                self._display_check = 0
+                self._sincronizar_desktop(0)
             self.renderer.set_outline_settings(updated.window)
         if self.animation_controller:
             self.animation_controller.set_idle_personality(
@@ -1676,9 +1937,27 @@ class OverlayApp(ShowBase):
             return
         self._finish_exit()
 
-    def _begin_exit(self):
+    def start_intro(self, style: str | None = None) -> None:
+        """Inicia ou pré-visualiza uma animação de abertura no overlay atual."""
+        if not self.renderer or self._exit_started is not None:
+            return
+        chosen = style or self.settings.window.intro_animation
+        if chosen == "padrao":
+            return
+        self.renderer.restore_intro_effect()
+        side = -1 if self._mascot_screen[0] > self._desktop_rect[0] + self._desktop_rect[2] * 0.5 else 1
+        self._intro_motion = IntroAnimation(chosen, from_side=side)
+        self._intro_started = time.perf_counter()
+        self._intro_last_loco = None
+
+    def preview_exit(self, style: str) -> None:
+        """Reproduz prévia segura de encerramento/morte e restaura o mascote."""
+        if not self.renderer or self._exit_started is not None:
+            return
+        self._begin_exit(style=style, preview=True)
+
+    def _preparar_saida_definitiva(self) -> None:
         self._persist_settings()
-        self._exit_started = time.perf_counter()
         self.taskMgr.remove("physics-tick")
         self.taskMgr.remove("mouse-poll")
         self._native_buttons.clear()
@@ -1686,39 +1965,183 @@ class OverlayApp(ShowBase):
             win32gui.ReleaseCapture()
         if self._settings_dialog:
             self._settings_dialog.reject()
-        win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNOACTIVATE)
-        rect = win32gui.GetWindowRect(self.hwnd)
+
+    def _normalizar_pose_para_saida(self) -> None:
+        self._intro_motion = None
+        self._intro_started = None
+        self._intro_last_loco = None
+        self._canvas_request = None
+        self._last_model_pos = None
+        self._last_tilt_z = None
+        if self.renderer:
+            self.renderer.restore_intro_effect()
+            self.renderer.set_model_rotation()
+            self.renderer.set_model_screen_position(*self._physics_local)
+        ctrl = self.animation_controller
+        if ctrl is None:
+            return
+        ctrl.acordar()
+        ctrl._reaction = None
+        ctrl.definir_orientacao("frente")
+        pose = ctrl.update(1 / 60, velocity=(0.0, 0.0), grounded=True, gravity_active=False)
+        if self.renderer:
+            self.renderer.apply_rig_pose(pose)
+            self.renderer.lower_body.apply(ctrl.leg_motion.pose, True, dt=1 / 60)
+            self.renderer.sync_exit_ground_offset(True)
+
+    def _begin_exit(self, style: str | None = None, *, preview: bool = False):
+        self._exit_preview = preview
+        self._exit_style = style or self.settings.window.exit_animation
+        self._exit_started = time.perf_counter()
+        self._exit_last_tick = self._exit_started
+        self._normalizar_pose_para_saida()
+        if not preview:
+            self._preparar_saida_definitiva()
+        if win32gui.IsWindow(self.hwnd):
+            win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNOACTIVATE)
+            win32gui.SetWindowPos(
+                self.hwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
         bounds = (
             win32api.GetSystemMetrics(76),
             win32api.GetSystemMetrics(77),
             win32api.GetSystemMetrics(76) + win32api.GetSystemMetrics(78),
             win32api.GetSystemMetrics(77) + win32api.GetSystemMetrics(79),
         )
-        self._exit_motion = ExitAnimation(rect[:2], self.settings.window.size, bounds)
-        self.renderer.begin_exit_effect()
-        self.logger.info("Exit animation started")
+        self._exit_origin = tuple(
+            round(v - o)
+            for v, o in zip(self._mascot_screen, self._offset_mascote, strict=True)
+        )
+        self._exit_saved_mascot = self._mascot_screen
+        self._exit_saved_canvas = self._canvas_origin
+        self._exit_motion = ExitAnimation(
+            self._exit_origin,
+            self.settings.window.size,
+            bounds,
+            style=self._exit_style,
+        )
+        self._exit_style = self._exit_motion.style
+        self.renderer.begin_exit_effect(self._exit_style)
+        now = time.perf_counter()
+        self._exit_started = now
+        self._exit_last_tick = now
+        self.logger.info(
+            "Exit animation started (%s, preview=%s)", self._exit_style, preview
+        )
+
+    def _mover_canvas_saida(self, dx: int, dy: int) -> tuple[int, int]:
+        saved_mascot = getattr(self, "_exit_saved_mascot", None)
+        saved_canvas = getattr(self, "_exit_saved_canvas", None)
+        if (
+            saved_mascot is None
+            or saved_canvas is None
+            or self._desktop_rect is None
+            or (dx == 0 and dy == 0)
+        ):
+            return 0, 0
+        self._mascot_screen = (saved_mascot[0] + dx, saved_mascot[1] + dy)
+        self._reposicionar_canvas(forcar=True)
+        return (
+            self._canvas_origin[0] - saved_canvas[0],
+            self._canvas_origin[1] - saved_canvas[1],
+        )
+
+    def _encerrar_quadro_saida(self) -> None:
+        if self._exit_preview:
+            self._end_exit_preview()
+        else:
+            self._force_exit = True
+            self._finish_exit()
 
     def _exit_tick(self):
         if not win32gui.IsWindow(self.hwnd):
-            self._force_exit = True
-            self._finish_exit()
+            self._encerrar_quadro_saida()
             return
-        frame = self._exit_motion.sample(time.perf_counter() - self._exit_started)
-        self.renderer.set_exit_rotation(frame.roll)
-        win32gui.SetWindowPos(
-            self.hwnd,
-            win32con.HWND_TOPMOST,
-            frame.x,
-            frame.y,
-            0,
-            0,
-            SWP_NOSIZE | SWP_NOACTIVATE,
-        )
+        now = time.perf_counter()
+        dt = max(1.0 / 240.0, min(0.05, now - self._exit_last_tick))
+        self._exit_last_tick = now
+        frame = self._exit_motion.sample(now - self._exit_started)
+        renderer = self.renderer
+        if (
+            self._exit_style != "classic"
+            and frame.explode <= 0.0
+            and self.animation_controller is not None
+        ):
+            self._atualizar_pose_durante_saida(dt, frame)
+        dx = frame.x - self._exit_origin[0]
+        dy = frame.y - self._exit_origin[1]
+        cdx, cdy = self._mover_canvas_saida(dx, dy)
+        if self._exit_style == "classic":
+            renderer.set_exit_rotation(frame.roll)
+            units = renderer._view_height / renderer.height
+            renderer.exit_pivot.setX(renderer._exit_center.x + (dx - cdx) * units)
+            renderer.exit_pivot.setZ(renderer._exit_center.z - (dy - cdy) * units)
+        else:
+            renderer.update_exit_effect(
+                frame,
+                (self._exit_origin[0] + cdx, self._exit_origin[1] + cdy),
+                self._exit_style,
+            )
         if self.debug_tools:
             self.debug_tools.update(1 / self.settings.window.fps)
         if frame.done:
-            self._force_exit = True
-            self._finish_exit()
+            self._encerrar_quadro_saida()
+
+    def _atualizar_pose_durante_saida(self, dt: float, frame) -> None:
+        ctrl = self.animation_controller
+        if ctrl is None or self.renderer._lego_snapshot:
+            return
+        ctrl.definir_orientacao("frente")
+        loco = frame.locomotion
+        if loco in ("hit", "peace", "open_hands", "blue_balls", "virtual_insanity"):
+            if ctrl._reaction is None or ctrl._reaction.value != loco:
+                ctrl._cooldowns.pop(loco, None)
+                direction = (
+                    float(self._exit_motion.direction)
+                    if loco == "virtual_insanity"
+                    else None
+                )
+                ctrl.interact(loco, direction=direction, strength=1.1)
+        elif loco == "sleep" and ctrl.state != AnimationState.SLEEP:
+            ctrl.colocar_para_dormir("deitado")
+        vel = (0.0, 480.0) if loco == "fall" else (0.0, 0.0)
+        pose = ctrl.update(
+            dt,
+            velocity=vel,
+            grounded=loco != "fall",
+            gravity_active=loco == "fall",
+            music_playing=loco == "dance",
+            music_intensity=0.7 if loco == "dance" else 0.0,
+        )
+        self.renderer.apply_rig_pose(pose)
+        self.renderer.lower_body.apply(ctrl.leg_motion.pose, loco != "fall", dt=dt)
+        self.renderer.sync_exit_ground_offset(loco != "fall")
+        self.renderer.update_appendages(dt, False)
+
+    def _end_exit_preview(self) -> None:
+        self._exit_started = None
+        self._exit_preview = False
+        self._exit_style = "classic"
+        if self.renderer is not None:
+            self.renderer.restore_exit_effect()
+        if self.animation_controller is not None:
+            self.animation_controller.acordar()
+            self.animation_controller.definir_orientacao(None)
+            self.animation_controller._reaction = None
+        saved_mascot = getattr(self, "_exit_saved_mascot", None)
+        if saved_mascot is not None:
+            self._mascot_screen = saved_mascot
+            self._exit_saved_mascot = None
+            self._exit_saved_canvas = None
+            if getattr(self, "_desktop_rect", None) is not None:
+                self._reposicionar_canvas(forcar=True)
+                self._atualizar_posicao_local()
 
     def _finish_exit(self):
         self.taskMgr.remove("physics-tick")

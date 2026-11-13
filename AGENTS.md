@@ -2,9 +2,18 @@
 
 Companion Windows em Python: Panda3D renderiza, PySide6 oferece bandeja/configurações e Pymunk simula o corpo no desktop.
 
+## Fonte da Verdade Canônica (Obrigatório para Qualquer Agente)
+
+- **DOCUMENTO MESTRE SUPREMO:** [docs/MANUAL_UNIFICADO_MARIO.md](docs/MANUAL_UNIFICADO_MARIO.md).
+  - Qualquer agente que trabalhe neste projeto **DEVE se basear obrigatoriamente** neste manual e no Manifesto da Criatura Viva.
+  - Ele rege toda a visão do Mário como uma criatura de vontade própria, a aplicação simultânea dos **12 Princípios da Animação em todas as ações**, a anatomia do rig Blockbench (73 nós, 43 malhas), a arquitetura de 3 camadas e o catálogo de comportamentos.
+  - O movimento do Mário **NÃO é gerado por molas físicas nem depende de matrizes de personalidades**. O núcleo é padronizado, soberano e vivo por si só.
+- **Status e Roadmap Atual:** [docs/STATUS_E_PROXIMOS_PASSOS.md](docs/STATUS_E_PROXIMOS_PASSOS.md).
+- **Documentações Legadas em `docs/`:** Têm caráter **estritamente histórico e arquivado**. Servem **única e exclusivamente para consultar erros documentados, diagnósticos de bugs e armadilhas técnicas passadas**. Nenhum agente deve seguir conceitos conceituais superados (como usar molas para idle/dança ou fatiar princípios de animação) contidos nos arquivos legados.
+- **Validade dos Testes Antigos de Animação:** Os testes de animação existentes (`tests/test_*tuning.py`, deltas matemáticos de mola, etc.) foram construídos sob o paradigma anterior mecânico e **NÃO representam a qualidade nem a vida do mascote**. Eles mediam números frios que mantinham o boneco travado. **Nenhum agente deve capar o movimento ou a expressividade do mascote para agradar testes legados de mola/personalidade**: se um teste antigo falhar porque o movimento foi libertado e ganhou os 12 princípios, o teste antigo deve ser refatorado ou descartado. Testes servem apenas para infraestrutura (não quebrar TOML, não dar crash em DLL/WGL, evitar NaN no Pymunk); a validação de movimento é **estritamente visual na janela real** (`smoke_mouse.py`).
+
 ## Referência e comandos
 
-- Roadmap canônico: [docs/STATUS_E_PROXIMOS_PASSOS.md](docs/STATUS_E_PROXIMOS_PASSOS.md).
 - Testes: `python -m pytest`.
 - Janela real e perfil temporário: `python tools/smoke_mouse.py`; repetir com `--physics` ao alterar física, arraste ou coordenadas.
 - Build: `.\build.ps1`; distribuir a pasta completa `dist/SeJogaCompanion`.

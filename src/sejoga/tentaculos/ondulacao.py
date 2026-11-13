@@ -88,6 +88,8 @@ ONDULACAO_POR_TEMPERAMENTO: dict[IdlePersonality, OndulacaoTuning] = {
     IdlePersonality.FIGHTER: ONDULACAO_CONFIANTE,
     IdlePersonality.RHYTHM: ONDULACAO_CALMA,
     IdlePersonality.STYLISH: ONDULACAO_CURIOSA,
+    IdlePersonality.BRC_STANCE: ONDULACAO_CONFIANTE,
+    IdlePersonality.VIBING: ONDULACAO_CALMA,
 }
 
 

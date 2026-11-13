@@ -167,3 +167,43 @@ def test_ambiente_desligado_nunca_produz_olhar_espontaneo():
             ambiente_habilitado=False,
         )
         assert alvo.fonte is None
+
+
+def test_batida_musical_e_ambiente_nao_disparam_surpresa_em_loop():
+    from sejoga.animacao.foco_atencao import (
+        PRIORIDADE_BEAT,
+        PRIORIDADE_CURSOR,
+        GateAtencao,
+        GatilhoAtencao,
+    )
+
+    gate = GateAtencao()
+    origem = (1000, 1000)
+    surpresas = 0
+    for passo in range(180):
+        lado_beat = 1400.0 if (passo % 2 == 0) else 600.0
+        alvo = gate.atualizar(
+            1 / 60,
+            gatilhos=[
+                GatilhoAtencao("cursor", (1300.0, 1100.0), PRIORIDADE_CURSOR, forca=0.8),
+                GatilhoAtencao("beat", (lado_beat, 1100.0), PRIORIDADE_BEAT, forca=0.9),
+            ],
+            origem_janela=origem,
+            largura=200,
+            altura=200,
+            ambiente_habilitado=False,
+        )
+        if alvo.surpresa:
+            surpresas += 1
+    assert surpresas == 0
+
+    # Retornar ao cursor parado após beat também não causa falso susto.
+    alvo_cursor = gate.atualizar(
+        1 / 60,
+        gatilhos=[GatilhoAtencao("cursor", (1300.0, 1100.0), PRIORIDADE_CURSOR, forca=0.8)],
+        origem_janela=origem,
+        largura=200,
+        altura=200,
+        ambiente_habilitado=False,
+    )
+    assert alvo_cursor.surpresa is False

@@ -1,18 +1,12 @@
-"""Aplica proteções finais à pose composta: crossfade, colisão e clamps.
-
-Extraído de ``AnimationController`` para unificar todas as correções em um único
-ponto — crossfade com molas (continuidade de velocidade), anti-atravessamento
-dos braços e clamps anatômicos finais. A pose que sai daqui está pronta para o
-renderer, que não precisa aplicar mais nenhuma correção.
-"""
+"""Transições autorais, colisão dos braços e limites articulares."""
 
 from __future__ import annotations
 
-from math import radians, tanh
+from math import pi, radians, tanh, tau
 
 from sejoga.animacao import braco_tuning as tun
 from sejoga.animacao.colisao_bracos import ResolvedorBracos
-from sejoga.animacao.molas_juntas import SpringPose
+from sejoga.animacao.interpolacao import suavizar_quintico
 from sejoga.nucleo.esqueleto import Rotation3
 from sejoga.nucleo.modelo import Model
 
@@ -62,74 +56,77 @@ def limitar_suave(
     return max(minimo, min(maximo, valor))
 
 
+_VEL_MAX_RAD_S = 10.0
+
+
+def _delta_angular_curto(alvo: float, origem: float) -> float:
+    """Retorna o menor arco angular em ``[-pi, pi]`` de ``origem`` até ``alvo``."""
+    return ((alvo - origem + pi) % tau) - pi
+
+
+def _clamp_vel(valor: float) -> float:
+    return max(-_VEL_MAX_RAD_S, min(_VEL_MAX_RAD_S, valor))
+
+
 class PoseResolver:
-    """Aplica crossfade, anti-atravessamento dos braços e clamps à pose composta.
+    """Interpola poses com preservação de momento angular e aplica limites do rig."""
 
-    O controller de animação chama :meth:`resolver` a cada frame, passando a
-    pose alvo (saída do LayerStack/compositor). O PoseResolver:
-
-    1. Faz crossfade com molas (continuidade de velocidade entre estados).
-    2. Aplica clamps anatômicos e impede os braços de atravessar o corpo.
-
-    A saída é a pose pronta para o renderer, sem correções adicionais.
-    """
-
-    def __init__(
-        self,
-        frequencia_crossfade: float = 2.2,
-        amortecimento_crossfade: float = 0.72,
-        tensoes_crossfade: dict[str, tuple[float, float]] | None = None,
-    ) -> None:
-        """Inicializa o resolver.
-
-        Parameters
-        ----------
-        frequencia_crossfade:
-            Frequência default das molas de crossfade.
-        amortecimento_crossfade:
-            Amortecimento default das molas de crossfade.
-        tensoes_crossfade:
-            Tensão por junta ``(frequência, amortecimento)``; juntas fora do
-            dict usam os defaults.
-        """
-        self._crossfade = SpringPose(
-            frequencia=frequencia_crossfade,
-            amortecimento=amortecimento_crossfade,
-            tensoes=tensoes_crossfade or {},
-        )
-        # Frequência-base por junta (regime estável): para devolver a tensão
-        # após a aceleração da transição.
-        self._frequencia_base = {
-            grupo: tensao[0] for grupo, tensao in (tensoes_crossfade or {}).items()
-        }
-        self._frequencia_default = frequencia_crossfade
-
+    def __init__(self) -> None:
+        """Inicia sem transição ativa."""
         self._resolvedor_bracos: ResolvedorBracos | None = None
-
         self._transition_from: dict[str, Rotation3] = {}
-        self._just_transitioned = False
-        self._transition_seconds = 0.55
+        self._transition_vel: dict[str, Rotation3] = {}
+        self._ultima_pose: dict[str, Rotation3] = {}
+        self._velocidades: dict[str, Rotation3] = {}
+        self._transition_seconds = 0.0
         self._state_time = 0.0
-
-    # ═══════════════════════════════════════════════════════════════════════
-    #                          Interface pública
-    # ═══════════════════════════════════════════════════════════════════════
 
     def iniciar_transicao(
         self,
         pose_atual: dict[str, Rotation3],
         transition_seconds: float = 0.55,
     ) -> None:
-        """Marca início de transição de estado.
-
-        Chamado pelo controller quando o estado muda. Guarda a pose atual como
-        ponto de partida do crossfade.
-        """
+        """Guarda a pose e a velocidade angular de saída para inertialização."""
         self._transition_from = dict(pose_atual)
-        self._crossfade.definir(pose_atual, preservar_velocidade=True)
-        self._just_transitioned = True
+        self._transition_vel = dict(self._velocidades)
         self._transition_seconds = max(0.0, transition_seconds)
         self._state_time = 0.0
+
+    def _interpolar_transicao(
+        self, pose_alvo: dict[str, Rotation3]
+    ) -> dict[str, Rotation3]:
+        """Interpola a pose alvo usando transição quíntica e impulso de velocidade."""
+        dur = self._transition_seconds
+        u = max(0.0, min(1.0, self._state_time / dur))
+        peso = suavizar_quintico(u)
+        impulso_vel = dur * u * (1.0 - u) ** 2
+        pose: dict[str, Rotation3] = {}
+        for grupo, alvo in pose_alvo.items():
+            origem = self._transition_from.get(grupo, alvo)
+            vel = self._transition_vel.get(grupo, Rotation3())
+            pose[grupo] = Rotation3(
+                origem.x + _delta_angular_curto(alvo.x, origem.x) * peso + vel.x * impulso_vel,
+                origem.y + _delta_angular_curto(alvo.y, origem.y) * peso + vel.y * impulso_vel,
+                origem.z + _delta_angular_curto(alvo.z, origem.z) * peso + vel.z * impulso_vel,
+            )
+        return pose
+
+    def _atualizar_velocidades(
+        self, dt: float, pose: dict[str, Rotation3]
+    ) -> None:
+        """Registra velocidades angulares do quadro atual para o próximo blend."""
+        if dt > 1e-5 and self._ultima_pose:
+            novas_vels: dict[str, Rotation3] = {}
+            for grupo, rot in pose.items():
+                prev = self._ultima_pose.get(grupo)
+                if prev is not None:
+                    novas_vels[grupo] = Rotation3(
+                        _clamp_vel(_delta_angular_curto(rot.x, prev.x) / dt),
+                        _clamp_vel(_delta_angular_curto(rot.y, prev.y) / dt),
+                        _clamp_vel(_delta_angular_curto(rot.z, prev.z) / dt),
+                    )
+            self._velocidades = novas_vels
+        self._ultima_pose = dict(pose)
 
     def resolver(
         self,
@@ -139,115 +136,24 @@ class PoseResolver:
         model: Model | None = None,
         state_time: float | None = None,
     ) -> dict[str, Rotation3]:
-        """Resolve a pose final: crossfade → clamps → braços.
-
-        Parameters
-        ----------
-        dt:
-            Delta time em segundos.
-        pose_alvo:
-            Pose composta do LayerStack/compositor.
-        model:
-            Modelo para o anti-atravessamento dos braços. Se None, ele fica
-            inerte.
-        state_time:
-            Tempo no estado atual (para acelerar crossfade no início). Se None,
-            usa o tempo interno.
-
-        Returns
-        -------
-        Pose final pronta para o renderer.
-        """
+        """Resolve a pose composta e preserva as restrições anatômicas."""
         if state_time is not None:
             self._state_time = state_time
+
+        if self._state_time < self._transition_seconds and self._transition_seconds > 1e-6:
+            pose = self._interpolar_transicao(pose_alvo)
         else:
-            self._state_time += dt
+            pose = dict(pose_alvo)
+        self._state_time += dt
 
-        # 1. Crossfade (molas por junta)
-        pose = self._aplicar_crossfade(dt, pose_alvo)
-
-        # 2. Clamps anatômicos (antes do anti-atravessamento, que parte de uma
-        #    pose anatômica) e de novo depois (a correção não pode violá-los).
         pose = self._aplicar_clamps(pose)
-
-        # 3. Braços não atravessam o corpo (FK real, se houver model)
         if model is not None:
-            if (
-                self._resolvedor_bracos is None
-                or self._resolvedor_bracos.model is not model
-            ):
+            if self._resolvedor_bracos is None or self._resolvedor_bracos.model is not model:
                 self._resolvedor_bracos = ResolvedorBracos(model)
-
             pose = self._aplicar_clamps(self._resolvedor_bracos.resolver(pose))
 
+        self._atualizar_velocidades(dt, pose)
         return pose
-
-    def definir_pose(self, poses: dict[str, Rotation3]) -> None:
-        """Define a pose atual sem velocidade (evita saltos no crossfade)."""
-        self._crossfade.definir(poses)
-
-    def pose(self) -> dict[str, Rotation3]:
-        """Retorna a pose atual do crossfade."""
-        return self._crossfade.pose()
-
-    @property
-    def molas(self) -> dict:
-        """Acesso às molas do crossfade (para ajustar frequência externamente)."""
-        return self._crossfade.molas
-
-    @property
-    def frequencia_base(self) -> dict[str, float]:
-        """Frequências-base por junta para restaurar após transição."""
-        return self._frequencia_base
-
-    @property
-    def frequencia_default(self) -> float:
-        """Frequência default para juntas sem tensão específica."""
-        return self._frequencia_default
-
-    # ═══════════════════════════════════════════════════════════════════════
-    #                          Métodos internos
-    # ═══════════════════════════════════════════════════════════════════════
-
-    def _aplicar_crossfade(
-        self, dt: float, pose_alvo: dict[str, Rotation3]
-    ) -> dict[str, Rotation3]:
-        """Crossfade com molas por junta (continuidade de velocidade)."""
-        if self._transition_seconds == 0.0:
-            # Sem crossfade: a pose acompanha o alvo diretamente.
-            self._crossfade.definir(pose_alvo)
-            self._just_transitioned = False
-            return {g: pose_alvo.get(g, Rotation3()) for g in pose_alvo}
-
-        if self._just_transitioned:
-            # Primeiro frame após a troca: segura a pose anterior (continuidade
-            # de posição e velocidade) antes de a mola começar a perseguir.
-            self._crossfade.definir(
-                {
-                    grupo: self._transition_from.get(grupo, Rotation3())
-                    for grupo in pose_alvo
-                },
-                preservar_velocidade=True,
-            )
-            self._just_transitioned = False
-            return {
-                grupo: self._transition_from.get(grupo, Rotation3())
-                for grupo in pose_alvo
-            }
-
-        # Molas por junta. Durante a janela de transição acelera-se o retargeting.
-        em_transicao = self._state_time < self._transition_seconds
-        freq_troca = (
-            max(0.6, 1.0 / self._transition_seconds)
-            if self._transition_seconds > 0
-            else 1.0
-        )
-        for grupo, mola in self._crossfade.molas.items():
-            freq_junta = self._frequencia_base.get(grupo, self._frequencia_default)
-            frequencia = max(freq_junta, freq_troca) if em_transicao else freq_junta
-            mola.x.frequency = mola.y.frequency = mola.z.frequency = frequencia
-
-        return self._crossfade.atualizar(dt, pose_alvo)
 
     def _aplicar_clamps(self, pose: dict[str, Rotation3]) -> dict[str, Rotation3]:
         """Limites rígidos anatômicos. Aplicados UMA vez, no final.

@@ -48,4 +48,20 @@ def test_idle_converge_a_zero():
     legs = LegMotion()
     for _ in range(300):
         rest = legs.update(1 / 60, "idle")
-    assert abs(rest.left) < 1e-3 and rest.left_knee < 1e-3
+    # Postura viva de repouso natural com micro-sustentação de peso
+    assert abs(rest.left) < 5.0 and rest.left_knee < 10.0
+
+
+def test_ik_preserva_arco_da_passada_e_ajusta_altura():
+    from math import cos, radians, sin
+
+    from pytest import approx
+
+    from sejoga.animacao.movimento_pernas import apoiar_passada
+
+    coxa, canela = 0.106, 0.094
+    quadril, joelho = apoiar_passada(14, 20, coxa, canela, 0.035)
+    x = coxa * sin(radians(quadril)) + canela * sin(radians(quadril + joelho))
+    z = coxa * cos(radians(quadril)) + canela * cos(radians(quadril + joelho))
+    assert x == approx(coxa * sin(radians(14)) + canela * sin(radians(34)))
+    assert z == approx(coxa + canela - 0.035)

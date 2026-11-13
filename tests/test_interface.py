@@ -121,3 +121,43 @@ def test_novos_campos_persistem_e_reabrem(tmp_path, monkeypatch):  # noqa: PLR09
     assert reopened.monitor_input.currentData() == monitor_esperado
     reopened.close()
     dialog.close()
+
+
+def test_seletores_abertura_e_encerramento_persistem(tmp_path, monkeypatch):
+    """Seletores de animação de abertura e encerramento salvam e reabrem no diálogo."""
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    from sejoga import configuracao
+    from sejoga.desktop import interface
+    from sejoga.desktop.interface import SettingsDialog
+
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    destino = tmp_path / "config_abertura.toml"
+    monkeypatch.setenv("SEJOGA_CONFIG_PATH", str(destino))
+    monkeypatch.setattr(configuracao, "default_config_path", lambda: destino)
+    monkeypatch.setattr(interface, "default_config_path", lambda: destino)
+
+    dialog = SettingsDialog(configuracao.Settings())
+    updates = []
+    dialog.settings_applied.connect(updates.append)
+    dialog.intro_animation_input.setCurrentIndex(
+        dialog.intro_animation_input.findData("virtual_insanity_in")
+    )
+    dialog.exit_animation_input.setCurrentIndex(
+        dialog.exit_animation_input.findData("lego_disassemble")
+    )
+    dialog._save()
+
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    assert updates[0].window.intro_animation == "virtual_insanity_in"
+    assert updates[0].window.exit_animation == "lego_disassemble"
+
+    salvo = configuracao.load_settings(destino)
+    assert salvo.window.intro_animation == "virtual_insanity_in"
+    assert salvo.window.exit_animation == "lego_disassemble"
+
+    reopened = SettingsDialog(salvo)
+    assert reopened.intro_animation_input.currentData() == "virtual_insanity_in"
+    assert reopened.exit_animation_input.currentData() == "lego_disassemble"
+    reopened.close()
+    dialog.close()

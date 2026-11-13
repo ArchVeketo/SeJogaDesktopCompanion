@@ -17,13 +17,17 @@ from sejoga import configuracao
 
 def _pegar_parte(app, win32gui, *partes):
     largura, altura = app.renderer.width, app.renderer.height
+    x0, y0 = map(round, app._physics_local)
     pontos = (
         (x, y)
-        for y in range(altura // 4, altura * 9 // 10, 6)
-        for x in range(largura // 4, largura * 3 // 4, 6)
+        for y in range(max(0, y0 - 250), min(altura, y0 + 8), 6)
+        for x in range(max(0, x0 - 130), min(largura, x0 + 130), 6)
     )
-    for x, y in sorted(pontos, key=lambda p: abs(p[0] - largura / 2) + abs(p[1] - altura * 0.65)):
-        if app.renderer.hit_test(x, y) and app.renderer._pick_part in partes:
+    for x, y in sorted(pontos, key=lambda p: abs(p[0] - x0) + abs(p[1] - (y0 - 85))):
+        if all(
+            app.renderer.hit_test(x + dx, y + dy) and app.renderer._pick_part in partes
+            for dx, dy in ((0, 0), (0, -6), (0, 6), (-6, 0), (6, 0))
+        ):
             tela = win32gui.ClientToScreen(app.hwnd, (x, y))
             if win32gui.WindowFromPoint(tela) == app.hwnd:
                 return tela
@@ -154,7 +158,7 @@ def main():  # noqa: PLR0915  # TODO convenção: ferramenta de captura/GPU: fat
             win32api.SetCursorPos((point[0] + step * 4, point[1] - step * 3))
             frames(1)
         assert app._drag_active and app._body_grab_part in ("left-feet", "right-feet", "legs")
-        assert app.renderer.width == 2 * settings.window.size, app.renderer.width
+        assert (app.renderer.width, app.renderer.height) == (app.win.getXSize(), app.win.getYSize())
         grabbed = app.cam.getRelativePoint(app.renderer.model_np, app._body_grab_point)
         app.cam.node().getLens().project(grabbed, projected)
         screen_grab = win32gui.ClientToScreen(
