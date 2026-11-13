@@ -97,9 +97,9 @@ jobs:
         env:
           CLEAN_VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          $args = @('--channel', $env:UPDATE_CHANNEL)
-          if ($env:CLEAN_VERSION) { $args += @('--version', $env:CLEAN_VERSION) }
-          python tools/construir_atualizacao.py @args
+          $pkgArgs = @('--channel', $env:UPDATE_CHANNEL)
+          if ($env:CLEAN_VERSION) { $pkgArgs += @('--version', $env:CLEAN_VERSION) }
+          python tools/construir_atualizacao.py @pkgArgs
 
       - name: Instala o Inno Setup (ISCC) via Chocolatey
         if: ${{ inputs.gerar_instalador }}
@@ -116,11 +116,11 @@ jobs:
         env:
           CLEAN_VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          $args = @()
+          $installerParams = @{}
           if ($env:UPDATE_CHANNEL -eq 'release' -and $env:CLEAN_VERSION) {
-            $args += @('-Version', $env:CLEAN_VERSION)
+            $installerParams['Version'] = $env:CLEAN_VERSION
           }
-          .\tools\build-installer.ps1 @args
+          .\tools\build-installer.ps1 @installerParams
 
       # Artefatos do Actions: sempre subir para inspecao, mesmo com publicar=false.
       - name: Sobe o ZIP do feed como artefato do Actions
@@ -149,7 +149,7 @@ jobs:
         run: |
           $canal = $env:UPDATE_CHANNEL
           $tagFeed = "updates-$canal"
-          $assets = Get-ChildItem "dist/updates/$canal" -File | ForEach-Object { $_.FullName }
+          $assets = @(Get-ChildItem "dist/updates/$canal" -File | ForEach-Object { $_.FullName })
           $existe = gh release view $tagFeed 2>$null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tagFeed @assets --clobber
@@ -170,7 +170,7 @@ jobs:
         run: |
           $tag = $env:UPDATE_TAG
           $canal = $env:UPDATE_CHANNEL
-          $assets = Get-ChildItem 'dist/installer' -File -Filter '*.exe*' | ForEach-Object { $_.FullName }
+          $assets = @(Get-ChildItem 'dist/installer' -File -Filter '*.exe*' | ForEach-Object { $_.FullName })
           $flagPre = if ($canal -eq 'release') { @() } else { @('--prerelease') }
           $existe = gh release view $tag 2>$null
           if ($LASTEXITCODE -eq 0) {
