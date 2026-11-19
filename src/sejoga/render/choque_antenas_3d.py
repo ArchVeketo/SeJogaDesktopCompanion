@@ -410,7 +410,9 @@ class ChoqueAntenas3D:
             )
         # v2.0: ativa a ponte voltaica 3D entre as duas antenas no pico de carga/choque!
         if intensidade >= 0.42 and len(self._pivos) >= 2:
-            self._atualizar_ponte(passo, intensidade)
+            p0 = Vec3(self._pivos[0][0].getPos(self._head))
+            p1 = Vec3(self._pivos[1][0].getPos(self._head))
+            self._atualizar_ponte(p0, p1, passo, intensidade)
             self._arco_np.show()
         else:
             self._arco_np.hide()

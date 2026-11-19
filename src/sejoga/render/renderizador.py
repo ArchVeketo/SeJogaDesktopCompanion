@@ -1105,65 +1105,24 @@ void main() {{
         self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
 
     def disparar_flash_impacto(self, forca: float = 0.45) -> None:
-        """Flash curto e vibrante de impacto (hit-punch v2.0)."""
-        self._flash_impacto_tempo = max(getattr(self, "_flash_impacto_tempo", 0.0), 0.10)
-        self._flash_impacto_forca = max(getattr(self, "_flash_impacto_forca", 0.0), min(0.75, forca))
+        """Gancho de flash de impacto (desligado até a redefinição de VFX v2.0)."""
+        del forca
 
     def _update_outline_breath(self, dt, motion) -> None:
-        """Modula espessura e cor Cyber-Ink do contorno conforme respiração e estado (v2.0)."""
+        """Modula apenas a espessura do contorno pela respiração do tórax, por frame."""
         if (
             not self.outline_np
             or not self._outline_enabled
             or self.outline_np.isHidden()
         ):
             return
-        if self._outline_base_thickness > 0.0 and self._outline_breath > 0.0:
-            compression = float(getattr(motion, "compression", 0.0))
-            thickness = self._outline_respiracao.update(
-                dt, self._outline_base_thickness, compression, self._outline_breath
-            )
-            self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
-
-        # v2.0: Living Cyber-Ink — cor viva sutil por estado/música/carinho/impacto
-        if getattr(self, "_exit_mode", None) == "fnf_blue_balls":
+        if self._outline_base_thickness <= 0.0 or self._outline_breath <= 0.0:
             return
-        ctrl = getattr(self.showbase, "animation_controller", None)
-        if ctrl is None or not hasattr(self, "_outline_color_rgba"):
-            return
-        estado = ctrl.state.value if ctrl.state else "idle"
-        bass = float(getattr(ctrl.dance_motion, "bass", 0.0)) if estado == "dance" else 0.0
-        amostra = getattr(ctrl, "cena_idle_amostra", None)
-        choque = bool(amostra and amostra.ativa and getattr(amostra, "choque_argolas", False))
-        diretor = getattr(self, "tentacle_director", None)
-        if diretor is not None and getattr(diretor, "aviso_antena_tempo", 0.0) > 0.05:
-            choque = True
-        impacto = float(getattr(motion, "impact", 0.0))
-        base_rgb = (
-            float(self._outline_color_rgba[0]),
-            float(self._outline_color_rgba[1]),
-            float(self._outline_color_rgba[2]),
+        compression = float(getattr(motion, "compression", 0.0))
+        thickness = self._outline_respiracao.update(
+            dt, self._outline_base_thickness, compression, self._outline_breath
         )
-        r, g, b = cor_contorno_viva(
-            base_rgb,
-            estado,
-            bass=bass,
-            choque=choque,
-            carinho=(estado == "pet"),
-            impacto=impacto,
-        )
-        self.outline_np.setShaderInput("outline_color", (r, g, b, 1.0))
-
-        # Decaimento do flash curto de impacto no pós-processamento
-        flash_t = getattr(self, "_flash_impacto_tempo", 0.0)
-        if flash_t > 0.0 and getattr(self, "_exit_mode", None) is None and getattr(self, "_intro_mode", None) is None:
-            flash_t = max(0.0, flash_t - dt)
-            self._flash_impacto_tempo = flash_t
-            ganho = (flash_t / 0.10) * getattr(self, "_flash_impacto_forca", 0.4)
-            self.set_post_effect(tint=(1.0, 0.96, 0.88), flash=ganho)
-        elif getattr(self, "_flash_impacto_forca", 0.0) > 0.0 and flash_t <= 0.0:
-            self._flash_impacto_forca = 0.0
-            if getattr(self, "_exit_mode", None) is None and getattr(self, "_intro_mode", None) is None:
-                self.set_post_effect(flash=0.0)
+        self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
 
     def _update_view_dimensions(self) -> None:
         lens = self.showbase.cam.node().getLens()
@@ -1678,94 +1637,12 @@ void main() {{
         brilho_alvo = brilho_atual
         for registro in getattr(self, "_argolas_fx", ()):
             self._atualizar_item_halo_rgb(registro, argolas_ativas, amostra, pulso_t, choque, brilho_alvo)
+        # Todos os efeitos de cena (2D/grafite/choque) limpos para redefinição do zero na v2.0.
         efeitos = getattr(self, "efeitos_cena", None)
-        params = (
-            self._coletar_parametros_efeitos(ctrl, motion, amostra, grounded)
-            if (efeitos is not None or self._choque_antenas_3d is not None)
-            else None
-        )
-        if efeitos is not None and params is not None:
-            efeitos.atualizar(dt, **params)
-        if self._choque_antenas_3d is not None and params is not None:
-            self._choque_antenas_3d.atualizar(
-                dt,
-                aviso_antena=float(params["aviso_antena"]),
-                choque_argolas=bool(params["choque_argolas"]),
-            )
-        self._atualizar_rastro_sandevistan_voo(dt, grounded)
-
-    def _atualizar_rastro_sandevistan_voo(self, dt: float, grounded: bool) -> None:
-        """Pós-imagens Sandevistan ao vivo durante arremessos velozes (v2.0)."""
-        if (
-            getattr(self, "_intro_mode", None) is not None
-            or getattr(self, "_exit_mode", None) is not None
-            or self.model_np is None
-            or not hasattr(self.model_np, "copyTo")
-        ):
-            return
-        stamps = getattr(self, "_voo_sandevistan_stamps", None)
-        if stamps is None:
-            stamps = []
-            self._voo_sandevistan_stamps = stamps
-            self._voo_sandevistan_cd = 0.0
-            self._voo_sandevistan_seq = 0
-        self._voo_sandevistan_cd = max(0.0, getattr(self, "_voo_sandevistan_cd", 0.0) - dt)
-        vx, vy = self._physics_velocity
-        speed = math.hypot(vx, vy)
-        if not grounded and speed > 1050.0 and self._voo_sandevistan_cd <= 0.0:
-            self._voo_sandevistan_cd = 0.045
-            self._voo_sandevistan_seq += 1
-            paleta = (
-                (0.18, 0.94, 1.0),
-                (0.42, 1.0, 0.46),
-                (1.0, 0.42, 0.34),
-            )
-            cor = paleta[self._voo_sandevistan_seq % len(paleta)]
-            pose_snap = {
-                nome: tuple(no.getHpr())
-                for nome, no in self._rig_nodes.items()
-                if no is not None and not no.isEmpty()
-            }
-            pos_atual = self.model_np.getPos(self.model_anchor)
-            hpr_atual = self.model_np.getHpr(self.model_anchor)
-            esc_atual = self.model_np.getScale(self.model_anchor)
-            stamps.insert(
-                0,
-                {
-                    "age": 0.0,
-                    "ttl": 0.24,
-                    "pos": Vec3(pos_atual),
-                    "hpr": (hpr_atual.x, hpr_atual.y, hpr_atual.z),
-                    "cor": cor,
-                    "scale": Vec3(esc_atual),
-                    "pose": pose_snap,
-                    "id": self._voo_sandevistan_seq,
-                },
-            )
-            if len(stamps) > 3:
-                del stamps[3:]
-        vivos = []
-        for s in stamps:
-            s["age"] += dt
-            if s["age"] < s["ttl"]:
-                vivos.append(s)
-        stamps[:] = vivos
-        if not stamps:
-            if getattr(self, "_voo_sandevistan_ativo", False):
-                self._voo_sandevistan_ativo = False
-                self._atualizar_silhuetas_fx(False, [])
-            return
-        self._voo_sandevistan_ativo = True
-        itens = []
-        poses = []
-        ids = []
-        for idx, s in enumerate(stamps):
-            u = s["age"] / s["ttl"]
-            desloc = Vec3(-vx / max(speed, 1.0) * 0.08 * (idx + 1), 0.04 * (idx + 1), vy / max(speed, 1.0) * 0.06 * (idx + 1))
-            itens.append((s["pos"] + desloc, s["hpr"], s["cor"], s["scale"], min(0.92, 0.22 + 0.72 * u)))
-            poses.append(s["pose"])
-            ids.append(s["id"])
-        self._atualizar_silhuetas_fx(True, itens, freeze_poses=poses, stamp_ids=ids)
+        if efeitos is not None:
+            efeitos.limpar()
+        if self._choque_antenas_3d is not None:
+            self._choque_antenas_3d.ocultar()
 
     def _coletar_caixas_som_pos(self, estado: str) -> tuple[Vec3, ...]:
         speaker = getattr(self, "music_speaker", None)
