@@ -39,6 +39,7 @@ from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig
 from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.recursos import resolve_model
 from sejoga.render.dedos_malha import fatiar_dedos
+from sejoga.render.dinamica_contorno import RespiracaoContorno, cor_contorno_viva
 from sejoga.render.fio_fone_malha import MalhaFioFone, ocultar_peca_rigida_do_fio
 from sejoga.render.rig_flexivel import no_de_facing
 from sejoga.tentaculos import coreografia_porta as coreo
@@ -172,8 +173,6 @@ class Panda3DRenderer:
         self._body_facing = None
         self._giro_corpo = GiroCorpo()
         # Respiração do contorno: espessura base em repouso e driver suavizado.
-        from sejoga.render.dinamica_contorno import RespiracaoContorno, cor_contorno_viva
-
         self._outline_base_thickness = 0.0
         self._outline_breath = 0.0
         self._outline_enabled = True
@@ -1546,7 +1545,6 @@ void main() {{
         modo_musical: bool = False,
         beat_phase: float = 0.0,
     ) -> None:
-        del idx_arg
         np, pos_orig, esc_orig, centro, eixo, eh_outline = item
         if eh_outline:
             np.hide()
