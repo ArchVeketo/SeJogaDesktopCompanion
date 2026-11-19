@@ -496,7 +496,7 @@ class ScreenSpacePhysics:
     def end_drag(
         self,
         cancel: bool = False,
-        extra_velocity: tuple[float, float] = (0.0, 0.0),
+        extra_velocity: tuple[float, float] | None = (0.0, 0.0),
     ) -> tuple[float, float]:
         """Finaliza arraste - calcula velocidade + estilingue e volta a DYNAMIC."""
         if not self._drag_active:
@@ -514,9 +514,10 @@ class ScreenSpacePhysics:
         if not cancel:
             base_vx, base_vy = self._estimate_velocity_from_samples()
             multiplier = self.settings.physics.throw_multiplier
+            ex, ey = extra_velocity if extra_velocity is not None else (0.0, 0.0)
             velocity = (
-                base_vx * multiplier + float(extra_velocity[0]),
-                base_vy * multiplier + float(extra_velocity[1]),
+                base_vx * multiplier + float(ex),
+                base_vy * multiplier + float(ey),
             )
         else:
             velocity = (0.0, 0.0)

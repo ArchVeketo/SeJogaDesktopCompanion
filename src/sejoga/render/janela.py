@@ -1976,7 +1976,7 @@ class OverlayApp(ShowBase):
                 if self.physics:
                     self._set_physics_monitor(self.physics.get_state().position)
                     # v2.0: arremesso estilingue proporcional à velocidade angular do pêndulo ao soltar!
-                    extra_vel = None
+                    extra_vel: tuple[float, float] = (0.0, 0.0)
                     if event.kind == "drag_end" and self.animation_controller:
                         rv = float(
                             getattr(

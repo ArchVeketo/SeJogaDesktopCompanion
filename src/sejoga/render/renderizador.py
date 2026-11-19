@@ -1159,11 +1159,11 @@ void main() {{
             flash_t = max(0.0, flash_t - dt)
             self._flash_impacto_tempo = flash_t
             ganho = (flash_t / 0.10) * getattr(self, "_flash_impacto_forca", 0.4)
-            self._set_post_effect(flash=(1.0, 0.96, 0.88, ganho))
+            self.set_post_effect(tint=(1.0, 0.96, 0.88), flash=ganho)
         elif getattr(self, "_flash_impacto_forca", 0.0) > 0.0 and flash_t <= 0.0:
             self._flash_impacto_forca = 0.0
             if getattr(self, "_exit_mode", None) is None and getattr(self, "_intro_mode", None) is None:
-                self._set_post_effect(flash=(0.0, 0.0, 0.0, 0.0))
+                self.set_post_effect(flash=0.0)
 
     def _update_view_dimensions(self) -> None:
         lens = self.showbase.cam.node().getLens()
