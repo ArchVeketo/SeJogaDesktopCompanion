@@ -71,13 +71,17 @@ class Meta:
         """Retorna True se a meta excedeu o tempo máximo."""
         return (agora - self.criado_em) > self.tempo_maximo
 
-    @property
-    def urgencia(self) -> float:
-        """Urgência decrescente: começa em 1.0 e cai linearmente até 0."""
+    def urgencia_em(self, agora: float) -> float:
+        """Urgência decrescente usando o relógio interno da agência (1.0 → 0.0)."""
         if self.tempo_maximo <= 0:
             return 0.0
-        restante = self.tempo_maximo - (time.monotonic() - self.criado_em)
-        return max(0.0, restante / self.tempo_maximo)
+        restante = self.tempo_maximo - (agora - self.criado_em)
+        return max(0.0, min(1.0, restante / self.tempo_maximo))
+
+    @property
+    def urgencia(self) -> float:
+        """Urgência decrescente (compatível com chamadas sem relógio explícito)."""
+        return self.urgencia_em(time.monotonic())
 
 
 # ─── Desejo (Impulso Interno) ────────────────────────────────────────────────
@@ -184,14 +188,16 @@ class Agencia:
         self._teimosia_nivel: float = 0.0  # 0..1
         self._teimosia_ativa: bool = False
 
-        # Histórico de interações
+        # Histórico de interações (inicia em self._agora para não nascer "entediado")
         self._interacoes_positivas: int = 0  # Carinho, brincadeira
         self._interacoes_negativas: int = 0  # Arraste brusco, impacto
-        self._tempo_ultima_interacao: float = 0.0
-        self._tempo_ultimo_cursor_movimento: float = 0.0
+        self._tempo_ultima_interacao: float = self._agora
+        self._tempo_ultimo_cursor_movimento: float = self._agora
         self._carinhos_seguidos: int = 0
         self._ultimo_carinho: float = -999.0
         self._ultima_comemoracao: float = -999.0
+        self.rancor_arremesso: float = 0.0  # 0..1; sobe em impactos/arremessos, suaviza com carinho
+        self.afeicao: float = 0.35          # 0..1; cresce com carinho e brincadeiras
 
         # Curiosidade: pontos de interesse na tela
         self._pontos_interesse: list[tuple[float, float]] = []
@@ -265,7 +271,7 @@ class Agencia:
         if self._teimosia_ativa:
             base += self._teimosia_nivel * 0.6
         if self.meta_ativa is not None:
-            base += self.meta_ativa.urgencia * self.meta_ativa.intensidade * 0.4
+            base += self.meta_ativa.urgencia_em(self._agora) * self.meta_ativa.intensidade * 0.45
         return min(1.0, base)
 
     # ── Atualização principal ────────────────────────────────────────────
@@ -309,6 +315,10 @@ class Agencia:
                 self.intervalo_meta_min, self.intervalo_meta_max
             )
 
+        # Decaimento de rancor pós-arremesso
+        if self.rancor_arremesso > 0.0:
+            self.rancor_arremesso = max(0.0, self.rancor_arremesso - dt * 0.045)
+
         # Atualizar humor baseado no histórico
         self._atualizar_humor(dt)
 
@@ -318,7 +328,9 @@ class Agencia:
         """Registra carinho, brincadeira suave, etc."""
         self._interacoes_positivas += 1
         self._tempo_ultima_interacao = self._agora
-        self._humor_tempo[Humor.BRINQUEDOIRO] = 10.0
+        self._humor_tempo[Humor.BRINQUEDOIRO] = 14.0
+        self.rancor_arremesso = max(0.0, self.rancor_arremesso - (0.45 if carinho else 0.15))
+        self.afeicao = min(1.0, self.afeicao + (0.10 if carinho else 0.04))
         if carinho:
             if (self._agora - self._ultimo_carinho) > 12.0:
                 self._carinhos_seguidos = 1
@@ -331,7 +343,13 @@ class Agencia:
         self._interacoes_negativas += 1
         self._carinhos_seguidos = 0
         self._tempo_ultima_interacao = self._agora
-        self._humor_tempo[Humor.INDIGNADO] = 5.0 * intensidade
+        self._humor_tempo[Humor.INDIGNADO] = 6.5 * intensidade
+        if intensidade >= 0.85:
+            self.rancor_arremesso = min(1.0, self.rancor_arremesso + 0.38 * intensidade)
+            self._humor_tempo[Humor.DESCONFIADO] = max(
+                self._humor_tempo[Humor.DESCONFIADO], 11.0 * intensidade
+            )
+        self.afeicao = max(0.0, self.afeicao - 0.06 * intensidade)
 
     def registrar_interrupcao(self) -> None:
         """Registra que o usuário interrompeu uma ação do Mário."""
@@ -433,14 +451,34 @@ class Agencia:
         desejo = max(self._desejos, key=lambda d: d.intensidade)
 
         if desejo.tipo == DesejoTipo.CURIOSIDADE and self._pontos_interesse:
-            # Olhar/caminhar até um ponto de interesse
+            # Olhar ou caminhar até um ponto de interesse recente na tela
             ponto = self._pontos_interesse.pop(0)
+            tipo_meta = (
+                MetaTipo.CAMINHAR_A_TELEFONE
+                if self._rng.random() < 0.45
+                else MetaTipo.OLHAR_PONTO
+            )
             self.meta_ativa = Meta(
-                tipo=MetaTipo.OLHAR_PONTO,
+                tipo=tipo_meta,
                 alvo_x=ponto[0],
                 alvo_y=ponto[1],
                 prioridade=desejo.intensidade,
                 criado_em=self._agora,
+            )
+
+        elif desejo.tipo == DesejoTipo.TEDIO:
+            # Tédio vira passeio lento pela tela e ativa o humor TEDIOSO (não trava outros desejos!)
+            self._humor_tempo[Humor.TEDIOSO] = max(self._humor_tempo[Humor.TEDIOSO], 22.0)
+            left, top, right, bottom = self._limites_tela
+            margem_x = min(180.0, (right - left) * 0.20)
+            margem_y = min(120.0, (bottom - top) * 0.18)
+            self.meta_ativa = Meta(
+                tipo=MetaTipo.EXPLORAR_TELA,
+                alvo_x=self._rng.uniform(left + margem_x, right - margem_x),
+                alvo_y=self._rng.uniform(top + margem_y, bottom - margem_y),
+                prioridade=0.45,
+                criado_em=self._agora,
+                tempo_maximo=10.0,
             )
 
         elif desejo.tipo == DesejoTipo.EXPLORACAO:
@@ -497,6 +535,6 @@ class Agencia:
         if max_tempo < 1.0:
             self.humor = Humor.CALMO
 
-        # Tédio se muito tempo sem interação
-        if self.tempo_sem_interacao > 600:
+        # Tédio orgânico após 2 minutos sem interação
+        if self.tempo_sem_interacao > 120.0 and max_tempo < 1.0:
             self.humor = Humor.TEDIOSO

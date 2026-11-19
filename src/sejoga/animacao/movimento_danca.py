@@ -17,16 +17,44 @@ from sejoga.animacao.interpolacao import suavizar_quintico
 from sejoga.animacao.poses_danca import amostrar_passo
 from sejoga.nucleo.esqueleto import Rotation3
 
-_BANDAS_MIXAMO: dict[str, tuple[str, ...]] = {
-    "breakdance": (
-        "breakdance",
-        "breakdance_1990",
-        "flair",
-        "breakdance_uprock",
-        "breakdance_freeze",
+# Bandas musicais v2.0 para modo "auto": desbloqueia o catálogo inteiro por BPM/energia/grave.
+_BANDAS_AUTO_V2: dict[str, tuple[str, ...]] = {
+    "chill_groove": (
+        "head_bob",
+        "street_groove",
+        "walkman_shuffle",
+        "graffiti_dance",
+        "passinho",
+        "griddy",
+        "jabba_switchway",
     ),
-    "hip_hop": ("hip_hop", "dancing_twerk", "breakdance_uprock", "cyber_bounce"),
+    "funk_pop": (
+        "hip_hop",
+        "funk_glide",
+        "cyber_bounce",
+        "electro_swing",
+        "boogie_down",
+        "dont_start_now",
+        "jazz_dance",
+        "kpop_dance_03",
+        "popular",
+        "miku",
+        "lets_begin",
+    ),
+    "high_energy": (
+        "rock",
+        "cyber_skank",
+        "breakdance",
+        "breakdance_uprock",
+        "cyclone_headbang",
+        "flair",
+        "speed_dial",
+        "breakdance_1990",
+    ),
 }
+
+# Compatibilidade para código externo que consulte o dicionário antigo.
+_BANDAS_MIXAMO = _BANDAS_AUTO_V2
 
 
 class DanceMotion:
@@ -83,28 +111,27 @@ class DanceMotion:
         self.phrase_phase = (self.phase / (tune.COMPASSO_FASE * 2.0)) % 1.0
 
     def _selecionar_estilo_danca(self, bar_boundary: bool) -> str:
-        """Escolhe o estilo ou rotacao Mixamo compativel com o trecho musical."""
+        """Escolhe o estilo compatível com BPM/energia/grave e rotaciona nas viradas de compasso."""
         if self.override != "auto":
             return self.override
-        desired = (
-            "breakdance"
-            if self.energy > tune.BREAK_ENERGIA_MIN and self.bass > tune.BREAK_GRAVE_MIN
-            else "rock"
-            if tune.TEMPO_ROCK_MIN <= self.tempo <= tune.TEMPO_ROCK_MAX
-            and self.energy > tune.ROCK_ENERGIA_MIN
-            and self.bass < tune.ROCK_GRAVE_MAX
-            else "hip_hop"
-            if self.bass > tune.HIPHOP_GRAVE_MIN
-            and self.energy > tune.HIPHOP_ENERGIA_MIN
-            else "head_bob"
-        )
-        if self.dwell <= 14.0 and self.style in _BANDAS_MIXAMO.get(desired, ()):
+        if (
+            self.tempo >= 132.0
+            or (self.energy > tune.BREAK_ENERGIA_MIN and self.bass > tune.BREAK_GRAVE_MIN)
+        ):
+            banda = "high_energy"
+        elif self.tempo >= 104.0 or (self.energy > 0.42 and self.bass > 0.35):
+            banda = "funk_pop"
+        else:
+            banda = "chill_groove"
+        pool = _BANDAS_AUTO_V2[banda]
+        if self.dwell <= 14.0 and self.style in pool:
             return self.style
-        if self.dwell > 14.0 and bar_boundary and desired in _BANDAS_MIXAMO:
-            pool = _BANDAS_MIXAMO[desired]
+        if self.dwell > 14.0 and bar_boundary:
             self._indice_mixamo = (self._indice_mixamo + 1) % len(pool)
             return pool[self._indice_mixamo]
-        return desired
+        if self.style not in pool:
+            return pool[self._indice_mixamo % len(pool)]
+        return self.style
 
     def _atualizar_estilo_e_acento(self, dt: float, bpm: float | None, bar_boundary: bool) -> None:
         """Atualiza o estilo escolhido, relógio de emote, força e acento rítmico."""
@@ -553,29 +580,44 @@ class DanceMotion:
             self._groove_rock(rig, pose, pulso, onda, meia_onda)
         elif self.style == "hip_hop":
             self._groove_hip_hop(rig, pose, pulso, onda, meia_onda)
-        elif self.style == "street_groove":
+        elif self.style in ("street_groove", "funk_glide", "walkman_shuffle"):
             self._groove_street_groove(rig, pose, pulso, onda, meia_onda)
         elif self.style == "graffiti_dance":
             self._groove_graffiti(rig, pose, pulso, onda, meia_onda)
-        elif self.style == "cyber_bounce":
+        elif self.style in ("cyber_bounce", "cyber_skank"):
             self._groove_cyber_bounce(rig, pose, pulso, onda, meia_onda)
         else:
             self._groove_breakdance(rig, pose, pulso, onda, meia_onda)
 
     def _aplicar_acessorios_zzz_emote(self, rig) -> None:
-        """Aplica sobreposição ZZZ só em fones e antenas preservando membros 1:1."""
-        ganho = self._frase_ganho()
+        """Camada musical v2.0 sobre os 29 emotes: fones, antenas, acento de batida e micro-porta."""
+        ganho = self._frase_ganho() * (0.75 + 0.55 * self.energy)
         p1 = self.phase - 0.55
         p2 = self.phase - 1.05
         pulso_f = 0.5 + 0.5 * cos(p1)
         onda_f = sin(p1)
         pulso_a = 0.5 + 0.5 * cos(p2)
         onda_a = sin(p2)
-        rig.set_rotation("fones", x=onda_f * 2.8 * ganho, z=sin(p1 * 0.5) * 2.0 * ganho)
-        rig.set_rotation("fone-direito", x=pulso_f * 5.2 * ganho, z=onda_f * 4.5 * ganho)
-        rig.set_rotation("fone-esquerdo", x=pulso_f * 5.2 * ganho, z=-onda_f * 4.5 * ganho)
-        rig.set_rotation("antena-direita", x=pulso_a * 13.0 * ganho, z=onda_a * 15.0 * ganho)
-        rig.set_rotation("antena-esquerda", x=-pulso_a * 11.0 * ganho, z=-onda_a * 15.0 * ganho)
+        rig.set_rotation("fones", x=onda_f * 3.4 * ganho, z=sin(p1 * 0.5) * 2.4 * ganho)
+        rig.set_rotation("fone-direito", x=pulso_f * 6.0 * ganho, z=onda_f * 5.2 * ganho)
+        rig.set_rotation("fone-esquerdo", x=pulso_f * 6.0 * ganho, z=-onda_f * 5.2 * ganho)
+        rig.set_rotation("antena-direita", x=pulso_a * 14.5 * ganho, z=onda_a * 16.5 * ganho)
+        rig.set_rotation("antena-esquerda", x=-pulso_a * 12.5 * ganho, z=-onda_a * 16.5 * ganho)
+
+        # Acento aditivo no peito/cabeça sincronizado com self.acento e self.bass:
+        # faz cada emote reagir de verdade ao grave e aos drops da música ao vivo!
+        if self.acento > 0.05:
+            punch = min(1.0, self.acento) * (0.45 + 0.55 * self.bass)
+            if "head" in rig.current:
+                h = rig.current["head"]
+                rig.current["head"] = Rotation3(h.x + radians(4.2 * punch), h.y, h.z)
+            if "peitoral" in rig.current:
+                p = rig.current["peitoral"]
+                rig.current["peitoral"] = Rotation3(p.x + radians(2.8 * punch), p.y, p.z)
+
+        # Micro-pulso rítmico da portinha nos graves fortes (2°–6°)
+        porta_drop = max(0.0, (self.bass - 0.45) * 11.0 * min(1.0, self.acento))
+        rig.set_rotation("door", y=min(7.0, porta_drop))
 
     def _ganho_passo(self) -> float:
         params = tune.parametros_danca()
@@ -598,7 +640,6 @@ class DanceMotion:
                 if grupo in rig.rest and grupo != "door":
                     rig.current[grupo] = rot
             self._aplicar_acessorios_zzz_emote(rig)
-            rig.set_rotation("door", y=0)
             return rig.pose()
         self.dz_pelvis_emote = 0.0
         self.giro_corpo_emote = 0.0
@@ -622,7 +663,8 @@ class DanceMotion:
         self._groove_tronco(rig, pose, pulso, onda, meia_onda)
         self._groove_bracos(rig, pose, pulso, onda, meia_onda)
         self._aplicar_ombros_zzz(rig, (0.55 + 0.45 * self.energy) * self._frase_ganho())
-        rig.set_rotation("door", y=0)
+        porta_drop = max(0.0, (self.bass - 0.45) * 11.0 * min(1.0, self.acento))
+        rig.set_rotation("door", y=min(7.0, porta_drop))
         return rig.pose()
 
     def apply(self, rig):

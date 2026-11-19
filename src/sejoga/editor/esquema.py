@@ -27,11 +27,17 @@ EXTRAS_RIG_GLTF: frozenset[str] = frozenset(
     {
         "root",
         "pelvis",
+        "Armario",
+        "Porta",
         "fio do fone",
         "circ",
         "circ2",
         "circ_antena",
         "circ2_antena",
+        "argola_sup_dir",
+        "argola_inf_dir",
+        "argola_sup_esq",
+        "argola_inf_esq",
     }
 )
 GRUPOS_RIG_VALIDOS: frozenset[str] = frozenset(ALL_GROUPS) | EXTRAS_RIG_GLTF

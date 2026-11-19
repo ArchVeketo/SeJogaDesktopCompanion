@@ -99,6 +99,8 @@ class LegPose:
     right_ankle_roll: float = 0.0
     left_foot_squash: float = 0.0
     right_foot_squash: float = 0.0
+    left_ankle_yaw: float = 0.0
+    right_ankle_yaw: float = 0.0
 
 
 #: Braço de alavanca efetivo da sola (quadril→eixo + rolagem controlada da bota).
@@ -982,28 +984,49 @@ class LegMotion:
                 right_ankle_roll=-3.0 * shift,
                 left_foot_squash=max(0.0, -shift) * 0.07 + 0.03 * (respiro_joelho / 3.5),
                 right_foot_squash=max(0.0, shift) * 0.07 + 0.03 * (respiro_joelho / 3.5),
+                left_ankle_yaw=7.5,
+                right_ankle_yaw=-7.5,
             )
             if self._tempo_freada < self._duracao_freada:
                 self._tempo_freada = min(self._duracao_freada, self._tempo_freada + dt)
                 target = self._aplicar_freada_zzz(target)
+        # Inercialização Hermite C1 contínua para pernas (elimina quina de velocidade nas trocas).
+        pose_prev = astuple(self.pose)
         estado_anterior = self._estado
         if chave != self._estado:
             self._estado = chave
-            self._transicao_de = self.pose
+            alvo_t = astuple(target)
+            vel_atual = getattr(self, "_vel_pernas", (0.0,) * len(pose_prev))
+            self._inercia_offset = tuple(p - a for p, a in zip(pose_prev, alvo_t, strict=True))
+            self._inercia_vel = vel_atual
             self._transicao_tempo = 0.0
             self._duracao_transicao_atual = self._calcular_duracao_transicao(
                 state, estado_anterior, chave, acao_nome, cena_nome
             )
-        duracao = getattr(self, "_duracao_transicao_atual", 0.32)
+        duracao = max(0.08, getattr(self, "_duracao_transicao_atual", 0.32))
         self._transicao_tempo = min(duracao, self._transicao_tempo + dt)
-        peso = suavizar_quintico(self._transicao_tempo / duracao)
-        if peso < 1.0:
-            self.pose = LegPose(*(
-                origem + (alvo - origem) * peso
-                for origem, alvo in zip(astuple(self._transicao_de), astuple(target), strict=True)
-            ))
+        alvo_t = astuple(target)
+        offsets = getattr(self, "_inercia_offset", None)
+        if offsets is not None and self._transicao_tempo < duracao:
+            u = self._transicao_tempo / duracao
+            # Polinômio Hermite cúbico que parte de (offset, vel*dur) e zera suave em u=1.
+            h00 = 2.0 * u * u * u - 3.0 * u * u + 1.0
+            h10 = u * u * u - 2.0 * u * u + u
+            vels = getattr(self, "_inercia_vel", (0.0,) * len(alvo_t))
+            nova = tuple(
+                a + o * h00 + v * duracao * h10 * 0.35
+                for a, o, v in zip(alvo_t, offsets, vels, strict=True)
+            )
+            self.pose = LegPose(*nova)
         else:
             self.pose = target
+            self._inercia_offset = None
+        if dt > 1e-4:
+            nova_t = astuple(self.pose)
+            self._vel_pernas = tuple(
+                max(-220.0, min(220.0, (n - p) / dt))
+                for n, p in zip(nova_t, pose_prev, strict=True)
+            )
         return self.pose
 
     def _calcular_duracao_transicao(

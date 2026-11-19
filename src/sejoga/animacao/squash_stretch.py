@@ -238,14 +238,13 @@ def squash_stretch_queda(
     # Velocidade vertical determina stretch: mais rápido = mais esticado
     vel_norm = min(1.0, abs(vy) / 560.0)
 
-    # Stretch vertical na queda
+    # Stretch vertical na queda com preservação real de volume (Sx * Sy * Sz ≈ 1.0).
     sz = 1.0 + vel_norm * QUEDA_STRETCH_Z
-
-    # Tumble horizontal afeta escala X
     tumble = min(1.0, abs(vx) / 600.0)
-    sx = 1.0 - tumble * QUEDA_SQUASH_X
-
-    sy, _, _ = preservar_volume(sx, 1.0, sz)
+    fator_x = 1.0 - tumble * QUEDA_SQUASH_X
+    base_xy = math.sqrt(1.0 / sz)
+    sx = base_xy * fator_x
+    sy = 1.0 / max(1e-4, sx * sz)
     return SquashStretch(sx, sy, sz)
 
 
@@ -328,6 +327,64 @@ def squash_stretch_danca(
     return SquashStretch(sx, sy, sz)
 
 
+def squash_stretch_reacao(
+    estado: str,
+    tempo: float,
+    duracao: float = 0.65,
+) -> SquashStretch:
+    """Squash & Stretch autoral para reações (Manifesto §2.3 — 12 princípios em tudo).
+
+    Cada reação segue antecipação → pico elástico → assentamento amortecido com
+    preservação de volume real (Sx * Sy * Sz ≈ 1.0).
+    """
+    if tempo < 0.0 or duracao <= 1e-4:
+        return SquashStretch()
+    u = min(1.0, tempo / duracao)
+
+    if estado == "celebrate":
+        # Agacha (0..0.18) -> salta esticando (0.18..0.52) -> assenta quicando
+        if u < 0.18:
+            sz = 1.0 - 0.10 * math.sin((u / 0.18) * math.pi * 0.5)
+        elif u < 0.55:
+            p = (u - 0.18) / 0.37
+            sz = 0.90 + 0.21 * math.sin(p * math.pi * 0.65)
+        else:
+            p = (u - 0.55) / 0.45
+            sz = 1.0 + 0.07 * math.exp(-3.4 * p) * math.cos(math.pi * 2.0 * p)
+    elif estado == "sneeze":
+        # Inspira estufando (0..0.58) -> explosão com squash forte -> recuperação
+        if u < 0.58:
+            sz = 1.0 + 0.09 * math.sin((u / 0.58) * math.pi * 0.5)
+        elif u < 0.74:
+            p = (u - 0.58) / 0.16
+            sz = 1.09 - 0.22 * math.sin(p * math.pi * 0.5)
+        else:
+            p = (u - 0.74) / 0.26
+            sz = 1.0 - 0.13 * math.exp(-4.0 * p) * math.cos(math.pi * 1.5 * p)
+    elif estado in ("surprise", "wake"):
+        # Estiramento súbito no susto seguido de recolhimento
+        sz = 1.0 + 0.11 * math.exp(-3.8 * u) * math.sin(math.pi * min(1.0, u * 2.8))
+    elif estado in ("hit", "poke"):
+        # Compressão seca no toque e rebote curto
+        amp = 0.12 if estado == "hit" else 0.075
+        sz = 1.0 - amp * math.exp(-4.2 * u) * math.cos(math.pi * 1.6 * u)
+    elif estado == "pet":
+        # Aconchego macio e rítmico ao receber carinho
+        sz = 1.0 - 0.045 * math.sin(u * math.pi) + 0.018 * math.sin(tempo * 7.0)
+    elif estado == "click":
+        # Quique ágil de atenção
+        sz = 1.0 - 0.06 * math.exp(-5.0 * u) * math.cos(math.pi * 2.0 * u)
+    elif estado == "teimosia":
+        # Tensão elástica pulsante enquanto resiste/dá o bote
+        sz = 1.0 - 0.055 * math.sin(tempo * 8.5)
+    else:
+        return SquashStretch()
+
+    sz = max(0.84, min(1.16, sz))
+    sx, sy, _ = preservar_volume(1.0, 1.0, sz)
+    return SquashStretch(sx, sy, sz)
+
+
 def squash_stretch_composto(
     estado: str,
     respiracao: float = 0.0,
@@ -343,53 +400,13 @@ def squash_stretch_composto(
     danca_fase_beat: float = 0.0,
     danca_intensidade: float = 0.5,
     danca_bass: float = 0.0,
+    reacao_tempo: float = 0.0,
+    reacao_duracao: float = 0.65,
 ) -> SquashStretch:
-    """Calcula o squash & stretch composto para o estado atual.
-
-    Combina a respiração base com o squash & stretch específico do estado.
-    A respiração é sempre aplicada como camada base; o estado adiciona por cima.
-
-    Parameters
-    ----------
-    estado:
-        Nome do estado de animação ("idle", "walk", "run", "drag", "fall",
-        "sleep", "dance", "land", etc.).
-    respiracao:
-        Valor centrado (-1..1) da respiração.
-    fase_locomocao:
-        Fase da passada (radianos).
-    run:
-        Se True, corrida.
-    impacto_tempo:
-        Tempo desde o impacto (segundos).
-    impacto_duracao:
-        Duração do squash de impacto.
-    arraste_velocidade:
-        Velocidade do cursor durante arraste.
-    arraste_intensidade:
-        Intensidade do arraste (0..1).
-    queda_velocidade:
-        Velocidade durante queda.
-    queda_tempo:
-        Tempo de queda.
-    sono_modo:
-        Modo de sono ("em_pe", "sentado", "deitado").
-    danca_fase_beat:
-        Fase dentro da batida (0..1).
-    danca_intensidade:
-        Intensidade da música (0..1).
-    danca_bass:
-        Intensidade do bass (0..1).
-
-    Returns
-    -------
-    Escala multiplicativa composta.
-    """
-    # Camada base: respiração (sempre presente, mesmo em ação)
+    """Calcula o squash & stretch composto para o estado atual."""
     base = squash_stretch_respiracao(respiracao)
 
     if estado in ("idle", "hover"):
-        # Idle: só respiração
         return base
 
     if estado in ("walk", "run"):
@@ -405,8 +422,7 @@ def squash_stretch_composto(
         return _compor_escalas(base, fall)
 
     if estado == "sleep":
-        sleep = squash_stretch_sono(respiracao, sono_modo)
-        return sleep  # Sono substitui a respiração base
+        return squash_stretch_sono(respiracao, sono_modo)
 
     if estado == "dance":
         dance = squash_stretch_danca(danca_fase_beat, danca_intensidade, danca_bass)
@@ -416,7 +432,10 @@ def squash_stretch_composto(
         land = squash_stretch_impacto(impacto_tempo, impacto_duracao)
         return _compor_escalas(base, land)
 
-    # Estados sem squash & stretch específico
+    reacao = squash_stretch_reacao(estado, reacao_tempo, reacao_duracao)
+    if reacao != SquashStretch():
+        return _compor_escalas(base, reacao)
+
     return base
 
 
@@ -424,25 +443,11 @@ def _compor_escalas(
     a: SquashStretch,
     b: SquashStretch,
 ) -> SquashStretch:
-    """Compor duas escalas multiplicativas.
-
-    A composição multiplica os desvios de 1.0 de cada escala,
-    preservando a intenção de ambas.
-    """
-    # Desvio de cada escala
-    da_x = a.x - 1.0
-    da_y = a.y - 1.0
-    da_z = a.z - 1.0
-    db_x = b.x - 1.0
-    db_y = b.y - 1.0
-    db_z = b.z - 1.0
-
-    # Soma os desvios (composição aditiva de desvios)
-    sx = 1.0 + da_x + db_x
-    sy = 1.0 + da_y + db_y
-    sz = 1.0 + da_z + db_z
-
-    # Reaplica preservação de volume no resultado composto
-    sx, sy, sz = preservar_volume(sx, sy, sz)
-
+    """Compõe duas escalas preservando volume exatamente UMA vez (Sx * Sy * Sz == 1.0)."""
+    sz = max(0.80, min(1.22, a.z * b.z))
+    # Preserva eventual assimetria X/Y (como na queda lateral) sem duplicar compensação.
+    razao_xy = (a.x / max(1e-4, a.y)) * (b.x / max(1e-4, b.y))
+    area_xy = 1.0 / sz
+    sx = math.sqrt(area_xy * razao_xy)
+    sy = area_xy / max(1e-4, sx)
     return SquashStretch(sx, sy, sz)

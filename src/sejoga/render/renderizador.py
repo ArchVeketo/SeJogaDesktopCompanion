@@ -172,7 +172,7 @@ class Panda3DRenderer:
         self._body_facing = None
         self._giro_corpo = GiroCorpo()
         # Respiração do contorno: espessura base em repouso e driver suavizado.
-        from sejoga.render.dinamica_contorno import RespiracaoContorno
+        from sejoga.render.dinamica_contorno import RespiracaoContorno, cor_contorno_viva
 
         self._outline_base_thickness = 0.0
         self._outline_breath = 0.0
@@ -263,6 +263,9 @@ class Panda3DRenderer:
             self._pick_part = "body"
             while not picked.isEmpty() and picked != self.model_np:
                 name = picked.getName()
+                if "tentacle" in name.lower():
+                    self._pick_part = "tentacle"
+                    break
                 if name in (
                     "right-arm",
                     "left-arm",
@@ -1102,21 +1105,66 @@ void main() {{
         self._outline_respiracao.reset(thickness)
         self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
 
+    def disparar_flash_impacto(self, forca: float = 0.45) -> None:
+        """Flash curto e vibrante de impacto (hit-punch v2.0)."""
+        self._flash_impacto_tempo = max(getattr(self, "_flash_impacto_tempo", 0.0), 0.10)
+        self._flash_impacto_forca = max(getattr(self, "_flash_impacto_forca", 0.0), min(0.75, forca))
+
     def _update_outline_breath(self, dt, motion) -> None:
-        """Modula a espessura do contorno pela respiração do tórax, por frame."""
+        """Modula espessura e cor Cyber-Ink do contorno conforme respiração e estado (v2.0)."""
         if (
             not self.outline_np
             or not self._outline_enabled
             or self.outline_np.isHidden()
         ):
             return
-        if self._outline_base_thickness <= 0.0 or self._outline_breath <= 0.0:
+        if self._outline_base_thickness > 0.0 and self._outline_breath > 0.0:
+            compression = float(getattr(motion, "compression", 0.0))
+            thickness = self._outline_respiracao.update(
+                dt, self._outline_base_thickness, compression, self._outline_breath
+            )
+            self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
+
+        # v2.0: Living Cyber-Ink — cor viva sutil por estado/música/carinho/impacto
+        if getattr(self, "_exit_mode", None) == "fnf_blue_balls":
             return
-        compression = float(getattr(motion, "compression", 0.0))
-        thickness = self._outline_respiracao.update(
-            dt, self._outline_base_thickness, compression, self._outline_breath
+        ctrl = getattr(self.showbase, "animation_controller", None)
+        if ctrl is None or not hasattr(self, "_outline_color_rgba"):
+            return
+        estado = ctrl.state.value if ctrl.state else "idle"
+        bass = float(getattr(ctrl.dance_motion, "bass", 0.0)) if estado == "dance" else 0.0
+        amostra = getattr(ctrl, "cena_idle_amostra", None)
+        choque = bool(amostra and amostra.ativa and getattr(amostra, "choque_argolas", False))
+        diretor = getattr(self, "tentacle_director", None)
+        if diretor is not None and getattr(diretor, "aviso_antena_tempo", 0.0) > 0.05:
+            choque = True
+        impacto = float(getattr(motion, "impact", 0.0))
+        base_rgb = (
+            float(self._outline_color_rgba[0]),
+            float(self._outline_color_rgba[1]),
+            float(self._outline_color_rgba[2]),
         )
-        self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
+        r, g, b = cor_contorno_viva(
+            base_rgb,
+            estado,
+            bass=bass,
+            choque=choque,
+            carinho=(estado == "pet"),
+            impacto=impacto,
+        )
+        self.outline_np.setShaderInput("outline_color", (r, g, b, 1.0))
+
+        # Decaimento do flash curto de impacto no pós-processamento
+        flash_t = getattr(self, "_flash_impacto_tempo", 0.0)
+        if flash_t > 0.0 and getattr(self, "_exit_mode", None) is None and getattr(self, "_intro_mode", None) is None:
+            flash_t = max(0.0, flash_t - dt)
+            self._flash_impacto_tempo = flash_t
+            ganho = (flash_t / 0.10) * getattr(self, "_flash_impacto_forca", 0.4)
+            self._set_post_effect(flash=(1.0, 0.96, 0.88, ganho))
+        elif getattr(self, "_flash_impacto_forca", 0.0) > 0.0 and flash_t <= 0.0:
+            self._flash_impacto_forca = 0.0
+            if getattr(self, "_exit_mode", None) is None and getattr(self, "_intro_mode", None) is None:
+                self._set_post_effect(flash=(0.0, 0.0, 0.0, 0.0))
 
     def _update_view_dimensions(self) -> None:
         lens = self.showbase.cam.node().getLens()
@@ -1303,7 +1351,12 @@ void main() {{
             and controller.state == AnimationState.SLEEP
             and getattr(controller, "modo_sono", "") == "deitado"
         )
-        if dancing_stage or sleeping_lying or not self._is_grounded:
+        if dancing_stage or sleeping_lying:
+            self._shadow_np.hide()
+            return
+        # v2.0: sombra encolhe suavemente no ar em vez de sumir num corte seco!
+        fator_ar = 1.0 if self._is_grounded else max(0.0, 1.0 - abs(self._physics_velocity[1]) / 1200.0) * 0.62
+        if fator_ar <= 0.08:
             self._shadow_np.hide()
             return
         self._shadow_np.show()
@@ -1327,8 +1380,8 @@ void main() {{
         # Acompanha squash lateral se ativo
         sx = self._squash_pivot.getSx() if self._squash_pivot is not None else 1.0
         sy = self._squash_pivot.getSy() if self._squash_pivot is not None else 1.0
-        base_w = max(0.42, largura_pes * 1.28) * sx
-        base_d = max(0.24, float(self._model_dimensions.y) * scale * 0.72) * sy
+        base_w = max(0.42, largura_pes * 1.28) * sx * fator_ar
+        base_d = max(0.24, float(self._model_dimensions.y) * scale * 0.72) * sy * fator_ar
         self._shadow_np.setPos(x_centro, -0.02, z_sola - 0.012)
         # CardMaker gera o cartão em XZ; sob setP(-82), o eixo Z local controla a profundidade.
         self._shadow_np.setScale(base_w, 1.0, base_d)
@@ -1338,6 +1391,11 @@ void main() {{
         dragging = controller.state == AnimationState.DRAG
         dancing = controller.state == AnimationState.DANCE
         dance = controller.dance_motion if dancing else None
+        reacao_dur = float(
+            controller.REACTION_SECONDS.get(controller._reaction, 0.65)
+            if getattr(controller, "_reaction", None) is not None
+            else 0.65
+        )
         return {
             "estado": estado,
             "respiracao": getattr(controller, "respiracao_valor", 0.0) or 0.0,
@@ -1363,6 +1421,8 @@ void main() {{
             "danca_fase_beat": ((dance.phase / math.tau) % 1.0) if dance else 0.0,
             "danca_intensidade": dance.strength if dance else 0.5,
             "danca_bass": dance.bass if dance else 0.0,
+            "reacao_tempo": float(getattr(controller, "_reaction_time", 0.0)),
+            "reacao_duracao": reacao_dur,
         }
 
     def _aplicar_squash_stretch(self) -> None:
@@ -1486,14 +1546,18 @@ void main() {{
         modo_musical: bool = False,
         beat_phase: float = 0.0,
     ) -> None:
-        del pulso_t, idx_arg
+        del idx_arg
         np, pos_orig, esc_orig, centro, eixo, eh_outline = item
         if eh_outline:
             np.hide()
             return
         if not argolas_ativas and not modo_musical:
+            # v2.0: levitação ambiente sutil nas argolas (sempre vivas, nunca congeladas!)
+            eh_sup = "sup" in np.getName() or abs(centro.z) > 0.086
+            fase_amb = pulso_t * 2.1 + idx_arg * 1.15
+            dz_amb = math.sin(fase_amb) * (0.006 if eh_sup else -0.005)
             np.show()
-            np.setPos(pos_orig)
+            np.setPos(pos_orig + eixo * dz_amb)
             np.setScale(esc_orig)
             np.clearColorScale()
             return
@@ -1630,6 +1694,80 @@ void main() {{
                 aviso_antena=float(params["aviso_antena"]),
                 choque_argolas=bool(params["choque_argolas"]),
             )
+        self._atualizar_rastro_sandevistan_voo(dt, grounded)
+
+    def _atualizar_rastro_sandevistan_voo(self, dt: float, grounded: bool) -> None:
+        """Pós-imagens Sandevistan ao vivo durante arremessos velozes (v2.0)."""
+        if (
+            getattr(self, "_intro_mode", None) is not None
+            or getattr(self, "_exit_mode", None) is not None
+            or self.model_np is None
+            or not hasattr(self.model_np, "copyTo")
+        ):
+            return
+        stamps = getattr(self, "_voo_sandevistan_stamps", None)
+        if stamps is None:
+            stamps = []
+            self._voo_sandevistan_stamps = stamps
+            self._voo_sandevistan_cd = 0.0
+            self._voo_sandevistan_seq = 0
+        self._voo_sandevistan_cd = max(0.0, getattr(self, "_voo_sandevistan_cd", 0.0) - dt)
+        vx, vy = self._physics_velocity
+        speed = math.hypot(vx, vy)
+        if not grounded and speed > 1050.0 and self._voo_sandevistan_cd <= 0.0:
+            self._voo_sandevistan_cd = 0.045
+            self._voo_sandevistan_seq += 1
+            paleta = (
+                (0.18, 0.94, 1.0),
+                (0.42, 1.0, 0.46),
+                (1.0, 0.42, 0.34),
+            )
+            cor = paleta[self._voo_sandevistan_seq % len(paleta)]
+            pose_snap = {
+                nome: tuple(no.getHpr())
+                for nome, no in self._rig_nodes.items()
+                if no is not None and not no.isEmpty()
+            }
+            pos_atual = self.model_np.getPos(self.model_anchor)
+            hpr_atual = self.model_np.getHpr(self.model_anchor)
+            esc_atual = self.model_np.getScale(self.model_anchor)
+            stamps.insert(
+                0,
+                {
+                    "age": 0.0,
+                    "ttl": 0.24,
+                    "pos": Vec3(pos_atual),
+                    "hpr": (hpr_atual.x, hpr_atual.y, hpr_atual.z),
+                    "cor": cor,
+                    "scale": Vec3(esc_atual),
+                    "pose": pose_snap,
+                    "id": self._voo_sandevistan_seq,
+                },
+            )
+            if len(stamps) > 3:
+                del stamps[3:]
+        vivos = []
+        for s in stamps:
+            s["age"] += dt
+            if s["age"] < s["ttl"]:
+                vivos.append(s)
+        stamps[:] = vivos
+        if not stamps:
+            if getattr(self, "_voo_sandevistan_ativo", False):
+                self._voo_sandevistan_ativo = False
+                self._atualizar_silhuetas_fx(False, [])
+            return
+        self._voo_sandevistan_ativo = True
+        itens = []
+        poses = []
+        ids = []
+        for idx, s in enumerate(stamps):
+            u = s["age"] / s["ttl"]
+            desloc = Vec3(-vx / max(speed, 1.0) * 0.08 * (idx + 1), 0.04 * (idx + 1), vy / max(speed, 1.0) * 0.06 * (idx + 1))
+            itens.append((s["pos"] + desloc, s["hpr"], s["cor"], s["scale"], min(0.92, 0.22 + 0.72 * u)))
+            poses.append(s["pose"])
+            ids.append(s["id"])
+        self._atualizar_silhuetas_fx(True, itens, freeze_poses=poses, stamp_ids=ids)
 
     def _coletar_caixas_som_pos(self, estado: str) -> tuple[Vec3, ...]:
         speaker = getattr(self, "music_speaker", None)
@@ -1671,7 +1809,10 @@ void main() {{
             "grounded": grounded,
             "velocidade": vel,
             "medo": bool(getattr(motion, "surprise_jolt", 0.0) > 0.65),
-            "tremor": False,
+            "tremor": bool(
+                getattr(motion, "surprise_jolt", 0.0) > 0.55
+                or estado == "surprise"
+            ),
             "susto": bool(
                 ctrl._reaction == AnimationState.SURPRISE
                 or getattr(motion, "surprise_jolt", 0.0) > 0.78
@@ -1681,9 +1822,12 @@ void main() {{
                 and getattr(ctrl, "_teimosia_fase", "") in ("repreensao", "bote")
             ),
             "tontura": bool(
-                ctrl._reaction == AnimationState.LAND
-                and heavy_land
-                and getattr(ctrl, "_reaction_time", 0.0) < 0.60
+                getattr(ctrl, "tontura", 0.0) > 0.12
+                or (
+                    ctrl._reaction == AnimationState.LAND
+                    and heavy_land
+                    and getattr(ctrl, "_reaction_time", 0.0) < 0.85
+                )
             ),
             "sono": bool(ctrl.state == AnimationState.SLEEP),
             "aviso_antena": aviso,

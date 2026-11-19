@@ -26,25 +26,10 @@ from typing import Any
 GLB_MAGIC = 0x46546C67
 CHUNK_JSON = 0x4E4F534A
 
-# Grupos (pivôs) que interessam à camada de animação procedural.
-RIG_GROUPS = (
-    "head",
-    "door",
-    "body",
-    "right-arm",
-    "left-arm",
-    "shoulder",
-    "shoulder2",
-    "ant-arm",
-    "ant-arm2",
-    "hand",
-    "hand2",
-    "fingers",
-    "fingers2",
-    "legs",
-    "left-feet",
-    "right-feet",
-)
+from sejoga.nucleo.esqueleto import ALL_GROUPS
+
+# Grupos (pivôs) canônicos da camada de animação procedural (31 grupos v2.0).
+RIG_GROUPS = ALL_GROUPS
 
 
 def load_gltf(path: Path) -> dict[str, Any]:

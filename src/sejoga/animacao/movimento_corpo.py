@@ -425,8 +425,15 @@ class BodyMotion:
         rest_rad = self._iniciar_pendulo_arraste(grab_part, grab_point)
         res_roll = res_pitch = res_yaw = 0.0
         if resistencia_nivel > 0.05 and meta_direcao is not None:
-            dir_x = clamp(meta_direcao[0] / 240.0, -1.0, 1.0)
-            dir_y = clamp(meta_direcao[1] / 240.0, -1.0, 1.0)
+            mx, my = float(meta_direcao[0]), float(meta_direcao[1])
+            # Aceita tanto vetor unitário [-1..1] (agencia.direcao_meta) quanto delta em px.
+            mag = sqrt(mx * mx + my * my)
+            if mag > 1.5:
+                dir_x = clamp(mx / 240.0, -1.0, 1.0)
+                dir_y = clamp(my / 240.0, -1.0, 1.0)
+            else:
+                dir_x = clamp(mx, -1.0, 1.0)
+                dir_y = clamp(my, -1.0, 1.0)
             res_roll = -dir_x * resistencia_nivel * 22.0
             res_pitch = -dir_y * resistencia_nivel * 16.0
             res_yaw = dir_x * resistencia_nivel * 14.0

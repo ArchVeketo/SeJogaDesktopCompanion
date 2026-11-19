@@ -93,6 +93,9 @@ class GerenciadorEfeitosCena:
         self._timer_queda = 0.0
         self._timer_zzz = 0.0
         self._timer_celebrate = 0.0
+        self._timer_carinho = 0.0
+        self._prev_hit = False
+        self._onda_lado = 0
         self._seq_nota = 0
         self._seq_zzz = 0
         self._peso_medo = 0.0
@@ -133,6 +136,14 @@ class GerenciadorEfeitosCena:
         self._tex_poeira = arte_efeitos.tex_poeira()
         self._tex_poeira_fiapo = arte_efeitos.tex_poeira_fiapo()
         self._tex_gosma = arte_efeitos.tex_gosma()
+        self._tex_coracao = arte_efeitos.tex_coracao()
+        # v2.0: ressuscita as 8 folhas 2x2 autorais de vfx_grafite (chroma-safe!)
+        try:
+            from sejoga.render.vfx_grafite import carregar_banco_grafite
+
+            self._grafite = carregar_banco_grafite()
+        except Exception:
+            self._grafite = {}
 
     def _criar_cartoes_fixos(self) -> None:
         self._card_suor = self._criar_cartao("fx-suor", self._tex_suor, 0.30)
@@ -749,6 +760,65 @@ class GerenciadorEfeitosCena:
             rot_deg=-math.sin(self._tempo * 36.0) * 5.0,
         )
 
+    def _emitir_grafite(
+        self,
+        chave: str,
+        pos: Vec3,
+        *,
+        escala: float = 0.82,
+        ttl: float = 0.34,
+        rot_deg: float = 0.0,
+        flip_x: bool = False,
+        vel: Vec3 = Vec3(0.0, 0.0, 0.0),
+    ) -> bool:
+        """Dispara uma folha 2x2 animada de ``vfx_grafite`` se disponível."""
+        seq = self._grafite.get(chave)
+        if seq is None or not seq.frames:
+            return False
+        node = cartao_pixel(self.root, f"fx-grafite-{chave}", seq.frames[0])
+        spec = EfeitoSpec(
+            ttl=ttl,
+            base_scale=escala,
+            pop_amp=0.16,
+            fade_start=0.68,
+            color=(1.0, 1.0, 1.0, 1.0),
+        )
+        self._registrar_particula(
+            node,
+            Vec3(pos.x, _FX_FRONT_Y - 0.04, pos.z),
+            vel,
+            spec,
+            rot_deg=rot_deg,
+            frames=seq.frames,
+            flip_x=flip_x,
+        )
+        return True
+
+    def emitir_carinho(self, pos: Vec3, quantidade: int = 2) -> None:
+        """Emite corações pixelados e brilhos subindo suavemente no carinho real (v2.0)."""
+        for i in range(quantidade):
+            lado = -1.0 if i % 2 == 0 else 1.0
+            spec = EfeitoSpec(
+                ttl=1.05 + 0.15 * i,
+                base_scale=0.26 + 0.04 * (i % 2),
+                gravity=0.18,
+                drag=0.9,
+                wobble_amp=0.045,
+                wobble_freq=4.2 + i,
+                pop_amp=0.22,
+                fade_start=0.58,
+                color=(1.0, 1.0, 1.0, 1.0),
+            )
+            self.emitir_particula(
+                "fx-coracao",
+                self._tex_coracao,
+                Vec3(pos.x + lado * (0.14 + 0.06 * i), _FX_FRONT_Y, pos.z + 0.24),
+                Vec3(lado * 0.18, 0.0, 0.56 + 0.12 * i),
+                spec,
+                wobble_phase=i * 1.9,
+            )
+        self.emitir_particulas_luminosas(pos, quantidade=1)
+
     def _processar_gatilhos_disparo(
         self,
         anc: dict[str, Vec3],
@@ -758,21 +828,38 @@ class GerenciadorEfeitosCena:
         forca_impacto: float,
         grounded: bool,
         gosma_evento: bool,
+        hit_evento: bool = False,
     ) -> None:
         if estouro_fone and not self._prev_estouro:
             self._emitir_estouro_fone(anc["fone_dir"])
+            self._emitir_grafite("estouro_fone", anc["fone_dir"], escala=0.78, ttl=0.36)
         self._prev_estouro = estouro_fone
 
         if choque_argolas and not self._prev_choque:
             self._emitir_choque_argolas(anc["antena_d"], anc["antena_e"])
+            meio_ant = (anc["antena_d"] + anc["antena_e"]) * 0.5
+            self._emitir_grafite("choque_argolas", meio_ant, escala=0.86, ttl=0.38)
         self._prev_choque = choque_argolas
 
         if gosma_evento and not self._prev_gosma:
-            self.emitir_gosma(anc["boca"], quantidade=2, direcao=-1.0)
+            self.emitir_gosma(anc["boca"], quantidade=3, direcao=-1.0)
+            self._emitir_grafite("gosma", anc["boca"], escala=0.68, ttl=0.34)
         self._prev_gosma = gosma_evento
 
+        if hit_evento and not self._prev_hit:
+            self._emitir_grafite("batida", anc["tronco"], escala=0.95, ttl=0.30)
+        self._prev_hit = hit_evento
+
         if not self._prev_ground and grounded and forca_impacto >= 0.85:
-            self.emitir_poeira(anc["pes"], quantidade=2, intensidade=forca_impacto)
+            qtd = 4 if forca_impacto >= 1.3 else 2
+            self.emitir_poeira(anc["pes"], quantidade=qtd, intensidade=forca_impacto)
+            if forca_impacto >= 1.15:
+                self._emitir_grafite(
+                    "pouso",
+                    anc["pes"] + Vec3(0.0, 0.0, 0.14),
+                    escala=0.88 if forca_impacto >= 1.35 else 0.68,
+                    ttl=0.34,
+                )
         self._prev_ground = grounded
 
     def _disparar_com_cooldown(
@@ -788,13 +875,17 @@ class GerenciadorEfeitosCena:
         self, anc: dict[str, Vec3], som_fones: bool, caixas_som_pos: tuple[Vec3, ...]
     ) -> None:
         if som_fones:
-            self.emitir_ondas_sonoras(anc["fone_dir"], direcao=-1.0, scale=0.84)
-            return
+            # v2.0: ondas sonoras bilaterais alternadas nos dois fones!
+            if self._onda_lado % 2 == 0:
+                self.emitir_ondas_sonoras(anc["fone_dir"], direcao=-1.0, scale=0.86)
+            else:
+                self.emitir_ondas_sonoras(anc["fone_esq"], direcao=1.0, scale=0.86)
+            self._onda_lado += 1
         cx = anc["tronco"].x
         if caixas_som_pos:
-            caixa_pos = caixas_som_pos[0]
+            caixa_pos = caixas_som_pos[self._onda_lado % len(caixas_som_pos)]
             self.emitir_ondas_sonoras(
-                caixa_pos, direcao=-1.0 if caixa_pos.x < cx else 1.0, scale=0.84
+                caixa_pos, direcao=-1.0 if caixa_pos.x < cx else 1.0, scale=0.92
             )
 
     def _processar_emissores_continuos(
@@ -839,8 +930,17 @@ class GerenciadorEfeitosCena:
             dt,
             deslizando,
             0.26,
-            lambda: self.emitir_poeira_deslize(
-                anc["pes"], velocidade[0] if abs(velocidade[0]) > 10.0 else 1.0
+            lambda: (
+                self.emitir_poeira_deslize(
+                    anc["pes"], velocidade[0] if abs(velocidade[0]) > 10.0 else 1.0
+                ),
+                self._emitir_grafite(
+                    "derrapagem",
+                    anc["pes"] + Vec3(0.0, 0.0, 0.10),
+                    escala=0.62,
+                    ttl=0.28,
+                    flip_x=velocidade[0] < 0.0,
+                ),
             ),
         )
         self._disparar_com_cooldown(
@@ -859,7 +959,11 @@ class GerenciadorEfeitosCena:
         )
         if susto and not self._prev_susto:
             self._emitir_susto(anc["antena_d"], anc["antena_e"])
+            self._emitir_grafite("susto", anc["cabeca"] + Vec3(0.0, 0.0, 0.34), escala=0.82, ttl=0.34)
         self._prev_susto = susto
+        if comemorando and not self._prev_celebrate:
+            self._emitir_grafite("comemoracao", anc["cabeca"] + Vec3(0.0, 0.0, 0.30), escala=0.92, ttl=0.40)
+        self._prev_celebrate = comemorando
         self._disparar_com_cooldown(
             "_timer_celebrate",
             dt,
@@ -870,6 +974,13 @@ class GerenciadorEfeitosCena:
                 quantidade=3,
                 pontos=(anc["mao_d"], anc["mao_e"], anc["cabeca"] + Vec3(0.0, 0.0, 0.68)),
             ),
+        )
+        self._disparar_com_cooldown(
+            "_timer_carinho",
+            dt,
+            estado == "pet",
+            0.48,
+            lambda: self.emitir_carinho(anc["cabeca"], quantidade=2),
         )
 
     def _atualizar_particulas(self, dt: float) -> None:
@@ -916,8 +1027,11 @@ class GerenciadorEfeitosCena:
             encolhe = max(0.14, 1.0 - (t_fade * t_fade) * 0.86)
             escala = p.base_scale * entrada * incha * encolhe
             if not p.frames:
-                alpha = p.base_alpha * (1.0 - t_fade ** 1.35)
-                p.node.setAlphaScale(max(0.0, min(1.0, alpha)))
+                alpha = max(0.0, min(1.0, p.base_alpha * (1.0 - t_fade ** 1.35)))
+                p.node.setShaderInput("u_fade", alpha)
+            else:
+                fade_g = max(0.0, min(1.0, 1.0 - t_fade ** 1.6))
+                p.node.setShaderInput("u_fade", fade_g)
         sx = escala * p.stretch_x
         sz = escala * p.stretch_y
         p.node.setScale(-sx if p.flip_x else sx, escala, sz)
@@ -962,6 +1076,7 @@ class GerenciadorEfeitosCena:
             forca_impacto=forca_impacto,
             grounded=grounded,
             gosma_evento=gosma_evento,
+            hit_evento=(estado == "hit"),
         )
         self._processar_emissores_continuos(
             dt_clamped,

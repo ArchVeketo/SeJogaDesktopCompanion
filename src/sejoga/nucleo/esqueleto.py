@@ -30,7 +30,7 @@ HEAD_SUBGROUPS = (
     "antena-direita",
     "antena-esquerda",
 )
-BODY_GROUPS = ("body", "legs")
+BODY_GROUPS = ("body", "legs", "pelvis")
 TORSO_SUBGROUPS = ("cintura", "abdomen", "peitoral")
 LEG_SUBGROUPS = (
     "coxa-direita",
@@ -62,6 +62,40 @@ ALL_GROUPS = (
     + ARM_GROUPS
     + ARM_SUBGROUPS
     + FOOT_GROUPS
+)
+
+#: Mapa semântico canônico do rig v2.0 (regiões, espelhos e argolas).
+RIG_REGIOES: dict[str, tuple[str, ...]] = {
+    "cabeca": HEAD_GROUPS,
+    "acessorios_cabeca": HEAD_SUBGROUPS,
+    "tronco": ("body", *TORSO_SUBGROUPS),
+    "quadril": ("legs", "pelvis"),
+    "braco_direito": ("right-arm", "shoulder", "ant-arm", "hand", "fingers"),
+    "braco_esquerdo": ("left-arm", "shoulder2", "ant-arm2", "hand2", "fingers2"),
+    "perna_direita": ("coxa-direita", "joelho-direito", "canela-direita", "right-feet"),
+    "perna_esquerda": ("coxa-esquerda", "joelho-esquerdo", "canela-esquerda", "left-feet"),
+}
+
+PARES_ESPELHO: tuple[tuple[str, str], ...] = (
+    ("fone-direito", "fone-esquerdo"),
+    ("antena-direita", "antena-esquerda"),
+    ("right-arm", "left-arm"),
+    ("shoulder", "shoulder2"),
+    ("ant-arm", "ant-arm2"),
+    ("hand", "hand2"),
+    ("fingers", "fingers2"),
+    ("coxa-direita", "coxa-esquerda"),
+    ("joelho-direito", "joelho-esquerdo"),
+    ("canela-direita", "canela-esquerda"),
+    ("right-feet", "left-feet"),
+)
+
+#: Slots semânticos das 4 argolas físicas das antenas no GLTF.
+ARGOLAS_ANTENA_SLOTS: tuple[str, ...] = (
+    "argola_sup_dir",
+    "argola_inf_dir",
+    "argola_sup_esq",
+    "argola_inf_esq",
 )
 
 

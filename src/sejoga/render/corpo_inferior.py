@@ -34,12 +34,14 @@ def _transformacao_bota(
     ang_ankle: float,
     ang_ankle_roll: float,
     foot_squash: float,
+    ang_ankle_yaw: float = 0.0,
 ) -> Mat4:
-    """Articula tornozelo (pitch + roll) e squash/stretch volumétrico da bota."""
-    ang_p = max(-28.0, min(28.0, ang_ankle))
-    ang_r = max(-20.0, min(20.0, ang_ankle_roll))
-    sq = max(-0.22, min(0.32, foot_squash))
-    if abs(ang_p) < 0.05 and abs(ang_r) < 0.05 and abs(sq) < 0.005:
+    """Articula tornozelo em 3 eixos (pitch com rolagem calcanhar/ponta, roll, yaw) + squash volumétrico."""
+    ang_p = max(-42.0, min(42.0, ang_ankle))
+    ang_r = max(-24.0, min(24.0, ang_ankle_roll))
+    ang_y = max(-28.0, min(28.0, ang_ankle_yaw))
+    sq = max(-0.24, min(0.36, foot_squash))
+    if abs(ang_p) < 0.05 and abs(ang_r) < 0.05 and abs(ang_y) < 0.05 and abs(sq) < 0.005:
         return mat_canela_total
     p_sola = Vec3(p_tornozelo.x, p_tornozelo.y, sola_z)
     sz = 1.0 - 0.34 * sq
@@ -49,14 +51,18 @@ def _transformacao_bota(
         * Mat4.scaleMat(sxy, sxy, sz)
         * Mat4.translateMat(p_sola)
     )
-    # Pivô alto no colarinho do tornozelo mantém o cano da bota dentro da calça.
-    p_eixo = Vec3(p_tornozelo.x, p_tornozelo.y + 0.015, p_tornozelo.z + 0.055)
+    # Rolagem calcanhar/ponta: pivô recua levemente no heel-strike e avança no toe-off,
+    # mantendo o colarinho da bota encaixado na calça.
+    desloc_y = -0.022 * max(-1.0, min(1.0, ang_p / 28.0))
+    p_eixo = Vec3(p_tornozelo.x, p_tornozelo.y + 0.015 + desloc_y, p_tornozelo.z + 0.055)
     a_atual = mat_canela_total.xformPoint(p_eixo)
     eixo_x = mat_canela_total.xformVec(_EIXO_X)
     eixo_y = mat_canela_total.xformVec(_EIXO_Y)
+    eixo_z = mat_canela_total.xformVec(_EIXO_Z)
     return (
         escala
         * mat_canela_total
+        * _rotacao_em_torno(a_atual, ang_y, eixo_z)
         * _rotacao_em_torno(a_atual, ang_r, eixo_y)
         * _rotacao_em_torno(a_atual, ang_p, eixo_x)
     )
@@ -159,9 +165,10 @@ class LowerBody:
 
             mat_canela_total = mat_quadril * _rotacao_em_torno(j_atual, ang_joelho, eixo_joelho)
 
-            # 4. Articula o tornozelo em 2 eixos (dorsi/plantarflexão + roll) e aplica squash/stretch.
+            # 4. Articula o tornozelo em 3 eixos (dorsi/plantarflexão + roll + yaw) e squash/stretch.
             ang_ankle = getattr(pose, lado + "_ankle", 0.0) * entrada
             ang_ankle_roll = getattr(pose, lado + "_ankle_roll", 0.0) * entrada
+            ang_ankle_yaw = getattr(pose, lado + "_ankle_yaw", 0.0) * entrada
             foot_squash = getattr(pose, lado + "_foot_squash", 0.0) * entrada
             mat_bota_total = _transformacao_bota(
                 mat_canela_total,
@@ -170,6 +177,7 @@ class LowerBody:
                 ang_ankle,
                 ang_ankle_roll,
                 foot_squash,
+                ang_ankle_yaw,
             )
 
             # As botas são irmãs de "legs" no asset e recebem seu movimento aqui.

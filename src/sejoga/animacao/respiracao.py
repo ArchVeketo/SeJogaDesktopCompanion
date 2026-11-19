@@ -16,15 +16,27 @@ _CICLO_REPOUSO = (
 )
 
 
-def amostrar_respiracao_repouso(tempo: float) -> float:
-    """Amostra um ciclo contínuo de inspiração e expiração, entre -1 e 1."""
+def amostrar_respiracao_repouso(
+    tempo: float,
+    *,
+    cadencia: float = 1.0,
+    esforco: float = 0.0,
+) -> float:
+    """Amostra o ciclo autoral de respiração (-1..1), modulado por humor e esforço.
+
+    - ``cadencia`` < 1.0 (tédio/sono): respiração mais lenta e funda.
+    - ``esforco`` > 0.0 (pós-corrida/dança): ofegante elástico que acalma sozinho.
+    """
     cfg = respiracao_ativa()
     ciclo = cfg.get("ciclo", _CICLO_REPOUSO)
     curvas = cfg.get("ciclo_curvas")
     dur = float(ciclo[-1][0]) if ciclo else 3.6
     if dur <= 0.0:
         return 0.0
-    return amostrar_pista(ciclo, tempo % dur, curvas=curvas)[0]
+    escala_vel = max(0.55, min(2.4, cadencia * (1.0 + 0.95 * max(0.0, min(1.0, esforco)))))
+    valor = amostrar_pista(ciclo, (tempo * escala_vel) % dur, curvas=curvas)[0]
+    amp = 1.0 + 0.28 * max(0.0, min(1.0, esforco))
+    return clamp(valor * amp, -1.0, 1.0)
 
 # Frequência default do oscilador lento do idle (ciclos por segundo). ~0.25 Hz
 # dá uma inspiração/expiração a cada ~4 segundos, no ritmo de um corpo parado.

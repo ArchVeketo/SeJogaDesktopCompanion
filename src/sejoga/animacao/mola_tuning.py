@@ -63,6 +63,7 @@ TENSAO_POR_JUNTA: dict[str, TensaoJunta] = {
     # (assenta seco, quase sem balanço), sem atraso.
     "body": TensaoJunta(frequencia=3.2, amortecimento=0.9, lag=0.0),
     "legs": TensaoJunta(frequencia=3.2, amortecimento=0.9, lag=0.0),
+    "pelvis": TensaoJunta(frequencia=3.1, amortecimento=0.88, lag=0.02),
     # Subgrupos da coluna (dentro de body): rigidez decrescente da base ao peito.
     "cintura": TensaoJunta(frequencia=3.1, amortecimento=0.88, lag=0.02),
     "abdomen": TensaoJunta(frequencia=2.9, amortecimento=0.84, lag=0.05),

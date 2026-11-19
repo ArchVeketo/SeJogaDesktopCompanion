@@ -84,6 +84,17 @@ class CanvasPixel:
                 if _ponto_em_poligono(x + 0.25, y + 0.25, verts):
                     self.set(x, y, cor)
 
+    def polygon(self, verts: tuple[tuple[float, float], ...], cor: RGBA) -> None:
+        """Rasteriza um polígono arbitrário no buffer pixelado."""
+        xs = [v[0] for v in verts]
+        ys = [v[1] for v in verts]
+        x0, x1 = max(0, int(min(xs) - 1)), min(self.w, int(max(xs) + 2))
+        y0, y1 = max(0, int(min(ys) - 1)), min(self.h, int(max(ys) + 2))
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                if _ponto_em_poligono(x + 0.25, y + 0.25, verts):
+                    self.set(x, y, cor)
+
     def _tem_vizinho_opaco(
         self, x: int, y: int, offsets: tuple[tuple[int, int], ...]
     ) -> bool:
@@ -328,3 +339,20 @@ def tex_gosma() -> Texture:
     c.disc(11.5, 12.5, 1.8, (1.0, 0.82, 0.92, 1.0))
     c.outline((0.20, 0.06, 0.14, 1.0))
     return c.para_textura("fx-tex-gosma")
+
+
+def tex_coracao() -> Texture:
+    """Coração cyberfunk 28x28 para carinho real (coral seguro para colorkey)."""
+    c = CanvasPixel(28, 28)
+    sombra: RGBA = (0.78, 0.22, 0.34, 1.0)
+    coral: RGBA = (1.0, 0.34, 0.46, 1.0)
+    brilho: RGBA = (1.0, 0.86, 0.90, 1.0)
+    c.disc(10.0, 11.2, 5.2, sombra)
+    c.disc(18.0, 11.2, 5.2, sombra)
+    c.polygon(((5.2, 12.6), (22.8, 12.6), (14.0, 23.0)), sombra)
+    c.disc(10.0, 10.4, 4.4, coral)
+    c.disc(18.0, 10.4, 4.4, coral)
+    c.polygon(((6.0, 11.8), (22.0, 11.8), (14.0, 21.4)), coral)
+    c.disc(9.2, 9.2, 1.7, brilho)
+    c.outline(_INK)
+    return c.para_textura("fx-tex-coracao")

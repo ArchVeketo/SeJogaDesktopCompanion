@@ -64,6 +64,13 @@ class PernasTecido:
 
     def __init__(self, renderer, lados):
         self._legs = renderer.model_np.find("**/legs")
+        self._pelvis_node = renderer._rig_nodes.get("pelvis") or renderer.model_np.find("**/pelvis")
+        if self._pelvis_node is not None and not self._pelvis_node.isEmpty():
+            self._pelvis_inv = Mat4(self._pelvis_node.getMat(self._legs))
+            self._pelvis_inv.invertInPlace()
+        else:
+            self._pelvis_node = None
+            self._pelvis_inv = Mat4.identMat()
         self._nodes, self._rigidos = [], []
         self._pelvis_ocultas = []
         self._cadeias = {}
@@ -170,9 +177,14 @@ class PernasTecido:
     def apply(self, renderer, pose, dt):
         if not self._ativo:
             return
+        mat_pelvis = (
+            self._pelvis_inv * self._pelvis_node.getMat(self._legs)
+            if self._pelvis_node is not None and not self._pelvis_node.isEmpty()
+            else Mat4.identMat()
+        )
         matrizes = {
             lado: (
-                Mat4.identMat(),
+                mat_pelvis,
                 *(
                     inv * no.getMat(self._legs)
                     for no, inv in zip(nos, inversas, strict=True)

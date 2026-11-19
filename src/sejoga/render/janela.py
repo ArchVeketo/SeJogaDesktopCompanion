@@ -588,8 +588,17 @@ class OverlayApp(ShowBase):
         """Callback quando estado da física muda."""
         if not win32gui.IsWindow(self.hwnd):
             return
+        if not state.grounded:
+            self._ultimo_pico_queda_vy = max(
+                getattr(self, "_ultimo_pico_queda_vy", 0.0), abs(state.velocity[1])
+            )
         if state.grounded and not self._was_grounded and self.animation_controller:
-            self.animation_controller.interact("land")
+            pico_vy = getattr(self, "_ultimo_pico_queda_vy", 0.0)
+            self._ultimo_pico_queda_vy = 0.0
+            forca_pouso = min(2.2, max(0.85, pico_vy / 520.0))
+            self.animation_controller.interact("land", strength=forca_pouso)
+            if forca_pouso >= 1.35 and self.renderer:
+                self.renderer.disparar_flash_impacto(0.45)
         self._was_grounded = state.grounded
         self._posicionar_mascote(*state.position)
         x = round(state.position[0] - self._offset_mascote[0])
@@ -609,12 +618,15 @@ class OverlayApp(ShowBase):
 
     def _on_physics_collision(self, kind, velocity) -> None:
         self.logger.info("Physics %s velocity=%s", kind, velocity)
+        forca = min(2.0, math.hypot(*velocity) / COLISAO_DIVISOR_FORCA)
         if self.animation_controller:
             self.animation_controller.interact(
                 "hit",
                 direction=max(-1, min(1, velocity[0] / COLISAO_DIVISOR_DIRECAO)),
-                strength=min(2, math.hypot(*velocity) / COLISAO_DIVISOR_FORCA),
+                strength=forca,
             )
+        if forca >= 0.75 and self.renderer:
+            self.renderer.disparar_flash_impacto(min(0.65, forca * 0.38))
 
     def _physics_tick(self, task: Task) -> int:
         """Task de física - roda a 120 Hz."""
@@ -727,6 +739,10 @@ class OverlayApp(ShowBase):
                 self._atencao_foco_ponto = self._centro_da_janela(
                     foreground, centro_tela
                 )
+                if self.animation_controller and self._atencao_foco_ponto:
+                    self.animation_controller.agencia.adicionar_ponto_interesse(
+                        *self._atencao_foco_ponto
+                    )
         if self._atencao_foco_restante > 0 and getattr(
             self, "_atencao_foco_ponto", None
         ):
@@ -750,7 +766,7 @@ class OverlayApp(ShowBase):
             largura=largura,
             altura=altura,
             habilitado=self.settings.behavior.react_to_attention,
-            ambiente_habilitado=False,
+            ambiente_habilitado=True,
         )
         return alvo
 
@@ -845,10 +861,15 @@ class OverlayApp(ShowBase):
             self.animation_controller.definir_orientacao("frente")
 
         music = self.music_listener.snapshot if self.music_listener else None
-        music_playing = bool(music and music.is_playing)
+        # v2.0: aceita tanto SMTC (is_playing) quanto WASAPI loopback (audio_active)!
+        music_playing = bool(music and (music.is_playing or music.audio_active))
         music_intensity = music.audio_level if music else 0.0
         if music_playing and music_intensity == 0.0:
             music_intensity = 0.25
+        if music and self.animation_controller:
+            faixa = f"{music.artist or ''}|{music.title or ''}".strip("|")
+            if faixa:
+                self.animation_controller.notificar_faixa_musica(faixa)
         if intro_frame is not None and intro_frame.locomotion == "dance":
             music_playing = True
             music_intensity = 0.65
@@ -899,6 +920,11 @@ class OverlayApp(ShowBase):
             gravity_active=gravity_ctrl,
             dragging=dragging_ctrl,
             grab_part=getattr(self, "_body_grab_part", "body"),
+            grab_point=(
+                (self._body_grab_point.x, self._body_grab_point.y, self._body_grab_point.z)
+                if getattr(self, "_body_grab_point", None) is not None
+                else None
+            ),
             drag_direction=self._drag_direction,
             drag_intensity=self._drag_intensity,
             music_playing=music_playing,
@@ -908,6 +934,9 @@ class OverlayApp(ShowBase):
             dance_chance=self.settings.music.dance_chance,
             react_to_beat=self.settings.music.react_to_beat,
             beat_detected=bool(music and music.beat_detected),
+            beat_phase=music.beat_phase if music else None,
+            music_updated_at=music.audio_updated_at if music else None,
+            now=time.monotonic(),
             idle_enabled=self.settings.behavior.idle_animation,
             sleep_after_idle_seconds=self.settings.behavior.sleep_after_idle_seconds,
             hovered=self._mouse_hovered and self.settings.behavior.react_to_click,
@@ -915,6 +944,8 @@ class OverlayApp(ShowBase):
             look_vertical=alvo.vertical,
             fonte_atencao=alvo.fonte,
             pointer_position=self._mouse_screen,
+            body_position=state.position if state else self._mascot_screen,
+            pixels_per_unit=float(getattr(self.renderer, "pixels_per_unit", 216.8)),
         )
         if (
             alvo.surpresa
@@ -1353,6 +1384,9 @@ class OverlayApp(ShowBase):
             )
         scene_preview = self.tray_menu.addMenu("Prévia de cenas (idle)")
         for cena, rotulo in (
+            ("conferir_estilo", "Conferir o estilo (v2.0)"),
+            ("espreguicar_pesado", "Espreguiçar pesado (v2.0)"),
+            ("olhar_curioso_chao", "Olhar curioso no chão (v2.0)"),
             ("conferir_luva", "Conferir a luva"),
             ("pensar_gabinete", "Pensar com o gabinete"),
             ("segurar_porta_timido", "Segurar a porta (tímido)"),
@@ -1574,6 +1608,9 @@ class OverlayApp(ShowBase):
         quit_action.triggered.connect(lambda _checked=False: self.quit_app())
 
         self.tray_icon.setContextMenu(self.tray_menu)
+        from sejoga.render.menu_bandeja import criar_menu_contexto_mascote
+
+        self.context_menu = criar_menu_contexto_mascote(self)
         self.tray_icon.activated.connect(self._on_tray_activated)
         self.tray_icon.setVisible(True)
         self.tray_icon.show()
@@ -1699,8 +1736,9 @@ class OverlayApp(ShowBase):
         ):
             dx = meta.alvo_x - state.position[0]
             if abs(dx) <= 8.0:
+                vitoria = ctrl.agencia.consumir_vitoria_meta(meta)
                 ctrl.agencia.registrar_meta_alcançada()
-                ctrl.interact("celebrate")
+                ctrl.interact("celebrate" if vitoria else "olhar_curioso_chao")
                 return
             self.physics.walk_velocity_x = max(-150.0, min(150.0, dx * 4.5))
 
@@ -1822,8 +1860,10 @@ class OverlayApp(ShowBase):
         if hit and "left" in newly_pressed:
             self._body_grab_point = Vec3(self.renderer._pick_point_model)
             self._body_grab_part = getattr(self.renderer, "_pick_part", "body")
-        if hit and "right" in newly_pressed and getattr(self, "tray_menu", None) is not None:
-            QTimer.singleShot(0, lambda: self.tray_menu.popup(QCursor.pos()))
+        if hit and "right" in newly_pressed:
+            menu = getattr(self, "context_menu", None) or getattr(self, "tray_menu", None)
+            if menu is not None:
+                QTimer.singleShot(0, lambda m=menu: m.popup(QCursor.pos()))
         events = self.mouse_interaction.update(
             position,
             buttons,
@@ -1901,7 +1941,17 @@ class OverlayApp(ShowBase):
                     and self.animation_controller
                     and (event.kind != "hover_enter" or self._mouse_hovered)
                 ):
-                    self.animation_controller.interact(event.kind)
+                    parte_tocada = getattr(self.renderer, "_pick_part", "body")
+                    if parte_tocada == "tentacle" and event.kind in ("poke", "click"):
+                        diretor = getattr(self.renderer, "tentacle_director", None)
+                        if diretor is not None and hasattr(diretor, "_retract_all"):
+                            diretor._retract_all()
+                        self.animation_controller.interact("surprise", part="head")
+                    else:
+                        self.animation_controller.interact(event.kind, part=parte_tocada)
+            elif event.kind == "drag_shake":
+                if self.animation_controller:
+                    self.animation_controller.notificar_sacudida()
             elif event.kind == "drag_start":
                 self._drag_active = True
                 self._drag_start_pos = self.mouse_interaction.press_position or position
@@ -1925,7 +1975,25 @@ class OverlayApp(ShowBase):
             if event.kind in ("drag_end", "drag_cancel"):
                 if self.physics:
                     self._set_physics_monitor(self.physics.get_state().position)
-                    self.physics.end_drag(cancel=event.kind == "drag_cancel")
+                    # v2.0: arremesso estilingue proporcional à velocidade angular do pêndulo ao soltar!
+                    extra_vel = None
+                    if event.kind == "drag_end" and self.animation_controller:
+                        rv = float(
+                            getattr(
+                                self.animation_controller.body_motion.snapshot,
+                                "roll_velocity",
+                                0.0,
+                            )
+                        )
+                        if abs(rv) > 35.0:
+                            extra_vel = (
+                                max(-480.0, min(480.0, -rv * 2.2)),
+                                -min(180.0, abs(rv) * 0.45),
+                            )
+                    self.physics.end_drag(
+                        cancel=event.kind == "drag_cancel",
+                        extra_velocity=extra_vel,
+                    )
                 self._drag_active = False
                 self._drag_direction = 0.0
                 self._drag_intensity = 0.0

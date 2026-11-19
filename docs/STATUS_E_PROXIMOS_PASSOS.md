@@ -1,6 +1,41 @@
 # SeJogaDesktopCompanion — Status atual e próximos passos
 
-**Atualizado:** 2026-11-18 (versão `1.0.0`, dedos individuais nas duas mãos, 6 novos idles contextuais, 1.052 testes e build validado)
+**Atualizado:** 2026-11-18 (versão `2.0.0` na branch `versao-2.0`; clone exato da main local preservado em `backup/main-v1-local`)
+
+## Versão 2.0 — Criatura Viva, Rig Completo, Danças Cyberfunk e VFX 2.0 — 18/11/2026
+
+- **Backup seguro:** clone exato da `main` local anterior (137 arquivos modificados/novos) salvo em `backup/main-v1-local`; `main` preservada intacta; todo desenvolvimento da 2.0 conduzido na branch `versao-2.0`.
+- **Mapeamento de Modelo e Rig 2.0 (`esqueleto.py`, `antenas_expressivas.py`, `corpo_inferior.py`, `pernas_tecido.py`, `fio_fone_malha.py`, `mola_tuning.py`, `esquema.py`, `inspecionar_modelo.py`):**
+  - `pelvis` promovida a grupo canônico em `ALL_GROUPS` (31 grupos) + `RIG_REGIOES`, `PARES_ESPELHO` e `ARGOLAS_ANTENA_SLOTS`; cós da calça autoral (`PernasTecido`) agora acompanha o rebolado/torção real da pelve e o osso X-ray da pelve em `EsqueletoFnf` passa a conectar.
+  - Novo módulo puro `src/sejoga/animacao/antenas_expressivas.py`: antenas atuam como "orelhas expressivas" por humor/estado/olhar + micro-tiques periódicos, fones (`fone-direito`/`fone-esquerdo`) pulsam no grave, mangas (`shoulder`/`shoulder2`) acompanham elevação dos braços, pelve ganha gingado próprio e a portinha (`door`) entreabre `2°–7°` como micro-sinal emocional.
+  - `MalhaFioFone` ancorado diretamente nos nós reais `fone-esquerdo`, `fone-direito` e `abdomen`, acompanhando o balanço individual dos fones e a torção da cintura.
+  - Botas 2.0 em `corpo_inferior.py` com 3 eixos (pitch com rolagem calcanhar/ponta até `±42°`, roll e `ankle_yaw`).
+  - Argolas físicas das antenas sempre vivas com levitação ambiente suave mesmo fora da música.
+- **Fluidez, 12 Princípios e Correções Estruturais (`squash_stretch.py`, `agencia.py`, `respiracao.py`, `estados_delta.py`, `movimento_corpo.py`, `movimento_pernas.py`, `controlador_animacao.py`):**
+  - Corrigida dupla compensação de volume em `squash_stretch.py` (`_compor_escalas` e `squash_stretch_queda`) e adicionados envelopes autorais de Squash & Stretch para todas as reações (`celebrate`, `sneeze`, `hit`, `poke`, `click`, `pet`, `surprise`, `teimosia`, `wake`).
+  - Corrigida rotação dupla de cabeça no `delta_hover`, inicialização de timestamps em `Agencia` (não nasce mais entediado), handler de `DesejoTipo.TEDIO`, relógio interno em `Meta.urgencia_em`, e resistência ao arraste 240× amortecida em `movimento_corpo.py`.
+  - Respiração dinâmica modulada por humor e esforço físico (ofegante suave após corrida/dança/teimosia).
+  - Follow-through inercial (`LagChain`) ativo com suavidade em todos os estados; olhar vivo preservado sobre clipes de caminhada/corrida; inercialização Hermite C1 contínua nas pernas (`movimento_pernas.py`).
+- **Interações 2.0 (`interacao_mouse.py`, `janela.py`, `menu_bandeja.py`, `renderizador.py`):**
+  - **Carinho real (`pet`):** esfregar suavemente o cursor sobre o Mário sem clicar ativa carinho contínuo com corações pixelados, antenas relaxadas e tremor feliz na porta.
+  - **Menu de contexto compacto (`menu_bandeja.py`):** clique direito no Mário abre menu rápido e limpo, mantendo o menu completo na bandeja.
+  - **Toque por parte do corpo (`part=`):** conectado de `janela.py` ao controlador; cutucar tentáculos faz o tentáculo levar susto e recolher.
+  - **Pouso pesado real, arremesso estilingue (`extra_velocity`) e sacudida tonta ("Shake-to-Dizzy"):** conectados à física real, estrelas de tontura e flash de impacto.
+  - **Atenção viva:** trocas de janela em foco alimentam `agencia.adicionar_ponto_interesse`, curiosidade ambiente reativada e metas autônomas respeitam `consumir_vitoria_meta`.
+- **Danças, Música e Novos Idles 2.0 (`danca_frases_tuning.py`, `movimento_danca.py`, `danca_clipes.py`, `animation.py`, `cenas_idle.py`, `configuracao.py`):**
+  - Loopback WASAPI (`audio_active`), `beat_phase`, `music_updated_at` e detecção de troca de faixa (`checar_walkman`) finalmente conectados em `janela.py`.
+  - Modo `"auto"` desbloqueia todo o catálogo em 3 bandas (BPM/energia/grave), remove interrupções aleatórias de 8 s no meio da música e adiciona camada de acento de batida/grave + micro-porta sobre os 29 emotes.
+  - **3 novas danças cyberfunk:** `funk_glide`, `cyber_skank`, `walkman_shuffle`.
+  - **3 novas cenas de idle:** `conferir_estilo`, `espreguicar_pesado`, `olhar_curioso_chao`, com cadência contextual mais viva (~24–34 s).
+- **VFX 2.0 Chroma-Safe (`sprites_efeitos.py`, `arte_efeitos.py`, `efeitos_cena.py`, `dinamica_contorno.py`, `choque_antenas_3d.py`, `renderizador.py`):**
+  - Novo shader GLSL Bayer 4×4 chroma-safe para partículas (fades limpos sem halo magenta).
+  - Ressuscitadas e conectadas as 8 folhas 2×2 de `vfx_grafite` (`batida`, `pouso`, `derrapagem`, `estouro_fone`, `choque_argolas`, `gosma`, `susto`, `comemoracao`) + novo sprite pixel-art de coração (`tex_coracao`).
+  - Pós-imagens **Sandevistan** promovidas ao gameplay vivo em arremessos velozes (`> 1050 px/s`) + flash curto de impacto + contorno **Living Cyber-Ink** reativo ao estado/grave/choque/carinho.
+  - Ponte elétrica 3D entre antenas reativada com coronas chroma-safe, ondas sonoras bilaterais nos dois fones e sombra de contato proporcional à altura no ar.
+
+---
+
+**Base anterior (v1.0.0):** 18/11/2026 (dedos individuais nas duas mãos, 6 novos idles contextuais, 1.052 testes e build validado)
 
 **Base de trabalho:** commits recentes e integração do rig completo Blockbench.
 

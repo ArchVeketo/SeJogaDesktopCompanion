@@ -124,6 +124,21 @@ class MalhaFioFone:
         nos = renderer._rig_nodes
         self._cabeca: NodePath = nos["head"]
         self._corpo: NodePath = nos["body"]
+        # Ancoragem v2.0: prende cada ponta diretamente ao fone real e ao abdômen/walkman
+        # mantendo a posição exata de repouso, mas acompanhando o balanço dos fones e da cintura.
+        self._no_fone_esq: NodePath = nos.get("fone-esquerdo", self._cabeca)
+        self._no_fone_dir: NodePath = nos.get("fone-direito", self._cabeca)
+        self._no_aparelho: NodePath = nos.get("abdomen", nos.get("cintura", self._corpo))
+        x, y, z = tuning.ANCORA_ORELHA_U
+        self._local_fone_esq = self._no_fone_esq.getRelativePoint(
+            self._cabeca, _gltf_para_panda((-x, y, z))
+        )
+        self._local_fone_dir = self._no_fone_dir.getRelativePoint(
+            self._cabeca, _gltf_para_panda((x, y, z))
+        )
+        self._local_aparelho = self._no_aparelho.getRelativePoint(
+            self._corpo, _gltf_para_panda(tuning.ANCORA_APARELHO_U)
+        )
         self._caixas_locais = self._medir_caixas(nos)
         self._bracos = [
             (nos[ombro], nos[cotovelo], nos[punho], sentido)
@@ -264,15 +279,14 @@ class MalhaFioFone:
         return caixas
 
     def _ancoras(self) -> tuple[tuple[float, float, float], ...]:
-        x, y, z = tuning.ANCORA_ORELHA_U
         esquerda = self._model_np.getRelativePoint(
-            self._cabeca, _gltf_para_panda((-x, y, z))
+            self._no_fone_esq, self._local_fone_esq
         )
         direita = self._model_np.getRelativePoint(
-            self._cabeca, _gltf_para_panda((x, y, z))
+            self._no_fone_dir, self._local_fone_dir
         )
         aparelho = self._model_np.getRelativePoint(
-            self._corpo, _gltf_para_panda(tuning.ANCORA_APARELHO_U)
+            self._no_aparelho, self._local_aparelho
         )
         return (tuple(esquerda), tuple(direita), tuple(aparelho))
 

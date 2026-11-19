@@ -187,8 +187,10 @@ def delta_hover(
     left_reach = max(0.0, dir_c) ** 1.3
     down = max(0.0, ver_c)
     up = max(0.0, -ver_c)
+    # delta_idle já aplica o olhar de cabeça; hover adiciona só o leve inclinar atento
+    # sem duplicar os 13°/20° de rotação.
     acrescimos = {
-        "head": (-ver_c * 13.0, dir_c * 20.0, 0.0),
+        "head": (-ver_c * 3.0, dir_c * 4.0, -dir_c * 3.5),
         "right-arm": (
             -3.0 - up * 10.0,
             0.0,

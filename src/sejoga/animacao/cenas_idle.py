@@ -38,9 +38,6 @@ DURACOES_CENAS: dict[str, float] = {
 }
 
 _GRUPOS_BASE_ABS = frozenset({"right-arm", "left-arm", "ant-arm", "ant-arm2"})
-_PISTAS_AJEITAR_FONE: dict[str, Pista] = _anim_padrao.CENAS_IDLE["ajeitar_fone"]["tracks"]
-_PISTAS_FONE_PROBLEMA: dict[str, Pista] = _anim_padrao.CENAS_IDLE["fone_com_problema"]["tracks"]
-_PISTAS_ARGOLAS_ANTENA: dict[str, Pista] = _anim_padrao.CENAS_IDLE["argolas_antena"]["tracks"]
 
 _PERNAS_NEUTRAS: Pernas6 = (0.0, 0.0, 4.0, 4.0, 5.0, -5.0)
 _PISTAS_PERNAS_CENAS: dict[str, tuple[tuple[float, Pernas6], ...]] = {
@@ -119,6 +116,29 @@ _PISTAS_PERNAS_CENAS: dict[str, tuple[tuple[float, Pernas6], ...]] = {
         (4.50, (-5.0, -6.0, 10.0, 12.0, 5.0, -5.0)),
         (6.60, _PERNAS_NEUTRAS),
     ),
+    "conferir_estilo": (
+        (0.00, _PERNAS_NEUTRAS),
+        (1.00, (-8.0, -3.0, 16.0, 6.0, 8.0, -4.0)),
+        (2.40, (-3.0, -9.0, 6.0, 18.0, 4.0, -8.0)),
+        (3.55, (-7.0, -5.0, 14.0, 10.0, 6.0, -6.0)),
+        (5.60, _PERNAS_NEUTRAS),
+    ),
+    "espreguicar_pesado": (
+        (0.00, _PERNAS_NEUTRAS),
+        (1.30, (-2.0, -2.0, 4.0, 4.0, 5.0, -5.0)),
+        (2.55, (2.0, 2.0, 2.0, 2.0, 6.0, -6.0)),
+        (3.95, (-12.0, -12.0, 24.0, 24.0, 6.0, -6.0)),
+        (5.80, _PERNAS_NEUTRAS),
+    ),
+    "olhar_curioso_chao": (
+        (0.00, _PERNAS_NEUTRAS),
+        (1.10, (-10.0, -12.0, 20.0, 22.0, 6.0, -8.0)),
+        (2.05, (-10.0, -22.0, 20.0, 34.0, 6.0, -12.0)),
+        (2.65, (-10.0, -14.0, 20.0, 24.0, 6.0, -8.0)),
+        (3.25, (-10.0, -22.0, 20.0, 34.0, 6.0, -12.0)),
+        (4.20, (-6.0, -6.0, 12.0, 12.0, 5.0, -5.0)),
+        (5.20, _PERNAS_NEUTRAS),
+    ),
 }
 
 
@@ -154,6 +174,21 @@ _PISTAS_DEDOS_CENAS: dict[str, tuple[tuple[float, DedosCena], ...]] = {
         (3.30, ((0.04, 0.86, 0.86, 0.86, 0.04), _DEDOS_NEUTROS)),
         (4.30, ((0.08, 0.80, 0.80, 0.80, 0.08), _DEDOS_NEUTROS)),
         (5.60, (_DEDOS_NEUTROS, _DEDOS_NEUTROS)),
+    ),
+    "conferir_estilo": (
+        (0.00, (_DEDOS_NEUTROS, _DEDOS_NEUTROS)),
+        (0.95, ((0.08, 0.06, 0.08, 0.12, 0.14), (0.35, 0.35, 0.42, 0.46, 0.48))),
+        (2.20, ((0.20, 0.04, 0.04, 0.88, 0.92), _DEDOS_NEUTROS)),
+        (3.30, ((0.02, 0.88, 0.90, 0.92, 0.94), _DEDOS_NEUTROS)),
+        (4.50, (_DEDOS_NEUTROS, _DEDOS_NEUTROS)),
+        (5.60, (_DEDOS_NEUTROS, _DEDOS_NEUTROS)),
+    ),
+    "espreguicar_pesado": (
+        (0.00, (_DEDOS_NEUTROS, _DEDOS_NEUTROS)),
+        (1.30, ((0.02, 0.02, 0.02, 0.02, 0.02), (0.02, 0.02, 0.02, 0.02, 0.02))),
+        (2.55, ((0.00, 0.00, 0.00, 0.00, 0.00), (0.00, 0.00, 0.00, 0.00, 0.00))),
+        (3.95, ((0.55, 0.52, 0.58, 0.62, 0.64), (0.55, 0.52, 0.58, 0.62, 0.64))),
+        (5.80, (_DEDOS_NEUTROS, _DEDOS_NEUTROS)),
     ),
 }
 

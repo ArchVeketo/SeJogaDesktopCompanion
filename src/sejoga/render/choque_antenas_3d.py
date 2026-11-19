@@ -24,8 +24,9 @@ _ESFERA_LOCAL_FALLBACK = (
 )
 _COR_NUCLEO_OURO = (1.0, 0.97, 0.50, 1.0)
 _COR_RAIO_CIANO = (0.24, 0.92, 1.0, 1.0)
-_COR_COROA_EXT = (0.20, 0.80, 1.0, 0.14)
-_COR_COROA_INT = (1.0, 0.88, 0.24, 0.24)
+# Alpha >= 0.58 para sobreviver ao recorte de cobertura (>= 0.50) do colorkey WGL.
+_COR_COROA_EXT = (0.22, 0.86, 1.0, 0.60)
+_COR_COROA_INT = (1.0, 0.90, 0.28, 0.76)
 
 
 def _centro_esfera_antena(ant_np: NodePath, eh_direita: bool) -> Point3:
@@ -407,8 +408,12 @@ class ChoqueAntenas3D:
             self._atualizar_pivo(
                 idx, pivo, coroa_int, coroa_ext, gaiolas, passo, intensidade, pulso, self._relogio
             )
-        # Choque concentrado apenas em cada bobina individual, sem arco ligando o meio.
-        self._arco_np.hide()
+        # v2.0: ativa a ponte voltaica 3D entre as duas antenas no pico de carga/choque!
+        if intensidade >= 0.42 and len(self._pivos) >= 2:
+            self._atualizar_ponte(passo, intensidade)
+            self._arco_np.show()
+        else:
+            self._arco_np.hide()
 
     def ocultar(self) -> None:
         """Oculta as coroas, gaiolas de raios e a ponte elétrica entre antenas."""

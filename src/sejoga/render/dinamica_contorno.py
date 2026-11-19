@@ -68,3 +68,43 @@ class RespiracaoContorno:
         alvo = espessura_efetiva(base, compression, intensidade)
         valor = self._spring.update(dt, alvo)
         return max(0.0, valor)
+
+
+def cor_contorno_viva(
+    base_rgb: tuple[float, float, float],
+    estado: str,
+    *,
+    bass: float = 0.0,
+    choque: bool = False,
+    carinho: bool = False,
+    impacto: float = 0.0,
+) -> tuple[float, float, float]:
+    """Tinta viva Cyber-Ink (v2.0): modula sutilmente a cor do contorno conforme o momento.
+
+    Sempre parte da cor configurada pelo usuário (``base_rgb``) e evita a zona
+    de colorkey magenta (mantém verde seguro quando R e B sobem juntos).
+    """
+    r, g, b = base_rgb
+    alvo = base_rgb
+    peso = 0.0
+    if choque:
+        alvo = (0.30, 0.96, 1.0)  # ciano elétrico
+        peso = 0.72
+    elif impacto > 0.15 or estado in ("hit", "teimosia"):
+        alvo = (1.0, 0.34, 0.24)  # coral de impacto/atitude
+        peso = min(0.75, 0.38 + impacto * 0.45)
+    elif carinho or estado in ("pet", "celebrate"):
+        alvo = (1.0, 0.84, 0.34)  # brilho dourado caloroso
+        peso = 0.55 if estado == "celebrate" else 0.42
+    elif estado == "dance" and bass > 0.22:
+        alvo = (0.28, 0.94, 0.92)  # pulso neon no grave
+        peso = min(0.62, (bass - 0.20) * 0.78)
+
+    if peso <= 1e-4:
+        return base_rgb
+    nr = r + (alvo[0] - r) * peso
+    ng = g + (alvo[1] - g) * peso
+    nb = b + (alvo[2] - b) * peso
+    if nr > 0.68 and nb > 0.68 and ng < 0.28:
+        ng = 0.30
+    return (max(0.0, min(1.0, nr)), max(0.0, min(1.0, ng)), max(0.0, min(1.0, nb)))

@@ -527,7 +527,7 @@ def amostrar_orientacao_raiz_emote(
     clipe: ClipeEmote, tempo_segundos: float
 ) -> tuple[float, float, float, float] | None:
     """Amostra quaternion 3D ``(w, x, y, z)`` da raiz quando o emote tem acrobacia 3D."""
-    t_quadros = max(0.0, tempo_segundos) * clipe.fps
+    t_quadros = max(0.0, _tempo_com_recorte(tempo_segundos, clipe)) * clipe.fps
     n_intro = len(clipe.quadros_intro)
     if n_intro > 0 and t_quadros < n_intro:
         if not clipe.quat_intro:
@@ -566,7 +566,10 @@ def amostrar_dedos_emote(
     """Amostra flexões individuais dos 5 dedos ``(direita, esquerda)`` em ``[0, 1]``."""
     _q_seq, _p_seq, _r_seq, idx0, idx1, frac = _indice_e_fracao(tempo_segundos, clipe)
     n_intro = len(clipe.quadros_intro)
-    na_intro = n_intro > 0 and max(0.0, tempo_segundos) * clipe.fps < n_intro
+    na_intro = (
+        n_intro > 0
+        and max(0.0, _tempo_com_recorte(tempo_segundos, clipe)) * clipe.fps < n_intro
+    )
     if na_intro:
         if idx0 >= len(clipe.dedos_intro):
             return None
