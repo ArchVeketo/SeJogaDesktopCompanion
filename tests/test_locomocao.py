@@ -16,6 +16,7 @@ from sejoga.animacao.estados_delta import delta_drag, delta_fall, delta_walk
 from sejoga.animacao.movimento_corpo import BodyPose
 from sejoga.animacao.movimento_pernas import FASE_CAMINHADA, FASE_CORRIDA
 from sejoga.animacao.pose_repouso import pose_repouso
+from sejoga.animacao.resolvedor_poses import PoseResolver
 from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig, Rotation3
 from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.recursos import resolve_model
@@ -130,16 +131,21 @@ def modelo():
     return load_model(resolve_model())
 
 
-def _sem_atravessar(modelo, delta: dict[str, Rotation3]) -> None:
-    pose = _compor(delta)
+@pytest.fixture
+def resolvedor():
+    return PoseResolver()
+
+
+def _sem_atravessar(modelo, resolvedor: PoseResolver, delta: dict[str, Rotation3]) -> None:
+    pose = resolvedor.resolver(1.0 / FPS, _compor(delta), model=modelo)
     for lado in ("right", "left"):
         assert cb.penetracao_do_lado(modelo, lado, pose) <= cb.FOLGA_PENETRACAO_U, lado
 
 
 @pytest.mark.parametrize("corrida", [False, True])
-def test_walk_e_run_nao_atravessam_o_corpo(modelo, corrida):
+def test_walk_e_run_nao_atravessam_o_corpo(modelo, resolvedor, corrida):
     for i in range(AMOSTRAS_POR_CICLO):
-        _sem_atravessar(modelo, delta_walk(tau * i / AMOSTRAS_POR_CICLO, run=corrida))
+        _sem_atravessar(modelo, resolvedor, delta_walk(tau * i / AMOSTRAS_POR_CICLO, run=corrida))
 
 
 @pytest.mark.parametrize("corrida", [False, True])
@@ -151,17 +157,33 @@ def test_walk_e_run_mantem_cotovelo_sem_hiperextensao(corrida):
 
 
 @pytest.mark.parametrize("velocidade", [(0, -500), (0, 500), (400, 300)])
-def test_queda_nao_atravessa_o_corpo(modelo, velocidade):
+def test_queda_nao_atravessa_o_corpo(modelo, resolvedor, velocidade):
     for i in range(AMOSTRAS_POR_CICLO):
-        _sem_atravessar(modelo, delta_fall(3.0 * i / AMOSTRAS_POR_CICLO, velocidade))
+        _sem_atravessar(modelo, resolvedor, delta_fall(3.0 * i / AMOSTRAS_POR_CICLO, velocidade))
 
 
 @pytest.mark.parametrize("parte", ["body", "right-arm", "left-arm", "legs"])
-def test_arraste_nao_atravessa_o_corpo(modelo, parte):
+def test_arraste_nao_atravessa_o_corpo(modelo, resolvedor, parte):
     for i in range(AMOSTRAS_POR_CICLO):
         u = i / AMOSTRAS_POR_CICLO - 0.5
         movimento = BodyPose(roll=40 * u, pitch=20 * u, limb_swing=30 * u)
-        _sem_atravessar(modelo, delta_drag(movimento, parte, 1.0))
+        delta = delta_drag(movimento, parte, 1.0)
+        if i == 0 and parte == "legs":
+            # O primeiro quadro entra de uma vez com inclinação máxima. A
+            # correção distribui o ajuste nas duas primeiras amostras.
+            resolvedor.resolver(1.0 / FPS, _compor(delta), model=modelo)
+        _sem_atravessar(modelo, resolvedor, delta)
+
+
+def test_caminhada_preserva_passada_padrao_e_reserva_lateral_para_busca_de_atencao(modelo):
+    from sejoga.animacao.agencia import Humor, Meta, MetaTipo
+
+    controller = AnimationController(Rig.from_model(modelo))
+    assert controller._especificacao_clipe_walk(120, Humor.CALMO, False)[0] == "walk_standard"
+    assert controller._especificacao_clipe_walk(70, Humor.CURIOSO, False)[0] == "walk_strafe_slow"
+    controller.agencia.meta_ativa = Meta(MetaTipo.PROCURAR_ATENCAO, 0, 0)
+    assert controller._especificacao_clipe_walk(120, Humor.CALMO, False)[0] == "walk_strafe_left"
+    assert controller._especificacao_clipe_walk(-120, Humor.CALMO, False)[0] == "walk_strafe_right"
 
 
 @pytest.mark.parametrize("velocidade", [(0, 800), (600, -300)])
@@ -172,3 +194,34 @@ def test_queda_sem_tranco_em_cinco_segundos(velocidade):
         delta = delta_fall(i / 60.0, velocidade)
         for rot in delta.values():
             assert all(isfinite(v) for v in (rot.x, rot.y, rot.z))
+
+
+def test_take_interrompido_walk_drag_fall_land_e_retomada():
+    from math import isfinite
+
+    anim = _controlador()
+    dt = 1.0 / 60.0
+    estados = set()
+    for _ in range(25):
+        anim.update(dt, velocity=(200.0, 0.0), grounded=True, idle_enabled=False)
+        estados.add(anim.state)
+    for _ in range(15):
+        anim.update(dt, dragging=True, drag_direction=0.8, drag_intensity=0.8, grounded=False)
+        estados.add(anim.state)
+    for _ in range(12):
+        anim.update(dt, grounded=False, velocity=(220.0, 420.0))
+        estados.add(anim.state)
+    for _ in range(6):
+        anim.update(dt, grounded=True, velocity=(80.0, 0.0))
+        estados.add(anim.state)
+    for _ in range(30):
+        pose = anim.update(dt, grounded=True, velocity=(200.0, 0.0), idle_enabled=False)
+        estados.add(anim.state)
+    assert {
+        AnimationState.WALK,
+        AnimationState.DRAG,
+        AnimationState.FALL,
+        AnimationState.LAND,
+    }.issubset(estados)
+    assert anim.state == AnimationState.WALK
+    assert all(isfinite(v) for rot in pose.values() for v in (rot.x, rot.y, rot.z))

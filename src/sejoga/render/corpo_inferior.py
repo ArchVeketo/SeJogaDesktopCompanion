@@ -27,6 +27,41 @@ def _rotacao_em_torno(pivo: Vec3, graus: float, eixo: Vec3 = _EIXO_X) -> Mat4:
     )
 
 
+def _transformacao_bota(
+    mat_canela_total: Mat4,
+    p_tornozelo: Vec3,
+    sola_z: float,
+    ang_ankle: float,
+    ang_ankle_roll: float,
+    foot_squash: float,
+) -> Mat4:
+    """Articula tornozelo (pitch + roll) e squash/stretch volumétrico da bota."""
+    ang_p = max(-28.0, min(28.0, ang_ankle))
+    ang_r = max(-20.0, min(20.0, ang_ankle_roll))
+    sq = max(-0.22, min(0.32, foot_squash))
+    if abs(ang_p) < 0.05 and abs(ang_r) < 0.05 and abs(sq) < 0.005:
+        return mat_canela_total
+    p_sola = Vec3(p_tornozelo.x, p_tornozelo.y, sola_z)
+    sz = 1.0 - 0.34 * sq
+    sxy = 1.0 / (sz**0.5)
+    escala = (
+        Mat4.translateMat(-p_sola)
+        * Mat4.scaleMat(sxy, sxy, sz)
+        * Mat4.translateMat(p_sola)
+    )
+    # Pivô alto no colarinho do tornozelo mantém o cano da bota dentro da calça.
+    p_eixo = Vec3(p_tornozelo.x, p_tornozelo.y + 0.015, p_tornozelo.z + 0.055)
+    a_atual = mat_canela_total.xformPoint(p_eixo)
+    eixo_x = mat_canela_total.xformVec(_EIXO_X)
+    eixo_y = mat_canela_total.xformVec(_EIXO_Y)
+    return (
+        escala
+        * mat_canela_total
+        * _rotacao_em_torno(a_atual, ang_r, eixo_y)
+        * _rotacao_em_torno(a_atual, ang_p, eixo_x)
+    )
+
+
 class LowerBody:
     """Quadril, joelhos e botas aplicados com cinemática conectada e squash/stretch."""
 
@@ -66,11 +101,11 @@ class LowerBody:
         controller = getattr(r.showbase, "animation_controller", None)
         estado = controller.state.value if controller and controller.state else ""
         marcha = grounded and estado in ("walk", "run")
-        sentado = estado == "sleep" and controller.modo_sono == "sentado"
         speaker = getattr(r, "music_speaker", None)
         entrada = 1.0
         if (
             speaker
+            and not speaker.compact
             and controller
             and controller.state
             and controller.state.value == "dance"
@@ -87,7 +122,7 @@ class LowerBody:
             ang_roll = getattr(pose, lado + "_roll", 0.0) * entrada
             lift = getattr(pose, lado + "_lift")
 
-            if marcha:
+            if marcha and lift > 1e-5:
                 # Amortecimento apenas durante a elevação do passo para manter a perna de apoio firme.
                 ang_quadril, ang_joelho = apoiar_passada(
                     ang_quadril,
@@ -124,20 +159,18 @@ class LowerBody:
 
             mat_canela_total = mat_quadril * _rotacao_em_torno(j_atual, ang_joelho, eixo_joelho)
 
-            # 4. Bota (Cravada no tornozelo e nivelando sola no chão)
-            torn_atual = mat_canela_total.xformPoint(p_tornozelo)
-            pitch_bota = ang_quadril + ang_joelho
-            nivelar_bota = 1.0 if marcha else suavizar_quintico((abs(pitch_bota) - 35.0) / 35.0)
-            ajuste_bota = -pitch_bota * nivelar_bota
-            if marcha and lift > 0.002:
-                # Articula o tornozelo no balanço aéreo (ponta cai na saída e prepara calcanhar à frente).
-                peso_balanco = min(1.0, lift / 0.045)
-                ajuste_bota += max(-12.0, min(14.0, -ang_quadril * 0.45)) * peso_balanco
-            if sentado:
-                ajuste_bota += 5.0 * suavizar_quintico((abs(ang_quadril) - 45.0) / 55.0)
-
-            rot_ajuste_bota = _rotacao_em_torno(torn_atual, ajuste_bota, eixo_joelho)
-            mat_bota_total = mat_canela_total * rot_ajuste_bota
+            # 4. Articula o tornozelo em 2 eixos (dorsi/plantarflexão + roll) e aplica squash/stretch.
+            ang_ankle = getattr(pose, lado + "_ankle", 0.0) * entrada
+            ang_ankle_roll = getattr(pose, lado + "_ankle_roll", 0.0) * entrada
+            foot_squash = getattr(pose, lado + "_foot_squash", 0.0) * entrada
+            mat_bota_total = _transformacao_bota(
+                mat_canela_total,
+                p_tornozelo,
+                dados["sola"],
+                ang_ankle,
+                ang_ankle_roll,
+                foot_squash,
+            )
 
             # As botas são irmãs de "legs" no asset e recebem seu movimento aqui.
             transformacoes = (

@@ -204,73 +204,122 @@ def idle_arco_composto(
     -------
     Dicionário com deltas (pitch, yaw, roll) em graus por grupo do rig.
     """
-    # ── Princípio 5: Sobreposição em cascata ──
-    # Torso é a raiz do movimento; cada elo seguinte atrasa de forma natural.
+    # ── Princípio 5: Sobreposição em cascata 3D (ZZZ) ──
+    # Quadril -> cintura -> abdômen -> peito -> cabeça -> fones/antenas;
+    # e dos ombros (clavícula) -> braços -> cotovelos -> punhos -> dedos grandes.
 
-    # Torso: lemniscata sutil e aterrada — peso estável sobre os pés
+    # Quadril / cintura: transferência lateral sutil de peso sobre os pés (fase 0)
+    cint_p, cint_y, cint_r = arco_cabeca_torso(
+        t,
+        frequencia=frequencia_base,
+        amplitude_pitch=1.0,
+        amplitude_yaw=2.0,
+        amplitude_roll=1.5,
+        fase=0.0,
+    )
+    abd_p, abd_y, abd_r = arco_cabeca_torso(
+        t,
+        frequencia=frequencia_base,
+        amplitude_pitch=1.2,
+        amplitude_yaw=2.2,
+        amplitude_roll=1.4,
+        fase=-math.pi / 8.0,
+    )
+    pei_p, pei_y, pei_r = arco_cabeca_torso(
+        t,
+        frequencia=frequencia_base,
+        amplitude_pitch=1.4,
+        amplitude_yaw=2.4,
+        amplitude_roll=-1.1,
+        fase=-math.pi / 5.0,
+    )
+
+    # Torso: lemniscata aterrada em cascata
     body_pitch, body_yaw, body_roll = arco_cabeca_torso(
         t,
         frequencia=frequencia_base,
-        amplitude_pitch=1.6,
-        amplitude_yaw=2.2,
+        amplitude_pitch=1.8,
+        amplitude_yaw=2.4,
         amplitude_roll=1.4,
-        fase=0.0,  # Torso é a referência (fase 0)
+        fase=0.0,
     )
 
-    # Cabeça: lemniscata suave defasada do torso — follow-through vivo sem tombo
+    # Cabeça: lemniscata orgânica com contra-inclinação e atraso do torso
     head_pitch, head_yaw, head_roll = arco_cabeca_torso(
         t,
         frequencia=frequencia_base,
-        amplitude_pitch=2.4,
-        amplitude_yaw=3.2,
-        amplitude_roll=1.8,
-        fase=math.pi / 4,  # Atraso orgânico em relação ao torso
+        amplitude_pitch=2.8,
+        amplitude_yaw=3.8,
+        amplitude_roll=2.2,
+        fase=math.pi / 4.0,
     )
 
-    # Braços: arcos assimétricos contidos — balanço natural de repouso
+    # Fones e antenas: arraste secundário leve acima da cabeça
+    fones_pitch = arco_braço(t, frequencia=frequencia_base * 1.5, amplitude=1.4, fase=math.pi / 2.2)
+    ant_r = arco_braço(t, frequencia=frequencia_base * 2.0, amplitude=3.8, fase=math.pi / 1.8)
+    ant_l = arco_braço(t, frequencia=frequencia_base * 2.0, amplitude=3.8, fase=math.pi / 1.8 + 0.55)
+
+    # Clavículas + braços em arcos assimétricos
+    ombro_r = arco_braço(t, frequencia=frequencia_base, amplitude=1.6, fase=0.20)
+    ombro_l = arco_braço(t, frequencia=frequencia_base, amplitude=1.4, fase=0.20 + math.pi / 2.0)
     braço_dir, braço_esq = arco_braço_par(
         t,
         frequencia=frequencia_base,
-        amplitude_direito=3.5,
-        amplitude_esquerdo=2.8,
-        defasagem=math.pi / 2,  # Braços opostos
+        amplitude_direito=4.2,
+        amplitude_esquerdo=3.4,
+        defasagem=math.pi / 2.0,
     )
 
-    # Cotovelos: harmônico dos braços — follow-through em cascata
+    # Cotovelos e punhos: follow-through progressivo até a mão grande
     cotovelo_dir = arco_braço(
         t,
-        frequencia=frequencia_base * 1.2,
-        amplitude=3.2,
-        fase=math.pi / 3,  # Atraso adicional
+        frequencia=frequencia_base * 1.25,
+        amplitude=4.0,
+        fase=math.pi / 3.0,
     )
     cotovelo_esq = arco_braço(
         t,
-        frequencia=frequencia_base * 1.2,
-        amplitude=3.2,
-        fase=math.pi / 3 + math.pi / 2,
+        frequencia=frequencia_base * 1.25,
+        amplitude=3.6,
+        fase=math.pi / 3.0 + math.pi / 2.0,
     )
-
-    # Punhos: ação secundária (Princípio 8) — micro-movimento em cascata
     punho_dir = arco_braço(
         t,
-        frequencia=frequencia_base * 1.4,
-        amplitude=2.6,
-        fase=math.pi / 2,
+        frequencia=frequencia_base * 1.5,
+        amplitude=3.8,
+        fase=math.pi / 2.0,
     )
     punho_esq = arco_braço(
         t,
-        frequencia=frequencia_base * 1.4,
-        amplitude=2.6,
-        fase=math.pi / 2 + math.pi / 2,
+        frequencia=frequencia_base * 1.5,
+        amplitude=3.5,
+        fase=math.pi / 2.0 + math.pi / 2.0,
+    )
+    dedo_dir = arco_braço(t, frequencia=frequencia_base * 1.5, amplitude=3.2, fase=2.0 * math.pi / 3.0)
+    dedo_esq = arco_braço(
+        t,
+        frequencia=frequencia_base * 1.5,
+        amplitude=3.0,
+        fase=2.0 * math.pi / 3.0 + math.pi / 2.0,
     )
 
     return {
+        "cintura": (cint_p, cint_y, cint_r),
+        "abdomen": (abd_p, abd_y, abd_r),
+        "peitoral": (pei_p, pei_y, pei_r),
         "body": (body_pitch, body_yaw, body_roll),
         "head": (head_pitch, head_yaw, head_roll),
-        "right-arm": (braço_dir, 0.0, 0.0),
-        "left-arm": (braço_esq, 0.0, 0.0),
-        "ant-arm": (cotovelo_dir, 0.0, 0.0),
-        "ant-arm2": (cotovelo_esq, 0.0, 0.0),
-        "hand": (0.0, 0.0, punho_dir),
-        "hand2": (0.0, 0.0, punho_esq),
+        "fones": (fones_pitch, 0.0, fones_pitch * 0.6),
+        "antena-direita": (ant_r * 0.6, 0.0, ant_r),
+        "antena-esquerda": (ant_l * 0.6, 0.0, -ant_l),
+        "shoulder": (0.0, 0.0, ombro_r),
+        "shoulder2": (0.0, 0.0, -ombro_l),
+        "right-arm": (braço_dir, braço_dir * 0.35, -ombro_r * 0.8),
+        "left-arm": (braço_esq, -braço_esq * 0.35, ombro_l * 0.8),
+        "ant-arm": (cotovelo_dir, 0.0, cotovelo_dir * 0.6),
+        "ant-arm2": (cotovelo_esq, 0.0, -cotovelo_esq * 0.6),
+        "hand": (punho_dir * 0.45, punho_dir * 0.4, punho_dir),
+        "hand2": (punho_esq * 0.45, -punho_esq * 0.4, -punho_esq),
+        "fingers": (0.0, 0.0, dedo_dir),
+        "fingers2": (0.0, 0.0, -dedo_esq),
     }

@@ -49,6 +49,16 @@ CABECA_QUIQUE_CORRIDA = 5.5
 #: Contra-giro da cabeça (``head.y``): mantém o olhar à frente.
 CABECA_CONTRAGIRO_CAMINHADA = 3.0
 CABECA_CONTRAGIRO_CORRIDA = 6.0
+#: Cadência Mixamo dupla no quadril (``body.x`` sagital e ``body.z`` queda lateral).
+QUADRIL_QUIQUE_CAMINHADA = 1.6
+QUADRIL_QUIQUE_CORRIDA = 3.2
+QUADRIL_ROLL_CAMINHADA = 2.8
+QUADRIL_ROLL_CORRIDA = 4.6
+#: Sobreposição hierárquica estilo ZZZ (fones/antenas atrasam após o impacto do passo).
+FONES_ATRASO_CAMINHADA = 2.6
+FONES_ATRASO_CORRIDA = 5.5
+ANTENA_ATRASO_CAMINHADA = 4.5
+ANTENA_ATRASO_CORRIDA = 9.0
 
 # --------------------------------------------------------------------------- #
 # Arraste: dedos agarrando (graus em ``fingers.z``; ``fingers2`` usa o espelho)

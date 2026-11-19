@@ -1,0 +1,9 @@
+# tentacle, exported by TextureCraft
+
+newmtl purple-pink-tentacle
+Kd 1 1 1
+map_Kd tentacle_purple-pink-tentacle_BaseColor.png
+map_Pr tentacle_purple-pink-tentacle_Roughness.png
+map_Pm tentacle_purple-pink-tentacle_Metallic.png
+norm tentacle_purple-pink-tentacle_Normal.png
+map_Bump tentacle_purple-pink-tentacle_Normal.png

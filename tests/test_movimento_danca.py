@@ -120,3 +120,39 @@ def test_rock_flexiona_os_joelhos_mais_no_onset_do_que_no_contratempo():
         return pose.left_knee
 
     assert joelho_assentado(0.0) > joelho_assentado(tau / 2) + 1.0
+
+
+@pytest.mark.parametrize("bpm", [90.0, 120.0, 160.0])
+def test_click_track_sincroniza_beat_phase_e_compensa_latencia(bpm):
+    from math import pi, tau
+
+    from sejoga.animacao.movimento_danca import DanceMotion
+    from sejoga.animacao.poses_base import Rig, pose_repouso
+
+    dm = DanceMotion()
+    dm.override = "hip_hop"
+    latencia = 0.08
+    t_now = 10.0
+    dt = 1.0 / 60.0
+    for passo in range(120):
+        t_frame = t_now + passo * dt
+        fase_real = (passo * dt * bpm / 60.0) % 1.0
+        beat_snap = (fase_real - latencia * bpm / 60.0) % 1.0
+        dm.update(
+            dt,
+            0.7,
+            0.5,
+            bpm=bpm,
+            beat=(fase_real < 0.1),
+            beat_phase=beat_snap,
+            music_updated_at=t_frame - latencia,
+            now=t_frame,
+        )
+    esperada = ((119 * dt * bpm / 60.0) % 1.0) * tau
+    erro = abs((dm.phase - esperada + pi) % tau - pi)
+    assert erro < 0.12
+    # Envelope musical ZZZ de 1-6s (8 batidas) avança dentro de [0, 1)
+    assert 0.0 <= dm.phrase_phase < 1.0
+    rig = Rig(pose_repouso())
+    pose = dm.contribuicao(rig)
+    assert "fones" in pose and "antena-direita" in pose

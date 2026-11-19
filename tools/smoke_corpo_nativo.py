@@ -118,6 +118,7 @@ def main():  # noqa: PLR0915  # TODO convenção: ferramenta de captura/GPU: fat
             frames(1)
         assert app._drag_active, "Native drag was not captured"
         first = app.animation_controller.body_motion.snapshot.roll
+        first_velocity = app.animation_controller.body_motion.pointer_velocity[0]
         from panda3d.core import Point2
 
         projected = Point2()
@@ -144,8 +145,10 @@ def main():  # noqa: PLR0915  # TODO convenção: ferramenta de captura/GPU: fat
             win32api.SetCursorPos((point[0] + 144 - step * 6, point[1]))
             frames(1)
         second = app.animation_controller.body_motion.snapshot.roll
+        second_velocity = app.animation_controller.body_motion.pointer_velocity[0]
         capture("left")
-        assert first > 1 and second < -1, (first, second)
+        # Valida a reversão do input, não uma pose fixa do pêndulo após N frames.
+        assert first_velocity > 0 and second_velocity < 0, (first_velocity, second_velocity)
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0)
         frames(12)
         assert not app._drag_active
@@ -184,6 +187,7 @@ def main():  # noqa: PLR0915  # TODO convenção: ferramenta de captura/GPU: fat
                 {
                     "profile": str(profile),
                     "native_drag_roll": [first, second],
+                    "native_pointer_velocity_x": [first_velocity, second_velocity],
                     "settled_roll": settled,
                     "tray_recovered": recovered,
                     "native_double_click": True,

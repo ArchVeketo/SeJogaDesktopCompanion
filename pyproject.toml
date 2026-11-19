@@ -69,6 +69,7 @@ dev = [
 
 [project.scripts]
 sejoga = "sejoga.__main__:main"
+sejoga-editor = "sejoga.editor.app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sejoga"]

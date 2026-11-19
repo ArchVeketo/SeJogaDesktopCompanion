@@ -1,6 +1,6 @@
 # SeJogaDesktopCompanion — Status atual e próximos passos
 
-**Atualizado:** 2026-11-13
+**Atualizado:** 2026-11-18 (versão `1.0.0`, dedos individuais nas duas mãos, 6 novos idles contextuais, 1.052 testes e build validado)
 
 **Base de trabalho:** commits recentes e integração do rig completo Blockbench.
 
@@ -10,6 +10,97 @@ Este é o roadmap canônico do projeto. As listas de próximos passos nos docume
 
 > **Refatoração de nomes:** os módulos foram renomeados para português conforme [CONVENCAO_PYTHON.md](CONVENCAO_PYTHON.md). Os docs datados citam os nomes antigos; o mapa antigo → novo e as exceções pendentes (`TODO convenção`) estão em [REFATORACAO_CONVENCAO.md](REFATORACAO_CONVENCAO.md).
 
+## Dedos individuais nas duas mãos, 6 novos idles e validação completa — 18/11/2026
+
+- **Controle independente de dedos nas duas mãos (`gestos_dedos.py` + `dedos_malha.py` + `renderizador.py`):**
+  - `FingerGestures` em `src/sejoga/render/gestos_dedos.py` agora controla `amounts_por_mao`, `presentation_por_mao`, `wrist_twist_por_mao` e `_thumb_dir_por_mao` de forma totalmente independente para a mão direita (`1`) e esquerda (`-1`), mantendo retrocompatibilidade completa com a API legada de mão única.
+  - Adicionado gesto `"point"` em `GESTURES` (indicador estendido a `-0.85` e polegar dobrado) e novo estado `AnimationState.POINT`.
+  - `dedos_malha.medir_direcao_polegar` generalizado para ler tanto o polegar direito (`mesh32`) quanto o esquerdo (`mesh40`).
+  - `renderizador.py` conecta a propriedade `gesto_mao_esquerda`, repassa `dedos_clipe_ativo` com flexão dinâmica durante cenas e alinha os pulsos bilateralmente.
+  - Previews `1024x1024` validados em `.local/previews/`: `hands_fingers_open.png` (leque aberto em ambas), `hands_fingers_fist.png` (punhos fechados com polegares cruzados), `hands_fingers_thumbsup.png` (joinha à direita e apontar à esquerda) e `hands_fingers_peace.png` (paz e amor à direita e joinha à esquerda).
+- **6 novos idles contextuais integrados (`docs/PESQUISA_ROTEIRO_REFINO_ANIMACOES.md`):**
+  - Implementados `conferir_luva`, `pensar_gabinete`, `segurar_porta_timido`, `checar_walkman`, `alongar_pescoco_ombros` e `groove_um_pe`.
+  - Pistas autorais configuradas em `animation.py`, roteiros com microfases e cadência orgânica em `cenas_idle.py` (incluindo flexão individual de dedos em `_PISTAS_DEDOS_CENAS`), e integração direta com o menu de contexto no submenu `"Prévia de cenas (idle)"` em `janela.py`.
+  - Ajustada a pose de `pensar_gabinete` para manter a mão pensante ao lado do gabinete, sem obstruir a face da porta.
+- **Transições e cascatas de fase sem estalos:**
+  - `medir_salto_transicao.py` zera descontinuidades (`|Δpose| = 0.0000°` estático e em movimento).
+  - Interrupções de cenas em andamento (por arraste, queda, caminhada ou clique) testadas com salto suave controlado (entre `2.53°` e `12.51°`).
+  - Corrigidos limiares de partículas em queda e onda de som de fones em `efeitos_cena.py`, além de restrição de hover em `segurar_porta_timido`.
+- **Suíte de testes:**
+  - Adicionados testes específicos de dedos bilaterais (`test_dedos_cadeia.py`) e de acionamento das novas cenas (`test_cenas_idle_e_efeitos.py`).
+  - **1.052 testes aprovados (100%), 0 falhas** no pytest.
+
+
+## Entrega de idles contextuais — 17/11/2026
+
+- Implementados `escutar_fone`, `disfarcar_olhar` e `batida_guardada`, disponíveis na bandeja/editor. Causas: início de música durante repouso e retorno do cursor após 8 s; intervalo de 60 s entre cenas automáticas. Música contínua não as repete. Pausas, retorno e conexão entre cenas usam pistas autorais e o resolvedor existente. Não foram adicionados efeitos.
+- Corrigidos o despacho de eventos de cena no roteiro do editor e a escolha do roteiro pela seção CENAS_IDLE. Restaurada compatibilidade do renderer com `use_chroma_resolve=False` e ausência de debug_tools na prévia. Inicialização do programa não passa mais `loading_splash` a um construtor incompatível e encerra o splash após montar o overlay.
+- Validação visual WGL real: três cenas com início/gesto/retorno em `%TEMP%/sejoga-catalogo-50lnih4s`; troca de cenas e interrupção por arraste em `sejoga-catalogo-d4y9zgpc`; conexão batida→dança em `sejoga-catalogo-_2sjdp_w`. O aparelho de som/aparição dos tentáculos nessa conexão ainda mostra problemas da base atual; não considerar essas partes aprovadas por esta revisão.
+- Testes direcionados: 46 controlador/cenas, 26 editor/GPU/cenas, 2 inicialização/splash aprovados. Smoke mouse aprovado em `sejoga-mouse-smoke-vzkrdlnz`. Logs desta etapa em `.local/idles-contextuais/`.
+- **Suíte completa ainda não aprovada:** 1.020 passaram e 11 falharam. Pendências fora da autoria das três cenas: contrato de chroma inicial, mistura da orientação raiz, restauração do cursor, cancelamento/retração de tentáculos e caixa, painel/corredor/fundo do armário. Vários testes referem métodos ausentes no código atual. Não apagar testes para encobrir essas diferenças; reconciliar implementação e contrato com prova visual.
+- Build Windows recompilado e aberto com perfil isolado `%TEMP%/sejoga-roteiro-exe-77et3hue`: fundo transparente após calibração, topmost, arraste por mouse nativo e saída com código 0; sem traceback no log. Captura `janela-executavel.png`. Isso valida a inicialização/input do bundle, sem quitar as 11 falhas acima.
+- Limites: música já ativa no primeiro frame pode iniciar dança diretamente; a cadência da batida adapta BPM, sem alinhamento de fase preciso. Outros quatro conceitos do documento de referências continuam propostos.
+
+## Correção do crash de dança, interior índigo original, tentáculos no espirro, menu completo e `render_preview.py` — 18/11/2026
+
+- **Crash crítico `MusicSpeaker.seat` eliminado (`caixa_som.py` + `renderizador.py`):**
+  - `MusicSpeaker.__init__` agora garante `self.seat` sempre inicializado (inclusive quando `self.compact == True` / estilo `"radio"`).
+  - `apply_body_motion` e `_posicionar_no_palco` verificam `not speaker.compact` e `not eh_emote_clipe`, além de aplicar o deslocamento mundo→modelo (`origem_palco = self.model_anchor.getRelativePoint(speaker.root, Point3(0))`), `deslocamento_emote`, `dz_pelvis_emote`, `dz_clipe_ativo` e `cena_idle_amostra.deslocamento_z`.
+- **Ferramenta de preview ampliado multi-ângulo (`tools/render_preview.py`):**
+  - Gera 13 pranchas `1024x1024` com enquadramento automático (~78–80% do quadro) em ângulos frontal e 3/4: `idle_closed`, `head_open_interior`, `curious_tentacles`, `sneeze_tentacles`, `hands_fingers` (`open`, `fist`, `thumbsup`) e `dance_speaker` (`palco` e `radio`).
+- **Interior índigo profundo e moldura original do armário (`renderizador.py`):**
+  - `_separar_painel_armario` ajustado para os limites exatos em pixels da face `9ftqh2C6` de `Textura.png` (`5/64` nas laterais e topo, `6.5/72` na base), preservando a barra bege inferior com gotas rosas, o respingo verde na borda direita e o filete interno escuro.
+  - `_escurecer_fundo_interno` mapeia `texcoord.0` das 5 paredes internas para o centro índigo original `(0.03125, 0.7000)` de `9ftqh2C6` (`RGB(11, 0, 68)`) com `setColorScale(0.20, 0.12, 0.42, 1.0)`, reproduzindo o tom índigo escuro profundo do Blockbench (`media_1794979390249_33fe50a7.jpg`).
+- **Tentáculos encorpados e ventosas soldadas no espirro e na espiada (`sistema_tentaculos.py`):**
+  - `profile` subdividido em 29 anéis suaves (`step in range(4)`) com ponta arredondada em domo (`0.007` + tampa frontal), eliminando cones pontiagudos de agulha (`0.001`) e degraus triangulares.
+  - `rest_vertices` unificado para 3 coordenadas por vértice `(z / 0.432, (x - bend) * 0.65, y * 0.65)` com base das ventosas embutida em `-0.005` no raio interpolado do manto, impedindo matematicamente qualquer ventosa de descolar ou flutuar no ar durante o espirro.
+  - Curvatura de ponta (`curl_tip`) e `compressao_saida` (`0.50 -> 0.78` na enxurrada) calibradas para abrir os 10 tentáculos em leque orgânico sem embolar na boca.
+- **Menu de contexto e danças restaurados (`janela.py` + `renderizador.py`):**
+  - Restaurados no menu de bandeja: todas as 35 danças (`ESTILOS_DANCA_UI`, incluindo emotes do Fortnite e Mixamo) na prévia sem som, submenu `"Estilo de dança"` completo (`_set_dance_style`), `"Sandevistan (lateral)"`, `"Cyberpsicopata (glitch)"`, as 4 ações (`Comemorar`, `Ajeitar o fone`, `Esse fone tá com problema?`, `Argolas da antena`) e comemoração ao atingir meta autônoma.
+  - `update_appendages` em `renderizador.py` agora repassa `dedos_clipe=getattr(controller, "dedos_clipe_ativo", None)` para `self.finger_gestures.update(...)`.
+- **Validação:** `python tools/render_preview.py` inspecionado (`.local/previews/`), `python -m pytest` **1.049 passed (0 falhas)** em 51.00s, `.\build.ps1` e `dist\SeJogaCompanion\SeJogaCompanion.exe` validados sem erros.
+
+## Fechamento definitivo dos 3 bugs visuais e Integração Fase 2 — 18/11/2026
+
+- **Tentáculos (`sistema_tentaculos.py`):**
+  - Implementado transporte paralelo de Bishop puro (rotação mínima via quatérnion entre tangentes sucessivas) para ambos os eixos transversais (`front` e `right`), com base ortonormal inicial alinhada estritamente à face inferior (`front = Vec3(0, 0, -1) - T * T.z`).
+  - Eliminado o `twist_rate` artificial acumulativo (~45°), que torcia o tentáculo em espiral gerando a aparência de bloco dobrado/vincado e escondendo as ventosas.
+  - `compressao_saida` estendida para qualquer tentáculo saindo da boca (`0.75` na âncora interna evoluindo suavemente para `1.0` a partir de 0.20 de distância), prevenindo auto-interseção de anéis na abertura estreita da cavidade.
+  - Provas visuais em ângulo 3/4 lateral geradas e validadas: `.local/bugs_visuais_check/tentacle_34_peek.png` e `.local/bugs_visuais_check/tentacle_34_extended.png` exibindo o tentáculo suave com as 4 ventosas visíveis na face inferior, sem descontinuidades nem auto-interseção.
+- **Porta aberta sem linha amarela (`renderizador.py`):**
+  - Ocultação definitiva de `out_door` em `_setup_outline`, `apply_rig_pose` e `update_appendages`, eliminando 100% da linha amarela fina interna no vão da boca (`head_open_3d_interior.png`).
+- **Integração Fase 2 (`renderizador.py`):**
+  - Em `_atualizar_efeitos_e_argolas`: `choque_argolas=bool(params["choque_argolas"])` passado a `_choque_antenas_3d.atualizar(...)`.
+  - Em `_coletar_parametros_efeitos`: `"som_fones"` acionado também em `escutar_fone` e `batida_guardada`.
+  - Em `_atualizar_item_halo_rgb`: rampa contínua suave via `_brilho_halo_atual` com lerp por dt (`brilho_desejado = 0.26` em cenas musicais, `0.36` em dança) e modulação contínua do ganho RGB até corte limpo em `<= 0.01` (sem saltos secos de opacidade).
+- **Validação Completa:**
+  - Pytest completo: **1.049 testes aprovados (100%), 0 falhas** em 51.56s.
+  - Executável PyInstaller (`build.ps1`) compilado e validado em execução real por 12s com perfil temporário isolado (`SEJOGA_CONFIG_PATH`): inicialização limpa, carregamento do overlay e física sem erros ou tracebacks no log.
+
+## Correção dos 3 bugs visuais (Tentáculos, Contorno e Fundo do Armário) — 17/11/2026
+
+- **Tentáculos (`sistema_tentaculos.py`):** Corrigida a projeção e deformação das ventosas (`rest_vertices` com componente tangencial `z_rel`, `pos = center + (right * x + front * y + tangent * z) * girth`). Normais 3D radiais verdadeiras e ordem de vértices/winding CCW estrito para parede do cilindro, bordo e cavidade, eliminando buracos pretos sob SimplePBR e zerando triângulos invertidos em repouso e deformação (`Inverted=0`). Nós das malhas agora nascem ocultos (`hide()`).
+- **Cabeça e contorno amarelo (`renderizador.py`):** Removidos `moldura-armario` e `fundo-interno-armario` de `self.outline_np`; fechada a face frontal de `Armario` e face traseira de `door` em `self.outline_np`, tornando-os sólidos 3D fechados para o inverted hull culler. Borda da porta oculta quando fechada (`abs(angulo_porta) < 6.0`). Moldura do armário reajustada para casar com a porta sem frestas (`ix0=-0.116, ix1=0.118, iz0=0.035, iz1=0.320`) e winding CCW corrigido para apontar para a frente (+Y).
+- **Fundo do armário (`renderizador.py`):** `_escurecer_fundo_interno` expandido para extrair as 5 paredes internas da cavidade da cabeça (traseira, laterais, piso e teto), invertendo as normais para o centro da cabeça e aplicando `setColorScale(0.12, 0.10, 0.15, 1.0)`. Interior agora possui profundidade 3D e sombra realistas.
+- **Validação:** 36 testes de tentáculos e portas aprovados (`test_sistema_tentaculos.py`, `test_tentaculos_frente.py`, `test_abertura_encerramento.py`). Provas visuais renderizadas e inspecionadas em `.local/bugs_visuais_check/` (`head_closed_clean.png`, `head_open_3d_interior.png`, `crop_fixed_tentacle.png`, `zoom_tentacle_extended.png`).
+
+## Consolidação seletiva (tentáculo #2 + efeitos/armário/janela) — 17/11/2026
+
+- **Tentáculos (visual #2 encorpado + física nova):** unificada a simulação de `a127a5ad` (`_corredor_porta_aberta`, `_retract_all`, bloqueio/colisão, ondulação por temperamento) com a malha encorpada de `.worktrees/efeitos-skowt` / `74bb671` (`sides=8`, bulbo `0.083*1.15`, 4 ventosas articuláveis de 4 anéis, volume preservado).
+- **Render, efeitos e armário (`renderizador.py` + `janela.py`):** portados de `35f5d3c2` + `ac1fac36` as argolas orbitais sci-fi e halo/orbes RGB nos chifres, `ChoqueAntenas3D`, ligação com `GerenciadorEfeitosCena` (`vfx_grafite` / `arte_efeitos`), Sandevistan (pós-imagens) + dissolve + saídas FNF (`EsqueletoFnf`) e Cyberpsicopata + `prewarm_intro_effects`, `_separar_painel_armario` (moldura de 8 triângulos com UV original), `_escurecer_fundo_interno` (textura e sombra voltadas para dentro), `_sincronizar_bloqueio_apendices`, `trocar_caixa_de_som`, `_aplicar_rotacao_raiz_clipe`, warmup anti-flash preto e `_entrada_move_canvas`.
+- **Preservado do WT atual:** calça autoral (`pernas_tecido.py` + `calca-autoral.json`), mãos/dedos (`dedos_malha.py`), 3 idles contextuais, enxugamento de boxe/rebatida, teimosia e rampa `_peso_tatil`.
+- **Backup e worktrees mantidos até OK do usuário:** backups em `.local/backup-pre-consolidacao/`; `stash@{0}`, `.worktrees/efeitos-skowt` e `codex/refatoracao` preservados sem apagar.
+
+## Enxugamento de reações (boxe/rebatida) — 17/11/2026
+
+- Removidos os disparos de clipes de boxe/rebatida sobre as reações e no repouso irritado. HIT/POKE usam `aplicar_defesa` (impacto → recuo do corpo; cutucada → proteção do lado tocado, firmeza pela irritação) e voltam ao passo/repouso por crossfade curto (`test_defesas_recuperam_movimento_sem_clipe_de_golpe`). Caminhar e alongar mantidos.
+- Teimosia: cada troca de fase abre transição própria (≤ 0,20 s); a resistência agora planta os pés (agachada + transferência de peso) em vez de pedalar parado; o clipe de corrida só roda no roubo com deslocamento real; interrupção (arraste/queda/outra reação) encerra a teimosia e o cursor volta (`_definir_cursor_oculto(False)` sincronizado por frame e no encerramento).
+- `janela._chroma_inicial_bgr` portado (chroma inicial a partir de `colorkey_color`).
+- Testes: pytest 1.0xx passam, 8 falham, todas fora da animação — tentáculos/armário (`test_sistema_tentaculos`: recuo de porta/arremesso, puxador pós-espirro, bloqueio de apêndices; `test_tentaculos_frente`: painel, corredor, fundo interno). Os métodos ausentes (`_corredor_porta_aberta`, `_separar_painel_armario`, `_sincronizar_bloqueio_apendices`) existem no worktree `.worktrees/efeitos-skowt`; reconciliar por merge dirigido com prova visual, não apagar os testes.
+- `tools/smoke_mouse.py` NÃO validado neste ambiente: falha em `WindowFromPoint(corner) != hwnd` (linha 173) também no worktree `efeitos-skowt`; `GetForegroundWindow()==0` indica sessão sem desktop interativo/bloqueada. Repetir com a sessão desbloqueada; revisão visual da teimosia (resistência plantada, transições, cursor) e das defesas exige olho humano.
+- Interrupções (medido com `.local/medir_cortes_cenas.py`, salto máximo de junta por quadro): os 3 idles novos e HIT/POKE interrompidos por arraste/queda/caminhada/impacto continuam contínuos (inércia do resolvedor). Corrigido o único estalo real: o atraso tátil das cadeias de braço (`_peso_tatil`) ligava em degrau ao entrar em DRAG/FALL (~28°/quadro no antebraço no meio de uma reação); agora entra/sai por rampa de 0,2 s (≈5–10°/quadro). Teste: `test_arraste_no_meio_da_reacao_nao_estala_o_antebraco`.
+- Código dos tentáculos/armário perdido: snapshots dangling com `_corredor_porta_aberta`, `_separar_painel_armario`, `_sincronizar_bloqueio_apendices` extraídos em `.local/recuperados/` (não aplicados).
+
 ## Roadmap da Criatura Viva
 
 ### Fase 1: Animação com Alma (Em Progresso)
@@ -17,41 +108,74 @@ Este é o roadmap canônico do projeto. As listas de próximos passos nos docume
 - [x] Teimosia e resistência — estado `TEIMOSIA` com 5 fases (resistência → repreensão → bote → roubo → cospe)
 - [x] Novas danças BRC — `street_groove` (toprock), `graffiti_dance` (gestos de spray), `cyber_bounce` (bounce elástico)
 - [x] Novos idles — `brc_stance` (postura de rua), `vibing` (groove interno)
-- [x] Melhorias nos idles existentes — calm (micro-ruído), street (gingado BRC), fighter (micro-guarda), playful (antenas/fones sync)
+- [x] Reautoria dos 11 idles com pausa, antecipação, gesto, sustentação e retorno; pistas únicas em `animation.py`, também usadas pelo editor
 - [x] Humanização do código — `selecao_estado.py`, `teimosia_pose.py`, `animacao_tuning.py`, `idle_tuning.py`
-- [ ] Validação visual via `smoke_mouse.py --physics`
+- [x] Validação em sessão Windows desbloqueada (16/11): `smoke_mouse.py` com/sem `--physics` e `smoke_corpo_nativo.py` aprovados; captura, picking, arraste nativo pelo corpo e pelas pernas e recuperação da bandeja verificados
 
-### Fase 2: Squash & Stretch em Todas as Ações (Wiring Parcial — Aguardando Refino Visual)
-- Ramos de composição já ligados em `renderizador.py` (respiração, locomoção, queda, arraste, dança, impacto e sono); falta calibrar timing, ordem perante escala/apoio e validação visual em janela real
-- Preservação de volume ($S_x \cdot S_y \cdot S_z \approx 1.0$) sem deslocar contato de pé ou prop
+### Fase 2: Squash & Stretch em Todas as Ações (Implementado — Reconciliado Achado 11)
+- [x] Pipeline ligado em `squash_stretch.py` (`squash_stretch_composto`) e `renderizador.py` (`_parametros_squash_stretch` / `_aplicar_squash_stretch` via `_squash_pivot`) para respiração, locomoção, queda, arraste, dança, pouso e sono
+- [x] Preservação de volume ($S_x \cdot S_y \cdot S_z \approx 1.0$) sem cisalhar cubos nem deslocar o contato da sola
 
-### Fase 3: Substituir Molas por Poses Autorais
-- Unificar caminhos de escrita direta vs deltas em `controlador_animacao.py` e `resolvedor_poses.py`
-- Migrar ações centrais para poses-chave com curvas quínticas/Hermite
-- Molas ficam restritas ao contato externo (arraste/queda/física) e fio passivo
+### Fase 3: Substituir Molas por Poses Autorais (Concluído — Achado 10)
+- [x] Caminho único via `LayerStack` (`estados_delta.py`) para todos os estados centrais (`IDLE`, `HOVER`, `WALK`, `RUN`, `DRAG`, `FALL`, `SLEEP` em 3 modos) e inercialização quíntica/Hermite C2 em `PoseResolver` (`resolvedor_poses.py`)
+- [x] Molas restritas ao atraso secundário de cadeias (`molas_juntas.py`) e contato físico/fio passivo (`desktop/fisica.py`, `fio_corda.py`)
 
-### Fase 4: Arcos Autorais no Idle (Parcial — Em Calibração)
-- `clipes_ocioso.py` já aplica curvas autorais e arcos em estilos (`brc_stance`, `vibing`, etc.); falta calibrar arcos de lemniscata no núcleo Padrão e fluidez de transição com atenção
+### Fase 4: Arcos Autorais no Idle (Revisado em 16/11)
+- [x] Pistas de cabeça, torso e braços com defasagem e contrapeso em `animation.py/IDLE_CLIPS`; `clipes_ocioso.py` amostra essas pistas com respiração e atenção, sem acumular a antiga oscilação ampla da coluna; cenas contextuais preservadas
 
 ### Fase 5: Sincronização Musical ao Vivo
-- Conectar `beat_phase` com timestamp de `escuta_musica.py` ao controlador e `movimento_danca.py`
-- Detecção de beat/onset calibrada contra click track e captura WASAPI loopback
-- Concluir integração de `street_groove`, `graffiti_dance` e `cyber_bounce` em `configuracao.py` e `interface.py`
+- **(Concluído)** Conectar `beat_phase` com timestamp de `escuta_musica.py` ao controlador e `movimento_danca.py` (`test_click_track_sincroniza_beat_phase_e_compensa_latencia` 90/120/160 BPM)
+- **(Concluído)** Detecção de beat/onset e ritmo ao vivo via `analisador_ritmo.py` (`AnalisadorRitmo` com fluxo espectral multibanda, tempograma por autocorrelação FFT, PLL de fase e filtro música vs fala/silêncio) integrado ao modo híbrido padrão `music.source = "auto"` (SMTC multi-sessão por eventos + captura WASAPI loopback com fallback para SMTC quando `soundcard` está ausente)
+- **(Concluído)** Concluir integração de `street_groove`, `graffiti_dance` e `cyber_bounce` em `configuracao.py`, `interface.py` e `janela.py` (incluindo normalização `"griddle"` -> `"griddy"`)
 - Arte do álbum como contexto visual
 
-### Fase 6: Caminhada Autônoma até Metas
-- Corrigir `agencia.direcao_meta` para vetor normalizado no espaço alvo−corpo e conectar `adicionar_ponto_interesse`
-- IK/âncora mundial de pés no apoio durante `WALK`/`RUN`, virada e freada sem foot-sliding (ver `ESTUDO_FOOTWORK_MARIO.md`)
+### Fase 6: Caminhada Autônoma até Metas (Locomoção & Metas Concluídas)
+- **(Concluído)** Corrigir `agencia.direcao_meta` para vetor normalizado no espaço alvo−corpo e conectar `adicionar_ponto_interesse` nas trocas de foco do overlay
+- **(Concluído)** Ancoragem horizontal do pé apoiado durante `WALK`/`RUN` (`movimento_pernas.py` + acoplamento `pixels_per_unit`), medida na GPU com drift de `0.34–0.58 px/f` sem foot-sliding visível
 
 ## Status atual
 
 ### Implementado e verificado neste ambiente
+
+- **Anatomia e comparação com o original (17/11):** referência local `assets/model/projetoMARIO(original).bbmodel`, preservada. A calça usa seus 28 vértices, 26 faces e atlas, extraídos em `calca-autoral.json/.png`, com as duas cadeias de pernas existentes e normais planas. Removida a reconstrução por anéis arredondados que encolhia o cós; a costura central acompanha o quadril. `tools/extrair_calca_autoral.py` reproduz a extração a partir do original. As juntas e clipes atuais continuam disponíveis; o arquivo `mario.gltf` não precisou ser substituído.
+  - *Mãos:* a rotação de flexão do bloco `fingers` é consumida pelas articulações, evitando deslocar as bases dos dedos e dobrar duas vezes. O joinha mede o eixo da cadeia do polegar depois do recorte, sem depender da malha já removida nem de vetor fixo. A apresentação gira em torno do eixo do pulso, preservando alinhamento com o antebraço. Fechamento da luva recalibrado contra a geometria da palma.
+  - *Cabeça e tentáculos:* interior com textura e sombra no lugar da cobertura de cor uniforme; ventosas menores e rasas, espessura proporcional à revelação para evitar aspecto inflado durante saída/recolhimento. A hipótese de colisão sólida da moldura foi descartada por medição: a espessura zero já a excluía dos volumes de colisão. Nenhuma barreira artificial foi adicionada.
+  - *Referências:* [curadoria de sete referências e sete cenas propostas](REFERENCIAS_IDLES_CYBERFUNK.md), incluindo Animal Crossing, Bomb Rush Cyberfunk, Hi-Fi Rush, Lethal League Blaze, Astro e Jet Set Radio. Os novos idles estão propostos; esta revisão não os adiciona ao catálogo.
+  - *Verificação:* suíte completa aprovada e 50 testes direcionados após os ajustes de mãos/ventosas. Janela real: gestos, reações, caminhada/corrida, três modos de sono, entradas/saídas, porta, troca hip-hop/rock e amostras de breakdance, electro swing e griddy. Smokes com/sem física aprovados. O smoke nativo mantém a exigência de erro de pega inferior a 12 px (observado: 0 px), mede reversão da velocidade recebida do mouse e confirma soltura; deixou de exigir o sinal da inclinação do pêndulo após uma contagem fixa de frames.
+  - *Entrega:* `build.ps1` e recompilação final aprovados. Executável em `dist/SeJogaCompanion` verificado com perfil isolado, atlas/calça presentes no bundle, transparência, z-order, arraste nativo e saída 0. Logs em `.local/revisao-anatomia/`; captura do executável em `%TEMP%/sejoga-roteiro-exe-em1z0pp7/janela-executavel.png`. Não houve revisão exaustiva de todos os pares de interrupção, nem autoria dos novos idles pesquisados.
+
+- **Revisão do catálogo, porta e conexões (16/11):** os 11 idles foram reescritos e a cópia duplicada de pistas removida. Preparação para caminhada/corrida/dança, assentamento ao voltar ao repouso, mistura entre estilos de dança e continuidade da orientação global usam o relógio próprio da transição. O despertar manual passa por `wake`. Deitar aplica uma única inclinação global gradual, corrigindo a contrarrotação entre tronco e pernas. A frente do armário mantém uma moldura com UV original e vão permanente; as paredes internas ficam escuras sem cartão externo. Corrigida também a ancoragem do arraste após recuperação e redimensionamento do canvas. O GLTF, a caminhada e os clipes de dança existentes foram preservados.
+  - *Verificação:* suíte completa aprovada; 12 testes direcionados e Ruff sem erros após a correção final de ancoragem. Smokes com/sem física e mouse nativo aprovados. `tools/revisar_animacoes.py` produziu 94 cenários do catálogo (11 idles, 3 cenas, 35 danças, 23 reações, 3 modos de sono, 4 movimentos, 5 entradas, 8 saídas, porta e conexão entre danças), com correção e recaptura do sono deitado e da locomoção. Não é uma verificação exaustiva de todas as combinações de interrupção. Roteiro e comando reproduzível em [ROTEIRO_DE_ANIMACOES.md](ROTEIRO_DE_ANIMACOES.md).
+  - *Bundle:* `build.ps1` e recompilação final PyInstaller aprovados; `dist/SeJogaCompanion/SeJogaCompanion.exe` aberto com perfil isolado, fundo transparente, z-order, arraste nativo e encerramento com código 0. Captura final em `%TEMP%/sejoga-roteiro-exe-ykice8vl/janela-executavel.png`; log sem exceções em `logs/companion.log` do mesmo perfil. Distribuir a pasta completa.
+
+- **Correção da cabeça e tentáculos (16/11, base `ab7483c` + alterações locais):** removido o cartão preto independente. O fundo escuro reutiliza apenas os triângulos originais da parede traseira, voltados para dentro e sem ampliar a silhueta. Ventosas assentadas no perfil real do manto e curvas com anéis intermediários. Suíte completa e smokes de mouse com/sem física aprovados; build em `dist/SeJogaCompanion` aberto com perfil isolado, transparência e encerramento sem erro verificados; abertura, recolhimento e vistas frontal/lateral/traseira conferidos na janela real. O asset `mario.gltf` permanece intacto.
+
+
+- **Ecossistema ZZZ, tentáculos clássicos, pernas/tecido frontal, argolas sci-fi RGB e limpeza de FX (15/11):**
+  - *Planejamento e Idle Hub ZZZ:* Consolidado [docs/PLANO_ECOSSISTEMA_ANIMACOES_ZZZ.md](PLANO_ECOSSISTEMA_ANIMACOES_ZZZ.md) e reformulado `"calm"` (`clipes_ocioso.py`) em ciclo `8.0 s` (`2 × 4.0 s`) com postura de Walkman, sobreposição em cascata (`quadril -> cintura -> peito -> cabeça -> braços -> mãos`) e conexão contínua às cenas autônomas (`cenas_idle.py`).
+  - *Pernas externas e tecido frontal:* Corrigidos sinais invertidos de `yaw`/`roll` (`virtual_insanity`, `street_groove`, `sleep/sentado`, `idle`, `walk`, `heavy_land`) em `movimento_pernas.py`; reduzido pinçamento posterior do joelho e habilitada inércia/onda frontal na calça baggy em `pernas_tecido.py` com trava anti-boot clipping (`ring_idx >= 5`).
+  - *Tentáculos clássicos e argolas sci-fi RGB:* Restaurada a geometria esculpida de `74bb671` em `sistema_tentaculos.py` (8 lados, paleta carmesim profunda e 4 ventosas hexagonais salientes com contorno isolado do manto); substituídas as argolas amarelas espessas em `renderizador.py` por arcos HUD sci-fi finos e micro-fagulhas com rotação giroscópica e ciclo RGB suave.
+  - *Des-spam e limpeza de FX 2D:* Removida a barra vertical do tronco em queda (`_card_rastro`), deslocados os rastros `fx-queda-p` para fora da silhueta lateral, endurecidos os gatilhos de deslize/tremor/medo/susto (`renderizador.py`) e ampliados os intervalos de emissão em `efeitos_cena.py`.
+  - *Validação observada:* **959 testes verdes** (`python -u -m pytest -ra`, 0 falhas/skips) e prancha GPU offscreen verificada em `diag_after_sheet.png`.
+
+- **Fechamento dos Lotes 2, 3 e 4 e Achados 9–11 (15/11, base `ab7483c` + alterações locais):**
+  - *Lote 2 (Achado 10 + Locomoção):* `PoseResolver` com inercialização Hermite quíntica e métricas para alvo estático/móvel (`tools/medir_salto_transicao.py`, `|Δpose|=0.0000`); caminho único via `LayerStack` para `_ESTADOS_MIGRADOS` (`IDLE`, `HOVER` com `delta_hover`, `WALK`, `RUN`, `DRAG`, `FALL`, `SLEEP` em 3 modos); plantio horizontal em `movimento_pernas.py` (`ANGULO_PASSO_CAMINHADA`/`CORRIDA`, recorte de alcance em `apoiar_passada`, acoplamento `pixels_per_unit`), medido na GPU (`sheet_full_take_lote2.png`) em `0.34–0.39 px/f` (`WALK`) e `0.53–0.58 px/f` (`RUN`).
+  - *Lote 3 (Achado 9 + Piloto glTF):* Inventário do rig reconciliado em `MANUAL_UNIFICADO_MARIO.md §3.1` (`mario.gltf` 91 nós / 56 malhas / 30 `ALL_GROUPS`, `projetoMARIO.bbmodel` 58 elementos / 30 grupos raiz); carregador/amostrador glTF 2.0 puro (`clipes_gltf.py`, `STEP`/`LINEAR`/`CUBICSPLINE`) conectado ao `AnimationController` (`tocar_clipe_gltf`/`parar_clipe_gltf`) e validado pelo piloto `assets/animation/piloto/olhar_ombro.{gltf,json}` na GPU (`sheet_gltf_pilot_lote3.png`) e no bundle.
+  - *Lote 4 (Porta/Tentáculos/Props + Win32 + Achado 11):* Endurecimento de interrupção em `sistema_tentaculos.py`, `renderizador.py` (`_sincronizar_bloqueio_apendices`, `_interromper_cobertura_roupa`) e `janela.py` (`_normalizar_pose_para_saida`, além de proteção `IsWindow(self.hwnd)` em `_refresh_background_mode`/`_update_z_order` contra erro 1400 no encerramento precoce). Reconciliados `README.md` e `STATUS_E_PROXIMOS_PASSOS.md` (Achado 11).
+  - *Empacotamento e validação:* Build Windows em `dist/SeJogaCompanion` via `.\build.ps1` (0 DLLs ICU; piloto glTF incluído em `_internal/assets/animation/piloto/`) e instalação local via `.\tools\install-local.ps1` validados em perfil isolado (`SEJOGA_CONFIG_PATH`), confirmando warmup, color key `0x00d600d6`, `EXSTYLE=0x80c0008`, gravação de TOML e saída com código `0`. Revalidação interativa de `tools/smoke_mouse.py --physics` permanece bloqueada nesta sessão em `WindowFromPoint(corner) != app.hwnd` (tela de bloqueio do Windows).
 
 - **Desobstrução dos tentáculos, preservação de altura vertical e overhaul FNF Blue Balls / Virtual Insanity (13/11, build local sobre `000823e`):**
   - *Tentáculos e saída da porta (`coreografia_porta.py`, `sistema_tentaculos.py`):* Ampliação dos ângulos de abertura da porta na espiada e no espirro, projeção tangencial sem recuo em contatos/obstáculos (`_relaxar_corrente_tentaculo`, `_projetar_sem_recuo`, `_passo_colisao_tentaculo`) e sincronia de alvo local à cabeça (`sincronizar_ancora_e_frente`), evitando aprisionamento na porta e no peitoral.
   - *Altura vertical preservada nas entradas e saídas (`animacao_entrada.py`, `animacao_saida.py`, `renderizador.py`, `janela.py`):* Manutenção de `offset_y = 0.0` nas quatro aberturas (`fade_in`, `virtual_insanity_in`, `run_from_depth`, `kagebunshin_in`) e nas mortes no piso (`fnf_blue_balls`, `lego_disassemble`, `thanos_snap`, `peace_fade_out`, `virtual_insanity_out`), compensação de escala pela sola (`_intro_orig_foot_local_z`), ancoragem pelo pé (`_exit_center`), quique real no chão para peças LEGO (`_lego_floor_z`), rastreamento de HWND em translações e hitstop no piso antes do salto em `sonic_classic`.
   - *FNF Blue Balls e Virtual Insanity (`alvos_bracos.py`, `poses_base.py`, `movimento_pernas.py`, `gestos_dedos.py`, `controlador_animacao.py`, `resolucao_croma.py`):* Sequência `fnf_blue_balls` com choque elétrico ciano, tronco dobrado à frente (`pose_blue_balls`, `AnimationState.BLUE_BALLS`) segurando dois orbes cianos rachados (`_criar_esfera_fx`) sob holofote cobalto e dissolução Bayer; sequência `virtual_insanity` (`AnimationState.VIRTUAL_INSANITY`) com deslize rasante horizontal, torção 3/4, queixo baixo, mão estendida para a câmera (`virtual_alcance`) e mão traseira recolhida (`virtual_apoio`).
   - *Validação observada:* `ruff check` sem erros nos 13 arquivos Python alterados; **816 testes verdes** (`python -m pytest`, 0 falhas/skips); renders GPU offscreen confirmando espiada (`92.0°`) e espirro (`130.0°`) desobstruídos, linha de piso fixa nas 4 aberturas e poses/FX nas 6 saídas; bundle Windows `dist\SeJogaCompanion\SeJogaCompanion.exe` compilado via `.\build.ps1` (0 DLLs ICU no bundle) e verificado com perfis isolados (`SEJOGA_CONFIG_PATH`) em `fnf_blue_balls` e `virtual_insanity_out`, confirmando janela `1440×1056` em camadas (`0x80c0008`), física Pymunk e encerramento com código `0`. Limitação observada: com a sessão do Windows bloqueada (`GetForegroundWindow() == 0`), `tools/smoke_mouse.py` falha em `WindowFromPoint(corner) != app.hwnd` embora o framebuffer de diagnóstico registre `RGB(214, 0, 214)` no canto `(5, 5)` e estilo `0x80c0008`; repetir `tools/smoke_mouse.py` (com e sem `--physics`) com a área de trabalho desbloqueada.
+
+- **Fase 1 do Backlog (`A1`–`A5`, `E1`–`E7`) e Estudo de Loops Gacha/Mixamo (15/11):**
+  - *A1 Comemorar (`celebrate`):* Novo estado e alvo de braços levantados (`ALVO_CELEBRATE`) em `alvos_bracos.py`, pose/pernas de vitória (~2 s com abertura de porta), prévia `"Comemorar"` na bandeja (`janela.py`) e disparo automático ao concluir metas autônomas.
+  - *A2/A3/A4 Variações automáticas de sono:* Ciclo não repetitivo entre `"em_pe"`, `"sentado"` e `"deitado"` no timeout automático de ociosidade em `controlador_animacao.py`, mantendo a escolha manual fixa em `colocar_para_dormir(modo)`.
+  - *A5 Reação diferenciada por parte do corpo:* `_pick_part` do renderer propaga `head`, `right-arm`/`left-arm`, `legs`, `left-feet`/`right-feet` e `body` para `double_click`/`poke` em `poses_base.py`, `movimento_corpo.py`, `movimento_pernas.py` e `controlador_animacao.py` (incluindo intenções adiadas na queda).
+  - *Sistema 2D pixelado reutilizável e efeitos `E1`–`E7`:* `GerenciadorEfeitosCena` (`efeitos_cena.py`) com `EfeitoSpec` e pool limitado (`MAX_PARTICULAS = 64`), alimentado por `_coletar_parametros_efeitos` (`renderizador.py`) e `_last_velocity`, cobrindo `E1` notas musicais, `E2` ondas nos fones e caixas, `E3` poeira de pouso/decolagem, `E4` poeira de deslize, `E5` rastros de queda, `E6` cascata `Zzz` e `E7` gosma rosa segura contra chroma key (`RGB(214, 0, 214)`), validado na GPU e em `tests/test_fase1_backlog.py`.
+  - *Estudo de loops (`skowt.cc` + Mixamo):* Síntese consolidada em [docs/ESTUDO_LOOPS_GACHA_MIXAMO.md](ESTUDO_LOOPS_GACHA_MIXAMO.md) com análise dos 17 FBX de `D:\Downloads\animacoes legais`, referência de loops 1–6 s do `skowt.cc` (ZZZ), defasagens hierárquicas, root motion `Y` e mapeamento para `ALL_GROUPS`.
 
 - **Tentáculos autorais, queda/Rain World, gestos e suíte de abertura/encerramento (13/11):**
   - *Morfologias de tentáculos e saída da porta:* Quatro perfis procedurais em `modelo_tentaculo.py` e `sistema_tentaculos.py` (`musculoso`, `chicote_longo`, `clava_lula`, `espinhoso_abissal`) com ventosas e proporções próprias por perfil, correção de recolhimento pela cavidade da porta e limpeza automática de `burst`.
@@ -161,30 +285,34 @@ Essa verificação confirma o funcionamento no ambiente usado para o desenvolvim
 
 > **Pergunta pendente — cor do color key.** O ajuste da COR do color key **não** foi implementado nesta frente. A cor magenta está acoplada ao nicho de render (shader `resolucao_croma`, clear color, estilo Win32 `COLOR_KEY` e à calibração que recalcula a cor final após o primeiro frame — `RGB(214, 0, 214)` neste ambiente, diferente do magenta de clear color `RGB(255, 0, 255)`). Mexer nela é trabalho da Frente 3 (núcleo de render) e exige GPU real para validar. Esta frente entregou apenas o **toggle** do fundo rosa de diagnóstico (`window.diagnostic_colorkey`), não a troca da cor em si. Decisão pendente com o usuário: expor ou não a cor do color key como opção configurável.
 
-O modo padrão `media_session` lê metadados sem capturar áudio. Para usar loopback, configure `music.source = "loopback"` e instale o extra `music-loopback`; essa opção é separada do modo padrão.
+O modo padrão `auto` combina SMTC (`media_session`, inclusive troca entre múltiplas sessões) com captura de áudio via WASAPI loopback (`soundcard`, extra `music-loopback`), fazendo fallback gracioso para `media_session` quando a captura de áudio não está disponível; também é possível forçar `"media_session"`, `"loopback"` ou `"off"` em `music.source` ou pela interface.
 
 ## Próximos passos priorizados
 
 ### Lote Imediato (Auditoria 13/11 + `MANUAL_ENGENHARIA_ANIMACAO_MARIO.md`)
 
-Cross-check dos 11 achados de [AUDITORIA_TECNICA_MARIO_2026-11-13.md](AUDITORIA_TECNICA_MARIO_2026-11-13.md) sobre a árvore atual (observação: o Achado 3 referente a `brc_stance`/`vibing` em `configuracao.py` já está corrigido):
+Cross-check dos 11 achados de [AUDITORIA_TECNICA_MARIO_2026-11-13.md](AUDITORIA_TECNICA_MARIO_2026-11-13.md) sobre a árvore atual (Achados 1, 2, 4, 5, 6, 7, 8, 9, 10 e 11 implementados/reconciliados e cobertos por testes; Achado 3 referente a `brc_stance`/`vibing` superado pela política canônica do núcleo padronizado no Manual Unificado):
 
-1. **Lote 0/1 — Contratos puros, agência, cursor Win32 e remoção de código morto:**
-   - **Achado 1 (`agencia.direcao_meta`):** converter `(alvo_x, alvo_y)` absoluto em vetor normalizado relativo à posição do corpo antes de enviar a `BodyMotion`, testando monitores com X negativo e distância zero.
-   - **Achado 2 (`ShowCursor` / teimosia no encerramento):** centralizar aquisição/restauração única do cursor no overlay e garantir restauração em `_preparar_saida_definitiva` / `_begin_exit` (além da rotina quando `_animation_tick` desvia para `_exit_tick`).
-   - **Achado 4 (pureza de camadas em `gestos_dedos.py`):** remover o import de `sejoga.render.dedos_malha` de `src/sejoga/animacao/gestos_dedos.py` (que puxa `panda3d.core` transitivamente) movendo a escrita de pivôs para a camada `render/`, e endurecer `tests/test_camadas_puras.py` para barrar imports `sejoga.render.*` em pacotes puros.
-   - **Achado 6 (`adicionar_ponto_interesse`):** alimentar o produtor de curiosidade da agência a partir de trocas de foco / eventos reais do overlay.
-   - **Achado 7 (`selecao_estado.py::escolher_estado`):** consolidar uma única regra com histerese usada por `_choose_state` (ou aposentar a extração divergente sem chamadores).
-   - **Achado 8 (danças `street_groove`, `graffiti_dance`, `cyber_bounce`):** expor em `MusicSettings.dance_style` (`configuracao.py`) e na `interface.py` (ou marcar explicitamente como protótipos fora da seleção do usuário) e cobrir em `tests/test_movimento_danca.py`.
-2. **Lote 2 — Locomoção (`WALK`/`RUN`), footwork e continuidade de take:**
-   - Plantio real do pé apoiado (`LegMotion` + âncora horizontal no espaço absoluto sem acumular deslocamento de raiz com Pymunk), reduzindo a sensação de "andar para trás" / deslize.
-   - Unificar escrita de pose direta vs delta no `AnimationController` e validar velocidade/continuidade com `ResolvedorBracos` e `PoseResolver` (Achado 10).
-   - Fechar um take completo verificável na janela real (`idle → andar → arraste → queda → pouso → retomada de meta`).
-3. **Lote 3 — Piloto de pipeline externo (`Blockbench → glTF → amostrador → bundle`):**
-   - Provar uma ação curta autorada fora do Python (ex.: olhar por cima do ombro ou aceno) validada pelo glTF Validator e reconciliar o inventário real do rig (`mario.gltf` vs `projetoMARIO.bbmodel`) no [Manual Unificado](MANUAL_UNIFICADO_MARIO.md) (Achado 9).
-4. **Lote 4/5 — Porta/tentáculos + sincronia musical (`beat_phase`):**
-   - Conectar `beat_phase` com timestamp de `escuta_musica.py` ao `movimento_danca.py` (Achado 5) e medir erro contra click track (90/120/160 BPM).
-   - Critério de otimização nativa ([REFERENCIAS_ENGENHARIA_ANIMACAO_MARIO.md](REFERENCIAS_ENGENHARIA_ANIMACAO_MARIO.md)): manter Python/Panda3D/Pymunk enquanto o quadro ficar abaixo do orçamento; só considerar NumPy em lote/C++/Rust após perfilamento com `PStats` em cena real.
+1. **Lote 0/1 — Contratos puros, agência, cursor Win32 e normalização de estilos (concluído):**
+   - **Achado 1 (`agencia.direcao_meta`):** **(Concluído)** `Agencia.definir_posicao_corpo` / `direcao_para` / `direcao_meta` convertem `(alvo_x, alvo_y)` em vetor unitário alvo−corpo (cobrindo monitores com X negativo e distância zero), alimentado por `janela.py` -> `AnimationController.update`.
+   - **Achado 2 (`ShowCursor` / teimosia no encerramento):** **(Concluído)** Aquisição/restauração centralizada em `OverlayApp._definir_cursor_oculto` e garantida em `_preparar_saida_definitiva` e `_finish_exit`.
+   - **Achado 4 (pureza de camadas em `gestos_dedos.py`):** **(Concluído)** Escrita de pivôs e `FingerGestures` movidos para `src/sejoga/render/gestos_dedos.py`; `src/sejoga/animacao/gestos_dedos.py` mantém apenas função pura (`abertura_dedo`) sem importar `panda3d`/`render`, validado em `tests/test_camadas_puras.py`.
+   - **Achado 6 (`adicionar_ponto_interesse`):** **(Concluído)** Dedup/limite de pontos em `Agencia.adicionar_ponto_interesse` alimentado pelas trocas de foco em `OverlayApp._resolver_alvo_atencao`.
+   - **Achado 7 (`selecao_estado.py::escolher_estado`):** **(Concluído)** Regra única com histerese consolidada em `selecao_estado.escolher_estado` e delegada por `AnimationController._choose_state`.
+   - **Achado 8 (estilos `street_groove`, `graffiti_dance`, `cyber_bounce` e `"griddle"` -> `"griddy"`):** **(Concluído)** `street_groove`, `graffiti_dance` e `cyber_bounce` expostos em `MusicSettings.dance_style` (`configuracao.py`), `interface.py` e `janela.py`; `"griddle"` removido do `Literal` com migração para `"griddy"` e comando tray `0x1FD0` ajustado para `"griddy"`.
+
+> **Nota de evolução (Lote animação Mixamo + ZZZ 1–6s + Build `1.0.0`):** Aplicadas cadência pélvica dupla/sobreposição de tronco (`Standard Walk.fbx` / `Running.fbx`), articulação de tornozelos/squash, fraseado musical de 1–6s (`phrase_phase`) com cascata nos fones/antenas e flare traseiro/lateral de calça (`pernas_tecido.py`), além dos 24 loops Fortnite anti-flip. Build `.\build.ps1` (`1.0.0`, base `ab7483c` + alterações locais), validação do `.exe` isolado via `SEJOGA_CONFIG_PATH` e instalação local via `.\tools\install-local.ps1` executados com sucesso em 2026-11-14.
+2. **Lote 2 — Locomoção (`WALK`/`RUN`), footwork e continuidade de take (Concluído — Achado 10):**
+   - **(Concluído)** Plantio horizontal em `movimento_pernas.py` (`_cinematica_perna_marcha`, `ANGULO_PASSO_CAMINHADA`/`ANGULO_PASSO_CORRIDA`, recorte esférico em `apoiar_passada` e acoplamento de `pixels_per_unit` em `controlador_animacao.py`/`janela.py`), reduzindo o deslizamento para `0.34–0.39 px/f` em `WALK` e `0.53–0.58 px/f` em `RUN` na GPU offscreen.
+   - **(Concluído — Achado 10)** Unificação de `_ESTADOS_MIGRADOS` (`IDLE`, `HOVER`, `WALK`, `RUN`, `DRAG`, `FALL`, `SLEEP` em 3 modos) via `LayerStack`/`delta_hover`/`delta_sleep` sem escrita dupla no caminho legado; inercialização Hermite C2 em `resolvedor_poses.py` medida para alvo estático e móvel em `tools/medir_salto_transicao.py` (`|Δpose|=0.0000`).
+   - **(Concluído em GPU offscreen)** Take completo `idle → andar → correr → arrastar → cair → pousar → retomar caminhada` validado visualmente na GPU offscreen (`sheet_full_take_lote2.png`) e em `tests/test_locomocao.py`; revalidação interativa via `tools/smoke_mouse.py --physics` aguardando sessão Windows desbloqueada.
+3. **Lote 3 — Piloto de pipeline externo (`Blockbench/glTF → amostrador → controlador → bundle`) (Concluído — Achado 9):**
+   - **(Concluído — Achado 9)** Inventário do rig reconciliado em [MANUAL_UNIFICADO_MARIO.md §3.1](MANUAL_UNIFICADO_MARIO.md#31-o-modelo-blockbench-mariogltf--projetomariobbmodel) via `tools/inspecionar_modelo.py`: `mario.gltf` (`91` nós, `56` malhas/primitivas, `2104` vértices, `30` grupos `ALL_GROUPS`), `projetoMARIO.bbmodel` (`58` elementos, `30` grupos raiz, `1` animação), `projetoMARIO.gltf` (`88` nós, sem `door`), `Boomboxes.gltf` (`3` nós/`3` malhas) e `tentacle.gltf` (`1` nó/`1` malha).
+   - **(Concluído)** Implementado carregador/amostrador glTF 2.0 puro (`src/sejoga/animacao/clipes_gltf.py`, com `STEP`, `LINEAR` SLERP menor arco e `CUBICSPLINE`) integrado ao `AnimationController` (`tocar_clipe_gltf`, `parar_clipe_gltf`) e validado pelo piloto `assets/animation/piloto/olhar_ombro.{gltf,json}` em `tests/test_clipes_gltf.py` e no render GPU (`sheet_gltf_pilot_lote3.png`), com empacotamento garantido em `assets/`.
+4. **Lote 4/5 — Porta/tentáculos + sincronia musical + fechamento documental (Concluído — Achados 5 e 11):**
+   - **(Concluído — Achado 5)** `beat_phase` com timestamp (`updated_at`) conectado ao `AnimationController` e `movimento_danca.py` (`tests/test_movimento_danca.py`, 90/120/160 BPM).
+   - **(Concluído)** Endurecimento de concorrência em `sistema_tentaculos.py`, `renderizador.py` (`_sincronizar_bloqueio_apendices`, `_interromper_cobertura_roupa`) e `janela.py` (`_normalizar_pose_para_saida`), garantindo recuo de coreografia/porta, `speaker_throw_limbs`, `music_ejection`, `burst` e cobertura de troca de roupa em `DRAG`/`FALL`/`SLEEP`/saída (`tests/test_sistema_tentaculos.py`).
+   - **(Concluído — Achado 11)** `README.md` e `STATUS_E_PROXIMOS_PASSOS.md` alinhados ao motor real (`LayerStack`, Hermite C2 em `PoseResolver`, `_aplicar_squash_stretch` na Fase 2 e arcos em lemniscata em `clipes_ocioso.py` na Fase 4). Critério nativo mantido em Python/Panda3D/Pymunk enquanto dentro do orçamento de quadro.
 
 ### 0. Continuação da interação — refinamento da física
 
@@ -248,7 +376,7 @@ O script e o entry point `run_companion.py` foram incluídos no commit `96fea79`
 
 ## Notas de precisão sobre o empacotamento
 
-- `SeJogaCompanion.spec` contém os três display drivers Panda3D e os hidden imports relevantes, mas atualmente referencia caminhos absolutos da instalação Python local.
+- `build.ps1` resolve dinamicamente `$panda3dDir` via `panda3d.__file__`, mas o `SeJogaCompanion.spec` regenerado pelo `PyInstaller ... -y` continua gravando os caminhos resolvidos na máquina do build (`libpandagl.dll`, `libp3windisplay.dll`, `libp3tinydisplay.dll`).
 - A configuração `datas` do `.spec` inclui `assets`; não há uma entrada explícita para `panda3d_gltf-1.3.0.dist-info` neste arquivo.
 - O renderer carrega o modelo com `gltf.load_model(...)`; não há chamada `getModelPath().appendDirectory(model_dir())` no código atual.
 - O fluxo confirmado para o build recente foi `build.ps1`. As afirmações acima devem ser revisitadas ao tornar o `.spec` o fluxo portátil e canônico.
@@ -326,3 +454,19 @@ Versão `1.0.0` consolidada em `pyproject.toml`, `src/sejoga/__init__.py` e `ass
 - Pernas com malha contínua de tecido low-poly opaca (`pernas_tecido.py`, `CullFaceAttrib.MCullClockwise`) e tentáculos low-poly rosas com distribuição aberta e fechamento da porta do armário (`sistema_tentaculos.py`, `coreografia_porta.py`).
 - Validação técnica antes do tag: `python -m ruff check` com `0` erros no repositório, `python -m pytest` com `819 passed`, captura GPU (`render_verify_all.py`), build `.\build.ps1` e `verify_exe_live.py` em `dist/SeJogaCompanion/SeJogaCompanion.exe` (`FileVersion 1.0.0`, cliques nativos e encerramento sem erro 1400).
 - Limitação da sessão de validação: `tools/smoke_mouse.py` (com e sem `--physics`) falhou no check de pass-through (`WindowFromPoint` na linha 173) por sessão de desktop bloqueada (`GetForegroundWindow() == 0`, `ImageGrab.grab` com `OSError: screen grab failed`), embora o pixel `(5, 5)` do framebuffer estivesse no color key exato `(214, 0, 214)` e `LWA_COLORKEY=0xd600d6` ativo; revalidar `smoke_mouse.py` em sessão de desktop interativa desbloqueada.
+
+## Revisão ponta a ponta, otimização de intros e rebuild (2026-11-15)
+
+- Revisão linha a linha e refatoração de complexidade/duplicação concluídas em `src/sejoga/` (`controlador_animacao.py`, `movimento_corpo.py`, `movimento_danca.py`, `movimento_maos.py`, `poses_base.py`, `carregamento.py`, `caixa_som.py`, `escuta_musica.py`, `restricoes_tentaculos.py`, `sistema_tentaculos.py`, `arte_efeitos.py`, `choque_antenas_3d.py`, `efeitos_cena.py`, `pernas_tecido.py`, `renderizador.py`, `janela.py`) e `tests/` (`conftest.py`, `test_controlador_animacao.py`, `test_molas_juntas.py`, `test_movimento_corpo_pegas.py`), resultando em `python -m ruff check src tests --output-format=concise` com `0` erros (`All checks passed!`).
+- Suíte completa pós-refatoração (`python -u -m pytest tests -ra --tb=short` com `SEJOGA_CONFIG_PATH` isolado): `964 passed in 38.27s`.
+- Desempenho medido na GPU offscreen para as intros (`render_intros_and_missing_idles.py`): `fade_in` (`prewarm=0.0ms`, `avg=8.93ms`, `max=19.30ms`), `virtual_insanity_in` (`prewarm=0.0ms`, `avg=7.23ms`, `max=11.15ms`), `run_from_depth` (`prewarm=0.0ms`, `avg=8.65ms`, `max=14.68ms`), `kagebunshin_in` (`prewarm=2.2ms`, `avg=7.22ms`, `max=9.77ms`) e `sandevistan_in` (`prewarm=57.9ms`, `avg=7.91ms`, `max=16.57ms`), além de inspeção visual de `step8_idles_dances.png`, `step8_scenes_celebrate.png` e `step8_intros_idles.png`.
+- Build Windows recompilado com `.\build.ps1` (exit `0`, sem DLLs `icu*.dll` do Codex/Poppler em `dist/SeJogaCompanion/`, `FileVersion 1.0.0`).
+- Verificação ao vivo de `dist/SeJogaCompanion/SeJogaCompanion.exe` com `SEJOGA_CONFIG_PATH` isolado: janela `WinGraphicsWindow0` criada com `ex=0x80c0008` (`WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED`), `GetLayeredWindowAttributes == (14024918, 0, 1)` (`0xd600d6`), criação de `settings.toml`, entrada no log sem tracebacks/erro `1400` e encerramento por `WM_CLOSE` (`Exit animation started (classic, preview=False)`) com código `0`.
+- Estado de `tools/smoke_mouse.py` durante a sessão Windows bloqueada: falhou na linha 173 (`assert win32gui.WindowFromPoint(corner) != app.hwnd`) porque `GetForegroundWindow() == 0`, `GetCursorPos()` retorna `pywintypes.error: (5, 'GetCursorPos', 'Acesso negado.')` e `ImageGrab.grab` retorna `OSError: screen grab failed`; inspeção direta de `OverlayApp` confirmou `bg_key: 0xd600d6`, `layered_attrs: (14024918, 0, 1)`, pixel do framebuffer `[214, 0, 214, 0]` e `physics: ScreenSpacePhysics`. Necessário rodar `python tools/smoke_mouse.py` e `python tools/smoke_mouse.py --physics` manualmente após desbloquear a área de trabalho.
+
+## Upgrade do sistema de detecção musical ao vivo (2026-11-15)
+
+- Novo motor DSP em `src/sejoga/musica/analisador_ritmo.py` (`AnalisadorRitmo`, `FrameRitmo`): janela deslizante de 2048 amostras com hop de 512 (~10,7 ms em 48 kHz), fluxo espectral multibanda com compressão logarítmica/AGC (subgraves 35–125 Hz, punch 125–280 Hz e brilho 2500–7500 Hz), detecção adaptativa de onsets (mediana/MAD), tempograma por autocorrelação FFT de 6,5 s (55–185 BPM), oscilador Phase-Locked Loop (`PLL`) para `beat_phase` contínua e filtro por histerese para distinguir música de fala/silêncio.
+- `src/sejoga/musica/escuta_musica.py` (`MusicListener`, `MusicSnapshot`): novo modo híbrido padrão `auto` (SMTC + WASAPI loopback com fallback automático), seleção entre múltiplas sessões SMTC priorizando `PLAYING` (`_escolher_sessao`), inscrição em eventos WinRT (`playback_info_changed`, `media_properties_changed`, `current_session_changed`, `sessions_changed`), captura por `speaker.id` com fallback de taxa (`48000`/`44100`/`32000 Hz`) e reabertura ao mudar o dispositivo padrão, além de timestamps monotônicos (`time.monotonic()` via `audio_updated_at`/`updated_at`), corrigindo a compensação de latência antes zerada por mistura com `time.time()`.
+- Configuração, UI, runtime e depuração atualizados em `src/sejoga/configuracao.py` (`MusicSettings.source = "auto"`), `src/sejoga/desktop/interface.py` (opção `"Automático (áudio + mídia)"`), `src/sejoga/render/janela.py` (gating de `music_playing` via `audio_active` e proteção para não enviar `beat_phase` sintética `0.0` sem trava real de BPM) e `src/sejoga/render/depuracao.py` (`audio_active`, `confidence`, `backend`), cobertos por `tests/test_escuta_musica.py`.
+- Verificação após as alterações de código: `python -m ruff check src tests --output-format=concise` com `0` erros (`All checks passed!`), `python -u -m pytest tests -ra --tb=short` (com `SEJOGA_CONFIG_PATH` isolado) com `976 passed in 41.96s`, build `.\build.ps1` com saída `0` e `0` DLLs `icu*.dll` no bundle `dist/SeJogaCompanion`, e inicialização/encerramento limpos (`exit_code: 0` via `WM_CLOSE`) de `dist/SeJogaCompanion/SeJogaCompanion.exe` com `settings.toml` gravando `[music] source = "auto"` e `logs/companion.log` sem erros ou tracebacks. `tools/smoke_mouse.py` seguiu bloqueado na linha 173 neste ambiente sem desktop desbloqueado.

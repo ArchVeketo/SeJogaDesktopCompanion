@@ -54,13 +54,13 @@ ALVO_IDLE = AlvoBraco(alvo=(0.145, -0.235, 0.04), polo=(0.12, -0.85, -0.45))
 
 #: WAVE/aceno: punho na altura do ombro, por fora da orelha, antebraço para cima.
 #: O balanço e o giro do pulso entram como termos aditivos em ``rig.pose_flourish``.
-ALVO_WAVE = AlvoBraco(alvo=(0.23, 0.075, 0.03))
+ALVO_WAVE = AlvoBraco(alvo=(0.24, 0.075, 0.045))
 
-#: DRAG/arraste: mão à frente e para fora, como quem se equilibra ao ser puxado.
-ALVO_DRAG = AlvoBraco(alvo=(0.18, -0.04, 0.15))
+#: DRAG/arraste: braços e mãos grandes pendem para baixo sob o peso do corpo.
+ALVO_DRAG = AlvoBraco(alvo=(0.175, -0.175, 0.105), polo=(0.20, -0.78, -0.52))
 
-#: STRETCH/alongamento: mão alta e à frente (ajuste de jaqueta).
-ALVO_STRETCH = AlvoBraco(alvo=(0.12, 0.08, 0.18))
+#: STRETCH/alongamento: mão alta e à frente (ajuste de jaqueta com mão grande livre).
+ALVO_STRETCH = AlvoBraco(alvo=(0.14, 0.08, 0.185))
 
 #: DANCE/dança: mão à frente e um pouco acima do ombro; o ``beat`` modula por cima.
 ALVO_DANCE = AlvoBraco(alvo=(0.15, 0.08, 0.17))
@@ -72,11 +72,23 @@ ALVO_LIMPAR_PORTA = AlvoBraco(alvo=(0.06, 0.08, 0.20), polo=(0.6, -0.7, -0.8))
 #: THROWN/arremesso: mãos à frente e para fora, silhueta aérea legível.
 ALVO_THROWN = AlvoBraco(alvo=(0.16, 0.02, 0.16))
 
-#: INTERACTION/interação (base): mãos à frente, como quem reage ao cursor.
-ALVO_INTERACTION = AlvoBraco(alvo=(0.15, -0.01, 0.16))
+#: INTERACTION/interação (base): mão grande deslocada para fora/acima/frente do fone, silhueta legível.
+ALVO_INTERACTION = AlvoBraco(alvo=(0.225, 0.035, 0.145), polo=(0.35, -0.68, -0.58))
+
+#: Proteção da cutucada: punho à frente do peito com o cotovelo recolhido.
+ALVO_PROTECAO = AlvoBraco(alvo=(0.11, 0.08, 0.155), polo=(0.55, -0.64, -0.52))
 
 #: DRAG_PERNA: pego pela perna, os braços pendem relaxados junto ao corpo.
 ALVO_DRAG_PERNA = AlvoBraco(alvo=(0.140, -0.245, 0.040))
+
+#: DRAG_ESTENDIDO: braço pego esticado acima da cabeça sob o peso do corpo.
+ALVO_DRAG_ESTENDIDO = AlvoBraco(alvo=(0.155, 0.220, 0.035), polo=(0.26, -0.50, -0.70))
+
+#: DRAG_EQUILIBRIO: braço livre aberto para o lado buscando equilíbrio na curva.
+ALVO_DRAG_EQUILIBRIO = AlvoBraco(alvo=(0.255, 0.03, 0.05), polo=(0.15, -0.70, -0.55))
+
+#: DRAG_ALCANCE: braço livre tentando alcançar o cursor quando o giro desacelera.
+ALVO_DRAG_ALCANCE = AlvoBraco(alvo=(0.14, 0.20, 0.12), polo=(0.22, -0.55, -0.65))
 
 #: FALL/queda: mãos abertas para fora (o flailing entra aditivo).
 ALVO_FALL = AlvoBraco(alvo=(0.21, -0.02, 0.08))
@@ -108,14 +120,14 @@ ALVO_VIRTUAL_ALCANCE = AlvoBraco(
     alvo=(0.12, 0.05, 0.22), polo=(0.14, -0.65, -0.55)
 )
 
-#: Virtual Insanity (Jamiroquai): braço traseiro relaxado junto ao quadril mantendo o equilíbrio.
-ALVO_VIRTUAL_APOIO = AlvoBraco(alvo=(0.145, -0.225, 0.05), polo=(0.12, -0.85, -0.45))
+#: Virtual Insanity (Jamiroquai): braço traseiro relaxado junto ao quadril sem colisão da mão grande.
+ALVO_VIRTUAL_APOIO = AlvoBraco(alvo=(0.165, -0.220, 0.05), polo=(0.14, -0.85, -0.45))
 
-#: FNF Blue Balls: ambas as mãos fechadas descendo à frente para segurar a região pélvica.
-ALVO_BLUE_BALLS = AlvoBraco(alvo=(0.08, -0.175, 0.195), polo=(0.24, -0.65, -0.55))
+#: FNF Blue Balls: mãos grandes em concha à frente da pelve sem atravessar uma à outra nem o short.
+ALVO_BLUE_BALLS = AlvoBraco(alvo=(0.125, -0.175, 0.195), polo=(0.28, -0.68, -0.55))
 
-#: BRC — Street groove: braço solto balançando com o passo, punho relaxado.
-ALVO_STREET_SOLTO = AlvoBraco(alvo=(0.16, -0.18, 0.08), polo=(0.10, -0.75, -0.40))
+#: BRC — Street groove: braço solto balançando com o passo, punho claro do quadril.
+ALVO_STREET_SOLTO = AlvoBraco(alvo=(0.178, -0.175, 0.08), polo=(0.12, -0.75, -0.40))
 
 #: BRC — Street groove: braço estendido com atitude, cotovelo levemente flexionado.
 ALVO_STREET_ATITUDE = AlvoBraco(alvo=(0.20, -0.06, 0.12), polo=(0.15, -0.65, -0.50))
@@ -129,8 +141,11 @@ ALVO_GRAFFITI_ARCO = AlvoBraco(alvo=(0.18, 0.10, 0.14), polo=(0.10, -0.70, -0.55
 #: BRC — Cyber bounce: braço em ângulo agudo (pose de skate), cotovelo para fora.
 ALVO_CYBER_ANGULAR = AlvoBraco(alvo=(0.16, 0.04, 0.16), polo=(0.25, -0.60, -0.50))
 
-#: BRC — Cyber bounce: braço baixo e relaxado no bounce.
-ALVO_CYBER_BAIXO = AlvoBraco(alvo=(0.14, -0.20, 0.06), polo=(0.12, -0.80, -0.45))
+#: BRC — Cyber bounce: braço baixo e relaxado no bounce claro do quadril.
+ALVO_CYBER_BAIXO = AlvoBraco(alvo=(0.165, -0.195, 0.065), polo=(0.14, -0.80, -0.45))
+
+#: CELEBRATE/comemorar: braços grandes erguidos bem claros dos fones/cabeça em V vitorioso.
+ALVO_CELEBRATE = AlvoBraco(alvo=(0.195, 0.190, 0.085), polo=(0.28, -0.55, -0.55))
 
 
 #: Registro por nome (facilita consumo e documentação).
@@ -139,6 +154,9 @@ ALVOS: dict[str, AlvoBraco] = {
     "wave": ALVO_WAVE,
     "drag": ALVO_DRAG,
     "drag_perna": ALVO_DRAG_PERNA,
+    "drag_estendido": ALVO_DRAG_ESTENDIDO,
+    "drag_equilibrio": ALVO_DRAG_EQUILIBRIO,
+    "drag_alcance": ALVO_DRAG_ALCANCE,
     "stretch": ALVO_STRETCH,
     "dance": ALVO_DANCE,
     "sleep": ALVO_SLEEP,
@@ -146,6 +164,7 @@ ALVOS: dict[str, AlvoBraco] = {
     "thrown": ALVO_THROWN,
     "fall": ALVO_FALL,
     "interaction": ALVO_INTERACTION,
+    "protecao": ALVO_PROTECAO,
     "cruzado_dir": ALVO_CRUZADO_DIR,
     "cruzado_esq": ALVO_CRUZADO_ESQ,
     "chifre": ALVO_CHIFRE,
@@ -165,6 +184,7 @@ ALVOS: dict[str, AlvoBraco] = {
     # BRC — Cyber bounce
     "cyber_angular": ALVO_CYBER_ANGULAR,
     "cyber_baixo": ALVO_CYBER_BAIXO,
+    "celebrate": ALVO_CELEBRATE,
 }
 
 #: Alvos autorais anteriores (antes da medição de colisão), para o relatório.

@@ -10,6 +10,9 @@ Panda3D, Qt ou Win32.
 from __future__ import annotations
 
 from math import tau
+from typing import Any
+
+from sejoga.animacao.dados_autorais import danca_ativa
 
 # --------------------------------------------------------------------------- #
 # Suavização dos sinais de áudio e do tempo.
@@ -105,3 +108,31 @@ PIVO_QUADRIL_Z = 0.44
 SPIN_INICIO = 8
 SPIN_SUBIDA = 4
 SPIN_GRAUS = 360
+MISTURA_BASE = 1.0
+
+
+def parametros_danca() -> dict[str, Any]:
+    """Devolve o dicionário ativo de tuning de dança com fallbacks padrão."""
+    tuning = danca_ativa().get("tuning", {})
+    return {
+        "acento_base": float(tuning.get("acento_base", ACENTO_BASE)),
+        "acento_downbeat": float(tuning.get("acento_downbeat", ACENTO_DOWNBEAT)),
+        "acento_ganho_energia": float(
+            tuning.get("acento_ganho_energia", ACENTO_GANHO_ENERGIA)
+        ),
+        "dwell_minimo": float(tuning.get("dwell_minimo", DWELL_MINIMO)),
+        "floor_roll_graus": float(tuning.get("floor_roll_graus", FLOOR_ROLL_GRAUS)),
+        "forca_head_bob": float(tuning.get("forca_head_bob", FORCA_HEAD_BOB)),
+        "forca_hip_hop": float(tuning.get("forca_hip_hop", FORCA_HIP_HOP)),
+        "forca_padrao": float(tuning.get("forca_padrao", FORCA_PADRAO)),
+        "ganho_passo_base": float(tuning.get("ganho_passo_base", GANHO_PASSO_BASE)),
+        "ganho_passo_energia": float(
+            tuning.get("ganho_passo_energia", GANHO_PASSO_ENERGIA)
+        ),
+        "mistura_base": float(tuning.get("mistura_base", MISTURA_BASE)),
+        "spin_graus": float(tuning.get("spin_graus", SPIN_GRAUS)),
+        "tempo_max": float(tuning.get("tempo_max", TEMPO_MAX)),
+        "tempo_min": float(tuning.get("tempo_min", TEMPO_MIN)),
+        "tempo_padrao": float(tuning.get("tempo_padrao", TEMPO_PADRAO)),
+        "u_poses": tuple(float(v) for v in tuning.get("u_poses", U_POSES)),
+    }

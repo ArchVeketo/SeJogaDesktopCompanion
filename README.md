@@ -101,18 +101,20 @@ Com a física ligada, soltar em movimento **arremessa** o Mário; soltar parado 
 
 ## Para desenvolvedores
 
-Companion em Python: **Panda3D** renderiza, **PySide6** cuida da bandeja e das configurações, **Pymunk** simula a física no desktop. O motor de animação é procedural por camadas — molas por junta, cadeia de atraso nos membros e clipes autorais como dados.
+Companion em Python: **Panda3D** renderiza, **PySide6** cuida da bandeja e das configurações, **Pymunk** simula a física no desktop. O motor de animação combina camadas aditivas autorais (`LayerStack`), inercialização quíntica/Hermite contínua em pose e velocidade (`PoseResolver`), deltas procedurais e piloto de clipes glTF 2.0 externos (`clipes_gltf.py`), restringindo molas ao atraso secundário de cadeias e contato físico.
 
 ```
 src/sejoga/
-  controlador_animacao.py      Controlador de estados e composição de camadas
-  camadas_animacao.py    Camadas aditivas (base, locomoção, música...)
-  molas_juntas.py  Molas por junta e cadeia de atraso
-  clipes_animacao.py     Clipes de animação como dados
-  esqueleto.py            Catálogo do rig e poses procedurais
-  fisica.py        Física de tela (Pymunk)
-  renderizador.py       Renderizador Panda3D
-  sobreposicao_win32.py  Janela em camadas / clique-através (Win32)
+  animacao/controlador_animacao.py  Controlador de estados e composição de camadas
+  animacao/camadas_animacao.py      Camadas aditivas e máscaras de prioridade
+  animacao/resolvedor_poses.py      Transições Hermite quínticas (inercialização C2)
+  animacao/estados_delta.py         Poses autorais aditivas (idle, hover, walk, drag, fall, sleep)
+  animacao/clipes_gltf.py           Leitor/amostrador de clipes glTF 2.0 e eventos
+  animacao/molas_juntas.py          Atraso secundário de cadeias e física passiva
+  nucleo/esqueleto.py               Catálogo do rig e matemática pura
+  desktop/fisica.py                 Física de tela (Pymunk)
+  render/renderizador.py            Renderizador Panda3D e apêndices
+  render/sobreposicao_win32.py      Janela em camadas / clique-através (Win32)
 ```
 
 ```powershell

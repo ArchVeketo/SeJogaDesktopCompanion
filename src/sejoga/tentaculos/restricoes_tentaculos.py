@@ -163,6 +163,97 @@ class ObstacleBox:
             cx * self._w02 + cy * self._w12 + cz * self._w22 + self._w32,
         )
 
+    def _preferencia_lado_porta(
+        self,
+        clearance: float,
+        ymid: float,
+        ref_prev: tuple[float, float, float] | None,
+    ) -> float | None:
+        if ref_prev is None:
+            return None
+        rx, ry, rz = ref_prev
+        plx = rx * self._l00 + ry * self._l10 + rz * self._l20 + self._l30
+        ply = rx * self._l01 + ry * self._l11 + rz * self._l21 + self._l31
+        if self._lx0 - clearance <= plx <= self._lx1 + clearance:
+            return -1.0 if ply <= ymid else 1.0
+        return None
+
+    def _projetar_local_porta(
+        self,
+        lx: float,
+        ly: float,
+        lz: float,
+        clearance: float,
+        prefer_y: float | None,
+        ymid: float,
+    ) -> tuple[float, float, float] | None:
+        nx = self._lx0 if lx < self._lx0 else (self._lx1 if lx > self._lx1 else lx)
+        ny = self._ly0 if ly < self._ly0 else (self._ly1 if ly > self._ly1 else ly)
+        nz = self._lz0 if lz < self._lz0 else (self._lz1 if lz > self._lz1 else lz)
+        dx, dy, dz = lx - nx, ly - ny, lz - nz
+        dist_sq = dx * dx + dy * dy + dz * dz
+        if dist_sq >= clearance * clearance and (
+            prefer_y is None or (ly - ymid) * prefer_y >= 0.0
+        ):
+            return None
+        crossed = prefer_y is not None and (ly - ymid) * prefer_y < 0.0
+        dist_free = (self._lx1 + clearance) - lx
+        if crossed:
+            if dist_free <= clearance * 2.5 and lx >= (self._lx0 + self._lx1) * 0.42:
+                return self._lx1 + clearance, ly, lz
+            cy = (self._ly0 - clearance) if prefer_y < 0.0 else (self._ly1 + clearance)
+            return lx, cy, lz
+        if dist_sq > 1e-12:
+            inv = clearance / math.sqrt(dist_sq)
+            return nx + dx * inv, ny + dy * inv, nz + dz * inv
+        if dist_free <= clearance * 2.2 and lx >= (self._lx0 + self._lx1) * 0.45:
+            return self._lx1 + clearance, ly, lz
+        if prefer_y is not None:
+            cy = (self._ly0 - clearance) if prefer_y < 0.0 else (self._ly1 + clearance)
+            return lx, cy, lz
+        return self._empurrar_face_mais_proxima(lx, ly, lz, clearance)
+
+    def project_door_xyz(
+        self,
+        px: float,
+        py: float,
+        pz: float,
+        radius: float,
+        ref_prev: tuple[float, float, float] | None = None,
+    ) -> tuple[float, float, float] | None:
+        """Projeção firme para folha fina de porta: evita atravessar entre os lados."""
+        clearance = radius + 0.004
+        if (
+            px < self._ml0 - clearance
+            or px > self._mh0 + clearance
+            or py < self._ml1 - clearance
+            or py > self._mh1 + clearance
+            or pz < self._ml2 - clearance
+            or pz > self._mh2 + clearance
+        ):
+            return None
+        lx = px * self._l00 + py * self._l10 + pz * self._l20 + self._l30
+        ly = px * self._l01 + py * self._l11 + pz * self._l21 + self._l31
+        lz = px * self._l02 + py * self._l12 + pz * self._l22 + self._l32
+        if not (
+            self._lx0 - clearance < lx < self._lx1 + clearance
+            and self._ly0 - clearance < ly < self._ly1 + clearance
+            and self._lz0 - clearance < lz < self._lz1 + clearance
+        ):
+            return None
+        ymid = (self._ly0 + self._ly1) * 0.5
+        prefer_y = self._preferencia_lado_porta(clearance, ymid, ref_prev)
+        local = self._projetar_local_porta(lx, ly, lz, clearance, prefer_y, ymid)
+        if local is None:
+            return None
+        cx, cy, cz = local
+
+        return (
+            cx * self._w00 + cy * self._w10 + cz * self._w20 + self._w30,
+            cx * self._w01 + cy * self._w11 + cz * self._w21 + self._w31,
+            cx * self._w02 + cy * self._w12 + cz * self._w22 + self._w32,
+        )
+
     def project(self, point, radius):
         """Empurra o ponto para fora da caixa, respeitando o raio."""
         res = self.project_xyz(point[0], point[1], point[2], radius)

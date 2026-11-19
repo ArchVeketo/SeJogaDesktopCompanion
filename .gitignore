@@ -45,6 +45,7 @@ logs/
 # Modelo derivado gerado por tools/converter_gltf_para_glb.py (regenerável)
 # Mantido fora do controle de versão: rode `python tools/converter_gltf_para_glb.py`
 assets/model/*.glb
+!assets/model/radio-compacto.glb
 
 # Capturas / debug
 captures/

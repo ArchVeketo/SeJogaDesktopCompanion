@@ -12,7 +12,7 @@ def test_defaults():
     assert s.window.mode == "overlay"
     assert s.window.always_on_top is True
     assert s.physics.enabled is True
-    assert s.music.source == "media_session"
+    assert s.music.source == "auto"
     assert s.update.channel == "release"
     assert 0 < s.window.scale <= 4
 

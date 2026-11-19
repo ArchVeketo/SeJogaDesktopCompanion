@@ -62,3 +62,12 @@ def test_modulo_nucleo_camada_base_nao_importa_animacao_nem_rig_mapa(
     for modulo in _listar_importados(relativo):
         assert not modulo.startswith("sejoga.animacao"), f"{relativo}: {modulo}"
         assert not modulo.startswith("sejoga.rig_mapa"), f"{relativo}: {modulo}"
+
+
+@pytest.mark.parametrize("modulo", _listar_modulos_puros())
+def test_modulo_puro_nao_importa_render(modulo: Path):
+    importados = _listar_importados(modulo)
+    violacoes = [
+        mod for mod in importados if mod == "sejoga.render" or mod.startswith("sejoga.render.")
+    ]
+    assert not violacoes, f"{modulo} importou camada render: {violacoes}"

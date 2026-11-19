@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from sejoga.animacao import animation as _anim_padrao
+from sejoga.animacao.dados_autorais import tentaculos_ativos
 from sejoga.nucleo.esqueleto import IdlePersonality
 
 # --- Porta -------------------------------------------------------------------
@@ -116,11 +118,88 @@ SAIDA_POR_TEMPERAMENTO: dict[IdlePersonality, SaidaTuning] = {
 }
 
 
+def porta_tuning() -> dict[str, float]:
+    """Devolve parâmetros ativos da coreografia da porta."""
+    porta = tentaculos_ativos().get("porta", {})
+    return {
+        "alcance_puxador": float(porta.get("alcance_puxador", ALCANCE_PUXADOR)),
+        "amortecedor_puxador": float(porta.get("amortecedor_puxador", AMORTECEDOR_PUXADOR)),
+        "angulo_soltar_puxao_graus": float(
+            porta.get("angulo_soltar_puxao_graus", ANGULO_SOLTAR_PUXAO_GRAUS)
+        ),
+        "atraso_esquecimento_s": float(
+            porta.get("atraso_esquecimento_s", ATRASO_ESQUECIMENTO_S)
+        ),
+        "limiar_fechada_graus": float(
+            porta.get("limiar_fechada_graus", LIMIAR_PORTA_FECHADA_GRAUS)
+        ),
+        "limiar_pedido_externo_graus": float(
+            porta.get("limiar_pedido_externo_graus", LIMIAR_PEDIDO_EXTERNO_GRAUS)
+        ),
+        "limiar_saida_graus": float(
+            porta.get("limiar_saida_graus", LIMIAR_SAIDA_PORTA_GRAUS)
+        ),
+        "mola_puxador": float(porta.get("mola_puxador", MOLA_PUXADOR)),
+        "revelacao_fim_empurrao": float(
+            porta.get("revelacao_fim_empurrao", REVELACAO_FIM_EMPURRAO)
+        ),
+        "revelacao_inicio_contato": float(
+            porta.get("revelacao_inicio_contato", REVELACAO_INICIO_CONTATO)
+        ),
+        "tempo_alcance_puxao_s": float(
+            porta.get("tempo_alcance_puxao_s", TEMPO_ALCANCE_PUXAO_S)
+        ),
+        "velocidade_fechar_final_graus_s": float(
+            porta.get("velocidade_fechar_final_graus_s", VELOCIDADE_FECHAR_FINAL_GRAUS_S)
+        ),
+        "velocidade_puxao_graus_s": float(
+            porta.get("velocidade_puxao_graus_s", VELOCIDADE_PUXAO_GRAUS_S)
+        ),
+        "volta_puxador_s": float(porta.get("volta_puxador_s", VOLTA_PUXADOR_S)),
+    }
+
+
+def saida_do_temperamento(personalidade: IdlePersonality | str) -> SaidaTuning:
+    """Devolve o tuning ativo de saída da porta para ``personalidade``."""
+    tent = tentaculos_ativos()
+    if tent is _anim_padrao.TENTACULOS:
+        if isinstance(personalidade, IdlePersonality):
+            return SAIDA_POR_TEMPERAMENTO[personalidade]
+        if str(personalidade) == "espirro":
+            return SAIDA_ESPIRRO
+        try:
+            return SAIDA_POR_TEMPERAMENTO[IdlePersonality(str(personalidade))]
+        except ValueError:
+            return SAIDA_CALMA
+
+    chave = (
+        personalidade.value
+        if isinstance(personalidade, IdlePersonality)
+        else str(personalidade)
+    )
+    entrada = tent.get("saidas", {}).get(chave)
+    if isinstance(entrada, dict):
+        return SaidaTuning(
+            duracao_s=float(entrada["duracao_s"]),
+            escalonamento_s=float(entrada["escalonamento_s"]),
+            angulo_empurrao_graus=float(entrada["angulo_empurrao_graus"]),
+        )
+    if isinstance(personalidade, IdlePersonality):
+        return SAIDA_POR_TEMPERAMENTO[personalidade]
+    return SAIDA_ESPIRRO if chave == "espirro" else SAIDA_CALMA
+
+
+def saida_espirro() -> SaidaTuning:
+    """Devolve o tuning ativo de saída em rajada/espirro."""
+    return saida_do_temperamento("espirro")
+
+
 def angulo_empurrado(revelacao: float, angulo_final: float) -> float:
     """Ângulo da porta empurrada: 0 até o contato, `angulo_final` ao fim do empurrão."""
-    x = (revelacao - REVELACAO_INICIO_CONTATO) / (
-        REVELACAO_FIM_EMPURRAO - REVELACAO_INICIO_CONTATO
-    )
+    pt = porta_tuning()
+    inicio = pt["revelacao_inicio_contato"]
+    fim = max(inicio + 1e-4, pt["revelacao_fim_empurrao"])
+    x = (revelacao - inicio) / (fim - inicio)
     x = max(0.0, min(1.0, x))
     return angulo_final * x * x * (3.0 - 2.0 * x)
 
@@ -170,8 +249,9 @@ class CoreografiaPorta:
         """Avança um quadro. `ha_ativos`: algum tentáculo fora do estado dormente."""
         self.tempo += dt
         fase = self.fase
+        pt = porta_tuning()
         if fase is FasePorta.EMPURRANDO:
-            if revelacao_atuador >= REVELACAO_FIM_EMPURRAO:
+            if revelacao_atuador >= pt["revelacao_fim_empurrao"]:
                 self._entrar(FasePorta.ABERTA)
                 return Passo(angulo_porta=angulo_empurrao, fim_empurrao=True)
             return Passo(
@@ -182,22 +262,24 @@ class CoreografiaPorta:
                 self._entrar(FasePorta.ESQUECIDA)
             return Passo()
         if fase is FasePorta.ESQUECIDA:
-            if self.tempo >= ATRASO_ESQUECIMENTO_S:
+            if self.tempo >= pt["atraso_esquecimento_s"]:
                 self._entrar(FasePorta.ALCANCANDO)
                 return Passo(angulo_porta=angulo_porta, chamar_puxador=True)
             return Passo(angulo_porta=angulo_porta)
         if fase is FasePorta.ALCANCANDO:
-            if self.tempo >= TEMPO_ALCANCE_PUXAO_S:
+            if self.tempo >= pt["tempo_alcance_puxao_s"]:
                 self._entrar(FasePorta.PUXANDO)
             return Passo(angulo_porta=angulo_porta)
         if fase is FasePorta.PUXANDO:
-            angulo = max(0.0, angulo_porta - VELOCIDADE_PUXAO_GRAUS_S * dt)
-            if angulo <= ANGULO_SOLTAR_PUXAO_GRAUS:
+            angulo = max(0.0, angulo_porta - pt["velocidade_puxao_graus_s"] * dt)
+            if angulo <= pt["angulo_soltar_puxao_graus"]:
                 self._entrar(FasePorta.VOLTANDO)
                 return Passo(angulo_porta=angulo, soltar_puxador=True)
             return Passo(angulo_porta=angulo)
         if fase is FasePorta.VOLTANDO:
-            angulo = max(0.0, angulo_porta - VELOCIDADE_FECHAR_FINAL_GRAUS_S * dt)
+            angulo = max(
+                0.0, angulo_porta - pt["velocidade_fechar_final_graus_s"] * dt
+            )
             if not ha_ativos and angulo <= TOLERANCIA_PORTA_FECHADA_GRAUS:
                 self._entrar(FasePorta.FECHADA)
                 return Passo()

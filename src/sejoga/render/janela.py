@@ -21,13 +21,15 @@ import time
 from typing import Any, cast
 
 # Win32 API
+import pywintypes
 import win32api
 import win32con
 import win32gui
 
 # Load Qt before Panda3D: their Windows bundles ship different MSVC runtime
 # DLLs, and the first loaded copy wins for the whole process.
-from PySide6.QtGui import QActionGroup, QIcon
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QActionGroup, QCursor, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 # isort: split
@@ -70,7 +72,7 @@ from sejoga.animacao.foco_atencao import (
     GatilhoAtencao,
 )
 from sejoga.animacao.interacao_mouse import MouseInteraction
-from sejoga.configuracao import Settings, load_settings, save_settings
+from sejoga.configuracao import ESTILOS_DANCA_UI, Settings, load_settings, save_settings
 from sejoga.desktop.fisica import create_physics
 from sejoga.desktop.integracao_desktop import DesktopIntegration
 from sejoga.desktop.interface import HotkeyManager, SettingsDialog
@@ -108,7 +110,6 @@ from sejoga.render.janela_const import (
 )
 from sejoga.render.renderizador import Panda3DRenderer
 from sejoga.render.sobreposicao_win32 import (
-    COLOR_KEY,
     GWL_EXSTYLE,
     HWND_BOTTOM,
     HWND_NOTOPMOST,
@@ -135,16 +136,27 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 
+def _chroma_inicial_bgr(colorkey_hex: str) -> int:
+    """Calcula o COLORREF inicial estimado após o tone mapping do SimplePBR."""
+    chroma = derivar_chroma(colorkey_hex)
+    red, green, blue = (round(canal * 214) for canal in chroma.rgb)
+    return red | (green << 8) | (blue << 16)
+
+
 class OverlayApp(ShowBase):
     """Aplicação principal - Panda3D ShowBase + Win32 layered window + PySide6 tray."""
 
-    def __init__(self, settings: Settings):  # noqa: PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
+    def __init__(self, settings: Settings, loading_splash: Any = None):  # noqa: PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
         """Monta a janela, o renderer, a física, a bandeja e as tarefas."""
         DesktopIntegration.set_app_id()
         ShowBase.__init__(self, windowType="none")
 
         self.settings = settings
         self.settings_obj = settings
+        self._loading_splash = loading_splash
+        self._warmup_pending = True
+        self._warmup_frames = 0
+        self._chroma_calibrated = False
         self.renderer: Any = None
         self.physics: Any = None
         self.music_listener: MusicListener | None = None
@@ -157,11 +169,12 @@ class OverlayApp(ShowBase):
         self._intro_started: float | None = None
         self._intro_motion: IntroAnimation | None = None
         self._intro_last_loco: str | None = None
+        self._intro_saved_mascot: tuple[int, int] | None = None
         self._force_exit = False
 
         self._is_topmost = settings.window.always_on_top
         self._is_bottom = settings.window.mode == "desktop"
-        self._background_key = COLOR_KEY
+        self._background_key = _chroma_inicial_bgr(settings.window.colorkey_color)
         self._drag_active = False
         self._drag_start_pos: tuple[int, int] = (0, 0)
         self._window_start_pos: tuple[int, int] = (0, 0)
@@ -285,10 +298,20 @@ class OverlayApp(ShowBase):
         assert self.qt_app is not None
         self.qt_app.setWindowIcon(QIcon(str(icon)))
         self.desktop = DesktopIntegration(self.hwnd, icon)
+        self._ler_topologia()
         if self.settings.window.intro_animation != "padrao":
             self.start_intro(self.settings.window.intro_animation)
+        self._pump_loading_splash("Aquecendo shaders para abertura...")
 
         self.logger.info("OverlayApp inicializado.")
+
+    def _pump_loading_splash(self, status: str | None = None) -> None:
+        splash = getattr(self, "_loading_splash", None)
+        if splash is None:
+            return
+        if status:
+            splash.set_status(status)
+        splash.tick()
 
     def _init_pyside(self) -> None:
         self.qt_app = QApplication.instance() or QApplication(sys.argv)
@@ -300,7 +323,9 @@ class OverlayApp(ShowBase):
     def _create_panda_window(self) -> None:
         wp = WindowProperties()
         wp.setSize(self.settings.window.size, self.settings.window.size)
-        wp.setOrigin(0, 0)
+        # Mantém a janela fora da área visível até _setup_win32 aplicar LWA_ALPHA(0),
+        # evitando qualquer flash preto na abertura do HWND WGL.
+        wp.setOrigin(-32000, -32000)
         wp.setFullscreen(False)
         wp.setCursorHidden(False)
         wp.setTitle("SeJogaDesktopCompanion")
@@ -351,6 +376,14 @@ class OverlayApp(ShowBase):
 
     def _setup_win32(self) -> None:
         self.hwnd = self._get_hwnd()
+        # Remove o pincel preto padrão da classe de janela para o DWM/GDI não
+        # pintar quadros pretos antes do swap WGL.
+        with contextlib.suppress(Exception):
+            set_class_long_ptr = getattr(ctypes.windll.user32, "SetClassLongPtrW", None)
+            if set_class_long_ptr is not None:
+                set_class_long_ptr(ctypes.c_void_p(self.hwnd), -10, ctypes.c_void_p(0))
+            else:
+                ctypes.windll.user32.SetClassLongW(self.hwnd, -10, 0)
 
         ex_style = win32gui.GetWindowLong(self.hwnd, GWL_EXSTYLE)
         ex_style |= WS_EX_LAYERED | WS_EX_NOACTIVATE
@@ -366,11 +399,16 @@ class OverlayApp(ShowBase):
 
     def _refresh_background_mode(self) -> None:
         """Windows uses the final framebuffer color, after PBR tone mapping."""
+        if not getattr(self, "hwnd", 0) or not win32gui.IsWindow(self.hwnd):
+            return
         ex_style = win32gui.GetWindowLong(self.hwnd, GWL_EXSTYLE)
         if ex_style & WS_EX_TRANSPARENT:
             win32gui.SetWindowLong(
                 self.hwnd, GWL_EXSTYLE, ex_style & ~WS_EX_TRANSPARENT
             )
+        if getattr(self, "_warmup_pending", False):
+            win32gui.SetLayeredWindowAttributes(self.hwnd, 0, 0, LWA_ALPHA)
+            return
         # LWA_ALPHA mostra o fundo (rosa) do color key: usado pelo HUD de
         # diagnóstico e pelo toggle explícito diagnostic_colorkey da config.
         mostrar_fundo = (
@@ -385,22 +423,61 @@ class OverlayApp(ShowBase):
                 self.hwnd, self._background_key, 255, LWA_COLORKEY
             )
 
+    def _amostrar_e_calibrar_color_key(self) -> bool:
+        """Lê os 4 cantos do framebuffer pós-PBR e atualiza o COLORREF se válido."""
+        if not win32gui.IsWindow(self.hwnd):
+            return False
+        image = self.win.getScreenshot()
+        if not image:
+            return False
+        pixels = memoryview(bytes(image.getRamImageAs("RGB")))
+        largura, altura = image.getXSize(), image.getYSize()
+        if largura <= 0 or altura <= 0 or len(pixels) < 3 * largura * altura:
+            return False
+        cantos = (0, largura - 1, largura * (altura - 1), largura * altura - 1)
+        amostras = {tuple(pixels[3 * canto : 3 * canto + 3]) for canto in cantos}
+        if len(amostras) == 1 and pixel_e_chroma((rgb := amostras.pop()), self._chroma):
+            red, green, blue = rgb
+            novo = red | (green << 8) | (blue << 16)
+            self._chroma_calibrated = True
+            if novo != self._background_key:
+                self._background_key = novo
+                if not getattr(self, "_warmup_pending", False):
+                    self._refresh_background_mode()
+            return True
+        return False
+
     def _calibrate_background_key(self, task: Task) -> int:
         if not win32gui.IsWindow(self.hwnd):
             return Task.done
-        image = self.win.getScreenshot()
-        if image:
-            pixels = memoryview(bytes(image.getRamImageAs("RGB")))
-            largura, altura = image.getXSize(), image.getYSize()
-            cantos = (0, largura - 1, largura * (altura - 1), largura * altura - 1)
-            amostras = {tuple(pixels[3 * canto : 3 * canto + 3]) for canto in cantos}
-            if len(amostras) == 1 and pixel_e_chroma((rgb := amostras.pop()), self._chroma):
-                red, green, blue = rgb
-                self._background_key = red | (green << 8) | (blue << 16)
-                self._refresh_background_mode()
+        self._amostrar_e_calibrar_color_key()
         return Task.done
 
+    def _concluir_warmup(self, now: float) -> None:
+        """Revela o mascote já calibrado e dispara a animação de entrada após o loading."""
+        if not getattr(self, "_warmup_pending", False):
+            return
+        if not self._chroma_calibrated and self.graphicsEngine is not None:
+            self.graphicsEngine.renderFrame()
+            self._amostrar_e_calibrar_color_key()
+        self._warmup_pending = False
+        splash = getattr(self, "_loading_splash", None)
+        if splash is not None:
+            self._loading_splash = None
+            splash.finish()
+        if win32gui.IsWindow(self.hwnd):
+            self._refresh_background_mode()
+            self._update_z_order()
+        if self._intro_motion is not None:
+            self._intro_started = now
+            self._intro_last_loco = None
+            self.logger.info(
+                "Warmup concluido; entrada iniciada (%s).", self._intro_motion.style
+            )
+
     def _update_z_order(self) -> None:
+        if not getattr(self, "hwnd", 0) or not win32gui.IsWindow(self.hwnd):
+            return
         order = (
             HWND_BOTTOM
             if self._is_bottom
@@ -550,7 +627,11 @@ class OverlayApp(ShowBase):
         now = time.perf_counter()
         dt = now - self._physics_last_tick
         self._physics_last_tick = now
-        if not self._drag_active and self._exit_started is None:
+        if (
+            not self._drag_active
+            and self._exit_started is None
+            and not self._entrada_move_canvas()
+        ):
             self.physics.step(dt)
         return Task.cont
 
@@ -709,27 +790,57 @@ class OverlayApp(ShowBase):
             "baixo": (x, bottom),
         }[lado]
 
+    def _entrada_move_canvas(self) -> bool:
+        return (
+            self._intro_motion is not None
+            and self._intro_motion.style in ("virtual_insanity_in", "sandevistan_in")
+        )
+
+    def _mover_canvas_entrada(self, intro_frame: IntroFrame) -> None:
+        if not self._entrada_move_canvas():
+            return
+        if self._intro_saved_mascot is None:
+            self._intro_saved_mascot = self._mascot_screen
+        sx, sy = self._intro_saved_mascot
+        self._mascot_screen = (round(sx + intro_frame.offset_x), sy)
+        if self._canvas_origin is not None and self._desktop_rect is not None:
+            self._reposicionar_canvas(forcar=True)
+            self._atualizar_posicao_local()
+
+    def _despachar_locomocao_entrada(self, locomotion: str) -> None:
+        ctrl = self.animation_controller
+        if locomotion == "land" and self._intro_last_loco != "land":
+            ctrl.interact("land", strength=0.9)
+        elif locomotion in ("wave", "ajeitar_fone") and self._intro_last_loco != locomotion:
+            if ctrl._reaction == AnimationState.LAND:
+                ctrl._reaction = None
+            ctrl._cooldowns.pop(locomotion, None)
+            ctrl.interact(locomotion)
+        elif locomotion == "virtual_insanity" and (
+            ctrl._reaction is None or ctrl._reaction.value != "virtual_insanity"
+        ):
+            ctrl._cooldowns.pop("virtual_insanity", None)
+            ctrl.interact("virtual_insanity", direction=float(self._intro_motion.side))
+        elif (
+            locomotion == "idle"
+            and self._intro_last_loco == "virtual_insanity"
+            and ctrl._reaction == AnimationState.VIRTUAL_INSANITY
+        ):
+            ctrl._reaction = None
+
     def _atualizar_intro_e_musica(self, now: float):
         intro_frame = None
-        if self._intro_motion is not None and self._intro_started is not None:
-            intro_frame = self._intro_motion.sample(now - self._intro_started)
-            if intro_frame.locomotion == "land" and self._intro_last_loco != "land":
-                self.animation_controller.interact("land", strength=0.9)
-            elif intro_frame.locomotion == "virtual_insanity" and (
-                self.animation_controller._reaction is None
-                or self.animation_controller._reaction.value != "virtual_insanity"
-            ):
-                self.animation_controller._cooldowns.pop("virtual_insanity", None)
-                self.animation_controller.interact(
-                    "virtual_insanity", direction=float(self._intro_motion.side)
-                )
-            elif (
-                intro_frame.locomotion == "idle"
-                and self._intro_last_loco == "virtual_insanity"
-                and self.animation_controller._reaction
-                == AnimationState.VIRTUAL_INSANITY
-            ):
-                self.animation_controller._reaction = None
+        if self._intro_motion is not None and (
+            self._intro_started is not None or getattr(self, "_warmup_pending", False)
+        ):
+            elapsed = (
+                0.0
+                if getattr(self, "_warmup_pending", False) or self._intro_started is None
+                else (now - self._intro_started)
+            )
+            intro_frame = self._intro_motion.sample(elapsed)
+            self._mover_canvas_entrada(intro_frame)
+            self._despachar_locomocao_entrada(intro_frame.locomotion)
             self._intro_last_loco = intro_frame.locomotion
             self.animation_controller.definir_orientacao("frente")
 
@@ -843,6 +954,15 @@ class OverlayApp(ShowBase):
         # ── Controle do cursor Win32 durante teimosia (manifesto §1.4) ───
         self._sincronizar_cursor_teimosia()
         self._sincronizar_desktop(dt)
+        if getattr(self, "_warmup_pending", False):
+            self._warmup_frames += 1
+            self._pump_loading_splash()
+            if (
+                self._warmup_frames >= 3
+                and self._canvas_request is None
+                and (self._amostrar_e_calibrar_color_key() or self._warmup_frames >= 6)
+            ):
+                self._concluir_warmup(now)
         self._sincronizar_mouse_e_abertura(state, intro_frame, dt)
 
     def _sincronizar_mouse_e_abertura(
@@ -868,13 +988,23 @@ class OverlayApp(ShowBase):
             self.renderer.tentacle_director.set_mouse(mouse_local, Vec3(0))
         if state:
             self._sync_model_with_physics()
+        elif intro_frame is not None and self.renderer and self.renderer.model_np:
+            self.renderer.set_model_screen_position(*self._physics_local)
         if intro_frame is not None:
-            self.renderer.apply_intro_effect(intro_frame)
+            self.renderer.apply_intro_effect(
+                intro_frame,
+                desktop_pos=self._mascot_screen,
+                apply_horizontal_offset=not self._entrada_move_canvas(),
+            )
             if intro_frame.finished:
+                saved = self._intro_saved_mascot
                 self._intro_motion = None
                 self._intro_started = None
                 self._intro_last_loco = None
+                self._intro_saved_mascot = None
                 self._last_model_pos = None
+                if saved is not None:
+                    self._posicionar_mascote(*saved)
                 if self.animation_controller._reaction == AnimationState.VIRTUAL_INSANITY:
                     self.animation_controller._reaction = None
                 self.animation_controller.definir_orientacao(None)
@@ -1003,39 +1133,21 @@ class OverlayApp(ShowBase):
                 raise
 
     def _sincronizar_cursor_teimosia(self) -> None:
-        """Oculta/restaura o cursor Win32 durante teimosia (manifesto §1.4).
+        ctrl = self.animation_controller
+        self._definir_cursor_oculto(
+            ctrl is not None
+            and ctrl.state == AnimationState.TEIMOSIA
+            and ctrl._teimosia_fase == "roubo"
+        )
 
-        Fase 'roubo': oculta o cursor (Mário engole o mouse).
-        Fase 'cospe': restaura o cursor (Mário cospe o mouse de volta).
-        """
-        if not self.animation_controller:
+    def _definir_cursor_oculto(self, oculto: bool) -> None:
+        ctrl = getattr(self, "animation_controller", None)
+        if ctrl is None or getattr(ctrl, "_cursor_oculto", False) == oculto:
             return
-        fase = getattr(self.animation_controller, "_teimosia_fase", None)
-        cursor_oculto = getattr(self.animation_controller, "_cursor_oculto", False)
-
-        if fase == "roubo" and not cursor_oculto:
-            # Ocultar cursor do Windows
-            try:
-                win32api.ShowCursor(False)
-                self.animation_controller._cursor_oculto = True
-            except Exception:
-                pass  # Não quebrar a animação se falhar
-
-        elif fase == "cospe" and cursor_oculto:
-            # Restaurar cursor do Windows
-            try:
-                win32api.ShowCursor(True)
-                self.animation_controller._cursor_oculto = False
-            except Exception:
-                pass
-
-        # Segurança: se a teimosia terminou e o cursor ainda está oculto, restaurar
-        if self.animation_controller.state.value != "teimosia" and cursor_oculto:
-            try:
-                win32api.ShowCursor(True)
-                self.animation_controller._cursor_oculto = False
-            except Exception:
-                pass
+        # ShowCursor usa um contador. Só altere o estado após uma chamada bem-sucedida.
+        with contextlib.suppress(pywintypes.error):
+            win32api.ShowCursor(not oculto)
+            ctrl._cursor_oculto = oculto
 
     def _sincronizar_desktop(self, dt):
         """Atualiza topologia e posiciona a janela."""
@@ -1091,6 +1203,15 @@ class OverlayApp(ShowBase):
         self.cam.node().getLens().setFilmSize(renderer._view_width, renderer._view_height)
         if renderer._filter_manager is not None:
             renderer._filter_manager.resizeBuffers()
+            for buf in renderer._filter_manager.buffers:
+                buf.setClearStencilActive(True)
+                buf.setClearStencil(0)
+            if renderer._filter_manager.buffers:
+                buf0 = renderer._filter_manager.buffers[0]
+                buf0.setClearColor(self._chroma.clear_rgba)
+                buf0.setClearColorActive(True)
+        self.win.setClearStencilActive(True)
+        self.win.setClearStencil(0)
         self._canvas_origin = origem
         self._canvas_request = None
         self._atualizar_posicao_local()
@@ -1105,7 +1226,8 @@ class OverlayApp(ShowBase):
             or palco.visibility > 0.005
             or (
                 self._intro_motion is not None
-                and self._intro_motion.style == "virtual_insanity_in"
+                and self._intro_motion.style
+                in ("virtual_insanity_in", "sandevistan_in")
             )
         )
         base = round(self.settings.window.size * max(1.0, self.settings.window.scale))
@@ -1194,14 +1316,11 @@ class OverlayApp(ShowBase):
             return atual_w, atual_h
         return raw_lado, raw_lado
 
+    _DANCE_STYLE_ITEMS = ESTILOS_DANCA_UI
+
     def _montar_menus_previas_bandeja(self) -> None:
         dance_preview = self.tray_menu.addMenu("Prévia de dança (sem som)")
-        for style, label in (
-            ("head_bob", "Head bob"),
-            ("hip_hop", "Hip hop"),
-            ("rock", "Rock"),
-            ("breakdance", "Breakdance"),
-        ):
+        for style, label in self._DANCE_STYLE_ITEMS:
             dance_preview.addAction(label).triggered.connect(
                 lambda _checked=False, style=style: (
                     self.animation_controller.preview_dance(style)  # type: ignore[union-attr]
@@ -1213,6 +1332,7 @@ class OverlayApp(ShowBase):
             ("virtual_insanity_in", "Virtual Insanity (deslizando)"),
             ("run_from_depth", "Correndo do fundo"),
             ("kagebunshin_in", "Entrada ninja (Kage Bunshin)"),
+            ("sandevistan_in", "Sandevistan (lateral)"),
         ):
             intro_preview.addAction(label).triggered.connect(
                 lambda _checked=False, style=style: self.start_intro(style)
@@ -1226,9 +1346,30 @@ class OverlayApp(ShowBase):
             ("thanos_snap", "Desintegrar (Thanos)"),
             ("peace_fade_out", "Fade out Peace Sign"),
             ("virtual_insanity_out", "Virtual Insanity (deslizando)"),
+            ("cyberpsicopata_out", "Cyberpsicopata (glitch)"),
         ):
             exit_preview.addAction(label).triggered.connect(
                 lambda _checked=False, style=style: self.preview_exit(style)
+            )
+        scene_preview = self.tray_menu.addMenu("Prévia de cenas (idle)")
+        for cena, rotulo in (
+            ("conferir_luva", "Conferir a luva"),
+            ("pensar_gabinete", "Pensar com o gabinete"),
+            ("segurar_porta_timido", "Segurar a porta (tímido)"),
+            ("checar_walkman", "Checar Walkman no cinto"),
+            ("alongar_pescoco_ombros", "Alongar pescoço e ombros"),
+            ("groove_um_pe", "Groove em um pé"),
+            ("escutar_fone", "Escutar fone"),
+            ("batida_guardada", "Batida guardada"),
+            ("disfarcar_olhar", "Disfarçar o olhar"),
+            ("ajeitar_fone", "Ajeitar o fone"),
+            ("fone_com_problema", "Esse fone tá com problema?"),
+            ("argolas_antena", "Argolas da antena"),
+        ):
+            scene_preview.addAction(rotulo).triggered.connect(
+                lambda _checked=False, cena=cena: (
+                    self.animation_controller.interact(cena)  # type: ignore[union-attr]
+                )
             )
 
     def _setup_tray(self) -> None:  # noqa: PLR0915  # TODO convenção: fatiar render/tentáculos sem prova visual na GPU arrisca mudar pixels; lote próprio
@@ -1342,13 +1483,31 @@ class OverlayApp(ShowBase):
             else None
         )
 
+        dance_menu = self.tray_menu.addMenu("Estilo de dança")
+        dance_group = QActionGroup(dance_menu)
+        dance_group.setExclusive(True)
+        self._dance_style_actions = {}
+        for value, label in (("auto", "Automático pelo áudio"), *self._DANCE_STYLE_ITEMS):
+            action = dance_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(self.settings.music.dance_style == value)
+            dance_group.addAction(action)
+            action.triggered.connect(
+                lambda _checked=False, style=value: self._set_dance_style(style)
+            )
+            self._dance_style_actions[value] = action
+
         for label, kind in (
+            ("Comemorar", "celebrate"),
             ("Acenar", "wave"),
             ("Abrir as mãos", "open_hands"),
             ("Fechar os punhos", "close_fists"),
             ("Soltar os ombros", "stretch"),
             ("Mostrar tentáculos", "peek"),
             ("Espirro de tentáculos", "sneeze"),
+            ("Ajeitar o fone", "ajeitar_fone"),
+            ("Esse fone tá com problema?", "fone_com_problema"),
+            ("Argolas da antena", "argolas_antena"),
         ):
             action = self.tray_menu.addAction(label)
             # callback só dispara após o init: animation_controller já definido
@@ -1438,6 +1597,18 @@ class OverlayApp(ShowBase):
             self.logger.warning("Tray icon has no Shell registration: %s", status)
         task.delayTime = 60.0 if status["registered"] else 3.0
         return Task.again
+
+    def _set_dance_style(self, style: str) -> None:
+        """Aplica, salva e opcionalmente pré-visualiza o estilo de dança."""
+        valid = {"auto", *(key for key, _ in self._DANCE_STYLE_ITEMS)}
+        if style not in valid:
+            return
+        self.settings.music.dance_style = cast(Any, style)
+        if self.animation_controller:
+            self.animation_controller.dance_motion.override = style
+            if style != "auto":
+                self.animation_controller.preview_dance(style)
+        self._persist_settings()
 
     def _set_idle_personality(self, personality: str) -> None:
         """Aplica e salva a personalidade sem interromper o gesto atual."""
@@ -1529,6 +1700,7 @@ class OverlayApp(ShowBase):
             dx = meta.alvo_x - state.position[0]
             if abs(dx) <= 8.0:
                 ctrl.agencia.registrar_meta_alcançada()
+                ctrl.interact("celebrate")
                 return
             self.physics.walk_velocity_x = max(-150.0, min(150.0, dx * 4.5))
 
@@ -1650,6 +1822,8 @@ class OverlayApp(ShowBase):
         if hit and "left" in newly_pressed:
             self._body_grab_point = Vec3(self.renderer._pick_point_model)
             self._body_grab_part = getattr(self.renderer, "_pick_part", "body")
+        if hit and "right" in newly_pressed and getattr(self, "tray_menu", None) is not None:
+            QTimer.singleShot(0, lambda: self.tray_menu.popup(QCursor.pos()))
         events = self.mouse_interaction.update(
             position,
             buttons,
@@ -1878,12 +2052,17 @@ class OverlayApp(ShowBase):
                 self._display_check = 0
                 self._sincronizar_desktop(0)
             self.renderer.set_outline_settings(updated.window)
+            if previous.music.speaker_style != updated.music.speaker_style:
+                self.renderer.trocar_caixa_de_som(updated.music.speaker_style)
         if self.animation_controller:
             self.animation_controller.set_idle_personality(
                 updated.behavior.idle_personality
             )
+            self.animation_controller.dance_motion.override = updated.music.dance_style
         for value, action in self._personality_actions.items():
             self._set_action_checked(action, value == updated.behavior.idle_personality)
+        for value, action in getattr(self, "_dance_style_actions", {}).items():
+            self._set_action_checked(action, value == updated.music.dance_style)
 
         if music_changed:
             if self.music_listener:
@@ -1945,9 +2124,28 @@ class OverlayApp(ShowBase):
         if chosen == "padrao":
             return
         self.renderer.restore_intro_effect()
-        side = -1 if self._mascot_screen[0] > self._desktop_rect[0] + self._desktop_rect[2] * 0.5 else 1
-        self._intro_motion = IntroAnimation(chosen, from_side=side)
-        self._intro_started = time.perf_counter()
+        if self._intro_saved_mascot is not None:
+            self._posicionar_mascote(*self._intro_saved_mascot)
+        self._intro_saved_mascot = self._mascot_screen
+        entry_distance = 560.0
+        if self._desktop_rect is not None:
+            dleft, _dtop, dwidth, _dheight = self._desktop_rect
+            mx = self._mascot_screen[0]
+            side = -1 if mx > dleft + dwidth * 0.5 else 1
+            margem = max(90.0, float(self.settings.window.size) * 0.55)
+            entry_distance = max(
+                360.0,
+                (mx - dleft + margem) if side < 0 else (dleft + dwidth - mx + margem),
+            )
+        else:
+            side = 1
+        self._intro_motion = IntroAnimation(
+            chosen, from_side=side, entry_distance=entry_distance
+        )
+        self.renderer.prewarm_intro_effects(self._intro_motion.style)
+        self._intro_started = (
+            None if getattr(self, "_warmup_pending", False) else time.perf_counter()
+        )
         self._intro_last_loco = None
 
     def preview_exit(self, style: str) -> None:
@@ -1966,13 +2164,20 @@ class OverlayApp(ShowBase):
         if self._settings_dialog:
             self._settings_dialog.reject()
 
-    def _normalizar_pose_para_saida(self) -> None:
+    def _limpar_estado_entrada_para_saida(self) -> None:
+        saved = self._intro_saved_mascot
         self._intro_motion = None
         self._intro_started = None
         self._intro_last_loco = None
+        self._intro_saved_mascot = None
         self._canvas_request = None
         self._last_model_pos = None
         self._last_tilt_z = None
+        if saved is not None:
+            self._posicionar_mascote(*saved)
+
+    def _normalizar_pose_para_saida(self) -> None:
+        self._limpar_estado_entrada_para_saida()
         if self.renderer:
             self.renderer.restore_intro_effect()
             self.renderer.set_model_rotation()
@@ -1982,6 +2187,12 @@ class OverlayApp(ShowBase):
             return
         ctrl.acordar()
         ctrl._reaction = None
+        ctrl.parar_clipe_gltf()
+        ctrl.appendage_remaining = 0.0
+        if self.renderer:
+            self.renderer._interromper_cobertura_roupa()
+            if self.renderer.tentacle_director:
+                self.renderer.tentacle_director.encerrar_espiada(interromper=True)
         ctrl.definir_orientacao("frente")
         pose = ctrl.update(1 / 60, velocity=(0.0, 0.0), grounded=True, gravity_active=False)
         if self.renderer:
@@ -1990,6 +2201,7 @@ class OverlayApp(ShowBase):
             self.renderer.sync_exit_ground_offset(True)
 
     def _begin_exit(self, style: str | None = None, *, preview: bool = False):
+        self._definir_cursor_oculto(False)
         self._exit_preview = preview
         self._exit_style = style or self.settings.window.exit_animation
         self._exit_started = time.perf_counter()
@@ -2099,7 +2311,7 @@ class OverlayApp(ShowBase):
             return
         ctrl.definir_orientacao("frente")
         loco = frame.locomotion
-        if loco in ("hit", "peace", "open_hands", "blue_balls", "virtual_insanity"):
+        if loco in ("hit", "surprise", "peace", "open_hands", "blue_balls", "virtual_insanity"):
             if ctrl._reaction is None or ctrl._reaction.value != loco:
                 ctrl._cooldowns.pop(loco, None)
                 direction = (
@@ -2144,6 +2356,11 @@ class OverlayApp(ShowBase):
                 self._atualizar_posicao_local()
 
     def _finish_exit(self):
+        self._definir_cursor_oculto(False)
+        splash = getattr(self, "_loading_splash", None)
+        if splash is not None:
+            self._loading_splash = None
+            splash.finish()
         self.taskMgr.remove("physics-tick")
         self.taskMgr.remove("mouse-poll")
         if self.desktop:

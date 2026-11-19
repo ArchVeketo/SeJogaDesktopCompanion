@@ -27,9 +27,9 @@ FRACOES_SEGMENTOS_POLEGAR = (0.55, 0.45)
 #: Ângulo de projeto (graus) da sobreposição que tampa a cunha externa da junta:
 #: ``e = (espessura/2) * tan(θ/2)``. Maior tampa dobras fortes, mas deixa uma
 #: aba maior no lado interno. A_CONFIRMAR na GPU (C16).
-ANGULO_PROJETO_SOBREPOSICAO_GRAUS = 45.0
+ANGULO_PROJETO_SOBREPOSICAO_GRAUS = 22.0
 #: Fração máxima do segmento vizinho que a sobreposição pode invadir.
-FRACAO_MAXIMA_SOBREPOSICAO = 0.30
+FRACAO_MAXIMA_SOBREPOSICAO = 0.16
 #: Quanto (fração do comprimento) para dentro da raiz se mede a seção que fixa o
 #: pivô da primeira junta: na face da raiz o corte oblíquo do polegar é uma lasca.
 FRACAO_SECAO_DA_RAIZ = 0.05
@@ -46,15 +46,15 @@ LIMITES_JUNTA_POLEGAR_GRAUS = ((-15.0, 70.0), (0.0, 80.0))
 #: O bloco todo (nó ``fingers``) já gira com a pose; este ganho soma a dobra em
 #: cascata proporcional a esse giro, para o dedo curvar em vez de girar duro.
 GANHO_CASCATA_DO_BLOCO = 1.0
-#: Os gestos (``FingerGestures``) pedem a flexão total do dedo em graus; a mão
-#: fechada humana soma bem mais que um único pivô.
-FATOR_FLEXAO_GESTO = 2.0
+#: Os gestos (``FingerGestures``) pedem a flexão total do dedo em graus; calibrado
+#: para os blocos grossos não atravessarem a palma nem o dedo vizinho.
+FATOR_FLEXAO_GESTO = 1.18
 #: Flexão de gesto (graus) em que o movimento secundário some por completo.
 FLEXAO_GESTO_REFERENCIA_GRAUS = 60.0
 
 #: Multiplicador de cada segmento do polegar em volta da direção longa
-#: para dobrar em oposição na direção da palma em vez de mergulhar em -Z.
-PRONACAO_POLEGAR_GRAUS = 58.0
+#: para dobrar em oposição sobre os nós dos dedos sem invadir o indicador.
+PRONACAO_POLEGAR_GRAUS = 24.0
 
 # --------------------------------------------------------------------------- #
 # Repouso natural (mão relaxada, nunca reta como régua)
@@ -63,12 +63,12 @@ PRONACAO_POLEGAR_GRAUS = 58.0
 #: moderados dão uma curvatura relaxada orgânica de mão solta sem parecer garrinha.
 CURL_REPOUSO_DEDO_GRAUS = (9.0, 14.0, 10.0)
 CURL_REPOUSO_POLEGAR_GRAUS = (6.0, 9.0)
-#: Fechamento completo na luva segmentada, da base à ponta.
-CURL_PUNHO_DEDO_GRAUS = (75.0, 90.0, 58.0)
-CURL_PUNHO_POLEGAR_GRAUS = (18.0, 26.0)
+#: Fechamento completo na luva grande e segmentada, da base à ponta (~90° limpo).
+CURL_PUNHO_DEDO_GRAUS = (32.0, 38.0, 20.0)
+CURL_PUNHO_POLEGAR_GRAUS = (16.0, 22.0)
 #: Leque no plano da palma, do polegar ao mindinho.
-ABERTURA_MAXIMA_GRAUS = (23.0, 12.0, 4.0, 5.0, 16.0)
-OPOSICAO_POLEGAR_GRAUS = 44.0
+ABERTURA_MAXIMA_GRAUS = (26.0, 14.0, 5.0, 6.0, 18.0)
+OPOSICAO_POLEGAR_GRAUS = 12.0
 #: Multiplicador do repouso por dedo (polegar, indicador ... mindinho): a mão
 #: relaxada fecha um pouco mais para o lado do mindinho.
 VARIACAO_REPOUSO_POR_DEDO = (0.8, 0.85, 1.0, 1.15, 1.3)

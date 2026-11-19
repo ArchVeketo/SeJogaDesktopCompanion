@@ -68,8 +68,26 @@ def _clamp_vel(valor: float) -> float:
     return max(-_VEL_MAX_RAD_S, min(_VEL_MAX_RAD_S, valor))
 
 
+def _medir_velocidades_grupos(
+    dt: float,
+    atual: dict[str, Rotation3],
+    anterior: dict[str, Rotation3],
+) -> dict[str, Rotation3]:
+    """Mede velocidades angulares por junta respeitando o menor arco em ``[-pi, pi]``."""
+    novas_vels: dict[str, Rotation3] = {}
+    for grupo, rot in atual.items():
+        prev = anterior.get(grupo)
+        if prev is not None:
+            novas_vels[grupo] = Rotation3(
+                _clamp_vel(_delta_angular_curto(rot.x, prev.x) / dt),
+                _clamp_vel(_delta_angular_curto(rot.y, prev.y) / dt),
+                _clamp_vel(_delta_angular_curto(rot.z, prev.z) / dt),
+            )
+    return novas_vels
+
+
 class PoseResolver:
-    """Interpola poses com preservação de momento angular e aplica limites do rig."""
+    """Resolve transições por inertialização quíntica, colisão dos braços e limites do rig."""
 
     def __init__(self) -> None:
         """Inicia sem transição ativa."""
@@ -77,16 +95,38 @@ class PoseResolver:
         self._transition_from: dict[str, Rotation3] = {}
         self._transition_vel: dict[str, Rotation3] = {}
         self._ultima_pose: dict[str, Rotation3] = {}
+        self._ultima_pose_alvo: dict[str, Rotation3] = {}
         self._velocidades: dict[str, Rotation3] = {}
+        self._vel_alvo: dict[str, Rotation3] = {}
+        self._vel_relativa: dict[str, Rotation3] = {}
         self._transition_seconds = 0.0
         self._state_time = 0.0
+
+    @property
+    def velocidades_saida(self) -> dict[str, Rotation3]:
+        """Últimas velocidades angulares da pose resolvida (pós-clamps e colisão)."""
+        return dict(self._velocidades)
+
+    @property
+    def velocidades_alvo(self) -> dict[str, Rotation3]:
+        """Últimas velocidades angulares estimadas da pose alvo de entrada."""
+        return dict(self._vel_alvo)
+
+    @property
+    def velocidades_relativas(self) -> dict[str, Rotation3]:
+        """Velocidade angular relativa ``saida - alvo`` para diagnóstico em alvo móvel."""
+        return dict(self._vel_relativa)
 
     def iniciar_transicao(
         self,
         pose_atual: dict[str, Rotation3],
         transition_seconds: float = 0.55,
     ) -> None:
-        """Guarda a pose e a velocidade angular de saída para inertialização."""
+        """Guarda a pose e a velocidade angular de saída (inertialização Hermite quíntica)."""
+        if self._resolvedor_bracos is not None:
+            # ``pose_atual`` já traz qualquer recuo aplicado anteriormente; zerar
+            # evita somar duas vezes o deslocamento no primeiro frame da transição.
+            self._resolvedor_bracos.zerar()
         self._transition_from = dict(pose_atual)
         self._transition_vel = dict(self._velocidades)
         self._transition_seconds = max(0.0, transition_seconds)
@@ -95,7 +135,7 @@ class PoseResolver:
     def _interpolar_transicao(
         self, pose_alvo: dict[str, Rotation3]
     ) -> dict[str, Rotation3]:
-        """Interpola a pose alvo usando transição quíntica e impulso de velocidade."""
+        """Interpola por Hermite quíntico: ``origem + delta * w(u) + vel * dur * u * (1-u)^2``."""
         dur = self._transition_seconds
         u = max(0.0, min(1.0, self._state_time / dur))
         peso = suavizar_quintico(u)
@@ -112,21 +152,31 @@ class PoseResolver:
         return pose
 
     def _atualizar_velocidades(
-        self, dt: float, pose: dict[str, Rotation3]
+        self,
+        dt: float,
+        pose: dict[str, Rotation3],
+        pose_alvo: dict[str, Rotation3],
     ) -> None:
-        """Registra velocidades angulares do quadro atual para o próximo blend."""
-        if dt > 1e-5 and self._ultima_pose:
-            novas_vels: dict[str, Rotation3] = {}
-            for grupo, rot in pose.items():
-                prev = self._ultima_pose.get(grupo)
-                if prev is not None:
-                    novas_vels[grupo] = Rotation3(
-                        _clamp_vel(_delta_angular_curto(rot.x, prev.x) / dt),
-                        _clamp_vel(_delta_angular_curto(rot.y, prev.y) / dt),
-                        _clamp_vel(_delta_angular_curto(rot.z, prev.z) / dt),
-                    )
-            self._velocidades = novas_vels
+        """Registra velocidades da saída, do alvo e a velocidade relativa entre os dois lados."""
+        if dt > 1e-5:
+            if self._ultima_pose:
+                self._velocidades = _medir_velocidades_grupos(
+                    dt, pose, self._ultima_pose
+                )
+            if self._ultima_pose_alvo:
+                self._vel_alvo = _medir_velocidades_grupos(
+                    dt, pose_alvo, self._ultima_pose_alvo
+                )
+            self._vel_relativa = {
+                grupo: Rotation3(
+                    self._velocidades[grupo].x - self._vel_alvo.get(grupo, Rotation3()).x,
+                    self._velocidades[grupo].y - self._vel_alvo.get(grupo, Rotation3()).y,
+                    self._velocidades[grupo].z - self._vel_alvo.get(grupo, Rotation3()).z,
+                )
+                for grupo in self._velocidades
+            }
         self._ultima_pose = dict(pose)
+        self._ultima_pose_alvo = dict(pose_alvo)
 
     def resolver(
         self,
@@ -135,8 +185,9 @@ class PoseResolver:
         *,
         model: Model | None = None,
         state_time: float | None = None,
+        peso_colisao: float = 1.0,
     ) -> dict[str, Rotation3]:
-        """Resolve a pose composta e preserva as restrições anatômicas."""
+        """Resolve a pose por inertialização quíntica, clamps anatômicos e colisão."""
         if state_time is not None:
             self._state_time = state_time
 
@@ -150,9 +201,13 @@ class PoseResolver:
         if model is not None:
             if self._resolvedor_bracos is None or self._resolvedor_bracos.model is not model:
                 self._resolvedor_bracos = ResolvedorBracos(model)
-            pose = self._aplicar_clamps(self._resolvedor_bracos.resolver(pose))
+            pose = self._aplicar_clamps(
+                self._resolvedor_bracos.resolver(pose, peso=peso_colisao)
+            )
+        elif self._resolvedor_bracos is not None:
+            self._resolvedor_bracos.zerar()
 
-        self._atualizar_velocidades(dt, pose)
+        self._atualizar_velocidades(dt, pose, pose_alvo)
         return pose
 
     def _aplicar_clamps(self, pose: dict[str, Rotation3]) -> dict[str, Rotation3]:

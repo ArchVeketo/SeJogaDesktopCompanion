@@ -141,12 +141,12 @@ class SettingsDialog(QDialog):
         self.z_order_input.setCurrentIndex(self.z_order_input.findData(z_order))
 
         self.music_input = QComboBox()
-        self.music_input.addItem("Desligada", "off")
+        self.music_input.addItem("Automático (áudio + mídia)", "auto")
         self.music_input.addItem("Sessão de mídia do Windows", "media_session")
         self.music_input.addItem("Áudio do sistema (loopback)", "loopback")
-        self.music_input.setCurrentIndex(
-            self.music_input.findData(settings.music.source)
-        )
+        self.music_input.addItem("Desligada", "off")
+        idx_music = self.music_input.findData(settings.music.source)
+        self.music_input.setCurrentIndex(idx_music if idx_music >= 0 else 0)
         self.beat_input = QCheckBox("Reagir à batida")
         self.beat_input.setChecked(settings.music.react_to_beat)
         self.sensitivity_input = QDoubleSpinBox()
@@ -161,17 +161,18 @@ class SettingsDialog(QDialog):
         )
         self.dance_chance_input.setSingleStep(const_desktop.FRACAO_PASSO)
         self.dance_chance_input.setValue(settings.music.dance_chance)
+        from sejoga.configuracao import ESTILOS_DANCA_UI
+
         self.dance_style_input = QComboBox()
-        for key, label in (
-            ("auto", "Automático pelo áudio"),
-            ("head_bob", "Head bob tranquilo"),
-            ("hip_hop", "Hip hop"),
-            ("rock", "Rock"),
-            ("breakdance", "Breakdance"),
-        ):
+        for key, label in (("auto", "Automático pelo áudio"), *ESTILOS_DANCA_UI):
             self.dance_style_input.addItem(label, key)
-        self.dance_style_input.setCurrentIndex(
-            self.dance_style_input.findData(settings.music.dance_style)
+        idx_dance = self.dance_style_input.findData(settings.music.dance_style)
+        self.dance_style_input.setCurrentIndex(idx_dance if idx_dance >= 0 else 0)
+        self.speaker_style_input = QComboBox()
+        self.speaker_style_input.addItem("Palco com três caixas", "palco")
+        self.speaker_style_input.addItem("Rádio vermelho compacto", "radio")
+        self.speaker_style_input.setCurrentIndex(
+            self.speaker_style_input.findData(settings.music.speaker_style)
         )
 
         self.intro_animation_input = QComboBox()
@@ -181,6 +182,7 @@ class SettingsDialog(QDialog):
             ("virtual_insanity_in", "Virtual Insanity (deslizando)"),
             ("run_from_depth", "Correndo do fundo"),
             ("kagebunshin_in", "Entrada ninja (Kage Bunshin)"),
+            ("sandevistan_in", "Sandevistan (lateral)"),
             ("aleatoria", "Aleatória ao abrir"),
         ):
             self.intro_animation_input.addItem(label, key)
@@ -196,6 +198,7 @@ class SettingsDialog(QDialog):
             ("thanos_snap", "Desintegrar (Thanos)"),
             ("peace_fade_out", "Fade out Peace Sign"),
             ("virtual_insanity_out", "Virtual Insanity (deslizando)"),
+            ("cyberpsicopata_out", "Cyberpsicopata (glitch)"),
             ("aleatoria", "Aleatória ao encerrar"),
         ):
             self.exit_animation_input.addItem(label, key)
@@ -295,6 +298,7 @@ class SettingsDialog(QDialog):
         form.addRow("Sensibilidade da batida", self.sensitivity_input)
         form.addRow("Frequência de dança (0–1)", self.dance_chance_input)  # noqa: RUF001  # intencional: travessao de intervalo (en dash) no rotulo exibido
         form.addRow("Estilo de dança", self.dance_style_input)
+        form.addRow("Caixa de som", self.speaker_style_input)
         form.addRow("FPS alvo", self.fps_input)
         form.addRow("Monitor preferido", self.monitor_input)
         form.addRow("Animação de abertura", self.intro_animation_input)
@@ -322,7 +326,7 @@ class SettingsDialog(QDialog):
         )
         self.restart_notice.setWordWrap(True)
         self.loopback_notice = QLabel(
-            "Loopback requer a dependência opcional soundcard (extra music-loopback)."
+            "Nos modos Automático ou Loopback, a batida usa o áudio do sistema (soundcard) quando disponível."
         )
         self.loopback_notice.setWordWrap(True)
         self.hotkey_notice = QLabel(
@@ -433,6 +437,7 @@ class SettingsDialog(QDialog):
         updated.music.sensitivity = self.sensitivity_input.value()
         updated.music.dance_chance = self.dance_chance_input.value()
         updated.music.dance_style = self.dance_style_input.currentData()
+        updated.music.speaker_style = self.speaker_style_input.currentData()
         updated.update.channel = self.channel_input.currentData()
         updated.window.fps = self.fps_input.value()
         updated.window.preferred_monitor = self.monitor_input.currentData()

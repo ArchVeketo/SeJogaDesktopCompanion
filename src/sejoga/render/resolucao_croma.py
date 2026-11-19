@@ -87,7 +87,19 @@ def install_chroma_resolve(pipeline, colorkey_hex: str = CHROMA_HEX_PADRAO):
             color = mix(color, u_overlay_tint, clamp(u_overlay_flash, 0.0, 0.86));
         }}
         if (u_dissolve > 0.001) {{
-            if (u_dissolve_mode > 0.5) {{
+            if (u_dissolve_mode > 1.5) {{
+                // Cyberpsicopata: desgaste holográfico em faixas finas ciano/carmesim.
+                vec2 uv_norm = gl_FragCoord.xy / max(u_viewport_size, vec2(1.0));
+                float scan = fract(gl_FragCoord.y * 0.18 + _sj_hash12(floor(gl_FragCoord.xy / 6.0)) * 0.45);
+                float edge = mix(-0.12, 1.25, clamp(u_dissolve, 0.0, 1.0))
+                    - (uv_norm.y * 0.55 + _sj_bayer4(gl_FragCoord.xy) * 0.45);
+                if (edge > 0.09) {{
+                    color = chroma_key;
+                }} else if (edge > 0.0) {{
+                    vec3 holo = mix(vec3(0.08, 0.96, 1.0), vec3(1.0, 0.14, 0.24), step(0.5, scan));
+                    color = mix(color, holo, clamp(edge / 0.09, 0.0, 1.0));
+                }}
+            }} else if (u_dissolve_mode > 0.5) {{
                 // Thanos: varredura de cinzas da base para cima com brasa na borda.
                 vec2 uv_norm = gl_FragCoord.xy / max(u_viewport_size, vec2(1.0));
                 float grain = _sj_bayer4(gl_FragCoord.xy) * 0.24

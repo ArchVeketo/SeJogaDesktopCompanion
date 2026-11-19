@@ -30,7 +30,7 @@ import tomllib
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = "SeJogaDesktopCompanion"
@@ -130,6 +130,7 @@ class WindowSettings(BaseModel):
         "virtual_insanity_in",
         "run_from_depth",
         "kagebunshin_in",
+        "sandevistan_in",
         "aleatoria",
     ] = "padrao"
     """Animação executada ao abrir o aplicativo."""
@@ -142,6 +143,7 @@ class WindowSettings(BaseModel):
         "thanos_snap",
         "peace_fade_out",
         "virtual_insanity_out",
+        "cyberpsicopata_out",
         "aleatoria",
     ] = "classic"
     """Animação executada ao fechar/encerrar o aplicativo."""
@@ -172,13 +174,98 @@ class MusicSettings(BaseModel):
     """Como o companion percebe e reage à música."""
 
     enabled: bool = True
-    source: Literal["media_session", "loopback", "off"] = "media_session"
-    """``media_session`` = metadados/fase via SMTC; ``loopback`` = áudio do sistema."""
+    source: Literal["auto", "media_session", "loopback", "off"] = "auto"
+    """``auto`` = mídia + loopback; ``media_session`` = SMTC; ``loopback`` = áudio do sistema."""
 
     react_to_beat: bool = True
+    speaker_style: Literal["palco", "radio"] = "palco"
     sensitivity: float = Field(default=0.6, ge=0.0, le=1.0)
     dance_chance: float = Field(default=0.35, ge=0.0, le=1.0)
-    dance_style: Literal["auto", "head_bob", "hip_hop", "rock", "breakdance"] = "auto"
+    dance_style: Literal[
+        "auto",
+        "head_bob",
+        "hip_hop",
+        "rock",
+        "breakdance",
+        "street_groove",
+        "graffiti_dance",
+        "cyber_bounce",
+        "electro_swing",
+        "passinho",
+        "master_of_mystery",
+        "she_bugging",
+        "miku",
+        "dont_start_now",
+        "popular",
+        "griddy",
+        "boogie_down",
+        "jabba_switchway",
+        "go_mufasa",
+        "jazz_dance",
+        "criss_cross",
+        "celebration_dance",
+        "kpop_dance_03",
+        "macaroons",
+        "speed_dial",
+        "cyclone_headbang",
+        "january_bop",
+        "jiggle",
+        "lets_begin",
+        "aloa",
+        "bbd",
+        "flair",
+        "breakdance_1990",
+        "breakdance_freeze",
+        "breakdance_uprock",
+        "dancing_twerk",
+    ] = "auto"
+
+    @field_validator("dance_style", mode="before")
+    @classmethod
+    def _normalizar_dance_style_legado(cls, valor: object) -> object:
+        """Migra o antigo erro de digitação ``griddle`` para ``griddy``."""
+        if valor == "griddle":
+            return "griddy"
+        return valor
+
+
+ESTILOS_DANCA_UI: tuple[tuple[str, str], ...] = (
+    ("head_bob", "Head bob"),
+    ("hip_hop", "Hip hop"),
+    ("rock", "Rock"),
+    ("breakdance", "Breakdance"),
+    ("street_groove", "Street groove"),
+    ("graffiti_dance", "Graffiti dance"),
+    ("cyber_bounce", "Cyber bounce"),
+    ("electro_swing", "Electro Swing (emote)"),
+    ("passinho", "Passinho / Fancy Feet (emote)"),
+    ("master_of_mystery", "Master of Mystery (emote)"),
+    ("she_bugging", "She Bugging (emote)"),
+    ("miku", "Miku (emote)"),
+    ("dont_start_now", "Don't Start Now (emote)"),
+    ("popular", "Popular · The Weeknd (emote)"),
+    ("griddy", "Griddy (emote)"),
+    ("boogie_down", "Boogie Down (emote)"),
+    ("jabba_switchway", "Jabba Switchway (emote)"),
+    ("go_mufasa", "Go Mufasa (emote)"),
+    ("jazz_dance", "Jazz Dance (emote)"),
+    ("criss_cross", "Criss Cross (emote)"),
+    ("celebration_dance", "Celebration Dance (emote)"),
+    ("kpop_dance_03", "K-Pop Dance (emote)"),
+    ("macaroons", "Macarena / Macaroons (emote)"),
+    ("speed_dial", "Speed Dial (emote)"),
+    ("cyclone_headbang", "Cyclone Headbang (emote)"),
+    ("january_bop", "January Bop (emote)"),
+    ("jiggle", "Jiggle Jiggle (emote)"),
+    ("lets_begin", "Let's Begin (emote)"),
+    ("aloa", "Aloa (emote)"),
+    ("bbd", "BBD (emote)"),
+    ("flair", "Flair Breakdance (Mixamo)"),
+    ("breakdance_1990", "Breakdance 1990 (Mixamo)"),
+    ("breakdance_freeze", "Breakdance Freeze (Mixamo)"),
+    ("breakdance_uprock", "Breakdance Uprock (Mixamo)"),
+    ("dancing_twerk", "Groove Twerk (Mixamo)"),
+)
 
 
 class BehaviorSettings(BaseModel):

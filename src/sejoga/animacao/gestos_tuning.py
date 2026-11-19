@@ -9,6 +9,10 @@ FRONTEIRA: Python puro, sem engine.
 
 from __future__ import annotations
 
+from typing import Any
+
+from sejoga.animacao.dados_autorais import reacoes_ativas
+
 Chaves = tuple[tuple[float, float], ...]
 
 # --------------------------------------------------------------------------- #
@@ -166,3 +170,35 @@ SURPRESA_CABECA = 20.0
 SURPRESA_GIRO = 18.0
 #: Braços sobem um pouco, em reação de guarda (graus de `right-arm.z`).
 SURPRESA_BRACO = 22.0
+
+
+def aceno_tuning() -> dict[str, Any]:
+    """Parâmetros ativos do gesto de aceno."""
+    return reacoes_ativas().get("aceno", {})
+
+
+def alongar_tuning() -> dict[str, Any]:
+    """Parâmetros ativos do gesto de alongar."""
+    return reacoes_ativas().get("alongar", {})
+
+
+def cutucar_tuning() -> dict[str, Any]:
+    """Parâmetros ativos do gesto de cutucar."""
+    return reacoes_ativas().get("cutucar", {})
+
+
+def surpresa_tuning() -> dict[str, float]:
+    """Parâmetros ativos de surpresa e acordar."""
+    s = reacoes_ativas().get("surpresa", {})
+    return {
+        "recuo": float(s.get("recuo", SURPRESA_RECUO)),
+        "cabeca": float(s.get("cabeca", SURPRESA_CABECA)),
+        "giro": float(s.get("giro", SURPRESA_GIRO)),
+        "braco": float(s.get("braco", SURPRESA_BRACO)),
+        "wake_braco_elevacao": float(s.get("wake_braco_elevacao", WAKE_BRACO_ELEVACAO)),
+    }
+
+
+def duracoes_reacoes() -> dict[str, float]:
+    """Mapa ativo de durações de reações por estado."""
+    return {k: float(v) for k, v in reacoes_ativas().get("duracoes", {}).items()}

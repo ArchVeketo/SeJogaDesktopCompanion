@@ -81,3 +81,22 @@ def test_pico_do_clipe_coincide_com_seno_da_perna():
     from math import pi
 
     assert ciclo_da_fase(pi / 2) % 1.0 == pytest.approx(0.0, abs=1e-9)
+
+
+@pytest.mark.parametrize("nome", ("walk", "run"))
+def test_cadencia_dupla_quadril_contragiro_e_sobreposicao_zzz(nome):
+    meio_passo = amostrar_clipe(nome, 0.25)
+    apoio = amostrar_clipe(nome, 0.0)
+    outro_apoio = amostrar_clipe(nome, 0.5)
+    # Cadência dupla no quadril (pitch X igual em 0 e 0.5, diferente no meio do passo 0.25)
+    assert apoio["body"][0] == pytest.approx(outro_apoio["body"][0])
+    assert meio_passo["body"][0] < apoio["body"][0]
+    assert meio_passo["body"][2] == pytest.approx(-amostrar_clipe(nome, 0.75)["body"][2])
+    # Cintura contragira oposta ao quadril enquanto peitoral acompanha os ombros
+    assert apoio["cintura"][1] * apoio["body"][1] < 0.0
+    assert apoio["peitoral"][1] * apoio["body"][1] > 0.0
+    # Sobreposição de fones e antenas reage defasada em relação ao quique da cabeça
+    assert meio_passo["fones"][0] > apoio["fones"][0]
+    assert meio_passo["antena-direita"][2] == pytest.approx(
+        -meio_passo["antena-esquerda"][2]
+    )

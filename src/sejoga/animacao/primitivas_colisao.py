@@ -115,29 +115,36 @@ def dist_segmento_segmento(p1: Vetor3, q1: Vetor3, p2: Vetor3, q2: Vetor3) -> fl
 
 def dist_ponto_caixa(ponto: Vetor3, caixa: CaixaOrientada) -> float:
     """Distância ASSINADA de ``ponto`` à caixa (negativa DENTRO, positiva fora)."""
-    rel = _sub(ponto, caixa.centro)
+    cx, cy, cz = caixa.centro
+    rx = ponto[0] - cx
+    ry = ponto[1] - cy
+    rz = ponto[2] - cz
     ex, ey, ez = caixa.eixos
     hx, hy, hz = caixa.meias_dim
 
-    locais = (_dot(rel, ex), _dot(rel, ey), _dot(rel, ez))
-    meias = (hx, hy, hz)
+    lx = rx * ex[0] + ry * ex[1] + rz * ex[2]
+    ly = rx * ey[0] + ry * ey[1] + rz * ey[2]
+    lz = rx * ez[0] + ry * ez[1] + rz * ez[2]
 
-    fora_quadrado = 0.0
-    dentro = True
-    menor_folga = float("inf")
+    dx = abs(lx) - hx
+    dy = abs(ly) - hy
+    dz = abs(lz) - hz
 
-    for coord, meia in zip(locais, meias, strict=True):
-        excesso = abs(coord) - meia
-
-        if excesso > 0.0:
-            dentro = False
-            fora_quadrado += excesso * excesso
-        else:
-            menor_folga = min(menor_folga, -excesso)
-
-    if dentro:
+    if dx <= 0.0 and dy <= 0.0 and dz <= 0.0:
+        menor_folga = -dx
+        if -dy < menor_folga:
+            menor_folga = -dy
+        if -dz < menor_folga:
+            menor_folga = -dz
         return -menor_folga
 
+    fora_quadrado = 0.0
+    if dx > 0.0:
+        fora_quadrado += dx * dx
+    if dy > 0.0:
+        fora_quadrado += dy * dy
+    if dz > 0.0:
+        fora_quadrado += dz * dz
     return sqrt(fora_quadrado)
 
 
@@ -148,22 +155,40 @@ def penetracao_capsula_capsula(ca: Capsula, cb: Capsula) -> float:
     return max(0.0, (ca.raio + cb.raio) - distancia)
 
 
+def _profundidade_ponto_caixa(
+    px: float, py: float, pz: float, hx: float, hy: float, hz: float, raio: float
+) -> float:
+    ox, oy, oz = abs(px) - hx, abs(py) - hy, abs(pz) - hz
+    if ox <= 0.0 and oy <= 0.0 and oz <= 0.0:
+        return raio + min(-ox, -oy, -oz)
+    fora = max(0.0, ox) ** 2 + max(0.0, oy) ** 2 + max(0.0, oz) ** 2
+    return raio - sqrt(fora)
+
+
 def penetracao_capsula_caixa(cap: Capsula, caixa: CaixaOrientada) -> float:
     """Profundidade de interpenetração entre cápsula e caixa (0.0 se separadas).
 
     Amostra ``AMOSTRAS_CAPSULA_CAIXA`` pontos ao longo do eixo da cápsula e
     devolve a MAIOR ``raio - dist_ponto_caixa``.
     """
-    maior = 0.0
     passos = max(2, AMOSTRAS_CAPSULA_CAIXA)
-    direcao = _sub(cap.b, cap.a)
+    ax, ay, az = cap.a
+    bx, by, bz = cap.b
+    dx, dy, dz = bx - ax, by - ay, bz - az
+    inv = 1.0 / (passos - 1)
+    cx, cy, cz = caixa.centro
+    ex, ey, ez = caixa.eixos
+    hx, hy, hz = caixa.meias_dim
+    maior = 0.0
 
     for i in range(passos):
-        fracao = i / (passos - 1)
-        ponto = _soma(cap.a, _escala(direcao, fracao))
-        profundidade = cap.raio - dist_ponto_caixa(ponto, caixa)
-
-        if profundidade > maior:
-            maior = profundidade
+        fracao = i * inv
+        rx = ax + dx * fracao - cx
+        ry = ay + dy * fracao - cy
+        rz = az + dz * fracao - cz
+        px = rx * ex[0] + ry * ex[1] + rz * ex[2]
+        py = rx * ey[0] + ry * ey[1] + rz * ey[2]
+        pz = rx * ez[0] + ry * ez[1] + rz * ez[2]
+        maior = max(maior, _profundidade_ponto_caixa(px, py, pz, hx, hy, hz, cap.raio))
 
     return maior

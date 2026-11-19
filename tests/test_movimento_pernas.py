@@ -65,3 +65,25 @@ def test_ik_preserva_arco_da_passada_e_ajusta_altura():
     z = coxa * cos(radians(quadril)) + canela * cos(radians(quadril + joelho))
     assert x == approx(coxa * sin(radians(14)) + canela * sin(radians(34)))
     assert z == approx(coxa + canela - 0.035)
+
+
+def test_apoio_em_caminhada_mantem_velocidade_horizontal_linear_no_solo():
+    from math import radians, sin
+
+    from sejoga.animacao.movimento_pernas import PASSO_RAIO_SOLA
+
+    legs = LegMotion()
+    dt = 1.0 / 60.0
+    vx = 200.0
+    px_per_unit = 216.765
+    v_modelo_dt = (vx * dt) / px_per_unit
+    desvios_px = []
+    prev_y = None
+    for frame in range(90):
+        pose = legs.update(dt, "walk", (vx, 0.0), pixels_per_unit=px_per_unit)
+        y_esq = PASSO_RAIO_SOLA * sin(radians(pose.left))
+        if frame >= 30 and pose.left_lift <= 1e-4 and prev_y is not None:
+            desvios_px.append(abs((y_esq - prev_y) - v_modelo_dt) * px_per_unit)
+        prev_y = y_esq if pose.left_lift <= 1e-4 else None
+    assert len(desvios_px) >= 10
+    assert (sum(desvios_px) / len(desvios_px)) < 0.5

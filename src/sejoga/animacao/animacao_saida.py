@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from math import pi, sin
 from typing import ClassVar
 
+from sejoga.animacao.dados_autorais import reacoes_ativas
+
 EXIT_STYLES = (
     "classic",
     "sonic_classic",
@@ -15,6 +17,7 @@ EXIT_STYLES = (
     "thanos_snap",
     "peace_fade_out",
     "virtual_insanity_out",
+    "cyberpsicopata_out",
     "aleatoria",
 )
 
@@ -25,6 +28,7 @@ _RANDOM_DEATH_POOL = (
     "thanos_snap",
     "peace_fade_out",
     "virtual_insanity_out",
+    "cyberpsicopata_out",
 )
 
 
@@ -54,6 +58,8 @@ class ExitFrame:
     blue_balls: float = 0.0
     locomotion: str | None = None
     shock: float = 0.0
+    glitch_offset: float = 0.0
+    glitch_pulse: float = 0.0
 
 
 class ExitAnimation:
@@ -64,11 +70,12 @@ class ExitAnimation:
     STYLE_DURATIONS: ClassVar[dict[str, float]] = {
         "classic": 1.35,
         "sonic_classic": 1.45,
-        "fnf_blue_balls": 2.05,
-        "lego_disassemble": 1.60,
-        "thanos_snap": 1.70,
-        "peace_fade_out": 1.45,
-        "virtual_insanity_out": 1.65,
+        "fnf_blue_balls": 2.35,
+        "lego_disassemble": 1.95,
+        "thanos_snap": 2.05,
+        "peace_fade_out": 1.55,
+        "virtual_insanity_out": 1.80,
+        "cyberpsicopata_out": 2.45,
     }
 
     def __init__(
@@ -86,7 +93,10 @@ class ExitAnimation:
         if style not in self.STYLE_DURATIONS:
             style = "classic"
         self.style = style
-        self.duration = self.STYLE_DURATIONS[style]
+        saida_cfg = reacoes_ativas().get("saidas", {}).get(style, {})
+        vel = max(0.1, float(saida_cfg.get("velocidade", 1.0)))
+        dur_base = float(saida_cfg.get("duracao_s", self.STYLE_DURATIONS[style]))
+        self.duration = dur_base / vel
         self.origin = origin
         self.size = size
         self.bounds = desktop_bounds
@@ -113,14 +123,16 @@ class ExitAnimation:
     def _sample_sonic_classic(self, elapsed: float, p: float, done: bool) -> ExitFrame:
         ox, oy = self.origin
         if p < 0.14:
-            jitter = sin(elapsed * 55.0) * 5.0
+            u = p / 0.14
+            jitter = sin(elapsed * 58.0) * 5.0 * (1.0 - 0.4 * u)
+            coil = sin(u * pi)
             return ExitFrame(
                 round(ox + jitter),
-                round(oy),
+                round(oy + 10.0 * coil),
                 0.0,
                 False,
-                pitch=-6.0,
-                scale=1.04,
+                pitch=8.0 * coil - 6.0,
+                scale=1.04 - 0.10 * coil,
                 locomotion="hit",
             )
         jump_u = (p - 0.14) / 0.86
@@ -128,21 +140,22 @@ class ExitAnimation:
             rise = sin((jump_u / 0.28) * (pi * 0.5))
             return ExitFrame(
                 round(ox),
-                round(oy - 165.0 * rise),
-                0.0,
+                round(oy - 180.0 * rise),
+                self.direction * 42.0 * rise,
                 done,
-                pitch=-16.0 * rise,
+                pitch=-8.0 - 12.0 * rise,
+                scale=1.05 - 0.05 * rise,
                 locomotion="hit",
             )
         fall_u = (jump_u - 0.28) / 0.72
-        peak_y = oy - 165.0
+        peak_y = oy - 180.0
         drop_y = peak_y + (self.bottom_exit_y - peak_y) * (fall_u * fall_u)
         return ExitFrame(
-            round(ox),
+            round(ox + 28.0 * self.direction * fall_u),
             round(drop_y),
-            0.0,
+            self.direction * (42.0 + 480.0 * fall_u),
             done,
-            pitch=-16.0 + 38.0 * fall_u,
+            pitch=-20.0 + 42.0 * fall_u,
             locomotion="fall",
         )
 
@@ -150,21 +163,21 @@ class ExitAnimation:
         ox, oy = self.origin
         if p < 0.22:
             u = p / 0.22
-            tremor = sin(elapsed * 56.0) * 5.0 * (1.0 - u * 0.35)
-            strobe = 0.5 + 0.5 * sin(elapsed * 52.0)
+            tremor = sin(elapsed * 58.0) * 6.0 * (1.0 - u * 0.30)
+            strobe = 0.5 + 0.5 * sin(elapsed * 54.0)
             return ExitFrame(
                 round(ox + tremor),
                 round(oy),
                 0.0,
                 False,
-                blue_balls=0.0,
+                blue_balls=0.28 * u,
                 locomotion="blue_balls",
-                shock=0.35 + 0.65 * strobe,
+                shock=0.40 + 0.60 * strobe,
             )
-        if p < 0.74:
-            pop_u = min(1.0, (p - 0.22) / 0.08)
-            beat = 0.78 + 0.22 * (0.5 + 0.5 * sin((elapsed - 0.45) * 9.0))
-            pop_boost = 1.0 + 0.18 * sin(pop_u * pi)
+        if p < 0.78:
+            pop_u = min(1.0, (p - 0.22) / 0.10)
+            beat = 0.82 + 0.18 * (0.5 + 0.5 * sin((elapsed - 0.5) * 8.5))
+            pop_boost = 1.0 + 0.16 * sin(pop_u * pi)
             return ExitFrame(
                 round(ox),
                 round(oy),
@@ -174,8 +187,8 @@ class ExitAnimation:
                 locomotion="blue_balls",
                 shock=0.0,
             )
-        fade_u = _smooth((p - 0.74) / 0.26)
-        beat = 0.80 + 0.20 * (0.5 + 0.5 * sin((elapsed - 0.45) * 9.0))
+        fade_u = _smooth((p - 0.78) / 0.22)
+        beat = 0.82 + 0.18 * (0.5 + 0.5 * sin((elapsed - 0.5) * 8.5))
         return ExitFrame(
             round(ox),
             round(oy),
@@ -189,42 +202,51 @@ class ExitAnimation:
 
     def _sample_lego_disassemble(self, elapsed: float, p: float, done: bool) -> ExitFrame:
         ox, oy = self.origin
-        if p < 0.12:
-            jitter = sin(elapsed * 60.0) * 4.5
+        if p < 0.10:
+            jitter = sin(elapsed * 55.0) * 3.5
+            anticipation = sin((p / 0.10) * pi) * 0.06
             return ExitFrame(
-                round(ox + jitter), round(oy), 0.0, False, scale=1.04, locomotion="hit"
+                round(ox + jitter),
+                round(oy),
+                0.0,
+                False,
+                scale=1.0 + anticipation,
+                locomotion="hit",
             )
+        explode = _clamp01((p - 0.10) / 0.62)
         return ExitFrame(
             round(ox),
             round(oy),
             0.0,
             done,
-            explode=_clamp01((p - 0.12) / 0.68),
-            dissolve=_smooth(max(0.0, p - 0.72) / 0.28),
+            explode=explode,
+            dissolve=_smooth(max(0.0, p - 0.80) / 0.20),
             locomotion="hit",
         )
 
     def _sample_thanos_snap(self, _elapsed: float, p: float, done: bool) -> ExitFrame:
         ox, oy = self.origin
         if p < 0.22:
-            u = p / 0.22
+            u = _smooth(p / 0.22)
             return ExitFrame(
                 round(ox),
                 round(oy),
-                0.0,
+                -3.0 * u,
                 False,
-                yaw=-12.0 * u,
-                pitch=4.0 * u,
+                yaw=-14.0 * u,
+                pitch=5.0 * u,
                 locomotion="open_hands",
             )
         dust_u = _clamp01((p - 0.22) / 0.78)
+        pitch_settle = 5.0 * (1.0 - _smooth(min(1.0, dust_u / 0.35)))
+        drift = dust_u**1.32
         return ExitFrame(
-            round(ox + 22.0 * dust_u),
-            round(oy),
-            0.0,
+            round(ox + 34.0 * self.direction * drift),
+            round(oy - 14.0 * drift),
+            -3.0 + 6.5 * self.direction * drift,
             done,
-            yaw=-12.0 + 18.0 * dust_u,
-            pitch=0.0,
+            yaw=-14.0 + 20.0 * dust_u,
+            pitch=pitch_settle,
             dissolve=dust_u,
             ash=dust_u,
             locomotion="open_hands",
@@ -234,13 +256,14 @@ class ExitAnimation:
         ox, oy = self.origin
         fade_u = _smooth(max(0.0, p - 0.42) / 0.58)
         nod = sin(min(1.0, p / 0.45) * pi)
+        lean = _smooth(min(1.0, p / 0.50))
         return ExitFrame(
-            round(ox),
-            round(oy),
-            0.0,
+            round(ox + 8.0 * self.direction * fade_u),
+            round(oy - 8.0 * fade_u),
+            -4.5 * self.direction * lean * (1.0 - 0.4 * fade_u),
             done,
-            yaw=-7.0 * nod,
-            pitch=0.0,
+            yaw=-8.5 * nod,
+            pitch=-3.0 * nod,
             dissolve=fade_u,
             locomotion="peace",
         )
@@ -249,15 +272,73 @@ class ExitAnimation:
         ox, oy = self.origin
         glide = _smooth(p) * 0.35 + (p * p) * 0.65
         x = ox + (self.exit_x - ox) * glide
+        lean = _smooth(min(1.0, p / 0.35)) * (1.0 - _smooth(max(0.0, p - 0.75) / 0.25))
         return ExitFrame(
             round(x),
             round(oy),
-            0.0,
+            -7.5 * self.direction * lean,
             done,
-            yaw=0.0,
-            pitch=0.0,
+            yaw=self.direction * 14.0 * lean,
+            pitch=-3.5 * sin(p * pi),
             dissolve=_smooth(max(0.0, p - 0.76) / 0.24),
             locomotion="virtual_insanity",
+        )
+
+    def _sample_cyberpsicopata_out(self, elapsed: float, p: float, done: bool) -> ExitFrame:
+        ox, oy = self.origin
+        # Fase 1 (0..0.28): sobrecarga neural súbita — cabeça joga para trás em choque e pulso ciano/carmesim.
+        if p < 0.28:
+            u = _smooth(p / 0.28)
+            tremor = sin(elapsed * 42.0) * (3.5 + 5.0 * u)
+            return ExitFrame(
+                round(ox + tremor),
+                round(oy - 4.0 * u),
+                -7.5 * u + sin(elapsed * 32.0) * 3.0,
+                False,
+                yaw=-22.0 * u + sin(elapsed * 21.0) * 6.0,
+                pitch=-14.0 * u,
+                glitch_offset=0.75 + 0.35 * u,
+                glitch_pulse=0.45 + 0.50 * abs(sin(elapsed * 22.0)),
+                shock=0.45 * u,
+                locomotion="surprise",
+            )
+        # Fase 2 (0.28..0.68): teletransportes de glitch quantizados (±28px) com instabilidade antigravidade.
+        if p < 0.68:
+            u = (p - 0.28) / 0.40
+            slot = int(p * 34.0)
+            snap_step = (((slot * 7) % 5) - 2) * 14.0
+            snap_y = (((slot * 11) % 3) - 1) * 7.0
+            espasmos = sin(elapsed * 48.0)
+            deslize = sin(u * pi) * 12.0 * self.direction
+            return ExitFrame(
+                round(ox + deslize + snap_step),
+                round(oy + snap_y),
+                espasmos * 9.5 - 7.0 * self.direction * u,
+                False,
+                yaw=18.0 * espasmos - 14.0 * u * self.direction,
+                pitch=-8.0 + 22.0 * u,
+                shock=0.72 + 0.28 * abs(espasmos),
+                glitch_offset=1.15,
+                glitch_pulse=0.72 + 0.28 * abs(sin(elapsed * 30.0)),
+                locomotion="surprise" if slot % 2 == 0 else "hit",
+            )
+        # Fase 3 (0.68..1.0): desintegração holográfica em scanlines e fagulhas ciano/carmesim.
+        fade_u = _smooth((p - 0.68) / 0.32)
+        jitter_fin = sin(elapsed * 60.0) * 8.0 * (1.0 - fade_u)
+        return ExitFrame(
+            round(ox + 10.0 * self.direction * (1.0 - fade_u * 0.4) + jitter_fin),
+            round(oy - 10.0 * fade_u),
+            -10.0 * fade_u,
+            done,
+            yaw=-12.0 * self.direction,
+            pitch=16.0 + 12.0 * fade_u,
+            scale=max(0.84, 1.0 - 0.14 * fade_u),
+            dissolve=fade_u,
+            ash=fade_u * 0.95,
+            shock=max(0.0, 0.85 * (1.0 - fade_u)),
+            glitch_offset=max(0.0, 1.05 * (1.0 - fade_u * 0.75)),
+            glitch_pulse=max(0.0, 0.92 * (1.0 - fade_u)),
+            locomotion="fall",
         )
 
 
@@ -269,4 +350,5 @@ _STYLE_SAMPLERS = {
     "thanos_snap": ExitAnimation._sample_thanos_snap,
     "peace_fade_out": ExitAnimation._sample_peace_fade_out,
     "virtual_insanity_out": ExitAnimation._sample_virtual_insanity_out,
+    "cyberpsicopata_out": ExitAnimation._sample_cyberpsicopata_out,
 }

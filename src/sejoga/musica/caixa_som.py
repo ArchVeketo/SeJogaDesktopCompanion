@@ -3,7 +3,7 @@
 from math import cos, exp, pi, sin
 
 import gltf
-from panda3d.core import NodePath, Point3, TransparencyAttrib, Vec3
+from panda3d.core import NodePath, PNMImage, Point3, Texture, TransparencyAttrib, Vec3
 
 from sejoga.animacao.interpolacao import suavizar_quintico
 from sejoga.musica.efeitos_caixa_som import SpeakerEffects
@@ -15,22 +15,26 @@ VOO_CAIXA_S = 0.8
 BATIDAS_ARREMESSO_S = tuple(
     PRIMEIRO_ARREMESSO_S + index * INTERVALO_ARREMESSOS_S for index in range(3)
 )
-FIM_ARREMESSOS_S = BATIDAS_ARREMESSO_S[-1] + VOO_CAIXA_S
-INICIO_SALTO_S = FIM_ARREMESSOS_S + 0.65
 DURACAO_SALTO_S = 1.05
 
 
 class MusicSpeaker:
     """Três caixas com base no chão e arremessos escalonados."""
 
-    def __init__(self, renderer):  # noqa: PLR0915
+    def __init__(self, renderer, style: str = "palco"):  # noqa: PLR0915
         """Carrega e calibra as caixas pela altura do mascote em repouso."""
         self.renderer = renderer
+        self.compact = style == "radio"
+        self.throw_beats = BATIDAS_ARREMESSO_S[:1] if self.compact else BATIDAS_ARREMESSO_S
+        self.end_throws = self.throw_beats[-1] + VOO_CAIXA_S
+        self.start_jump = self.end_throws + 0.65
         self._measure_character()
-        self.root = renderer.model_anchor.attachNewNode("music-speaker")
+        render_root = getattr(renderer.showbase, "render", None)
+        self.root = (render_root or renderer.model_anchor).attachNewNode("music-speaker")
         self.root.setTransparency(TransparencyAttrib.MAlpha)
         self.root.setCollideMask(0)
-        asset = NodePath(gltf.load_model(str(model_dir() / "Boomboxes.gltf")))
+        arquivo = "radio-compacto.glb" if self.compact else "Boomboxes.gltf"
+        asset = NodePath(gltf.load_model(str(model_dir() / arquivo)))
         self.boxes = []
         self.destinations = []
         self.bounds = []
@@ -38,9 +42,22 @@ class MusicSpeaker:
         self.scales = []
         self.effects = []
         self.launch_origin = Point3(0.23, -0.12, 0.94)
+        self._stage_world_anchor: Point3 | None = None
+        self._stage_screen_anchor: tuple[float, float] | None = None
+        self._stage_scale = None
         height = self.character_size.z
-        for name, ratio in (("meio", 2.0), ("esquerda", 1.0), ("direita", 1.0)):
-            box = asset.find("Caixa de som " + name)
+        for tex in asset.findAllTextures():
+            self._realcar_textura_caixa(tex)
+        caixas = (("radio", 0.38),) if self.compact else (
+            ("meio", 2), ("esquerda", 1), ("direita", 1)
+        )
+        for name, ratio in caixas:
+            if self.compact:
+                box = NodePath("radio-compacto")
+                asset.setName("mesh-radio")
+                asset.reparentTo(box)
+            else:
+                box = asset.find("Caixa de som " + name)
             offset = box.getPos()
             box.reparentTo(self.root)
             box.setPos(0, 0, 0)
@@ -58,18 +75,25 @@ class MusicSpeaker:
             self.effects.append(SpeakerEffects(effects_anchor))
             self.destinations.append(
                 Point3(
-                    height * 0.48 + offset.x * height * 1.10,
+                    height * (0.80 if self.compact else 0.48 + offset.x * 1.10),
                     max(0.24 - low.y, 1.15 * height + offset.y * height),
                     self.floor_z - low.z,
                 )
             )
             limites_x.append((self.destinations[-1].x + low.x, self.destinations[-1].x + high.x))
-            if name == "meio":
+            if not self.compact and name == "meio":
                 self.seat = Point3(
                     self.destinations[0].x,
                     self.destinations[0].y + low.y - 0.12,
                     self.floor_z + high.z - low.z,
                 )
+        if not hasattr(self, "seat"):
+            low0, high0 = self.boxes[0].getTightBounds(self.root)
+            self.seat = Point3(
+                self.destinations[0].x,
+                self.destinations[0].y + low0.y - 0.12,
+                self.floor_z + high0.z - low0.z,
+            )
         self.limites_x = (min(lo for lo, _ in limites_x), max(hi for _, hi in limites_x))
         self.age = 0.0
         self.visibility = 0.0
@@ -78,6 +102,46 @@ class MusicSpeaker:
         self.throw_index = -1
         self._landing_sound_played = False
         self.root.hide()
+
+    @staticmethod
+    def _normalizar_imagem_caixa(img: PNMImage) -> None:
+        """Remapeia luminância da jukebox para curva escura arcade com contraste legível."""
+        w, h = img.getXSize(), img.getYSize()
+        lums = [
+            (img.getRed(x, y) + img.getGreen(x, y) + img.getBlue(x, y)) / 3.0
+            for y in range(h)
+            for x in range(w)
+            if img.getAlpha(x, y) >= 0.1
+        ]
+        lo_lum = min(lums) if lums else 0.01
+        hi_lum = max(lums) if lums else 0.05
+        span = max(0.012, hi_lum - lo_lum)
+        for y in range(h):
+            for x in range(w):
+                if img.getAlpha(x, y) < 0.1:
+                    continue
+                r, g, b = img.getXel(x, y)
+                lum = (r + g + b) / 3.0
+                t = max(0.0, min(1.0, (lum - lo_lum) / span))
+                alvo_lum = 0.0045 + (t**1.65) * 0.082
+                escala = alvo_lum / max(lum, 1e-4)
+                img.setXel(
+                    x,
+                    y,
+                    max(0.0, min(0.18, r * escala * 0.94)),
+                    max(0.0, min(0.18, g * escala * 0.92)),
+                    max(0.0, min(0.24, b * escala * 1.16)),
+                )
+
+    @staticmethod
+    def _realcar_textura_caixa(tex) -> None:
+        """Restaura leitura e contraste cromático da jukebox evitando bloco escuro ou lavado."""
+        img = PNMImage()
+        if tex.store(img):
+            MusicSpeaker._normalizar_imagem_caixa(img)
+            tex.load(img)
+        tex.setMinfilter(Texture.FTNearest)
+        tex.setMagfilter(Texture.FTNearest)
 
     def _measure_character(self):
         from sejoga.animacao.poses_base import pose_idle
@@ -107,89 +171,155 @@ class MusicSpeaker:
         self.renderer.apply_rig_pose(previous)
         rig.current = previous
 
-    def update(self, dt, dancing, phase, energy, bass=0):  # noqa: PLR0915
+    def _atualizar_ancora_palco(self) -> None:
+        """Fixa a origem no desktop e a reprojeta quando a janela se move."""
+        model = self.renderer.model_np
+        app = self.renderer.showbase
+        render_root = getattr(app, "render", None)
+        anchor_world = self.renderer.model_anchor.getPos(
+            render_root or self.renderer.model_anchor
+        )
+        if self._stage_world_anchor is None:
+            self._stage_model_offset = Point3(model.getX(), model.getY(), model.getZ())
+            self._stage_world_anchor = Point3(
+                anchor_world.x + self._stage_model_offset.x,
+                anchor_world.y + self._stage_model_offset.y,
+                anchor_world.z + self._stage_model_offset.z,
+            )
+            self._stage_scale = model.getScale()
+            if hasattr(app, "_mascot_screen"):
+                self._stage_screen_anchor = tuple(app._mascot_screen)
+        stage_pos = self._stage_world_anchor
+        canvas_origin = getattr(app, "_canvas_origin", None)
+        if (
+            self._stage_screen_anchor is not None
+            and canvas_origin is not None
+            and self.renderer.width > 0
+            and self.renderer.height > 0
+        ):
+            lx = self._stage_screen_anchor[0] - canvas_origin[0]
+            ly = self._stage_screen_anchor[1] - canvas_origin[1]
+            wx = (lx - self.renderer.width / 2.0) * self.renderer._view_width / self.renderer.width
+            wz = (
+                self.renderer._view_target_z
+                + (self.renderer.height / 2.0 - ly)
+                * self.renderer._view_height
+                / self.renderer.height
+            )
+            off = getattr(self, "_stage_model_offset", Point3(0, 0, 0))
+            stage_pos = Point3(wx + off.x, self._stage_world_anchor.y, wz + off.z)
+        self.root.setPos(stage_pos)
+        self.root.setScale(
+            self._stage_scale if self._stage_scale is not None else model.getScale()
+        )
+
+    @property
+    def ancora_na_tela(self) -> tuple[float, float] | None:
+        """Origem absoluta do palco enquanto ele está visível."""
+        return self._stage_screen_anchor if self.visibility > 0.005 else None
+
+    @staticmethod
+    def _extensao_eixo(box, low, high, eixo_mundo: Vec3) -> float:
+        eixo_local = box.getQuat().conjugate().xform(eixo_mundo)
+        return sum(
+            min(a * v, b * v) * scale
+            for a, b, v, scale in zip(low, high, eixo_local, box.getScale(), strict=True)
+        )
+
+    def _atualizar_caixa(
+        self,
+        index: int,
+        box,
+        destination,
+        dancing: bool,
+        phase: float,
+        strength: float,
+        ajuste_x: float,
+    ) -> None:
+        """Atualiza voo, colisão de chão/frente e efeito sonoro visual de uma caixa."""
+        elapsed = self.age - self.throw_beats[index]
+        (box.show if elapsed >= 0 else box.hide)()
+        u = max(0, min(1, elapsed / VOO_CAIXA_S))
+        if dancing and -0.27 <= elapsed < VOO_CAIXA_S - 0.04:
+            self.throw_index = index
+        pos = self.launch_origin + (destination - self.launch_origin) * u
+        pos.x += ajuste_x * u
+        arc = sin(pi * u)
+        pos.z += arc * 0.55
+        low, high = self.bounds[index]
+        box.setR(-75 * (1 - u))
+        box.setScale(self.scales[index] * (0.07 + 0.93 * suavizar_quintico(u / 0.86)))
+        if u >= 1:
+            self._pulso_no_chao(index, box, pos, phase, strength, elapsed - VOO_CAIXA_S)
+        else:
+            pos.z = max(pos.z, self.floor_z - self._extensao_eixo(box, low, high, Vec3(0, 0, 1)))
+        pos.y = max(pos.y + arc * 0.36, 0.24 - self._extensao_eixo(box, low, high, Vec3(0, 1, 0)))
+        box.setPos(pos)
+        if u >= 1 and index == 0 and not self.compact:
+            borda = box.getQuat().xform(Vec3(0, high.y * box.getSy() + 0.12, 0))
+            self.seat.set(pos.x + borda.x, pos.y + borda.y, pos.z + high.z * box.getSz())
+        box.setColorScale(1, 1, 1, self.visibility)
+        self.effects[index].update(elapsed - VOO_CAIXA_S)
+
+    def _tocar_som_pouso(self) -> None:
+        if (
+            self.age < PRIMEIRO_ARREMESSO_S + VOO_CAIXA_S
+            or self._landing_sound_played
+        ):
+            return
+        self._landing_sound_played = True
+        app = self.renderer.showbase
+        if (
+            app.settings.audio.enabled
+            and app.animation_controller._dance_preview_remaining <= 0
+        ):
+            from sejoga.musica.efeitos_sonoros import play_speaker_landing
+
+            play_speaker_landing(app.settings.audio.master_volume)
+
+    def update(self, dt, dancing, phase, energy, bass=0):
         """Atualiza os arremessos, os efeitos e o retorno do palco."""
         if dancing and not self.was_dancing:
             self.age = 0.0
             self._landing_sound_played = False
+            self._stage_world_anchor = None
+            self._stage_screen_anchor = None
         self.was_dancing = dancing
         if dancing:
             self.age += dt
-        self.visibility += ((1 if dancing else 0) - self.visibility) * (
-            1 - exp(-dt * 5)
-        )
-        self.ejecting = dancing and 0.65 <= self.age < FIM_ARREMESSOS_S
+        self.visibility += ((1 if dancing else 0) - self.visibility) * (1 - exp(-dt * 5))
+        self.ejecting = dancing and 0.65 <= self.age < self.end_throws
         self.throw_index = -1
         if self.visibility < 0.005 or self.age < PRIMEIRO_ARREMESSO_S - 0.27:
+            if self.visibility < 0.005 and not dancing:
+                self._stage_world_anchor = None
+                self._stage_screen_anchor = None
             self.root.hide()
             return
         self.root.show()
-        model = self.renderer.model_np
-        self.root.setPos(model.getPos())
-        self.root.setScale(model.getScale())
+        self._atualizar_ancora_palco()
         strength = max(0, min(1, energy * 0.7 + bass * 0.9))
         ajuste_x = self._ajustar_palco_na_tela()
-        for index, (box, destination) in enumerate(
-            zip(self.boxes, self.destinations, strict=True)
-        ):
-            elapsed = self.age - BATIDAS_ARREMESSO_S[index]
-            (box.show if elapsed >= 0 else box.hide)()
-            u = max(0, min(1, elapsed / VOO_CAIXA_S))
-            if dancing and -0.27 <= elapsed < VOO_CAIXA_S - 0.04:
-                self.throw_index = index
-            pos = self.launch_origin + (destination - self.launch_origin) * u
-            pos.x += ajuste_x * u
-            arc = sin(pi * u)
-            pos.z += arc * 0.55
-            grow = 0.07 + 0.93 * suavizar_quintico(u / 0.86)
-            # A face da caixa passa atrás da silhueta durante o voo.
-            low, high = self.bounds[index]
-            box.setR(-75 * (1 - u))
-            box.setScale(self.scales[index] * grow)
-            if u >= 1:
-                self._pulso_no_chao(index, box, pos, phase, strength, elapsed - VOO_CAIXA_S)
-            else:
-                vertical = box.getQuat().conjugate().xform(Vec3(0, 0, 1))
-                base_rotacionada = sum(
-                    min(a * v, b * v) * scale
-                    for a, b, v, scale in zip(low, high, vertical, box.getScale(), strict=True)
-                )
-                pos.z = max(pos.z, self.floor_z - base_rotacionada)
-            axis = box.getQuat().conjugate().xform(Vec3(0, 1, 0))
-            front = sum(
-                min(a * v, b * v) * scale
-                for a, b, v, scale in zip(low, high, axis, box.getScale(), strict=True)
-            )
-            pos.y = max(pos.y + arc * 0.36, 0.24 - front)
-            box.setPos(pos)
-            if u >= 1 and index == 0:
-                borda = box.getQuat().xform(Vec3(0, high.y * box.getSy() + 0.12, 0))
-                self.seat.set(pos.x + borda.x, pos.y + borda.y, pos.z + high.z * box.getSz())
-            box.setColorScale(1, 1, 1, self.visibility)
-            self.effects[index].update(elapsed - VOO_CAIXA_S)
-        if (
-            self.age >= PRIMEIRO_ARREMESSO_S + VOO_CAIXA_S
-            and not self._landing_sound_played
-        ):
-            self._landing_sound_played = True
-            app = self.renderer.showbase
-            if (
-                app.settings.audio.enabled
-                and app.animation_controller._dance_preview_remaining <= 0
-            ):
-                from sejoga.musica.efeitos_sonoros import play_speaker_landing
-
-                play_speaker_landing(app.settings.audio.master_volume)
+        for index, (box, destination) in enumerate(zip(self.boxes, self.destinations, strict=True)):
+            self._atualizar_caixa(index, box, destination, dancing, phase, strength, ajuste_x)
+        self._tocar_som_pouso()
 
     def _ajustar_palco_na_tela(self):
         r = self.renderer
-        x = getattr(r, "_scene_x_px", None)
+        app = r.showbase
+        desktop = getattr(app, "_desktop_rect", None)
+        if self._stage_screen_anchor is not None and desktop is not None:
+            x = self._stage_screen_anchor[0] - desktop[0]
+            largura = desktop[2]
+        else:
+            x = getattr(r, "_scene_x_px", None)
+            largura = r.width if x is not None else 0
         if x is None:
             return 0.0
-        pixels = r.width * r.model_np.getSx() / r._view_width
+        pixels = r.width * self.root.getSx() / r._view_width
         low, high = self.limites_x
         esquerda = (18 - x) / pixels - low
-        direita = (r.width - 18 - x) / pixels - high
+        direita = (largura - 18 - x) / pixels - high
         return max(esquerda, min(direita, 0.0))
 
     def _pulso_no_chao(self, index, box, pos, phase, strength, idade_pouso):
@@ -207,11 +337,11 @@ class MusicSpeaker:
     @property
     def jump_progress(self):
         """Fração percorrida do salto."""
-        return max(0, min(1, (self.age - INICIO_SALTO_S) / DURACAO_SALTO_S))
+        return max(0, min(1, (self.age - self.start_jump) / DURACAO_SALTO_S))
 
     @property
     def turn(self):
         """Ângulo lateral durante a saída das caixas."""
         turn_out = suavizar_quintico(self.age / 1.35)
-        turn_back = suavizar_quintico((self.age - INICIO_SALTO_S) / 0.65)
+        turn_back = suavizar_quintico((self.age - self.start_jump) / 0.65)
         return 76 * turn_out * (1 - turn_back)

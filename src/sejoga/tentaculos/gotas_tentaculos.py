@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from panda3d.core import Vec3
 
+from sejoga.animacao.dados_autorais import tentaculos_ativos
 from sejoga.render.sprites_efeitos import atlas_gosma, cartao_pixel, quadro_gosma
 from sejoga.tentaculos.sistema_tentaculos import Tentacle, TentacleState, raio_tentaculo
 
@@ -62,18 +63,27 @@ class TentacleDrips:
         ]
         if not exposed or self.remaining > 0 or len(self.drops) >= 16:
             return
+        gotas = tentaculos_ativos().get("gotas", {})
+        escala_min = float(gotas.get("escala_min", 0.033))
+        escala_max = float(gotas.get("escala_max", 0.057))
         limb = self.rng.choice(exposed)
         index = max(
             1,
             int((len(limb.segments) - 1) * limb.reveal * self.rng.uniform(0.5, 0.95)),
         )
-        size = self.rng.uniform(0.033, 0.057) * limb.girth_scale
+        size = self.rng.uniform(escala_min, escala_max) * limb.girth_scale
         node = self._gota(limb.segments[index].pos, size)
         self.drops.append(Gota(node, Vec3(0), size, source=limb, index=index))
         self.remaining = (
-            self.rng.uniform(0.12, 0.28)
+            self.rng.uniform(
+                float(gotas.get("intervalo_enxurrada_min_s", 0.12)),
+                float(gotas.get("intervalo_enxurrada_max_s", 0.28)),
+            )
             if limb.enxurrada
-            else self.rng.uniform(0.4, 1.1)
+            else self.rng.uniform(
+                float(gotas.get("intervalo_normal_min_s", 0.4)),
+                float(gotas.get("intervalo_normal_max_s", 1.1)),
+            )
         )
 
     @staticmethod
@@ -100,14 +110,17 @@ class TentacleDrips:
     @staticmethod
     def _avancar_gota_livre(drop: Gota, dt: float) -> bool:
         """Atualiza uma gota em queda livre; retorna False quando expira."""
-        if drop.age >= 0.85:
+        gotas = tentaculos_ativos().get("gotas", {})
+        ttl = max(0.05, float(gotas.get("ttl_queda_s", 0.85)))
+        grav = float(gotas.get("gravidade", -0.85))
+        if drop.age >= ttl:
             drop.node.removeNode()
             return False
-        drop.velocity.z -= 0.85 * dt
+        drop.velocity.z += grav * dt
         drop.node.setPos(drop.node.getPos() + drop.velocity * dt)
         drop.node.setScale(drop.size, drop.size, drop.size * (1 + drop.age))
         quadro_gosma(drop.node, 2, 1 if drop.age < 0.18 else 2)
-        drop.node.setColorScale(1, 1, 1, min(1, (0.85 - drop.age) / 0.25))
+        drop.node.setColorScale(1, 1, 1, min(1, (ttl - drop.age) / 0.25))
         return True
 
     def update(self, dt, tentacles):

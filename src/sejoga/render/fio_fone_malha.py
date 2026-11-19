@@ -133,6 +133,10 @@ class MalhaFioFone:
         ancoras = self._ancoras()
         self._fio = FioFone(ancoras)
         self._fio.assentar(ancoras, self._gravidade(), *self._colisores())
+        self._malha: NodePath | None = None
+        self._contorno: NodePath | None = None
+        self._nos_fio: list[NodePath] = []
+        self._visivel = True
         self._pecas_asset: list[tuple[GeomVertexData, list, list]] = []
         if not self._ligar_fio_do_asset(renderer.outline_np):
             self._criar_malha(renderer.outline_np)
@@ -189,23 +193,41 @@ class MalhaFioFone:
         identidade = Mat4.identMat()
         for indice, malha in enumerate(malhas):
             dados, repouso, ligacoes = self._ligar_malha_a_corda(malha, identidade)
+            self._nos_fio.append(malha)
             if indice < len(malhas_contorno):
                 contorno = malhas_contorno[indice]
                 contorno.node().modifyGeom(0).setVertexData(dados)
                 contorno.wrtReparentTo(contorno_np)
                 contorno.setMat(identidade)
+                self._nos_fio.append(contorno)
             self._pecas_asset.append((dados, repouso, ligacoes))
         return True
 
     def _escrever_fio_do_asset(self) -> None:
-        agora = [[Vec3(*p) for p in pontos] for pontos in self._fio.pontos_das_cadeias()]
+        agora = self._fio.pontos_das_cadeias()
+        deltas: list[list[tuple[float, float, float, float, float, float]]] = []
+        for c, pontos in enumerate(agora):
+            repouso_c = self._corda_repouso[c]
+            seg_deltas: list[tuple[float, float, float, float, float, float]] = []
+            for k in range(len(pontos) - 1):
+                a0 = repouso_c[k]
+                b0 = repouso_c[k + 1]
+                a1x, a1y, a1z = pontos[k]
+                b1x, b1y, b1z = pontos[k + 1]
+                dax = a1x - a0.x
+                day = a1y - a0.y
+                daz = a1z - a0.z
+                ddx = (b1x - b0.x) - dax
+                ddy = (b1y - b0.y) - day
+                ddz = (b1z - b0.z) - daz
+                seg_deltas.append((dax, day, daz, ddx, ddy, ddz))
+            deltas.append(seg_deltas)
         for dados, repouso, ligacoes in self._pecas_asset:
             escritor = GeomVertexRewriter(dados, "vertex")
+            escrever = escritor.setData3
             for p, (c, k, t) in zip(repouso, ligacoes, strict=True):
-                a0, b0 = self._corda_repouso[c][k], self._corda_repouso[c][k + 1]
-                a1, b1 = agora[c][k], agora[c][k + 1]
-                delta = (a1 + (b1 - a1) * t) - (a0 + (b0 - a0) * t)
-                escritor.setData3(p + delta)
+                dax, day, daz, ddx, ddy, ddz = deltas[c][k]
+                escrever(p.x + dax + ddx * t, p.y + day + ddy * t, p.z + daz + ddz * t)
 
     # ------------------------------------------------------------------ #
     # Leitura da pose
@@ -267,22 +289,24 @@ class MalhaFioFone:
         caixas = []
 
         for no, minimo, maximo in self._caixas_locais:
-            centro = self._model_np.getRelativePoint(no, (minimo + maximo) * 0.5)
+            mat = no.getMat(self._model_np)
+            centro = mat.xformPoint((minimo + maximo) * 0.5)
             meias = (maximo - minimo) * 0.5
             eixos = []
             meias_reais = []
 
-            for indice, base in enumerate(
-                (Vec3(1, 0, 0), Vec3(0, 1, 0), Vec3(0, 0, 1))
-            ):
-                vetor = self._model_np.getRelativeVector(no, base)
+            for indice in range(3):
+                vetor = mat.getRow3(indice)
                 escala = vetor.length()
-                vetor.normalize()
-                eixos.append(tuple(vetor))
+                if escala > 1e-8:
+                    inv = 1.0 / escala
+                    eixos.append((vetor.x * inv, vetor.y * inv, vetor.z * inv))
+                else:
+                    eixos.append((1.0 if indice == 0 else 0.0, 1.0 if indice == 1 else 0.0, 1.0 if indice == 2 else 0.0))
                 meias_reais.append(meias[indice] * escala)
 
             caixas.append(
-                CaixaOrientada(tuple(centro), tuple(eixos), tuple(meias_reais))  # type: ignore[arg-type]
+                CaixaOrientada((centro.x, centro.y, centro.z), tuple(eixos), tuple(meias_reais))  # type: ignore[arg-type]
             )
 
         return caixas
@@ -338,6 +362,7 @@ class MalhaFioFone:
         self._malha.setTexture(branca, 1)
         self._contorno = self._malha.copyTo(contorno_np)
         self._contorno.setName("fio-fone-contorno")
+        self._nos_fio.extend((self._malha, self._contorno))
         # As duas cascas compartilham o mesmo GeomVertexData: escrever uma vez.
         self._escritor_vertices = GeomVertexRewriter(dados, "vertex")
         self._escritor_normais = GeomVertexRewriter(dados, "normal")
@@ -358,8 +383,17 @@ class MalhaFioFone:
                 self._escritor_vertices.setData3(*vertice)
                 self._escritor_normais.setData3(*normal)
 
+    def definir_visivel(self, visivel: bool) -> None:
+        """Exibe ou oculta o fio do fone (usado durante desmontagem LEGO)."""
+        self._visivel = visivel
+        for no in self._nos_fio:
+            if not no.isEmpty():
+                (no.show if visivel else no.hide)()
+
     def atualizar(self, dt: float) -> None:
         """Avança a corda ``dt`` segundos e reescreve a malha."""
+        if not self._visivel:
+            return
         caixas, capsulas = self._colisores()
         self._fio.atualizar(dt, self._ancoras(), self._gravidade(), caixas, capsulas)  # type: ignore[arg-type]
         self._escrever_vertices()

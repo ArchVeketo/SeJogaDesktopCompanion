@@ -11,6 +11,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from sejoga.animacao import animation as _anim_padrao
+from sejoga.animacao.dados_autorais import tentaculos_ativos
 from sejoga.nucleo.esqueleto import IdlePersonality
 
 # Defasagem entre o plano lateral e o plano vertical: a ponta descreve uma
@@ -91,6 +93,43 @@ ONDULACAO_POR_TEMPERAMENTO: dict[IdlePersonality, OndulacaoTuning] = {
     IdlePersonality.BRC_STANCE: ONDULACAO_CONFIANTE,
     IdlePersonality.VIBING: ONDULACAO_CALMA,
 }
+
+
+def ondulacao_do_temperamento(personalidade: IdlePersonality | str) -> OndulacaoTuning:
+    """Devolve a configuração ativa de ondulação para ``personalidade``."""
+    tent = tentaculos_ativos()
+    if tent is _anim_padrao.TENTACULOS:
+        if isinstance(personalidade, IdlePersonality):
+            return ONDULACAO_POR_TEMPERAMENTO[personalidade]
+        if str(personalidade) == "espirro":
+            return ONDULACAO_ESPIRRO
+        try:
+            return ONDULACAO_POR_TEMPERAMENTO[IdlePersonality(str(personalidade))]
+        except ValueError:
+            return ONDULACAO_CALMA
+
+    chave = (
+        personalidade.value
+        if isinstance(personalidade, IdlePersonality)
+        else str(personalidade)
+    )
+    entrada = tent.get("ondulacoes", {}).get(chave)
+    if isinstance(entrada, dict):
+        return OndulacaoTuning(
+            amplitude_lateral_px=float(entrada["amplitude_lateral_px"]),
+            amplitude_cima_px=float(entrada["amplitude_cima_px"]),
+            frequencia_hz=float(entrada["frequencia_hz"]),
+            comprimento_onda=float(entrada["comprimento_onda"]),
+            expoente_envelope=float(entrada["expoente_envelope"]),
+        )
+    if isinstance(personalidade, IdlePersonality):
+        return ONDULACAO_POR_TEMPERAMENTO[personalidade]
+    return ONDULACAO_ESPIRRO if chave == "espirro" else ONDULACAO_CALMA
+
+
+def ondulacao_espirro() -> OndulacaoTuning:
+    """Devolve a ondulação ativa de rajada/espirro."""
+    return ondulacao_do_temperamento("espirro")
 
 
 def atraso_de_fase_por_segmento(tuning: OndulacaoTuning, segmentos: int) -> float:

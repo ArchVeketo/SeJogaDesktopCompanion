@@ -162,3 +162,27 @@ def test_limitar_suave_preserva_centro_e_amortece_extremos():
     na_borda = limitar_suave(1.0, -1.0, 1.0, fracao_margem=0.15)
     alem = limitar_suave(5.0, -1.0, 1.0, fracao_margem=0.15)
     assert 0.7 < na_borda < alem <= 1.0
+
+
+def test_pose_resolver_alvo_movel_rastreia_velocidade_relativa_e_converge():
+    from math import sin
+
+    from sejoga.animacao.resolvedor_poses import PoseResolver
+
+    resolver = PoseResolver()
+    dt = 1.0 / 60.0
+    atual = {"head": Rotation3()}
+    for i in range(15):
+        t = (i + 1) * dt
+        atual = resolver.resolver(dt, {"head": Rotation3(x=0.3 * sin(t * 5.0))}, state_time=t)
+
+    resolver.iniciar_transicao(atual, transition_seconds=0.4)
+    for step in range(25):
+        t = (step + 1) * dt
+        alvo_movel = {"head": Rotation3(x=-0.2 + 0.25 * sin(t * 4.0 + 0.3))}
+        saida = resolver.resolver(dt, alvo_movel, state_time=step * dt)
+
+    assert "head" in resolver.velocidades_alvo
+    assert "head" in resolver.velocidades_relativas
+    assert abs(saida["head"].x - alvo_movel["head"].x) < 1e-4
+    assert abs(resolver.velocidades_relativas["head"].x) < 0.05

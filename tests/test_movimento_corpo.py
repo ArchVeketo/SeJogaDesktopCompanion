@@ -25,16 +25,37 @@ def test_drag_sways_on_velocity_reversal_and_settles_after_release():
     for frame in range(60):
         pose = body.update(1 / 60, pointer=(frame * 12, 0), dragging=True)
     right = pose.roll
-    assert right > 4
+    # Pêndulo real: puxar para a direita deixa os pés para trás à esquerda (roll < 0).
+    assert right < -4
     for frame in range(60):
         pose = body.update(1 / 60, pointer=(720 - frame * 12, 0), dragging=True)
-    assert pose.roll < -4
+    assert pose.roll > 4
     before = pose.roll
     pose = body.update(1 / 60, pointer=(0, 0))
     assert abs(pose.roll - before) < 3
     for _ in range(300):
         pose = body.update(1 / 60, pointer=(0, 0))
     assert abs(pose.roll) < 0.01 and pose.hanging < 0.001
+
+
+def test_circular_whip_spins_over_360_and_emits_sling_velocity():
+    from math import cos, hypot, sin
+
+    body = BodyMotion()
+    max_abs_roll = 0.0
+    max_sling = 0.0
+    for i in range(180):
+        ang = i * 0.28
+        pose = body.update(
+            1 / 60,
+            pointer=(200.0 + cos(ang) * 160.0, 200.0 + sin(ang) * 160.0),
+            dragging=True,
+            grab_part="right-arm",
+        )
+        max_abs_roll = max(max_abs_roll, abs(pose.roll))
+        max_sling = max(max_sling, hypot(*body.sling_velocity))
+    assert max_abs_roll > 360.0
+    assert max_sling > 250.0
 
 
 def test_entering_hover_after_external_mouse_movement_does_not_kick_body():
@@ -197,3 +218,20 @@ def test_mola_critica_converges_without_overshoot_and_is_fps_independent():
     for _ in range(120):
         suave_120 = suavizar_exato(suave_120, 10.0, 0.2, 1.0 / 120.0)
     assert suave_60 == pytest.approx(suave_120, abs=1e-12)
+
+
+def test_giro_permite_giro_continuo_multiplas_voltas_e_retorna_pelo_caminho_curto():
+    giro = GiroCorpo()
+    # Avança continuamente cruzando +180° rumo a +420° sem ficar preso em ±180°.
+    for passo in range(180):
+        ang = giro.update(1 / 60, angulo_pedido=min(420.0, (passo + 1) * 3.0), permitir_costas=True)
+    assert ang > 240.0
+    for _ in range(240):
+        ang = giro.update(1 / 60, angulo_pedido=420.0, permitir_costas=True)
+    assert ang == pytest.approx(420.0, abs=0.5)
+
+    # Ao encerrar permitir_costas (420° ≡ 60° mod 360°), normaliza para o menor arco até 0°.
+    primeiro_retorno = giro.update(1 / 60, angulo_pedido=0.0, permitir_costas=False)
+    assert abs(primeiro_retorno) <= 65.0
+    assert _assentar(giro, angulo_pedido=0.0) == pytest.approx(0.0, abs=1e-5)
+

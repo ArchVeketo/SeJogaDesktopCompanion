@@ -17,7 +17,7 @@ from sejoga.nucleo.recursos import assets_dir
 
 @cache
 def atlas_gosma():
-    """Carrega o atlas RGBA de quatro linhas por quatro colunas."""
+    """Carrega o atlas RGBA de quatro linhas por quatro colunas das partículas de gosma."""
     path = assets_dir() / "textures" / "pink_slime_atlas.png"
     image = PNMImage()
     if not image.read(StringStream(path.read_bytes()), path.name):
@@ -37,9 +37,14 @@ def textura_pixel(name, image):
 
 
 def cartao_pixel(parent, name, texture):
-    """Cria um cartão no plano XZ, com transparência e sem hit-test."""
+    """Cria um cartão no plano XZ preservando a proporção dos pixels, sem hit-test."""
     card = CardMaker(name)
-    card.setFrame(-0.5, 0.5, -0.5, 0.5)
+    w = max(1, int(texture.getXSize())) if texture is not None else 1
+    h = max(1, int(texture.getYSize())) if texture is not None else 1
+    maior = float(max(w, h))
+    hx = 0.5 * (w / maior)
+    hz = 0.5 * (h / maior)
+    card.setFrame(-hx, hx, -hz, hz)
     node = parent.attachNewNode(card.generate())
     node.setTexture(texture)
     node.setTwoSided(True)

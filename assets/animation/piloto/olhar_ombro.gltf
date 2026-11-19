@@ -1,0 +1,434 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "SeJogaDesktopCompanion-Lote3-Pilot/1.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "head",
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "peitoral",
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "door",
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "fones",
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "antena-direita",
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "antena-esquerda",
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "right-arm",
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "ant-arm",
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "data:application/gltf-buffer;base64,AAAAAI/CdT5SuB4/PQqXP2Zm5j8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAmkI7vTbvrz0fSra8prh+PwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAy1DnPNoVsL7D6pk9+YBvPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADryoPMI0lr4mglQ9blF0PwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAArkdhPgrXIz89Cpc/ZmbmPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAO4o48M+0OPa6qH7oazn8/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABaPOi8gvmwvXLewjzL3X4/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABbkpi8CjKOvemghDzWTX8/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAAAAK16M+AABAP/YonD9mZuY/AAAAAAAAAAAAAAAAAACAPwAAAABZ+I48AAAAAAX2fz8AAAAAYLp3PgAAAABNZXg/AAAAAM3mVD4AAAAA4md6PwAAAAAAAAAAAAAAAAAAgD8AAAAAKVyPPjMzMz/2KJw/ZmbmPwAAAAAAAAAAAAAAAAAAgD/d3ti8TCiLPEwoi7wc1n8/ayQWvQAgUb1OMAc9p1p/PwW43byeCwy9k8HOPMSsfz8AAAAAAAAAAAAAAAAAAIA/AAAAAJqZmT6kcD0/rkehP2Zm5j8AAAAAAAAAAAAAAAAAAIA/zDxWPR9n77qfwA49UX5/P4aN1b3Y7e67IhSOvTj6fT//KVa9E5wVu49rMr3lZ38/AAAAAAAAAAAAAAAAAACAPwAAAACamZk+pHA9P65HoT9mZuY/AAAAAAAAAAAAAAAAAACAP8w8Vj0fZ+86n8AOvVF+fz8WQLK9n3eVO2aNVT0lrX4/YY4yvbyHxzryzw49vZl/PwAAAAAAAAAAAAAAAAAAgD8AAAAAuB6FPmZmJj+amZk/ZmbmPwAAAAAAAAAAAAAAAAAAgD9OjRK9mBILPcY0zLzXm38/PUGevXjr4z2vbcM93HV8P9OMgb3Sjbs9TWSaPSStfT8AAAAAAAAAAAAAAAAAAIA/AAAAAJqZmT57FC4/9iicP2Zm5j8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAADG8g69FNh/PwAAAAAAAAAAWzAgviXZfD8AAAAAAAAAAKKW+b2BF34/AAAAAAAAAAAAAAAAAACAPw==",
+      "byteLength": 1120
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 20
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 20,
+      "byteLength": 240
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 260,
+      "byteLength": 20
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 280,
+      "byteLength": 240
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 520,
+      "byteLength": 20
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 540,
+      "byteLength": 80
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 620,
+      "byteLength": 20
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 640,
+      "byteLength": 80
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 720,
+      "byteLength": 20
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 740,
+      "byteLength": 80
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 820,
+      "byteLength": 20
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 840,
+      "byteLength": 80
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 920,
+      "byteLength": 20
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 940,
+      "byteLength": 80
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1020,
+      "byteLength": 20
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1040,
+      "byteLength": 80
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 5,
+      "type": "SCALAR",
+      "min": [
+        0.0
+      ],
+      "max": [
+        1.8
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 15,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 5,
+      "type": "SCALAR",
+      "min": [
+        0.0
+      ],
+      "max": [
+        1.8
+      ]
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 15,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 5,
+      "type": "SCALAR",
+      "min": [
+        0.0
+      ],
+      "max": [
+        1.8
+      ]
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 5,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 5,
+      "type": "SCALAR",
+      "min": [
+        0.0
+      ],
+      "max": [
+        1.8
+      ]
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5126,
+      "count": 5,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5126,
+      "count": 5,
+      "type": "SCALAR",
+      "min": [
+        0.0
+      ],
+      "max": [
+        1.8
+      ]
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "count": 5,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "count": 5,
+      "type": "SCALAR",
+      "min": [
+        0.0
+      ],
+      "max": [
+        1.8
+      ]
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5126,
+      "count": 5,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 12,
+      "componentType": 5126,
+      "count": 5,
+      "type": "SCALAR",
+      "min": [
+        0.0
+      ],
+      "max": [
+        1.8
+      ]
+    },
+    {
+      "bufferView": 13,
+      "componentType": 5126,
+      "count": 5,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 14,
+      "componentType": 5126,
+      "count": 5,
+      "type": "SCALAR",
+      "min": [
+        0.0
+      ],
+      "max": [
+        1.8
+      ]
+    },
+    {
+      "bufferView": 15,
+      "componentType": 5126,
+      "count": 5,
+      "type": "VEC4"
+    }
+  ],
+  "animations": [
+    {
+      "name": "olhar_ombro",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 0,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "node": 1,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 2,
+          "target": {
+            "node": 2,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 3,
+          "target": {
+            "node": 3,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 4,
+          "target": {
+            "node": 4,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 5,
+          "target": {
+            "node": 5,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 6,
+          "target": {
+            "node": 6,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 7,
+          "target": {
+            "node": 7,
+            "path": "rotation"
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 0,
+          "interpolation": "CUBICSPLINE",
+          "output": 1
+        },
+        {
+          "input": 2,
+          "interpolation": "CUBICSPLINE",
+          "output": 3
+        },
+        {
+          "input": 4,
+          "interpolation": "LINEAR",
+          "output": 5
+        },
+        {
+          "input": 6,
+          "interpolation": "LINEAR",
+          "output": 7
+        },
+        {
+          "input": 8,
+          "interpolation": "LINEAR",
+          "output": 9
+        },
+        {
+          "input": 10,
+          "interpolation": "LINEAR",
+          "output": 11
+        },
+        {
+          "input": 12,
+          "interpolation": "LINEAR",
+          "output": 13
+        },
+        {
+          "input": 14,
+          "interpolation": "LINEAR",
+          "output": 15
+        }
+      ]
+    }
+  ]
+}

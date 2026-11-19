@@ -1,0 +1,48 @@
+{
+  "id": "piloto/olhar_ombro",
+  "rig_revision": "mario.gltf@91n-56m-30g",
+  "origem": "assets/animation/piloto/olhar_ombro.gltf",
+  "autoria": "SeJogaDesktopCompanion (Lote 3 glTF Pilot)",
+  "licenca": "Projeto interno (MIT/proprietario SeJoga)",
+  "duracao_s": 1.8,
+  "loop": false,
+  "modo_canal": "delta_local",
+  "espaco": "local",
+  "unidade": "quaternion -> radianos HPR local",
+  "interpolacao": [
+    "CUBICSPLINE",
+    "LINEAR"
+  ],
+  "eventos": [
+    {
+      "t": 0.24,
+      "nome": "antecipacao_ombro"
+    },
+    {
+      "t": 0.62,
+      "nome": "pico_espiada_porta"
+    },
+    {
+      "t": 1.65,
+      "nome": "recuperacao_repouso"
+    }
+  ],
+  "juntas_afetadas": [
+    "head",
+    "peitoral",
+    "door",
+    "fones",
+    "antena-direita",
+    "antena-esquerda",
+    "right-arm",
+    "ant-arm"
+  ],
+  "adaptacao": {
+    "interrompivel_por": [
+      "drag",
+      "fall",
+      "sleep"
+    ],
+    "prioridade": "PACOTE_IDLE / LayerStack"
+  }
+}

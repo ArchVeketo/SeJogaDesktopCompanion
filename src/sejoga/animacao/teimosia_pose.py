@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import math
 
+from sejoga.animacao.interpolacao import suavizar_quintico
 from sejoga.animacao.pose_repouso import REPOUSO
+
+Trio = tuple[float, float, float]
 
 #: Duração de cada fase da teimosia em segundos.
 FASES_TEIMOSIA = {
@@ -20,6 +23,34 @@ FASES_TEIMOSIA = {
     "bote": (2.0, 3.0),
     "roubo": (3.0, 5.0),
     "cospe": (5.0, 6.0),
+}
+
+_JANELA_BLEND_FASE_S = 0.18
+
+_BASE_TEIMOSIA: dict[str, Trio] = {
+    "cintura": (0.0, 0.0, 0.0),
+    "abdomen": (0.0, 0.0, 0.0),
+    "peitoral": (0.0, 0.0, 0.0),
+    "body": (0.0, 0.0, 0.0),
+    "head": (0.0, 0.0, 0.0),
+    "door": (0.0, 0.0, 0.0),
+    "fones": (0.0, 0.0, 0.0),
+    "antena-direita": (0.0, 0.0, 0.0),
+    "antena-esquerda": (0.0, 0.0, 0.0),
+    "shoulder": (0.0, 0.0, 0.0),
+    "shoulder2": (0.0, 0.0, 0.0),
+    "right-arm": (REPOUSO.BRACO_X, REPOUSO.BRACO_Y, REPOUSO.BRACO_Z),
+    "left-arm": (REPOUSO.BRACO_X, -REPOUSO.BRACO_Y, -REPOUSO.BRACO_Z),
+    "ant-arm": (REPOUSO.ANTEBRACO_X, 0.0, REPOUSO.ANTEBRACO_Z),
+    "ant-arm2": (REPOUSO.ANTEBRACO_X, 0.0, -REPOUSO.ANTEBRACO_Z),
+    "hand": (0.0, 0.0, 0.0),
+    "hand2": (0.0, 0.0, 0.0),
+    "fingers": (0.0, 0.0, 0.0),
+    "fingers2": (0.0, 0.0, 0.0),
+    "coxa-direita": (0.0, 0.0, 0.0),
+    "coxa-esquerda": (0.0, 0.0, 0.0),
+    "canela-direita": (0.0, 0.0, 0.0),
+    "canela-esquerda": (0.0, 0.0, 0.0),
 }
 
 
@@ -31,143 +62,208 @@ def fase_do_tempo(tempo: float) -> str:
     return "cospe"  # fallback para o final
 
 
+def _aplicar_dict(rig, pose: dict[str, Trio]) -> None:
+    for grupo, (x, y, z) in pose.items():
+        rig.set_rotation(grupo, x=x, y=y, z=z)
+
+
+def _misturar_poses(a: dict[str, Trio], b: dict[str, Trio], peso: float) -> dict[str, Trio]:
+    u = max(0.0, min(1.0, peso))
+    saida: dict[str, Trio] = {}
+    for grupo in _BASE_TEIMOSIA:
+        ax, ay, az = a[grupo]
+        bx, by, bz = b[grupo]
+        saida[grupo] = (
+            ax + (bx - ax) * u,
+            ay + (by - ay) * u,
+            az + (bz - az) * u,
+        )
+    return saida
+
+
 def aplicar_fase(
     rig,
     tempo: float,
     direcao_olhar: float = 0.0,
 ) -> None:
-    """Aplica a pose da fase de teimosia no ``rig``.
+    """Aplica a pose da fase de teimosia no ``rig`` com costura contínua entre fases."""
+    t = max(0.0, tempo)
+    fase = fase_do_tempo(t)
 
-    Parâmetros
-    ----------
-    rig : Rig
-        O rig do Mário para aplicar as rotações.
-    tempo : float
-        Tempo desde o início da teimosia (segundos).
-    direcao_olhar : float
-        Direção do olhar normalizada (-1..1).
-    """
-    fase = fase_do_tempo(tempo)
+    construtores = {
+        "resistencia": _pose_resistencia,
+        "repreensao": _pose_repreensao,
+        "bote": _pose_bote,
+        "roubo": _pose_roubo,
+        "cospe": _pose_cospe,
+    }
+    anteriores = {
+        "repreensao": (1.0, _pose_resistencia),
+        "bote": (2.0, _pose_repreensao),
+        "roubo": (3.0, _pose_bote),
+        "cospe": (5.0, _pose_roubo),
+    }
 
-    if fase == "resistencia":
-        _fase_resistencia(rig, tempo, direcao_olhar)
-    elif fase == "repreensao":
-        _fase_repreensao(rig, tempo, direcao_olhar)
-    elif fase == "bote":
-        _fase_bote(rig, tempo, direcao_olhar)
-    elif fase == "roubo":
-        _fase_roubo(rig, tempo, direcao_olhar)
-    else:
-        _fase_cospe(rig, tempo, direcao_olhar)
+    pose = construtores[fase](t, direcao_olhar)
+    if fase in anteriores:
+        t_corte, prev_fn = anteriores[fase]
+        dt_fase = t - t_corte
+        if dt_fase < _JANELA_BLEND_FASE_S:
+            peso = suavizar_quintico(dt_fase / _JANELA_BLEND_FASE_S)
+            pose_ant = prev_fn(t_corte, direcao_olhar)
+            pose = _misturar_poses(pose_ant, pose, peso)
 
-
-def _fase_resistencia(rig, tempo: float, direcao_olhar: float) -> None:
-    """Fase 1: Mário tensiona o corpo, pernas pedalam no ar."""
-    rig.set_rotation("body", x=-10.0, y=direcao_olhar * 12.0, z=math.sin(tempo * 10.0) * 6.0)
-    rig.set_rotation("head", x=-15.0, y=direcao_olhar * 30.0, z=5.0)
-    rig.set_rotation(
-        "right-arm",
-        x=REPOUSO.BRACO_X - 20.0,
-        y=REPOUSO.BRACO_Y,
-        z=REPOUSO.BRACO_Z + 15.0,
-    )
-    rig.set_rotation(
-        "left-arm",
-        x=REPOUSO.BRACO_X - 20.0,
-        y=-REPOUSO.BRACO_Y,
-        z=-REPOUSO.BRACO_Z - 15.0,
-    )
-    pedal = math.sin(tempo * 14.0) * 22.0
-    rig.set_rotation("coxa-direita", x=pedal)
-    rig.set_rotation("coxa-esquerda", x=-pedal)
-    rig.set_rotation("canela-direita", x=max(0.0, -pedal) * 1.4)
-    rig.set_rotation("canela-esquerda", x=max(0.0, pedal) * 1.4)
+    _aplicar_dict(rig, pose)
 
 
-def _fase_repreensao(rig, tempo: float, direcao_olhar: float) -> None:
-    """Fase 2: Olhar de desafio para o cursor (pose forte + antecipação)."""
+def _pose_resistencia(tempo: float, direcao_olhar: float) -> dict[str, Trio]:
+    """Fase 1: Mário tensiona o corpo em cascata da cintura às antenas."""
+    tensao = suavizar_quintico(min(1.0, tempo / 0.30))
+    balanco = math.sin(tempo * 10.0) * tensao
+    peso = math.sin(tempo * 5.0) * 4.0 * tensao
+    pose = dict(_BASE_TEIMOSIA)
+    pose.update({
+        "cintura": (-4.0 * tensao, direcao_olhar * 4.0 * tensao, balanco * 2.5),
+        "abdomen": (-4.0 * tensao, direcao_olhar * 4.0 * tensao, balanco * 3.0),
+        "peitoral": (-4.0 * tensao, direcao_olhar * 5.0 * tensao, balanco * 3.5),
+        "body": (-10.0 * tensao, direcao_olhar * 12.0 * tensao, balanco * 6.0),
+        "head": (-15.0 * tensao, direcao_olhar * 30.0 * tensao, 5.0 * tensao - balanco * 2.0),
+        "fones": (4.0 * tensao, 0.0, -balanco * 3.0),
+        "antena-direita": (9.0 * tensao, 0.0, -5.0 * tensao + balanco * 4.0),
+        "antena-esquerda": (9.0 * tensao, 0.0, 5.0 * tensao - balanco * 4.0),
+        "shoulder": (-3.0 * tensao, 0.0, 4.0 * tensao),
+        "shoulder2": (-3.0 * tensao, 0.0, -4.0 * tensao),
+        "right-arm": (REPOUSO.BRACO_X - 20.0 * tensao, REPOUSO.BRACO_Y, REPOUSO.BRACO_Z + 15.0 * tensao),
+        "left-arm": (REPOUSO.BRACO_X - 20.0 * tensao, -REPOUSO.BRACO_Y, -REPOUSO.BRACO_Z - 15.0 * tensao),
+        "ant-arm": (REPOUSO.ANTEBRACO_X, 0.0, REPOUSO.ANTEBRACO_Z + 18.0 * tensao),
+        "ant-arm2": (REPOUSO.ANTEBRACO_X, 0.0, -REPOUSO.ANTEBRACO_Z - 18.0 * tensao),
+        "hand": (10.0 * tensao, 0.0, -8.0 * tensao),
+        "hand2": (10.0 * tensao, 0.0, 8.0 * tensao),
+        "fingers": (0.0, 0.0, 14.0 * tensao),
+        "fingers2": (0.0, 0.0, -14.0 * tensao),
+        "coxa-direita": (-10.0 * tensao + peso, 0.0, 0.0),
+        "coxa-esquerda": (-10.0 * tensao - peso, 0.0, 0.0),
+        "canela-direita": (16.0 * tensao + max(0.0, peso), 0.0, 0.0),
+        "canela-esquerda": (16.0 * tensao + max(0.0, -peso), 0.0, 0.0),
+    })
+    return pose
+
+
+def _pose_repreensao(tempo: float, direcao_olhar: float) -> dict[str, Trio]:
+    """Fase 2: Olhar de desafio para o cursor (pose forte + ombros e dedos vivos)."""
     u = min(1.0, max(0.0, tempo - 1.0))
-    rig.set_rotation("body", x=4.0 * math.sin(u * math.pi), y=direcao_olhar * 15.0, z=-4.0)
-    rig.set_rotation("head", x=-8.0, y=direcao_olhar * 45.0, z=-6.0)
-    rig.set_rotation("door", y=4.0 * abs(math.sin(tempo * 8.0)))
-    rig.set_rotation(
-        "right-arm",
-        x=REPOUSO.BRACO_X - 8.0,
-        y=REPOUSO.BRACO_Y - 10.0,
-        z=REPOUSO.BRACO_Z - 16.0,
-    )
-    rig.set_rotation(
-        "left-arm",
-        x=REPOUSO.BRACO_X - 8.0,
-        y=-REPOUSO.BRACO_Y + 10.0,
-        z=-REPOUSO.BRACO_Z + 16.0,
-    )
-    rig.set_rotation("ant-arm", x=0.0, y=0.0, z=REPOUSO.ANTEBRACO_Z + 32.0)
-    rig.set_rotation("ant-arm2", x=0.0, y=0.0, z=-REPOUSO.ANTEBRACO_Z - 32.0)
+    batida = abs(math.sin(tempo * 8.0))
+    pose = dict(_BASE_TEIMOSIA)
+    pose.update({
+        "cintura": (2.0 * math.sin(u * math.pi), direcao_olhar * 5.0, 0.0),
+        "abdomen": (2.5 * math.sin(u * math.pi), direcao_olhar * 6.0, 0.0),
+        "peitoral": (3.0 * math.sin(u * math.pi), direcao_olhar * 8.0, -3.0),
+        "body": (4.0 * math.sin(u * math.pi), direcao_olhar * 15.0, -4.0),
+        "head": (-8.0, direcao_olhar * 45.0, -6.0 + batida * 2.0),
+        "door": (0.0, 4.0 * batida, 0.0),
+        "fones": (4.0, 0.0, -4.0),
+        "antena-direita": (-6.0 + batida * 4.0, 0.0, -4.0),
+        "antena-esquerda": (-6.0 + batida * 4.0, 0.0, 4.0),
+        "shoulder": (2.0, 0.0, -5.0),
+        "shoulder2": (2.0, 0.0, 5.0),
+        "right-arm": (REPOUSO.BRACO_X - 8.0, REPOUSO.BRACO_Y - 10.0, REPOUSO.BRACO_Z - 16.0),
+        "left-arm": (REPOUSO.BRACO_X - 8.0, -REPOUSO.BRACO_Y + 10.0, -REPOUSO.BRACO_Z + 16.0),
+        "ant-arm": (0.0, 0.0, REPOUSO.ANTEBRACO_Z + 32.0 + batida * 8.0),
+        "ant-arm2": (0.0, 0.0, -REPOUSO.ANTEBRACO_Z - 32.0 - batida * 6.0),
+        "hand": (12.0 + batida * 6.0, 0.0, -10.0),
+        "hand2": (12.0, 0.0, 10.0),
+        "fingers": (0.0, 0.0, 10.0),
+        "fingers2": (0.0, 0.0, -10.0),
+    })
+    return pose
 
 
-def _fase_bote(rig, tempo: float, direcao_olhar: float) -> None:
-    """Fase 3: Agachar e escancarar porta até 48° (manifesto §3.3)."""
+def _pose_bote(tempo: float, direcao_olhar: float) -> dict[str, Trio]:
+    """Fase 3: Antecipação + agachar e escancarar porta até 48° (manifesto §3.3)."""
     agachar = min(1.0, max(0.0, tempo - 2.0))
-    # Curva quíntica na antecipação do bote
-    suave = agachar * agachar * agachar * (agachar * (agachar * 6.0 - 15.0) + 10.0)
-    rig.set_rotation("body", x=18.0 * suave, y=direcao_olhar * 10.0, z=0.0)
-    rig.set_rotation("head", x=-28.0 * suave, y=direcao_olhar * 20.0, z=0.0)
-    # Porta abre até 48° (em graus, respeitando convenção do Rig)
-    porta_abertura = 48.0 * suave
-    rig.set_rotation("door", y=porta_abertura)
-    rig.set_rotation(
-        "right-arm",
-        x=REPOUSO.BRACO_X - 42.0 * suave,
-        y=REPOUSO.BRACO_Y,
-        z=REPOUSO.BRACO_Z - 14.0 * suave,
-    )
-    rig.set_rotation(
-        "left-arm",
-        x=REPOUSO.BRACO_X - 42.0 * suave,
-        y=-REPOUSO.BRACO_Y,
-        z=-REPOUSO.BRACO_Z + 14.0 * suave,
-    )
+    suave = suavizar_quintico(agachar)
+    pose = dict(_BASE_TEIMOSIA)
+    pose.update({
+        "cintura": (8.0 * suave, direcao_olhar * 4.0, 0.0),
+        "abdomen": (8.0 * suave, direcao_olhar * 4.0, 0.0),
+        "peitoral": (10.0 * suave, direcao_olhar * 5.0, 0.0),
+        "body": (18.0 * suave, direcao_olhar * 10.0, 0.0),
+        "head": (-28.0 * suave, direcao_olhar * 20.0, 0.0),
+        "fones": (10.0 * suave, 0.0, 0.0),
+        "antena-direita": (16.0 * suave, 0.0, -6.0 * suave),
+        "antena-esquerda": (16.0 * suave, 0.0, 6.0 * suave),
+        "shoulder": (-5.0 * suave, 0.0, 6.0 * suave),
+        "shoulder2": (-5.0 * suave, 0.0, -6.0 * suave),
+        "door": (0.0, 48.0 * suave, 0.0),
+        "right-arm": (REPOUSO.BRACO_X - 42.0 * suave, REPOUSO.BRACO_Y, REPOUSO.BRACO_Z - 14.0 * suave),
+        "left-arm": (REPOUSO.BRACO_X - 42.0 * suave, -REPOUSO.BRACO_Y, -REPOUSO.BRACO_Z + 14.0 * suave),
+        "ant-arm": (-14.0 * suave, 0.0, REPOUSO.ANTEBRACO_Z + 24.0 * suave),
+        "ant-arm2": (-14.0 * suave, 0.0, -REPOUSO.ANTEBRACO_Z - 24.0 * suave),
+        "hand": (18.0 * suave, 0.0, -12.0 * suave),
+        "hand2": (18.0 * suave, 0.0, 12.0 * suave),
+        "fingers": (0.0, 0.0, -18.0 * suave),
+        "fingers2": (0.0, 0.0, 18.0 * suave),
+    })
+    return pose
 
 
-def _fase_roubo(rig, tempo: float, direcao_olhar: float) -> None:
-    """Fase 4: Roubo do mouse — cursor oculto (Win32 ShowCursor)."""
+def _pose_roubo(tempo: float, direcao_olhar: float) -> dict[str, Trio]:
+    """Fase 4: Roubo do mouse — tronco dinâmico com braços em corrida."""
+    del direcao_olhar
     dt_roubo = max(0.0, tempo - 3.0)
     correr = math.sin(dt_roubo * 10.0) * 10.0
-    rig.set_rotation("body", x=8.0, y=correr * 0.5, z=math.cos(dt_roubo * 10.0) * 4.0)
-    rig.set_rotation("head", x=-10.0, y=correr, z=0.0)
-    rig.set_rotation("door", y=18.0 + math.sin(dt_roubo * 12.0) * 4.0)
-    rig.set_rotation(
-        "right-arm",
-        x=REPOUSO.BRACO_X - 28.0 + correr * 1.6,
-        y=REPOUSO.BRACO_Y,
-        z=REPOUSO.BRACO_Z,
-    )
-    rig.set_rotation(
-        "left-arm",
-        x=REPOUSO.BRACO_X - 28.0 - correr * 1.6,
-        y=-REPOUSO.BRACO_Y,
-        z=-REPOUSO.BRACO_Z,
-    )
+    osc = math.cos(dt_roubo * 10.0)
+    pose = dict(_BASE_TEIMOSIA)
+    pose.update({
+        "cintura": (3.0, -correr * 0.4, osc * 2.5),
+        "abdomen": (4.0, correr * 0.25, 0.0),
+        "peitoral": (5.0, correr * 0.5, 0.0),
+        "body": (8.0, correr * 0.5, osc * 4.0),
+        "head": (-10.0, correr, -osc * 2.0),
+        "door": (0.0, 18.0 + math.sin(dt_roubo * 12.0) * 4.0, 0.0),
+        "fones": (6.0, 0.0, osc * 4.0),
+        "antena-direita": (14.0 - osc * 6.0, 0.0, osc * 5.0),
+        "antena-esquerda": (14.0 + osc * 6.0, 0.0, -osc * 5.0),
+        "shoulder": (correr * 0.4, 0.0, -3.0),
+        "shoulder2": (-correr * 0.4, 0.0, 3.0),
+        "right-arm": (REPOUSO.BRACO_X - 28.0 + correr * 1.6, REPOUSO.BRACO_Y, REPOUSO.BRACO_Z),
+        "left-arm": (REPOUSO.BRACO_X - 28.0 - correr * 1.6, -REPOUSO.BRACO_Y, -REPOUSO.BRACO_Z),
+        "ant-arm": (0.0, 0.0, REPOUSO.ANTEBRACO_Z + 28.0 + max(0.0, -correr) * 1.2),
+        "ant-arm2": (0.0, 0.0, -REPOUSO.ANTEBRACO_Z - 28.0 - max(0.0, correr) * 1.2),
+        "hand": (10.0 + correr * 0.8, 0.0, 0.0),
+        "hand2": (10.0 - correr * 0.8, 0.0, 0.0),
+        "fingers": (0.0, 0.0, 14.0),
+        "fingers2": (0.0, 0.0, -14.0),
+    })
+    return pose
 
 
-def _fase_cospe(rig, tempo: float, direcao_olhar: float) -> None:
-    """Fase 5: Cospe o cursor de volta com quique elástico."""
+def _pose_cospe(tempo: float, direcao_olhar: float) -> dict[str, Trio]:
+    """Fase 5: Cospe o cursor de volta com quique elástico e assentamento limpo em REPOUSO."""
     cospe_t = min(1.0, max(0.0, tempo - 5.0))
     quique = math.sin(cospe_t * math.pi * 3.0) * (1.0 - cospe_t) * 20.0
     porta = 48.0 * math.sin(min(1.0, cospe_t * 2.0) * math.pi)
-    rig.set_rotation("body", x=-12.0 * (1.0 - cospe_t), y=direcao_olhar * 15.0, z=0.0)
-    rig.set_rotation("head", x=quique, y=direcao_olhar * 30.0, z=0.0)
-    rig.set_rotation("door", y=max(0.0, porta))
-    rig.set_rotation(
-        "right-arm",
-        x=REPOUSO.BRACO_X - 10.0,
-        y=REPOUSO.BRACO_Y,
-        z=REPOUSO.BRACO_Z - 18.0 * (1.0 - cospe_t),
-    )
-    rig.set_rotation(
-        "left-arm",
-        x=REPOUSO.BRACO_X - 10.0,
-        y=-REPOUSO.BRACO_Y,
-        z=-REPOUSO.BRACO_Z + 18.0 * (1.0 - cospe_t),
-    )
+    decai = 1.0 - suavizar_quintico(cospe_t)
+    pose = dict(_BASE_TEIMOSIA)
+    pose.update({
+        "cintura": (-5.0 * decai, direcao_olhar * 6.0 * decai, 0.0),
+        "abdomen": (-6.0 * decai, direcao_olhar * 8.0 * decai, 0.0),
+        "peitoral": (-8.0 * decai, direcao_olhar * 10.0 * decai, 0.0),
+        "body": (-12.0 * decai, direcao_olhar * 15.0 * decai, 0.0),
+        "head": (quique, direcao_olhar * 30.0 * decai, 0.0),
+        "door": (0.0, max(0.0, porta), 0.0),
+        "fones": (-quique * 0.3, 0.0, 0.0),
+        "antena-direita": (-quique * 0.5, 0.0, -6.0 * decai),
+        "antena-esquerda": (-quique * 0.5, 0.0, 6.0 * decai),
+        "shoulder": (3.0 * decai, 0.0, -4.0 * decai),
+        "shoulder2": (3.0 * decai, 0.0, 4.0 * decai),
+        "right-arm": (REPOUSO.BRACO_X - 10.0 * decai, REPOUSO.BRACO_Y, REPOUSO.BRACO_Z - 18.0 * decai),
+        "left-arm": (REPOUSO.BRACO_X - 10.0 * decai, -REPOUSO.BRACO_Y, -REPOUSO.BRACO_Z + 18.0 * decai),
+        "ant-arm": (REPOUSO.ANTEBRACO_X, 0.0, REPOUSO.ANTEBRACO_Z + 18.0 * decai),
+        "ant-arm2": (REPOUSO.ANTEBRACO_X, 0.0, -REPOUSO.ANTEBRACO_Z - 18.0 * decai),
+        "hand": (12.0 * decai, 0.0, -8.0 * decai),
+        "hand2": (12.0 * decai, 0.0, 8.0 * decai),
+        "fingers": (0.0, 0.0, -16.0 * decai),
+        "fingers2": (0.0, 0.0, 16.0 * decai),
+    })
+    return pose

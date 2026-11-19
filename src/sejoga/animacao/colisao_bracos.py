@@ -12,9 +12,8 @@ menor deslocamento que zera a penetração. O deslocamento é guardado por lado
 (partida a quente) e relaxa de volta a zero quando deixa de ser necessário, para
 a correção entrar e sair sem tranco.
 
-shortcut: as caixas do corpo são as do repouso (tronco/cabeça/pernas não
-acompanham inclinações pequenas da pose), refazer por pose se o tronco passar a
-girar muito.
+shortcut: colisores seguem a pose autoral, sem os pivôs táteis e o IK de pernas
+do renderer; incorporar essas transformações se houver penetração visível.
 
 FRONTEIRA: Python puro (só ``math`` e módulos puros do projeto).
 """
@@ -22,7 +21,6 @@ FRONTEIRA: Python puro (só ``math`` e módulos puros do projeto).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import pairwise
 from math import radians
 
 from sejoga.animacao.braco_tuning import (
@@ -48,6 +46,8 @@ Vec3 = cin.Vec3
 #: Menor meia-aresta medida do cubo do braço (seção 0.273 x 0.227).
 MEIA_ESPESSURA_BRACO_U = 0.1135
 RAIO_BRACO_U = MEIA_ESPESSURA_BRACO_U * FRACAO_NUCLEO_BRACO
+#: Luva/mão grande do Mário (~0.187 de largura na palma) precisa de raio próprio.
+RAIO_MAO_U = MEIA_ESPESSURA_BRACO_U * 0.64
 #: Comprimento da mão + dedos além do punho (``hand`` → ponta de ``fingers``).
 COMPRIMENTO_MAO_U = 0.33
 #: Meia-largura medida do tronco (malha ``mesh20``). O pivô do ombro (x=0.125)
@@ -88,30 +88,28 @@ _ORELHA = _caixa(0.146, 0.303, -0.126, 0.112, 0.789, 1.027)
 _CHAPEU_LATERAL = _caixa(0.240, 0.394, -0.200, -0.030, 1.018, 1.125)
 _PE = _caixa(0.028, 0.230, -0.120, 0.220, 0.091, 0.350)
 
-#: Volumes do corpo que BLOQUEIAM os braços. Só o núcleo: tronco e cabeça.
-#: Orelhas, chapéu, topo da cabeça, quadril e pés ficaram de fora de propósito:
-#: eram caixas folgadas que empurravam os braços para poses duras (A-pose,
-#: cotovelo para fora) e impediam gestos naturais ao lado do corpo. Os volumes
-#: antigos seguem nomeados abaixo para diagnóstico (``CAIXAS_DIAGNOSTICO``).
+#: Volumes do corpo que BLOQUEIAM os braços: tronco, cabeça, quadril e pés.
+#: Orelhas, chapéu e topo da cabeça seguem apenas em ``CAIXAS_DIAGNOSTICO`` para não
+#: travar arcos altos/laterais (aceno, comemoração, chifre). Quadril e pés usam
+#: as folgas configuradas em ``braco_tuning.FOLGA_EXTRA_CAIXA_U``.
 CAIXAS_CORPO: dict[str, CaixaOrientada] = {
     "tronco": _caixa(-0.165, 0.165, -0.130, 0.130, 0.420, 0.723),
     "cabeca": _caixa(-0.146, 0.146, -0.161, 0.151, 0.651, 1.100),
+    "quadril": _caixa(-0.205, 0.205, -0.155, 0.155, 0.135, 0.474),
+    "pe_direito": _PE,
+    "pe_esquerdo": _espelhada(_PE),
 }
 CAIXAS_DIAGNOSTICO: dict[str, CaixaOrientada] = {
     **CAIXAS_CORPO,
     "topo_cabeca": _caixa(-0.195, 0.195, -0.070, 0.032, 1.140, 1.234),
-    "quadril": _caixa(-0.205, 0.205, -0.155, 0.155, 0.135, 0.474),
     "orelha_direita": _ORELHA,
     "orelha_esquerda": _espelhada(_ORELHA),
     "chapeu_direito": _CHAPEU_LATERAL,
     "chapeu_esquerdo": _espelhada(_CHAPEU_LATERAL),
-    "pe_direito": _PE,
-    "pe_esquerdo": _espelhada(_PE),
 }
-#: O braço (ombro→cotovelo) já fica fora da colisão pela ``raiz_isenta`` (o
-#: trecho estrutural colado ao tronco); só antebraço e mão+dedos são testados.
-#: Braço contra braço desligado: mãos podem se cruzar/encostar (gestos).
-COLISAO_ENTRE_BRACOS = False
+#: Anti-atravessamento entre as duas mãos/antebraços ativado (evita palmas grandes
+#: passando uma dentro da outra em poses de cruzado, dança ou blue_balls).
+COLISAO_ENTRE_BRACOS = True
 
 # --------------------------------------------------------------------------- #
 # Correção
@@ -144,6 +142,7 @@ _GRUPOS = {
     "right": ("right-arm", "ant-arm", "hand"),
     "left": ("left-arm", "ant-arm2", "hand2"),
 }
+_OMBROS = {"right": "shoulder", "left": "shoulder2"}
 
 
 _RAIZ_ISENTA_CACHE: dict[int, tuple[object, float]] = {}
@@ -174,11 +173,24 @@ def capsulas_do_braco(
     ponta = cin.somar(
         punho, cin.escalar(cin.aplicar(rot_mao, eixo_osso), COMPRIMENTO_MAO_U)
     )
-    pontos = [nos[braco][1], nos[antebraco][1], punho, ponta]
+    raiz, cotovelo = nos[braco][1], nos[antebraco][1]
+    fim_ombro = cotovelo
+    ombro = _OMBROS[lado]
+    if not _rotacao_nula(pose.get(ombro)):
+        base = dict(pose)
+        base.pop(ombro)
+        r_base, o_base = cin.transformacao_no(model, ombro, base)
+        r_ombro, o_ombro = cin.transformacao_no(model, ombro, pose)
+        local = cin.aplicar(cin.transposta(r_base), cin.subtrair(cotovelo, o_base))
+        fim_ombro = cin.somar(o_ombro, cin.aplicar(r_ombro, local))
     restante = raiz_isenta(model)
     capsulas: list[Capsula] = []
 
-    for inicio, fim in pairwise(pontos):
+    for inicio, fim, raio in (
+        (raiz, fim_ombro, RAIO_BRACO_U),
+        (cotovelo, punho, RAIO_BRACO_U),
+        (punho, ponta, RAIO_MAO_U),
+    ):
         trecho = cin.subtrair(fim, inicio)
         comprimento = cin.norma(trecho)
 
@@ -190,7 +202,7 @@ def capsulas_do_braco(
             inicio = cin.somar(inicio, cin.escalar(trecho, restante / comprimento))
             restante = 0.0
 
-        capsulas.append(Capsula(inicio, fim, RAIO_BRACO_U))
+        capsulas.append(Capsula(inicio, fim, raio))
 
     return capsulas
 
@@ -204,11 +216,83 @@ def _longe(capsula: Capsula, caixa: CaixaOrientada) -> bool:
     return distancia > meio_comprimento + cin.norma(caixa.meias_dim) + capsula.raio
 
 
+def _rotacionar_caixa(
+    caixa: CaixaOrientada,
+    rot: cin.Mat3,
+    pivo: Vec3,
+    novo_pivo: Vec3 | None = None,
+) -> CaixaOrientada:
+    """Transforma ``caixa`` por ``rot`` em torno de ``pivo`` (opcionalmente transladando para ``novo_pivo``)."""
+    destino = pivo if novo_pivo is None else novo_pivo
+    centro = cin.somar(destino, cin.aplicar(rot, cin.subtrair(caixa.centro, pivo)))
+    eixos = (
+        cin.aplicar(rot, caixa.eixos[0]),
+        cin.aplicar(rot, caixa.eixos[1]),
+        cin.aplicar(rot, caixa.eixos[2]),
+    )
+    return CaixaOrientada(centro=centro, eixos=eixos, meias_dim=caixa.meias_dim)
+
+
+def _rotacao_nula(rot: Rotation3 | None) -> bool:
+    return rot is None or (
+        abs(rot.x) < 1e-6 and abs(rot.y) < 1e-6 and abs(rot.z) < 1e-6
+    )
+
+
+def caixas_corpo_na_pose(
+    model: Model, pose: dict[str, Rotation3]
+) -> dict[str, CaixaOrientada]:
+    """Caixas de ``CAIXAS_CORPO`` no referencial local do peitoral para a ``pose`` atual.
+
+    Em runtime (``FlexibleRig``), ``peitoral`` carrega ``head`` e os braços.
+    Assim, ``tronco`` acompanha o peitoral, ``cabeca`` gira pela rotação local
+    de ``head`` e ``quadril``/``pe_*`` giram pelo inverso de ``peitoral``.
+    """
+    rot_head = pose.get("head")
+    tem_head = not _rotacao_nula(rot_head)
+    tem_tronco = any(
+        not _rotacao_nula(pose.get(g))
+        for g in ("body", "cintura", "abdomen", "peitoral")
+    )
+    tem_quadril = not _rotacao_nula(pose.get("legs"))
+    if not tem_head and not tem_tronco and not tem_quadril:
+        return CAIXAS_CORPO
+
+    caixas = dict(CAIXAS_CORPO)
+    if tem_head:
+        r_base, o_base = cin.transformacao_no(model, "head")
+        r_head, o_head = cin.transformacao_no(model, "head", pose)
+        m_head = cin.mul(r_head, cin.transposta(r_base))
+        caixas["cabeca"] = _rotacionar_caixa(caixas["cabeca"], m_head, o_base, o_head)
+
+    inferiores = ("quadril", "pe_direito", "pe_esquerdo")
+    if tem_quadril:
+        r_base, o_base = cin.transformacao_no(model, "legs")
+        r_legs, o_legs = cin.transformacao_no(model, "legs", pose)
+        r_quadril = cin.mul(r_legs, cin.transposta(r_base))
+        for nome in inferiores:
+            caixas[nome] = _rotacionar_caixa(
+                caixas[nome], r_quadril, o_base, o_legs
+            )
+
+    if tem_tronco:
+        r_peit, o_peit = cin.transformacao_no(model, "peitoral", pose)
+        r_peit_repouso, o_peit_repouso = cin.transformacao_no(model, "peitoral")
+        r_inv = cin.mul(r_peit_repouso, cin.transposta(r_peit))
+        for nome in inferiores:
+            caixas[nome] = _rotacionar_caixa(
+                caixas[nome], r_inv, o_peit, o_peit_repouso
+            )
+
+    return caixas
+
+
 def penetracao_do_lado(
     model: Model,
     lado: str,
     pose: dict[str, Rotation3],
     do_outro: list[Capsula] | None = None,
+    caixas: dict[str, CaixaOrientada] | None = None,
 ) -> float:
     """Maior penetração (u) das cápsulas do ``lado`` no corpo e no outro braço.
 
@@ -223,10 +307,12 @@ def penetracao_do_lado(
         )
     if not COLISAO_ENTRE_BRACOS:
         do_outro = []
+    if caixas is None:
+        caixas = caixas_corpo_na_pose(model, pose)
     maior = 0.0
 
     for capsula in minhas:
-        for nome, caixa in CAIXAS_CORPO.items():
+        for nome, caixa in caixas.items():
             if _longe(capsula, caixa):
                 continue
 
@@ -280,21 +366,34 @@ class ResolvedorBracos:
     def __post_init__(self) -> None:
         """Valida e normaliza os campos após a criação."""
         self._do_outro: list[Capsula] | None = None
+        self._caixas_pose: dict[str, CaixaOrientada] | None = None
         self._deslocamento: dict[str, list[float]] = {
             "right": [0.0] * GRAUS_DE_LIBERDADE,
             "left": [0.0] * GRAUS_DE_LIBERDADE,
         }
 
+    def zerar(self) -> None:
+        """Zera os deslocamentos acumulados ao iniciar uma transição explícita."""
+        for desloc in self._deslocamento.values():
+            desloc[:] = [0.0] * GRAUS_DE_LIBERDADE
+
     def deslocamento(self, lado: str) -> tuple[float, ...]:
         """Deslocamento corrente (graus) do lado, para diagnóstico."""
         return tuple(self._deslocamento[lado])
 
-    def resolver(self, pose: dict[str, Rotation3]) -> dict[str, Rotation3]:
+    def resolver(
+        self, pose: dict[str, Rotation3], *, peso: float = 1.0
+    ) -> dict[str, Rotation3]:
         """Devolve a pose com os braços corrigidos (cópia; a original não muda)."""
+        fator = max(0.0, min(1.0, peso))
+        if fator <= 1e-4:
+            self.zerar()
+            return dict(pose)
         resultado = dict(pose)
+        self._caixas_pose = caixas_corpo_na_pose(self.model, pose)
 
         for lado in ("right", "left"):
-            resultado = self._resolver_lado(resultado, lado)
+            resultado = self._resolver_lado(resultado, lado, peso=fator)
 
         return resultado
 
@@ -306,6 +405,7 @@ class ResolvedorBracos:
             lado,
             _com_deslocamento(pose, lado, desloc),
             do_outro=self._do_outro,
+            caixas=self._caixas_pose,
         )
 
     def _testar_eixos_passo(
@@ -342,7 +442,11 @@ class ResolvedorBracos:
     ) -> float:
         """Executa busca em grade decrescente para afastar o braço da colisão."""
         desloc_inicial = list(desloc)
-        limite_var = MAX_VARIACAO_POR_QUADRO_GRAUS if atual <= 0.02 else 28.0
+        limite_var = (
+            MAX_VARIACAO_POR_QUADRO_GRAUS
+            if atual <= 0.02
+            else 28.0
+        )
         for _ in range(ITERACOES_POR_QUADRO):
             if atual <= FOLGA_PENETRACAO_U:
                 break
@@ -389,7 +493,7 @@ class ResolvedorBracos:
                 self._relaxar_eixo(pose, lado, desloc, eixo)
 
     def _resolver_lado(
-        self, pose: dict[str, Rotation3], lado: str
+        self, pose: dict[str, Rotation3], lado: str, *, peso: float = 1.0
     ) -> dict[str, Rotation3]:
         """Resolve a colisão do braço esquerdo ou direito mantendo o movimento mínimo."""
         desloc = self._deslocamento[lado]
@@ -402,4 +506,7 @@ class ResolvedorBracos:
         atual = self._buscar_correcao(pose, lado, desloc, atual)
         if any(desloc) and atual <= FOLGA_PENETRACAO_U:
             self._relaxar_deslocamento(pose, lado, desloc)
+        if peso < 1.0 - 1e-4:
+            escalado = [v * peso for v in desloc]
+            return _com_deslocamento(pose, lado, escalado)
         return _com_deslocamento(pose, lado, desloc)

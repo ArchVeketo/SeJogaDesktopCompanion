@@ -299,7 +299,12 @@ def _ler_base_alvo(inter_r: dict, inter_l: dict) -> _BaseBracos:
 
 
 def _interacao_hover(
-    rig: Rig, t: float, direction: float, vertical: float, b: _BaseBracos
+    rig: Rig,
+    t: float,
+    direction: float,
+    vertical: float,
+    b: _BaseBracos,
+    part: str = "body",
 ) -> None:
     """Estende um braço, de leve, na direção do cursor."""
     right_reach = max(0.0, -direction) ** 1.3
@@ -340,122 +345,497 @@ def _amostrar_escalar(chaves: list[tuple[float, float]] | tuple[tuple[float, flo
     return amostrar_pista(tuple((at, (valor, 0.0, 0.0)) for at, valor in chaves), tempo)[0]
 
 
-def _interacao_click(
-    rig: Rig, t: float, direction: float, vertical: float, b: _BaseBracos
+def _aplicar_bracos_click(
+    rig: Rig,
+    b: _BaseBracos,
+    direction: float,
+    carga: float,
+    ataque: float,
+    atraso: float,
 ) -> None:
-    """Reação de clique com antecipação, estalo e follow-through na coluna e antenas."""
-    u = min(1.0, max(0.0, t / 0.55))
-    # Antecipação curta (afunda antes de virar) + ataque rápido + retorno macio
-    carga = _amostrar_escalar([(0.0, 0.0), (0.14, 1.0), (0.34, -0.25), (1.0, 0.0)], u)
-    ataque = _amostrar_escalar([(0.0, 0.0), (0.12, 0.0), (0.32, 1.05), (0.58, 0.92), (1.0, 0.0)], u)
-    atraso = _amostrar_escalar([(0.0, 0.0), (0.20, 0.0), (0.45, 1.0), (1.0, 0.0)], u)
-    porta = _amostrar_escalar([(0.0, 0.0), (0.14, 28.0), (0.38, 12.0), (0.62, 20.0), (1.0, 0.0)], u)
+    """Aplica reação assimétrica de clique nos ombros, braços, antebraços e mãos."""
+    peso_r = 1.0 if direction <= 0.0 else 0.45
+    peso_l = 1.0 if direction > 0.0 else 0.45
+    lados = (
+        ("shoulder", "right-arm", "ant-arm", "hand", "fingers", b.rbx, b.rby, b.right_base, b.rex, b.right_elbow, peso_r, 1.0),
+        ("shoulder2", "left-arm", "ant-arm2", "hand2", "fingers2", b.lbx, b.lby, b.left_base, b.lex, b.left_elbow, peso_l, -1.0),
+    )
+    for sh, arm, ant, hand, fing, bx, by, bz, ex, ez, peso, sinal in lados:
+        rig.set_rotation(sh, x=-3.0 * peso * ataque + 2.0 * carga, z=sinal * (4.5 * peso * ataque - 2.0 * carga))
+        rig.set_rotation(arm, x=bx - 4.0 * peso * ataque, y=by + sinal * (12.0 * peso * ataque - 4.0 * carga), z=bz + sinal * (-14.0 * peso * ataque + 4.0 * carga))
+        cotov = ez + sinal * (16.0 * peso * atraso - 3.0 * carga)
+        rig.set_rotation(ant, x=ex, z=max(0.0, cotov) if sinal > 0 else min(0.0, cotov))
+        rig.set_rotation(hand, x=-12.0 * atraso * peso, y=sinal * 8.0 * atraso * peso, z=-sinal * 8.0 * atraso * peso)
+        rig.set_rotation(fing, z=sinal * (-10.0 * atraso * peso + 6.0 * carga))
 
-    rig.set_rotation("cintura", x=4.0 * carga - 3.0 * ataque, y=direction * 6.0 * ataque)
+
+def _interacao_click(
+    rig: Rig,
+    t: float,
+    direction: float,
+    vertical: float,
+    b: _BaseBracos,
+    part: str = "body",
+) -> None:
+    """Reação de clique com antecipação, estalo assimétrico nos braços e follow-through."""
+    del part
+    u = min(1.0, max(0.0, t / 0.50))
+    # Antecipação curta + ataque rápido com micro-overshoot + assentamento suave (0 em u=0 e u=1).
+    carga = _amostrar_escalar([(0.0, 0.0), (0.14, 1.0), (0.36, -0.22), (0.72, 0.06), (1.0, 0.0)], u)
+    ataque = _amostrar_escalar([(0.0, 0.0), (0.12, 0.0), (0.34, 1.06), (0.60, 0.90), (0.84, -0.06), (1.0, 0.0)], u)
+    atraso = _amostrar_escalar([(0.0, 0.0), (0.18, 0.0), (0.46, 1.05), (0.78, -0.08), (1.0, 0.0)], u)
+    olhar = _amostrar_escalar([(0.0, 0.0), (0.16, 1.0), (0.70, 0.88), (1.0, 0.0)], u)
+    porta = _amostrar_escalar([(0.0, 0.0), (0.16, 26.0), (0.40, 10.0), (0.66, 18.0), (1.0, 0.0)], u)
+
+    rig.set_rotation("cintura", x=4.0 * carga - 3.0 * ataque, y=direction * 6.0 * ataque, z=-direction * 2.0 * carga)
     rig.set_rotation("abdomen", x=3.5 * carga - 2.5 * ataque, y=direction * 5.0 * ataque)
-    rig.set_rotation("peitoral", x=-4.0 * ataque, z=direction * 4.5 * ataque)
-    rig.set_rotation("head", x=6.0 * carga - 5.0 * ataque, y=direction * 35.0 * (0.3 + 0.7 * ataque), z=8.0 * ataque)
-    rig.set_rotation("door", y=porta)
+    rig.set_rotation("peitoral", x=-4.0 * ataque, y=direction * 4.0 * ataque, z=direction * 4.5 * ataque)
+    rig.set_rotation(
+        "head",
+        x=6.0 * carga - 5.0 * ataque - max(-1.0, min(1.0, vertical)) * 14.0 * olhar,
+        y=direction * 34.0 * olhar,
+        z=7.0 * direction * ataque,
+    )
+    rig.set_rotation("door", y=max(0.0, porta))
     rig.set_rotation("fones", x=-6.0 * atraso, z=direction * 5.0 * atraso)
     rig.set_rotation("antena-direita", x=-10.0 * atraso, z=6.0 * atraso)
     rig.set_rotation("antena-esquerda", x=-10.0 * atraso, z=-6.0 * atraso)
-    rig.set_rotation("hand", x=-12.0 * atraso, y=8.0 * atraso)
-    rig.set_rotation("hand2", x=-12.0 * atraso, y=-8.0 * atraso)
+    _aplicar_bracos_click(rig, b, direction, carga, ataque, atraso)
 
 
-def _interacao_double_click(
-    rig: Rig, t: float, direction: float, vertical: float, b: _BaseBracos
+def _zona_corpo(part: str | None) -> str:
+    """Normaliza o identificador do picking para uma zona anatômica canônica."""
+    nome = (part or "body").lower()
+    if any(k in nome for k in ("head", "door", "fone", "antena")):
+        return "head"
+    if any(k in nome for k in ("arm", "hand", "shoulder", "finger")):
+        return "arm"
+    if "feet" in nome:
+        return "feet"
+    if "leg" in nome:
+        return "legs"
+    return "body"
+
+
+def _lado_parte(part: str | None, fallback: float = 1.0) -> float:
+    """Retorna +1 para lado esquerdo, -1 para direito ou ``fallback``."""
+    nome = (part or "").lower()
+    if "left" in nome or nome.endswith("2"):
+        return 1.0
+    if "right" in nome:
+        return -1.0
+    return fallback or 1.0
+
+
+def _aplicar_bracos_tronco_dc(
+    rig: Rig, b: _BaseBracos, recoil: float, extension: float, curl: float, atraso: float
 ) -> None:
-    """Recua e estica o braço direito no clique duplo."""
+    """Estocada do braço direito e contrapeso esquerdo no duplo clique no tronco."""
+    rig.set_rotation("shoulder", x=-abs(extension) * 0.08, z=-extension * 0.08)
+    rig.set_rotation("shoulder2", x=recoil * 0.25, z=recoil * 0.35)
+    rig.set_rotation("right-arm", x=b.rbx - abs(extension) * 0.18, y=b.rby - extension * 0.35, z=b.right_base + extension)
+    rig.set_rotation("left-arm", x=b.lbx, y=b.lby + 8.0 * atraso, z=b.left_base + 8.0 * atraso)
+    rig.set_rotation("ant-arm", x=b.rex + extension * 0.25, z=max(0.0, b.right_elbow - extension * 0.25))
+    rig.set_rotation("ant-arm2", x=b.lex, z=min(0.0, b.left_elbow - 6.0 * atraso))
+    rig.set_rotation("hand", x=-recoil, z=-extension * 0.2)
+    rig.set_rotation("hand2", x=-recoil * 0.6 * atraso, z=6.0 * atraso)
+    rig.set_rotation("fingers", z=curl)
+    rig.set_rotation("fingers2", z=-6.0 * atraso)
+
+
+def _double_click_tronco(
+    rig: Rig, t: float, direction: float, b: _BaseBracos
+) -> None:
+    """Reação clássica de duplo clique no tronco: cascata na coluna e estocada com o braço direito."""
+    u = min(1.0, max(0.0, t / 1.4))
 
     def track(*keys):
         return amostrar_pista(tuple((at, (value, 0, 0)) for at, value in keys), t)[0]
 
-    recoil = track((0, 0), (0.18, 5), (0.42, -7), (0.75, 2), (1.4, 0))
-    reach = track((0, 0), (0.18, -4), (0.44, 1), (0.65, 1), (1.4, 0))
-    extension = track((0, 0), (0.20, -6), (0.48, -48), (0.72, -42), (1.4, 0))
-    rig.set_rotation("body", x=recoil, y=-direction * reach)
-    rig.set_rotation("head", x=-recoil * 0.65, y=direction * 15, z=-recoil * 0.4)
-    rig.set_rotation(
-        "right-arm",
-        x=b.rbx - abs(extension) * 0.2,
-        y=b.rby,
-        z=b.right_base + extension,
+    recoil = track((0.0, 0.0), (0.18, 5.0), (0.42, -7.0), (0.75, 2.0), (1.15, -0.8), (1.4, 0.0))
+    reach = track((0.0, 0.0), (0.18, -4.0), (0.44, 1.0), (0.65, 1.0), (1.4, 0.0))
+    extension = track((0.0, 0.0), (0.20, -6.0), (0.48, -44.0), (0.72, -38.0), (1.16, 3.0), (1.4, 0.0))
+    curl = track((0.0, 0.0), (0.18, 20.0), (0.43, -10.0), (0.8, 4.0), (1.4, 0.0))
+    olhar = _amostrar_escalar([(0.0, 0.0), (0.14, 1.0), (0.78, 0.85), (1.0, 0.0)], u)
+    atraso = _amostrar_escalar([(0.0, 0.0), (0.22, 0.0), (0.48, 1.05), (0.82, -0.08), (1.0, 0.0)], u)
+
+    rig.set_rotation("cintura", x=recoil * 0.35, y=-direction * reach * 0.4)
+    rig.set_rotation("abdomen", x=recoil * 0.40, y=-direction * reach * 0.35)
+    rig.set_rotation("peitoral", x=recoil * 0.50, y=-direction * reach * 0.5, z=-recoil * 0.25)
+    rig.set_rotation("body", x=recoil * 0.65, y=-direction * reach)
+    rig.set_rotation("head", x=-recoil * 0.65, y=direction * 16.0 * olhar, z=-recoil * 0.4)
+    rig.set_rotation("fones", x=recoil * 0.45 * atraso, z=-recoil * 0.25)
+    rig.set_rotation("antena-direita", x=recoil * 0.70 * atraso, z=-recoil * 0.35)
+    rig.set_rotation("antena-esquerda", x=recoil * 0.70 * atraso, z=recoil * 0.35)
+    rig.set_rotation("door", y=max(0.0, -recoil) * 3.0)
+    _aplicar_bracos_tronco_dc(rig, b, recoil, extension, curl, atraso)
+
+
+def _double_click_cabeca(
+    rig: Rig, t: float, direction: float, b: _BaseBracos
+) -> None:
+    """Duplo clique na cabeça: chacoalha a TV, cascata de coluna e fones com retorno suave."""
+    u = min(1.0, max(0.0, t / 1.4))
+    env = _amostrar_escalar([(0.0, 0.0), (0.12, 1.05), (0.65, 0.85), (0.86, -0.07), (1.0, 0.0)], u)
+    atraso_env = _amostrar_escalar([(0.0, 0.0), (0.18, 0.0), (0.46, 1.04), (0.86, -0.06), (1.0, 0.0)], u)
+    olhar = _amostrar_escalar([(0.0, 0.0), (0.12, 1.0), (0.76, 0.85), (1.0, 0.0)], u)
+    chacoalho = sin(t * 28.0) * env
+    atraso = sin(max(0.0, t - 0.08) * 24.0) * env
+    porta = _amostrar_escalar(
+        [(0.0, 0.0), (0.16, 40.0), (0.36, 12.0), (0.58, 30.0), (1.0, 0.0)], u
     )
-    rig.set_rotation(
-        "ant-arm", x=b.rex + extension * 0.4, z=b.right_elbow + extension * 0.3
+    rig.set_rotation("cintura", x=-3.5 * env, z=4.0 * chacoalho)
+    rig.set_rotation("abdomen", x=-4.5 * env, z=-3.0 * chacoalho)
+    rig.set_rotation("peitoral", x=-6.0 * env, z=-5.0 * chacoalho)
+    rig.set_rotation("head", x=-14.0 * env, y=direction * 16.0 * olhar + 26.0 * chacoalho, z=10.0 * atraso)
+    rig.set_rotation("door", y=max(0.0, porta))
+    rig.set_rotation("fones", x=-12.0 * atraso_env, z=-14.0 * atraso)
+    rig.set_rotation("antena-direita", x=-20.0 * atraso_env, z=16.0 * atraso)
+    rig.set_rotation("antena-esquerda", x=-20.0 * atraso_env, z=-16.0 * atraso)
+    rig.set_rotation("shoulder", x=-3.5 * env, z=5.0 * env)
+    rig.set_rotation("shoulder2", x=-3.5 * env, z=-5.0 * env)
+    rig.set_rotation("right-arm", x=b.rbx - 10.0 * env, y=b.rby + 8.0 * env, z=b.right_base - 18.0 * env)
+    rig.set_rotation("left-arm", x=b.lbx - 10.0 * env, y=b.lby - 8.0 * env, z=b.left_base + 18.0 * env)
+    rig.set_rotation("ant-arm", x=b.rex, z=max(0.0, b.right_elbow + 22.0 * env))
+    rig.set_rotation("ant-arm2", x=b.lex, z=min(0.0, b.left_elbow - 22.0 * env))
+    rig.set_rotation("hand", x=16.0 * atraso_env, z=14.0 * atraso_env)
+    rig.set_rotation("hand2", x=16.0 * atraso_env, z=-14.0 * atraso_env)
+    rig.set_rotation("fingers", z=-12.0 * env)
+    rig.set_rotation("fingers2", z=12.0 * env)
+
+
+def _aplicar_braco_dc_lado(
+    rig: Rig,
+    lado: str,
+    b: _BaseBracos,
+    puxao: float,
+    atraso: float,
+    sacode: float,
+    *,
+    tocado: bool,
+) -> None:
+    """Recolhe o braço tocado ou abre o braço oposto em contrapeso a partir do idle."""
+    eh_esq = lado == "left"
+    sinal = -1.0 if eh_esq else 1.0
+    arm, ant, hand, fing = (
+        ("left-arm", "ant-arm2", "hand2", "fingers2")
+        if eh_esq
+        else ("right-arm", "ant-arm", "hand", "fingers")
     )
-    rig.set_rotation("hand", x=-recoil, z=-extension * 0.2)
-    curl = track((0, 0), (0.18, 20), (0.43, -10), (0.8, 4), (1.4, 0))
-    rig.set_rotation("fingers", z=curl)
-    rig.set_rotation("door", y=max(0, -recoil) * 3)
+    bx, by, bz, ex, ez = (
+        (b.lbx, b.lby, b.left_base, b.lex, b.left_elbow)
+        if eh_esq
+        else (b.rbx, b.rby, b.right_base, b.rex, b.right_elbow)
+    )
+    if tocado:
+        rig.set_rotation(arm, x=bx - 10.0 * puxao, y=by + sinal * 14.0 * puxao, z=bz - sinal * 28.0 * puxao)
+        cot = ez + sinal * (38.0 * max(0.0, puxao) + 10.0 * sacode)
+        rig.set_rotation(ant, x=ex, z=min(0.0, cot) if eh_esq else max(0.0, cot))
+        rig.set_rotation(hand, x=-20.0 * atraso, z=-sinal * 16.0 * sacode)
+        rig.set_rotation(fing, z=sinal * 14.0 * puxao)
+        return
+    rig.set_rotation(arm, x=bx, y=by, z=bz - sinal * 16.0 * puxao)
+    cot = ez + sinal * 10.0 * atraso
+    rig.set_rotation(ant, x=ex, z=min(0.0, cot) if eh_esq else max(0.0, cot))
+    rig.set_rotation(hand, x=8.0 * atraso, z=-sinal * 6.0 * atraso)
+    rig.set_rotation(fing, z=sinal * 8.0 * atraso)
+
+
+def _double_click_braco(
+    rig: Rig, t: float, b: _BaseBracos, lado_arm: float
+) -> None:
+    """Duplo clique no braço: recolhe o braço tocado a partir do idle e compensa com o oposto."""
+    u = min(1.0, max(0.0, t / 1.4))
+    puxao = _amostrar_escalar([(0.0, 0.0), (0.15, 1.06), (0.48, 0.65), (0.85, -0.07), (1.0, 0.0)], u)
+    atraso = _amostrar_escalar([(0.0, 0.0), (0.20, 0.0), (0.45, 1.04), (0.86, -0.06), (1.0, 0.0)], u)
+    sacode = sin(t * 22.0) * puxao
+    eh_esq = lado_arm > 0
+    rig.set_rotation("cintura", y=-lado_arm * 8.0 * puxao, z=-lado_arm * 5.0 * puxao)
+    rig.set_rotation("abdomen", y=-lado_arm * 10.0 * puxao, z=-lado_arm * 6.0 * puxao)
+    rig.set_rotation("peitoral", y=-lado_arm * 14.0 * puxao, z=-lado_arm * 8.0 * puxao)
+    rig.set_rotation("head", y=lado_arm * 28.0 * puxao, z=-lado_arm * 8.0 * puxao)
+    rig.set_rotation("door", y=max(0.0, 16.0 * puxao))
+    rig.set_rotation("fones", x=-6.0 * atraso, z=-lado_arm * 6.0 * atraso)
+    rig.set_rotation("antena-direita", x=-12.0 * atraso, z=lado_arm * 8.0 * atraso)
+    rig.set_rotation("antena-esquerda", x=-12.0 * atraso, z=-lado_arm * 8.0 * atraso)
+    rig.set_rotation("shoulder", x=-3.5 * puxao, z=4.5 * puxao)
+    rig.set_rotation("shoulder2", x=-3.5 * puxao, z=-4.5 * puxao)
+    _aplicar_braco_dc_lado(rig, "left", b, puxao, atraso, sacode, tocado=eh_esq)
+    _aplicar_braco_dc_lado(rig, "right", b, puxao, atraso, sacode, tocado=not eh_esq)
+
+
+def _double_click_membro_inferior(
+    rig: Rig, t: float, b: _BaseBracos, zona: str, lado: float
+) -> None:
+    """Duplo clique em pernas ou pés: susto para baixo com cascata e contrapeso nos braços."""
+    u = min(1.0, max(0.0, t / 1.4))
+    env = _amostrar_escalar([(0.0, 0.0), (0.14, 1.05), (0.55, 0.78), (0.85, -0.07), (1.0, 0.0)], u)
+    atraso = _amostrar_escalar([(0.0, 0.0), (0.20, 0.0), (0.46, 1.04), (0.86, -0.06), (1.0, 0.0)], u)
+    tremor = sin(t * 20.0) * env
+    inclinacao = 14.0 if zona == "feet" else 9.0
+    rig.set_rotation("body", x=10.0 * env, z=-lado * inclinacao * env + 3.0 * tremor)
+    rig.set_rotation("cintura", x=8.0 * env, z=-lado * 6.0 * env)
+    rig.set_rotation("abdomen", x=6.5 * env, z=-lado * 4.5 * env)
+    rig.set_rotation("peitoral", x=5.5 * env, z=-lado * 3.5 * env)
+    rig.set_rotation("head", x=22.0 * env, y=lado * 22.0 * env, z=lado * 10.0 * env)
+    rig.set_rotation("door", y=max(0.0, 24.0 * env))
+    rig.set_rotation("fones", x=8.0 * atraso, z=8.0 * tremor)
+    rig.set_rotation("antena-direita", x=14.0 * atraso, z=10.0 * tremor)
+    rig.set_rotation("antena-esquerda", x=14.0 * atraso, z=-10.0 * tremor)
+    rig.set_rotation("shoulder", x=3.5 * env, z=5.0 * env)
+    rig.set_rotation("shoulder2", x=3.5 * env, z=-5.0 * env)
+    rig.set_rotation("right-arm", x=b.rbx - 8.0 * env, y=b.rby - 8.0 * env, z=b.right_base - 28.0 * env)
+    rig.set_rotation("left-arm", x=b.lbx - 8.0 * env, y=b.lby + 8.0 * env, z=b.left_base + 28.0 * env)
+    rig.set_rotation("ant-arm", x=b.rex, z=max(0.0, b.right_elbow + 16.0 * env))
+    rig.set_rotation("ant-arm2", x=b.lex, z=min(0.0, b.left_elbow - 16.0 * env))
+    rig.set_rotation("hand", x=-14.0 * atraso, z=-12.0 * atraso)
+    rig.set_rotation("hand2", x=-14.0 * atraso, z=12.0 * atraso)
+    rig.set_rotation("fingers", z=-12.0 * atraso)
+    rig.set_rotation("fingers2", z=12.0 * atraso)
+
+
+def _interacao_double_click(
+    rig: Rig,
+    t: float,
+    direction: float,
+    vertical: float,
+    b: _BaseBracos,
+    part: str = "body",
+) -> None:
+    """Reage ao clique duplo de forma diferenciada por parte tocada."""
+    zona = _zona_corpo(part)
+    if zona == "head":
+        _double_click_cabeca(rig, t, direction, b)
+    elif zona == "arm":
+        _double_click_braco(rig, t, b, _lado_parte(part, direction))
+    elif zona in ("legs", "feet"):
+        _double_click_membro_inferior(rig, t, b, zona, _lado_parte(part, direction))
+    else:
+        _double_click_tronco(rig, t, direction, b)
 
 
 def _interacao_pet(
-    rig: Rig, t: float, direction: float, vertical: float, b: _BaseBracos
+    rig: Rig,
+    t: float,
+    direction: float,
+    vertical: float,
+    b: _BaseBracos,
+    part: str = "body",
 ) -> None:
-    """Inclina coluna e cabeça no carinho com balanço orgânico e follow-through."""
-    u = min(1.0, max(0.0, t / 1.55))
+    """Inclina coluna e cabeça no carinho com ombros macios, braços soltos e punhos aconchegantes."""
+    del vertical, part
+    u = min(1.0, max(0.0, t / 1.50))
     env = _amostrar_escalar([(0.0, 0.0), (0.20, 1.0), (0.74, 0.96), (1.0, 0.0)], u)
     atraso = _amostrar_escalar([(0.0, 0.0), (0.28, 1.0), (0.82, 0.95), (1.0, 0.0)], u)
+    olhar = _amostrar_escalar([(0.0, 0.0), (0.18, 1.0), (0.78, 0.90), (1.0, 0.0)], u)
     embalo = sin(t * 7.5) * env
 
     rig.set_rotation("cintura", x=-4.0 * env, z=direction * 4.0 * env + 2.0 * embalo)
     rig.set_rotation("abdomen", x=-4.5 * env, z=direction * 3.5 * env + 1.8 * embalo)
     rig.set_rotation("peitoral", x=-3.5 * env, z=direction * 3.0 * env)
-    rig.set_rotation("head", x=-12.0 * env, y=direction * 25.0 * (0.4 + 0.6 * env), z=9.0 * env + 3.0 * embalo)
+    rig.set_rotation("head", x=-12.0 * env, y=direction * 25.0 * olhar, z=9.0 * env + 3.0 * embalo)
     rig.set_rotation("body", z=direction * 5.0 * env)
-    rig.set_rotation("door", y=env * (18.0 + 3.5 * sin(t * 14.0)))
+    rig.set_rotation("door", y=max(0.0, env * (18.0 + 3.5 * sin(t * 14.0))))
     rig.set_rotation("fones", z=direction * 4.5 * atraso + 2.5 * embalo)
     rig.set_rotation("antena-direita", x=5.0 * atraso, z=4.0 * embalo)
     rig.set_rotation("antena-esquerda", x=5.0 * atraso, z=4.0 * embalo)
+    rig.set_rotation("shoulder", x=3.5 * atraso, z=5.0 * env)
+    rig.set_rotation("shoulder2", x=3.5 * atraso, z=-5.0 * env)
+    rig.set_rotation(
+        "right-arm",
+        x=b.rbx + 4.0 * env,
+        y=b.rby + 4.0 * env + 5.0 * embalo,
+        z=b.right_base - 3.0 * env - 3.0 * embalo,
+    )
+    rig.set_rotation(
+        "left-arm",
+        x=b.lbx + 4.0 * env,
+        y=b.lby - 4.0 * env + 5.0 * embalo,
+        z=b.left_base + 3.0 * env - 3.0 * embalo,
+    )
+    rig.set_rotation("ant-arm", x=b.rex, z=max(0.0, b.right_elbow + 8.0 * atraso - 2.5 * embalo))
+    rig.set_rotation("ant-arm2", x=b.lex, z=min(0.0, b.left_elbow - 8.0 * atraso - 2.5 * embalo))
+    rig.set_rotation("hand", x=9.0 * atraso, z=-6.0 * env + 4.0 * embalo)
+    rig.set_rotation("hand2", x=9.0 * atraso, z=6.0 * env + 4.0 * embalo)
+    rig.set_rotation("fingers", z=11.0 * atraso + 3.0 * embalo)
+    rig.set_rotation("fingers2", z=-11.0 * atraso + 3.0 * embalo)
 
 
 def _interacao_poke(
-    rig: Rig, t: float, direction: float, vertical: float, b: _BaseBracos
+    rig: Rig,
+    t: float,
+    direction: float,
+    vertical: float,
+    b: _BaseBracos,
+    part: str = "body",
 ) -> None:
-    """Delega a cutucada ao gesto de reação."""
+    """Delega a cutucada ao gesto de reação, modulando a reação conforme a região tocada."""
+    del vertical
     aplicar_cutucar(rig, t, (b.rbx, b.rby, b.right_base), (b.rex, b.right_elbow))
+    zona = _zona_corpo(part)
+    u = min(1.0, max(0.0, t / 0.90))
+    flinch = _amostrar_escalar([(0.0, 0.0), (0.16, 1.0), (0.55, 0.45), (1.0, 0.0)], u)
+    if zona == "head":
+        rig.set_rotation("head", x=-16.0 * flinch, y=-direction * 22.0 * flinch, z=10.0 * flinch)
+        rig.set_rotation("door", y=30.0 * flinch)
+    elif zona == "arm" and _lado_parte(part, -1.0) > 0:
+        rig.set_rotation("left-arm", x=b.lbx - 16.0 * flinch, y=b.lby, z=b.left_base + 18.0 * flinch)
+        rig.set_rotation("ant-arm2", x=b.lex - 12.0 * flinch, z=min(0.0, b.left_elbow - 36.0 * flinch))
+    elif zona in ("legs", "feet"):
+        lado = _lado_parte(part, 1.0)
+        rig.set_rotation("body", x=9.0 * flinch, z=-lado * 8.0 * flinch)
+        rig.set_rotation("head", x=18.0 * flinch, y=lado * 18.0 * flinch)
+
+
+def _celebrate_bracos(rig: Rig, carga: float, estouro: float, pulso: float, aberto: float) -> None:
+    """Ergue braços em V vitorioso com palmas voltadas para a frente e cotovelos anatômicos."""
+    w = max(0.0, min(1.0, estouro))
+    # Validado no Panda3D: braços abertos para fora dos fones com palmas 84%+ para frente (-Y).
+    pares = (
+        (
+            "shoulder", "right-arm", "ant-arm", "hand", "fingers",
+            (15.0, -28.0, 62.0), (20.0, 20.0, -30.0), 10.0, 12.0, 28.0,
+            -10.0, 4.0, -6.0, 8.0, -6.0, 8.0, -14.0, 4.0, 20.0, -10.0, 6.0, 1.0,
+        ),
+        (
+            "shoulder2", "left-arm", "ant-arm2", "hand2", "fingers2",
+            (15.0, 28.0, -62.0), (18.0, -18.0, 28.0), 10.0, -12.0, -30.0,
+            8.0, -4.0, 5.0, -6.0, 5.5, -8.0, -12.0, 4.0, -20.0, 10.0, -6.0, -1.0,
+        ),
+    )
+    for (
+        sh, arm, ant, hand, fing,
+        rep, alvo, fore_x, fore0_z, fore_z,
+        sh_w, sh_c, arm_cy, arm_cz, arm_pz,
+        ant_pz, hx_w, hx_p, hy_w, hz_w, hz_p, f_sgn,
+    ) in pares:
+        rig.set_rotation(sh, z=sh_w * w + sh_c * carga)
+        rig.set_rotation(
+            arm,
+            x=rep[0] + (alvo[0] - rep[0]) * w - 6.0 * carga,
+            y=rep[1] + (alvo[1] - rep[1]) * w + arm_cy * carga,
+            z=rep[2] + (alvo[2] - rep[2]) * w + arm_cz * carga + arm_pz * pulso,
+        )
+        rig.set_rotation(
+            ant,
+            x=3.0 + (fore_x - 3.0) * w,
+            z=fore0_z + (fore_z - fore0_z) * w + ant_pz * pulso,
+        )
+        rig.set_rotation(
+            hand,
+            x=hx_w * w + hx_p * pulso,
+            y=hy_w * w,
+            z=hz_w * w + hz_p * pulso,
+        )
+        rig.set_rotation(fing, z=f_sgn * (14.0 * aberto - 20.0 * max(0.0, w - aberto)))
+
+
+def _interacao_celebrate(
+    rig: Rig,
+    t: float,
+    direction: float,
+    vertical: float,
+    b: _BaseBracos,
+    part: str = "body",
+) -> None:
+    """Comemoração (~2s): agachamento-antecipação, salto em V assimétrico com 2 bombeios e pouso (porta fechada)."""
+    u = min(1.0, max(0.0, t / 2.0))
+    carga = _amostrar_escalar([(0.0, 0.0), (0.12, 1.0), (0.24, -0.22), (0.85, 0.0), (0.93, 0.35), (1.0, 0.0)], u)
+    estouro = _amostrar_escalar([(0.0, 0.0), (0.12, 0.0), (0.30, 1.08), (0.52, 0.94), (0.68, 1.04), (0.86, 0.15), (1.0, 0.0)], u)
+    aberto = _amostrar_escalar([(0.0, 0.0), (0.22, 0.0), (0.32, 1.0), (0.48, 0.15), (0.64, 0.9), (0.82, 0.2), (1.0, 0.0)], u)
+    pulso = sin((u - 0.24) * 4.0 * pi) * _amostrar_escalar(
+        [(0.0, 0.0), (0.24, 0.0), (0.34, 1.0), (0.76, 1.0), (0.90, 0.0), (1.0, 0.0)],
+        u,
+    )
+    atraso = _amostrar_escalar([(0.0, 0.0), (0.18, 0.0), (0.36, 1.0), (0.80, 0.85), (1.0, 0.0)], u)
+
+    rig.set_rotation("body", x=7.5 * carga - 6.0 * estouro, y=4.5 * estouro + direction * 4.0 * estouro, z=5.5 * pulso)
+    rig.set_rotation("cintura", x=8.5 * carga - 5.5 * estouro, y=-4.5 * carga + 4.0 * estouro, z=5.0 * pulso)
+    rig.set_rotation("abdomen", x=7.5 * carga - 5.0 * estouro, z=-3.5 * pulso)
+    rig.set_rotation("peitoral", x=6.5 * carga - 7.5 * estouro, y=3.5 * carga - 6.0 * estouro, z=4.5 * pulso)
+    rig.set_rotation("head", x=11.0 * carga - 14.0 * estouro - 4.0 * pulso, y=7.0 * estouro + 9.0 * pulso + direction * 6.0, z=-5.5 * atraso)
+    rig.set_rotation("door", x=0.0, y=0.0, z=0.0)
+    rig.set_rotation("fones", x=-9.0 * atraso, z=8.0 * pulso)
+    rig.set_rotation("antena-direita", x=-16.0 * atraso, z=14.0 * pulso)
+    rig.set_rotation("antena-esquerda", x=-16.0 * atraso, z=-14.0 * pulso)
+    _celebrate_bracos(rig, carga, estouro, pulso, aberto)
+
+
+def _aplicar_bracos_land(
+    rig: Rig, b: _BaseBracos, impacto: float, atraso: float, heavy: bool
+) -> None:
+    """Abre braços em contrapeso no pouso com atraso de punhos e dedos."""
+    elev = 30.0 if heavy else 24.0
+    cotov_delta = 20.0 if heavy else 16.0
+    elev_u = max(-0.05, impacto)
+    for sh, arm, ant, hand, fing, bx, by, bz, ex, ez, sinal in (
+        ("shoulder", "right-arm", "ant-arm", "hand", "fingers", b.rbx, b.rby, b.right_base, b.rex, b.right_elbow, 1.0),
+        ("shoulder2", "left-arm", "ant-arm2", "hand2", "fingers2", b.lbx, b.lby, b.left_base, b.lex, b.left_elbow, -1.0),
+    ):
+        rig.set_rotation(sh, x=3.5 * impacto, z=sinal * 5.5 * impacto)
+        rig.set_rotation(arm, x=bx + 8.0 * impacto, y=by - sinal * 20.0 * impacto, z=bz - sinal * elev * elev_u)
+        cot = ez + sinal * cotov_delta * impacto
+        rig.set_rotation(ant, x=ex, z=max(0.0, cot) if sinal > 0 else min(0.0, cot))
+        rig.set_rotation(hand, x=19.0 * atraso, z=-sinal * 9.0 * atraso)
+        rig.set_rotation(fing, z=-sinal * 12.0 * atraso)
 
 
 def _interacao_land(
-    rig: Rig, t: float, direction: float, vertical: float, b: _BaseBracos
+    rig: Rig,
+    t: float,
+    direction: float,
+    vertical: float,
+    b: _BaseBracos,
+    part: str = "body",
+    *,
+    heavy: bool = False,
 ) -> None:
-    """Amortece a aterrissagem com impacto profundo, braços em contrapeso e rebote."""
-    u = min(1.0, max(0.0, t / 0.50))
-    # Ataque rápido ao tocar o chão (~18% = 90ms) seguido de rebote elástico.
-    impacto = _amostrar_escalar([(0.0, 0.28), (0.18, 1.0), (0.50, -0.22), (0.78, 0.08), (1.0, 0.0)], u)
-    atraso = _amostrar_escalar([(0.0, 0.0), (0.28, 1.0), (0.64, -0.26), (1.0, 0.0)], u)
+    """Amortece a aterrissagem com antecipação, impacto de gabinete sólido, contrapeso e rebote ZZZ."""
+    del vertical, part
+    dur = 1.45 if heavy else 0.50
+    u = min(1.0, max(0.0, t / dur))
+    if heavy:
+        antecip = _amostrar_escalar([(0.0, 0.0), (0.06, 1.0), (0.15, 0.0), (1.0, 0.0)], u)
+        impacto = _amostrar_escalar(
+            [(0.0, 0.0), (0.15, 1.14), (0.44, 0.94), (0.68, 0.72), (0.86, -0.14), (1.0, 0.0)],
+            u,
+        )
+        atraso = _amostrar_escalar(
+            [(0.0, 0.0), (0.05, 0.0), (0.24, 1.12), (0.56, 0.68), (0.83, -0.18), (1.0, 0.0)],
+            u,
+        )
+        olhar = _amostrar_escalar([(0.0, 0.0), (0.16, 1.0), (0.76, 0.85), (1.0, 0.0)], u)
+    else:
+        antecip = _amostrar_escalar([(0.0, 0.0), (0.07, 1.0), (0.17, 0.0), (1.0, 0.0)], u)
+        impacto = _amostrar_escalar([(0.0, 0.0), (0.18, 1.04), (0.52, -0.22), (0.80, 0.08), (1.0, 0.0)], u)
+        atraso = _amostrar_escalar([(0.0, 0.0), (0.06, 0.0), (0.28, 1.05), (0.66, -0.24), (1.0, 0.0)], u)
+        olhar = _amostrar_escalar([(0.0, 0.0), (0.18, 1.0), (0.68, 0.65), (1.0, 0.0)], u)
 
-    rep_r = braco_hpr_graus("right", "idle")
-    rep_l = braco_hpr_graus("left", "idle")
-    rb, re = rep_r["right-arm"], rep_r["ant-arm"]
-    lb, le = rep_l["left-arm"], rep_l["ant-arm2"]
-
-    rig.set_rotation("body", x=9.0 * impacto, y=direction * 5.0 * impacto)
-    rig.set_rotation("cintura", x=6.0 * impacto)
-    rig.set_rotation("abdomen", x=5.0 * impacto)
-    rig.set_rotation("peitoral", x=4.0 * impacto)
-    rig.set_rotation("legs", x=-10.0 * impacto)
-    rig.set_rotation("head", x=14.0 * atraso, y=direction * 10.0 * atraso)
-    rig.set_rotation("door", y=max(0.0, 26.0 * impacto))
-    rig.set_rotation("fones", x=10.0 * atraso)
-    rig.set_rotation("antena-direita", x=18.0 * atraso, z=6.0 * atraso)
-    rig.set_rotation("antena-esquerda", x=18.0 * atraso, z=-6.0 * atraso)
-    # Braços abrem para equilibrar o impacto e descem para repouso no rebote.
-    rig.set_rotation("right-arm", x=rb[0] + 8.0 * impacto, y=rb[1] - 18.0 * impacto, z=rb[2] - 24.0 * impacto)
-    rig.set_rotation("left-arm", x=lb[0] + 8.0 * impacto, y=lb[1] + 18.0 * impacto, z=lb[2] + 24.0 * impacto)
-    rig.set_rotation("ant-arm", x=re[0], y=re[1], z=re[2] + 16.0 * impacto)
-    rig.set_rotation("ant-arm2", x=le[0], y=le[1], z=le[2] - 16.0 * impacto)
-    rig.set_rotation("hand", x=18.0 * atraso, z=-8.0 * impacto)
-    rig.set_rotation("hand2", x=18.0 * atraso, z=8.0 * impacto)
+    escala_h = 1.35 if heavy else 1.0
+    rig.set_rotation("body", x=9.5 * escala_h * impacto - 2.0 * antecip, y=direction * 5.0 * impacto, z=-direction * 3.0 * impacto)
+    rig.set_rotation("cintura", x=6.5 * escala_h * impacto - 2.0 * antecip)
+    rig.set_rotation("abdomen", x=5.5 * escala_h * impacto - 1.5 * antecip)
+    rig.set_rotation("peitoral", x=4.5 * escala_h * impacto - 1.5 * antecip)
+    rig.set_rotation("legs", x=-10.0 * escala_h * impacto)
+    rig.set_rotation("head", x=14.0 * escala_h * atraso - 4.0 * antecip, y=direction * 12.0 * olhar)
+    rig.set_rotation("door", y=max(0.0, (32.0 if heavy else 26.0) * impacto))
+    rig.set_rotation("fones", x=11.0 * escala_h * atraso)
+    rig.set_rotation("antena-direita", x=19.0 * escala_h * atraso, z=6.5 * atraso)
+    rig.set_rotation("antena-esquerda", x=19.0 * escala_h * atraso, z=-6.5 * atraso)
+    _aplicar_bracos_land(rig, b, impacto, atraso, heavy)
 
 
 def _interacao_wake(
-    rig: Rig, t: float, direction: float, vertical: float, b: _BaseBracos
+    rig: Rig,
+    t: float,
+    direction: float,
+    vertical: float,
+    b: _BaseBracos,
+    part: str = "body",
 ) -> None:
     """Acorda: encolhimento inicial, espreguiçar profundo com coluna em onda e retorno macio."""
-    u = min(1.0, max(0.0, t / 1.25))
+    del direction, vertical, part
+    u = min(1.0, max(0.0, t / 1.20))
     encolhe = _amostrar_escalar([(0.0, 0.0), (0.14, 1.0), (0.30, 0.0), (1.0, 0.0)], u)
     estica = _amostrar_escalar([(0.0, 0.0), (0.16, 0.0), (0.48, 1.0), (0.72, 0.90), (1.0, 0.0)], u)
     atraso = _amostrar_escalar([(0.0, 0.0), (0.24, 0.0), (0.58, 1.0), (1.0, 0.0)], u)
@@ -466,44 +846,36 @@ def _interacao_wake(
     rig.set_rotation("peitoral", x=3.5 * encolhe - 6.0 * estica)
     rig.set_rotation("body", x=3.0 * encolhe - 6.0 * estica)
     rig.set_rotation("head", x=6.0 * encolhe - 11.0 * estica, y=tremor)
-    rig.set_rotation("door", y=45.0 * estica)
+    rig.set_rotation("door", y=max(0.0, 45.0 * estica))
     rig.set_rotation("fones", x=-6.0 * atraso, z=tremor * 0.6)
     rig.set_rotation("antena-direita", x=-10.0 * atraso)
     rig.set_rotation("antena-esquerda", x=-10.0 * atraso)
-    # Parte dos braços baixados (idle) e os ergue ao espreguiçar.
-    # Medido no grafo de cena: elevação = eixo do nó ROLL (Z); z NEGATIVO ergue.
-    wake_r = braco_hpr_graus("right", "idle")["right-arm"]
-    wake_l = braco_hpr_graus("left", "idle")["left-arm"]
-    rig.set_rotation(
-        "right-arm",
-        x=wake_r[0],
-        y=wake_r[1],
-        z=wake_r[2] - WAKE_BRACO_ELEVACAO * estica,
-    )
-    rig.set_rotation(
-        "left-arm",
-        x=wake_l[0],
-        y=wake_l[1],
-        z=wake_l[2] + WAKE_BRACO_ELEVACAO * estica,
-    )
-    # Compensação do ombro enquanto os braços sobem.
+    rig.set_rotation("right-arm", x=b.rbx, y=b.rby, z=b.right_base - WAKE_BRACO_ELEVACAO * estica)
+    rig.set_rotation("left-arm", x=b.lbx, y=b.lby, z=b.left_base + WAKE_BRACO_ELEVACAO * estica)
     shoulder_comp = -45.0 * estica * 0.15
     rig.set_rotation("shoulder", x=shoulder_comp)
     rig.set_rotation("shoulder2", x=-shoulder_comp)
 
 
 def _interacao_surprise(
-    rig: Rig, t: float, direction: float, vertical: float, b: _BaseBracos
+    rig: Rig,
+    t: float,
+    direction: float,
+    vertical: float,
+    b: _BaseBracos,
+    part: str = "body",
 ) -> None:
-    """Susto: micro-encolhimento, recuo instantâneo com guarda e follow-through."""
-    u = min(1.0, max(0.0, t / 0.72))
-    encolhe = _amostrar_escalar([(0.0, 0.0), (0.07, 1.0), (0.18, 0.0), (1.0, 0.0)], u)
-    susto = _amostrar_escalar([(0.0, 0.0), (0.06, 0.0), (0.22, 1.05), (0.55, 0.72), (1.0, 0.0)], u)
-    atraso = _amostrar_escalar([(0.0, 0.0), (0.12, 0.0), (0.34, 1.0), (1.0, 0.0)], u)
+    """Susto: micro-encolhimento, recuo instantâneo com guarda em idle e follow-through."""
+    del part
+    u = min(1.0, max(0.0, t / 0.70))
+    encolhe = _amostrar_escalar([(0.0, 0.0), (0.08, 1.0), (0.20, 0.0), (1.0, 0.0)], u)
+    susto = _amostrar_escalar([(0.0, 0.0), (0.06, 0.0), (0.24, 1.06), (0.54, 0.72), (0.85, -0.07), (1.0, 0.0)], u)
+    atraso = _amostrar_escalar([(0.0, 0.0), (0.12, 0.0), (0.36, 1.05), (0.84, -0.08), (1.0, 0.0)], u)
+    olhar = _amostrar_escalar([(0.0, 0.0), (0.14, 1.0), (0.74, 0.85), (1.0, 0.0)], u)
 
-    rig.set_rotation("cintura", x=4.0 * encolhe - 5.0 * susto, y=direction * 5.0 * susto)
-    rig.set_rotation("abdomen", x=3.5 * encolhe - 5.0 * susto)
-    rig.set_rotation("peitoral", x=-6.0 * susto, y=direction * 4.0 * susto)
+    rig.set_rotation("cintura", x=4.0 * encolhe - 5.0 * susto, y=direction * 5.0 * susto, z=-direction * 2.5 * susto)
+    rig.set_rotation("abdomen", x=3.5 * encolhe - 5.0 * susto, y=direction * 4.0 * susto)
+    rig.set_rotation("peitoral", x=-6.0 * susto, y=direction * 5.0 * susto)
     rig.set_rotation(
         "body",
         x=3.0 * encolhe - SURPRESA_RECUO * susto,
@@ -511,27 +883,34 @@ def _interacao_surprise(
     )
     rig.set_rotation(
         "head",
-        x=-max(-1.0, min(1.0, vertical)) * 26.0 - SURPRESA_CABECA * susto,
-        y=direction * 40.0,
+        x=-max(-1.0, min(1.0, vertical)) * 18.0 * olhar - SURPRESA_CABECA * susto,
+        y=direction * 36.0 * olhar,
+        z=-direction * 4.0 * atraso,
     )
-    rig.set_rotation("door", y=34.0 * susto)
-    rig.set_rotation("fones", x=-8.0 * atraso)
+    rig.set_rotation("door", y=max(0.0, 34.0 * susto))
+    rig.set_rotation("fones", x=-8.0 * atraso, z=direction * 5.0 * atraso)
     rig.set_rotation("antena-direita", x=-14.0 * atraso, z=-6.0 * atraso)
     rig.set_rotation("antena-esquerda", x=-14.0 * atraso, z=6.0 * atraso)
-    surp_r = braco_hpr_graus("right", "idle")["right-arm"]
-    surp_l = braco_hpr_graus("left", "idle")["left-arm"]
+    rig.set_rotation("shoulder", x=-3.5 * susto + 2.5 * encolhe, z=5.0 * susto)
+    rig.set_rotation("shoulder2", x=-3.5 * susto + 2.5 * encolhe, z=-5.0 * susto)
     rig.set_rotation(
         "right-arm",
-        x=surp_r[0],
-        y=surp_r[1],
-        z=surp_r[2] - SURPRESA_BRACO * susto,
+        x=b.rbx - 12.0 * susto,
+        y=b.rby + 16.0 * susto,
+        z=b.right_base - SURPRESA_BRACO * susto,
     )
     rig.set_rotation(
         "left-arm",
-        x=surp_l[0],
-        y=surp_l[1],
-        z=surp_l[2] + SURPRESA_BRACO * susto,
+        x=b.lbx - 12.0 * susto,
+        y=b.lby - 16.0 * susto,
+        z=b.left_base + SURPRESA_BRACO * susto,
     )
+    rig.set_rotation("ant-arm", x=b.rex, z=max(0.0, b.right_elbow + 26.0 * susto - 6.0 * atraso))
+    rig.set_rotation("ant-arm2", x=b.lex, z=min(0.0, b.left_elbow - 26.0 * susto + 6.0 * atraso))
+    rig.set_rotation("hand", x=-14.0 * atraso, z=-10.0 * atraso)
+    rig.set_rotation("hand2", x=-14.0 * atraso, z=10.0 * atraso)
+    rig.set_rotation("fingers", z=-18.0 * susto)
+    rig.set_rotation("fingers2", z=18.0 * susto)
 
 
 _REACOES_INTERACAO = {
@@ -540,6 +919,7 @@ _REACOES_INTERACAO = {
     "double_click": _interacao_double_click,
     "pet": _interacao_pet,
     "poke": _interacao_poke,
+    "celebrate": _interacao_celebrate,
     "land": _interacao_land,
     "wake": _interacao_wake,
     "surprise": _interacao_surprise,
@@ -547,30 +927,39 @@ _REACOES_INTERACAO = {
 
 
 def pose_interaction(
-    rig: Rig, kind: str, t: float, direction: float = 0.0, vertical: float = 0.0
+    rig: Rig,
+    kind: str,
+    t: float,
+    direction: float = 0.0,
+    vertical: float = 0.0,
+    part: str = "body",
+    *,
+    heavy: bool = False,
 ) -> None:
-    """Aplica as reações procedurais: porta gira na dobradiça, sem escala da malha.
+    """Aplica as reações procedurais a partir da base ``idle`` sem salto nos braços.
 
     Um ``kind`` desconhecido aplica só a base dos braços e o olhar da cabeça.
     """
     direction = max(-1.0, min(1.0, direction))
-    # Braços junto ao corpo nas reações. O hover parte da pose idle atual para
-    # um alcance pequeno e direcional; as demais partem do ALVO de interação
-    # (mãos à frente) resolvido por IK. A torção do IK escolhe o plano do
-    # cotovelo, então a base (P, H, R) completa não pode ser descartada.
-    inter_r = braco_hpr_graus("right", "idle" if kind == "land" else "interaction")
-    inter_l = braco_hpr_graus("left", "idle" if kind == "land" else "interaction")
+    inter_r = braco_hpr_graus("right", "idle")
+    inter_l = braco_hpr_graus("left", "idle")
     b = _ler_base_atual(rig) if kind == "hover" else _ler_base_alvo(inter_r, inter_l)
     rig.set_rotation("right-arm", x=b.rbx, y=b.rby, z=b.right_base)
     rig.set_rotation("left-arm", x=b.lbx, y=b.lby, z=b.left_base)
     rig.set_rotation("ant-arm", x=b.rex, z=b.right_elbow)
     rig.set_rotation("ant-arm2", x=b.lex, z=b.left_elbow)
-    rig.set_rotation(
-        "head", x=-max(-1.0, min(1.0, vertical)) * 26.0, y=direction * 40.0
-    )
+    if kind == "hover" or kind not in _REACOES_INTERACAO:
+        rig.set_rotation(
+            "head", x=-max(-1.0, min(1.0, vertical)) * 26.0, y=direction * 40.0
+        )
+    else:
+        rig.set_rotation("head", x=0.0, y=0.0, z=0.0)
+    if kind == "land":
+        _interacao_land(rig, t, direction, vertical, b, part, heavy=heavy)
+        return
     reacao = _REACOES_INTERACAO.get(kind)
     if reacao is not None:
-        reacao(rig, t, direction, vertical, b)
+        reacao(rig, t, direction, vertical, b, part)
 
 
 def pose_flourish(rig: Rig, kind: str, t: float) -> None:
@@ -587,12 +976,15 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
         **braco_hpr_graus("left", "idle"),
     }
     fl_r, fl_l = repouso_fl["right-arm"], repouso_fl["left-arm"]
+    ant_r, ant_l = repouso_fl["ant-arm"], repouso_fl["ant-arm2"]
     rig.set_rotation("right-arm", x=fl_r[0], y=fl_r[1], z=fl_r[2])
     rig.set_rotation("left-arm", x=fl_l[0], y=fl_l[1], z=fl_l[2])
+    rig.set_rotation("ant-arm", x=ant_r[0], y=ant_r[1], z=ant_r[2])
+    rig.set_rotation("ant-arm2", x=ant_l[0], y=ant_l[1], z=ant_l[2])
     if kind == "peek":
         rig.set_rotation("head", y=sin(t * 2) * 12 * envelope, z=5 * envelope)
-        rig.set_rotation("ant-arm", x=-12 * envelope)
-        rig.set_rotation("ant-arm2", x=-12 * envelope)
+        rig.set_rotation("ant-arm", x=ant_r[0] - 12 * envelope, y=ant_r[1], z=ant_r[2])
+        rig.set_rotation("ant-arm2", x=ant_l[0] - 12 * envelope, y=ant_l[1], z=ant_l[2])
         # Compensação do ombro na espiada.
         shoulder_comp = -12 * envelope * 0.15
         rig.set_rotation("shoulder", x=shoulder_comp)
@@ -604,8 +996,8 @@ def pose_flourish(rig: Rig, kind: str, t: float) -> None:
         rig.set_rotation("door", y=40 * envelope)
 
 
-def _espirro_bracos(rig: Rig, inhale: float, hit: float) -> None:
-    """Ergue os braços à frente a partir do repouso baixado (IK).
+def _espirro_bracos(rig: Rig, inhale: float, hit: float, relaxa: float = 0.0) -> None:
+    """Ergue os braços à frente e relaxa gradualmente antes de limpar a porta.
 
     Medido no grafo de cena: elevação = eixo do nó ROLL (Z); z NEGATIVO ergue.
     """
@@ -613,21 +1005,32 @@ def _espirro_bracos(rig: Rig, inhale: float, hit: float) -> None:
     sz_l = braco_hpr_graus("left", "idle")["left-arm"]
     sze = {**braco_hpr_graus("right", "idle"), **braco_hpr_graus("left", "idle")}
     sze_r, sze_l = sze["ant-arm"][2], sze["ant-arm2"][2]
+    guarda = 1.0 - relaxa
     rig.set_rotation(
         "right-arm",
         x=sz_r[0] - 12 * inhale - 48 * hit,
         y=sz_r[1],
-        z=sz_r[2] - 40 - 12 * inhale,
+        z=sz_r[2] - (40 + 12 * inhale) * guarda,
     )
     rig.set_rotation(
         "left-arm",
         x=sz_l[0] - 10 * inhale - 44 * hit,
         y=sz_l[1],
-        z=sz_l[2] + 40 + 10 * inhale,
+        z=sz_l[2] + (40 + 10 * inhale) * guarda,
     )
     # Cotovelos DOBRAM (o sinal antigo pedia hiperextensão).
-    rig.set_rotation("ant-arm", x=-12 * inhale - 18 * hit, z=sze_r + 20 + 20 * inhale)
-    rig.set_rotation("ant-arm2", x=-10 * inhale - 16 * hit, z=sze_l - 20 - 18 * inhale)
+    rig.set_rotation(
+        "ant-arm",
+        x=(-12 * inhale - 18 * hit) * guarda,
+        z=sze_r + (20 + 20 * inhale) * guarda,
+    )
+    rig.set_rotation(
+        "ant-arm2",
+        x=(-10 * inhale - 16 * hit) * guarda,
+        z=sze_l - (20 + 18 * inhale) * guarda,
+    )
+    rig.set_rotation("shoulder", x=-2.5 * inhale + 5.0 * hit, z=4.0 * guarda)
+    rig.set_rotation("shoulder2", x=-2.5 * inhale + 5.0 * hit, z=-4.0 * guarda)
 
 
 def _espirro_esfregar(rig: Rig, t: float) -> None:
@@ -650,8 +1053,26 @@ def _espirro_esfregar(rig: Rig, t: float) -> None:
     rig.set_rotation("head", x=3 * rub, z=-2 * rub)
 
 
+def _aplicar_sneeze_tronco_maos(
+    rig: Rig, inhale: float, hit: float, settle: float, tontura_env: float, ofego: float, shake: float
+) -> None:
+    """Aplica tronco, cabeça, fones, antenas, mãos e porta no espirro."""
+    rig.set_rotation("head", x=-10 * inhale - 42 * hit - 5 * settle + 6.0 * tontura_env + 2.8 * ofego, y=shake * 14.0, z=-3 * inhale + shake * 5.0)
+    rig.set_rotation("body", x=-5 * inhale - 22 * hit - 3 * settle + 4.0 * tontura_env + 2.0 * ofego, z=shake * 2.5)
+    for grupo, c_in, c_hit, c_of in (("cintura", -3, 4, 1.5), ("abdomen", -4, 6, 2.0), ("peitoral", -6, 10, 3.0)):
+        rig.set_rotation(grupo, x=c_in * inhale + c_hit * hit + c_of * ofego)
+    rig.set_rotation("fones", x=6 * inhale - 14 * hit - 4 * tontura_env, z=shake * 5.0)
+    rig.set_rotation("antena-direita", x=10 * inhale - 24 * hit + 12 * tontura_env, z=4 * inhale + shake * 6.0)
+    rig.set_rotation("antena-esquerda", x=10 * inhale - 24 * hit + 12 * tontura_env, z=-4 * inhale - shake * 6.0)
+    rig.set_rotation("hand", x=15 * hit - 6 * tontura_env, z=-8 * inhale)
+    rig.set_rotation("hand2", x=12 * hit - 6 * tontura_env, z=8 * inhale)
+    rig.set_rotation("fingers", z=18 * inhale - 10 * hit + 6 * ofego)
+    rig.set_rotation("fingers2", z=-18 * inhale + 10 * hit - 6 * ofego)
+    rig.set_rotation("door", y=120 * hit + max(0.0, ofego) * 3.0)
+
+
 def pose_sneeze(rig: Rig, t: float) -> None:
-    """Aplica três inspirações, contração para baixo e recuperação amortecida."""
+    """Aplica três inspirações, explosão, tontura viva (4.2..7.7 s) e limpeza."""
     # Inspiração lenta, antecipação segurada e um espirro seco para a frente.
     inhale = min(1.0, max(0.0, t / 3.3))
     inhale = inhale * inhale * (3 - 2 * inhale)
@@ -659,22 +1080,22 @@ def pose_sneeze(rig: Rig, t: float) -> None:
         inhale *= exp(-(t - 3.6) * 12)
     inhale += sum(
         amp * exp(-(((t - at) / width) ** 2))
-        for at, width, amp in (
-            (0.65, 0.24, 0.25),
-            (1.65, 0.32, 0.35),
-            (2.85, 0.4, 0.45),
-        )
+        for at, width, amp in ((0.65, 0.24, 0.25), (1.65, 0.32, 0.35), (2.85, 0.4, 0.45))
     )
     hit = exp(-(((t - 3.68) / 0.105) ** 2))
-    settle = sin(max(0, t - 3.8) * 8) * exp(-max(0, t - 3.8) * 4) if t > 3.8 else 0
-    rig.set_rotation("head", x=-10 * inhale - 42 * hit - 5 * settle, z=-3 * inhale)
-    rig.set_rotation("body", x=-5 * inhale - 22 * hit - 3 * settle)
-    _espirro_bracos(rig, inhale, hit)
-    rig.set_rotation("hand", x=15 * hit, z=-8 * inhale)
-    rig.set_rotation("hand2", x=12 * hit, z=8 * inhale)
-    rig.set_rotation("fingers", z=18 * inhale - 10 * hit)
-    rig.set_rotation("fingers2", z=-18 * inhale + 10 * hit)
-    rig.set_rotation("door", y=120 * hit)
+    settle = sin(max(0, t - 3.8) * 8) * exp(-max(0, t - 3.8) * 4) if t > 3.8 else 0.0
+    tontura_env = 0.0
+    if 4.0 < t < 7.8:
+        sub = min(1.0, (t - 4.0) / 0.6)
+        des = min(1.0, (7.8 - t) / 0.6)
+        tontura_env = (sub * sub * (3.0 - 2.0 * sub)) * (des * des * (3.0 - 2.0 * des))
+    ofego = sin(max(0.0, t - 3.8) * 4.2) * tontura_env
+    shake = sin(max(0.0, t - 4.3) * 11.5) * exp(-max(0.0, t - 4.3) * 0.65) * tontura_env
+    relaxa = min(1.0, max(0.0, (t - 4.1) / 1.4))
+    relaxa = relaxa * relaxa * (3.0 - 2.0 * relaxa)
+
+    _aplicar_sneeze_tronco_maos(rig, inhale, hit, settle, tontura_env, ofego, shake)
+    _espirro_bracos(rig, inhale, hit, relaxa=relaxa)
     _espirro_esfregar(rig, t)
 
 
@@ -764,7 +1185,8 @@ def pose_blue_balls(rig: Rig, t: float) -> None:
         rig.set_rotation(
             mao,
             x=-22.0 * clutch + 12.0 * shock + sin(t * 24.0) * 2.5 * clutch,
-            z=sinal * (6.0 * shock - 8.0 * clutch),
+            y=sinal * 24.0 * clutch,
+            z=sinal * (6.0 * shock - 10.0 * clutch),
         )
         rig.set_rotation(dedos, z=sinal * (14.0 * clutch - 8.0 * shock))
 
@@ -788,6 +1210,7 @@ _BALANCO_MAO_POR_ESTADO = {
     "blue_balls": 0.4,
     "pet": 1.0,
     "poke": 0.8,
+    "celebrate": 3.5,
     "wake": 1.0,
     "land": 0.8,
 }

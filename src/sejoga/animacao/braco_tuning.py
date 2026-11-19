@@ -29,22 +29,22 @@ from sejoga.nucleo.cinematica_const import (
 #: Cotovelo reto: sem hiperextensão.
 COTOVELO_MIN_GRAUS = 0.0
 #: Flexão máxima do cotovelo. A_CONFIRMAR (C2).
-COTOVELO_MAX_GRAUS = 145.0
+COTOVELO_MAX_GRAUS = 158.0
 
 # --------------------------------------------------------------------------- #
 # Limites do ombro (clamps finais do PoseResolver, em graus)
 # --------------------------------------------------------------------------- #
-#: Elevação (R): erguido (negativo) até um pouco além de reto para baixo.
-#: A_CONFIRMAR (C2/C4): faixas de partida anatômicas, não medidas na GPU.
-OMBRO_ELEVACAO_MIN_GRAUS = -120.0
-OMBRO_ELEVACAO_MAX_GRAUS = 110.0
-#: Azimute (H): faixa ampla, contém só deriva extrema.
-OMBRO_AZIMUTE_MIN_GRAUS = -120.0
-OMBRO_AZIMUTE_MAX_GRAUS = 120.0
+#: Elevação (R): erguido acima da cabeça (negativo) até um pouco além de reto para baixo.
+#: A_CONFIRMAR (C2/C4): faixas ampliadas para alcançar acima da cabeça e danças 1:1.
+OMBRO_ELEVACAO_MIN_GRAUS = -165.0
+OMBRO_ELEVACAO_MAX_GRAUS = 135.0
+#: Azimute (H): faixa ampla para gestos e danças 3D 1:1.
+OMBRO_AZIMUTE_MIN_GRAUS = -150.0
+OMBRO_AZIMUTE_MAX_GRAUS = 150.0
 #: Fração de cada extremo da faixa onde o clamp suave (tanh) amortece a chegada
 #: antes do limite rígido final, evitando parada seca em gestos amplos sem
 #: comprimir os 70% centrais da faixa (docs/ESTUDO_ANIMACAO_PROCEDURAL.md §4.7).
-FRACAO_MARGEM_CLAMP_SUAVE = 0.15
+FRACAO_MARGEM_CLAMP_SUAVE = 0.10
 
 # --------------------------------------------------------------------------- #
 # IK
@@ -76,10 +76,11 @@ FRACAO_NUCLEO_BRACO = 0.5
 #: largas que o tecido) têm folga; cabeça, fone e o outro braço seguem
 #: estritos (folga 0).
 FOLGA_EXTRA_CAIXA_U = {
-    "tronco": 0.068,
-    "quadril": 0.045,
-    "pe_direito": 0.035,
-    "pe_esquerdo": 0.035,
+    "tronco": 0.044,
+    "quadril": 0.028,
+    "cabeca": 0.028,
+    "pe_direito": 0.030,
+    "pe_esquerdo": 0.030,
 }
 #: Passos (graus) da busca em cada grau de liberdade: finos e progressivos para
 #: evitar trancos de 9°-27° num único quadro e ainda contornar mínimos locais.

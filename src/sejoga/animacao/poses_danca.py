@@ -77,7 +77,8 @@ def amostrar_passo(
     fecha o laço). ``ganho`` escala só cabeça/tronco; braços e mãos vão ao declarado.
     """
     destino = (proximo or passo).poses[0]
-    chaves = [*zip(tune.U_POSES, passo.poses, strict=True), (1.0, destino)]
+    u_poses = tune.parametros_danca().get("u_poses", tune.U_POSES)
+    chaves = [*zip(u_poses, passo.poses, strict=True), (1.0, destino)]
     saida: dict[str, Trio] = {}
 
     for grupo in _grupos_das_poses([pose for _, pose in chaves]):

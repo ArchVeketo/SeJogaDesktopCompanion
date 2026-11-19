@@ -325,8 +325,11 @@ class DebugTools:
                     "title": music.title,
                     "artist": music.artist,
                     "playing": music.is_playing,
+                    "audio_active": music.audio_active,
+                    "confidence": round(music.music_confidence, 2),
                     "level": music.audio_level,
                     "bpm": music.bpm,
+                    "backend": music.capture_backend,
                 }
                 if music
                 else None

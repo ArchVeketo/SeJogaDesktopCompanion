@@ -104,15 +104,42 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 
 def run() -> int:
     """Inicia o runtime do companion."""
+    from PySide6.QtWidgets import QApplication
+
     from sejoga.configuracao import load_settings
+    from sejoga.desktop.carregamento import LoadingSplash
+
+    settings = load_settings()
+    qt_app = QApplication.instance() or QApplication(sys.argv)
+    splash = LoadingSplash(settings)
+    splash.show()
+    qt_app.processEvents()
+
     from sejoga.render.janela import OverlayApp
 
-    OverlayApp(load_settings()).run()
+    try:
+        app = OverlayApp(settings)
+    finally:
+        splash.finish()
+    app.run()
     return 0
 
 
 def _cmd_run(_args: argparse.Namespace) -> int:
     return run()
+
+
+def _cmd_editor(args: argparse.Namespace) -> int:
+    from sejoga.editor.app import executar_editor
+
+    argv: list[str] = []
+    if args.acao:
+        argv.extend(["--acao", str(args.acao)])
+    if args.sem_gpu:
+        argv.append("--sem-gpu")
+    if args.arquivo:
+        argv.extend(["--arquivo", str(args.arquivo)])
+    return executar_editor(argv)
 
 
 def _module_available(name: str) -> bool:
@@ -143,6 +170,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run", help="inicia o companion (etapa 2)")
     run.set_defaults(func=_cmd_run)
+
+    editor = sub.add_parser("editor", help="abre o Editor do Mário")
+    editor.add_argument("--acao", default=None, help="ação inicial (opcional)")
+    editor.add_argument("--sem-gpu", action="store_true", help="sem viewport GPU")
+    editor.add_argument("--arquivo", default=None, help="caminho alternativo de animation.py")
+    editor.set_defaults(func=_cmd_editor)
     return parser
 
 

@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sejoga.animacao import animation as _anim_padrao
+from sejoga.animacao.dados_autorais import respiracao_ativa
 from sejoga.nucleo.esqueleto import IdlePersonality
 
 
@@ -90,6 +92,37 @@ RESPIRACAO_POR_PERSONALIDADE: dict[IdlePersonality, ParametrosRespiracao] = {
 }
 
 
+def _peso_parte(estilo: str | None, chave: str) -> float:
+    resp = respiracao_ativa()
+    if estilo is None:
+        return 1.0
+    pesos = resp.get("personalidades", {}).get(estilo, {}).get("pesos", {})
+    return float(pesos.get(chave, 1.0))
+
+
+def assimetria_de(personalidade: IdlePersonality | str | None = None) -> float:
+    """Devolve a fração de assimetria inspiração/expiração ativa."""
+    resp = respiracao_ativa()
+    padrao = float(resp.get("assimetria_inspiracao", 0.375))
+    if personalidade is None:
+        return padrao
+    chave = personalidade.value if isinstance(personalidade, IdlePersonality) else str(personalidade)
+    entrada = resp.get("personalidades", {}).get(chave, {})
+    return float(entrada.get("assimetria", padrao))
+
+
+def contribuicao_partes_ativa(estilo: str | None = None) -> dict[str, float]:
+    """Ganhos por parte do corpo (peito, ombro, cabeca, abdomen, cintura)."""
+    partes = respiracao_ativa().get("contribuicao_partes", {})
+    return {
+        "peito": float(partes.get("peito", 1.6)) * _peso_parte(estilo, "peito"),
+        "ombro": float(partes.get("ombro", 0.5)) * _peso_parte(estilo, "ombro"),
+        "cabeca": float(partes.get("cabeca", 0.4)) * _peso_parte(estilo, "cabeca"),
+        "abdomen": float(partes.get("abdomen", 0.0)) * _peso_parte(estilo, "abdomen"),
+        "cintura": float(partes.get("cintura", 0.0)) * _peso_parte(estilo, "cintura"),
+    }
+
+
 def parametros_de(personalidade: IdlePersonality | str) -> ParametrosRespiracao:
     """Devolve os parâmetros da personalidade, ou ``PADRAO`` se desconhecida."""
     try:
@@ -97,7 +130,18 @@ def parametros_de(personalidade: IdlePersonality | str) -> ParametrosRespiracao:
     except ValueError:
         return PADRAO
 
-    return RESPIRACAO_POR_PERSONALIDADE.get(chave, PADRAO)
+    resp = respiracao_ativa()
+    if resp is _anim_padrao.RESPIRACAO:
+        return RESPIRACAO_POR_PERSONALIDADE.get(chave, PADRAO)
+    entrada = resp.get("personalidades", {}).get(chave.value)
+    if not isinstance(entrada, dict):
+        return RESPIRACAO_POR_PERSONALIDADE.get(chave, PADRAO)
+    base = RESPIRACAO_POR_PERSONALIDADE.get(chave, PADRAO)
+    return ParametrosRespiracao(
+        frequencia=float(entrada.get("frequencia", base.frequencia)),
+        amplitude=float(entrada.get("amplitude", base.amplitude)),
+        bounce=float(entrada.get("bounce", base.bounce)),
+    )
 
 
 # Falha cedo se o rig ganhar uma personalidade sem entrada de respiração: a

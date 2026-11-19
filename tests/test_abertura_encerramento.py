@@ -256,3 +256,109 @@ def test_window_settings_persist_intro_and_exit_styles(tmp_path):
     loaded = configuracao.load_settings(path)
     assert loaded.window.intro_animation == "kagebunshin_in"
     assert loaded.window.exit_animation == "thanos_snap"
+
+
+def test_intros_refined_durations_and_clean_settle():
+    for style in INTRO_STYLES:
+        if style in ("padrao", "aleatoria"):
+            continue
+        anim = IntroAnimation(style, from_side=1)
+        assert anim.duration >= 2.2
+        end = anim.sample(anim.duration)
+        assert end.finished is True
+        assert end.dissolve == 0.0
+        assert end.afterimage == 0.0
+        assert abs(end.offset_x) < 1e-6
+        assert abs(end.scale - 1.0) < 1e-6
+
+
+def test_loading_splash_translucent_and_idempotent_finish():
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    from sejoga.desktop.carregamento import LoadingSplash
+
+    app = QApplication.instance() or QApplication([])
+    splash = LoadingSplash(configuracao.Settings())
+    assert splash.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    assert bool(splash.windowFlags() & Qt.WindowType.WindowTransparentForInput)
+    splash.set_status("Compilando shaders...")
+    splash.tick()
+    splash.finish()
+    splash.finish()
+    assert splash._closed is True
+    app.processEvents()
+
+
+def test_entrada_fecha_splash_antes_de_executar_overlay(monkeypatch):
+    from types import SimpleNamespace
+    from sejoga import __main__ as entry
+    from sejoga.desktop import carregamento
+    from sejoga.render import janela
+
+    eventos = []
+    monkeypatch.setattr(carregamento, "LoadingSplash", lambda settings: SimpleNamespace(
+        show=lambda: eventos.append("splash"),
+        finish=lambda: eventos.append("finish"),
+    ))
+    monkeypatch.setattr(janela, "OverlayApp", lambda settings: SimpleNamespace(
+        run=lambda: eventos.append("run"),
+    ))
+    assert entry.run() == 0
+    assert eventos == ["splash", "finish", "run"]
+
+
+def test_chroma_key_inicial_e_msaa_overlay_wgl():
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+    from sejoga.render.janela import _chroma_inicial_bgr
+    from sejoga.render.janela_const import FRAMEBUFFER_MULTISAMPLES
+
+    assert FRAMEBUFFER_MULTISAMPLES == 4
+    assert _chroma_inicial_bgr("#FF00FF") == 0x00D600D6
+    assert _chroma_inicial_bgr("#FFFF00") == 0x0000D6D6
+
+
+def test_intros_borda_desktop_e_esqueleto_sem_cranio():
+    from panda3d.core import NodePath
+
+    from sejoga.render.esqueleto_fnf import EsqueletoFnf
+
+    for style in ("virtual_insanity_in", "sandevistan_in"):
+        anim = IntroAnimation(style, from_side=-1, entry_distance=980.0)
+        assert anim.duration >= 3.5
+        start = anim.sample(0.0)
+        assert start.offset_x <= -950.0
+
+    raiz = NodePath("teste-rig")
+    nomes = (
+        "head",
+        "peitoral",
+        "abdomen",
+        "cintura",
+        "pelvis",
+        "right-arm",
+        "ant-arm",
+        "hand",
+        "left-arm",
+        "ant-arm2",
+        "hand2",
+        "coxa-direita",
+        "joelho-direito",
+        "canela-direita",
+        "right-feet",
+        "coxa-esquerda",
+        "joelho-esquerdo",
+        "canela-esquerda",
+        "left-feet",
+    )
+    rig_nodes = {nome: raiz.attachNewNode(nome) for nome in nomes}
+    rig_nodes["hand"].setPos(0.3, 0.0, 0.0)
+    rig_nodes["right-feet"].setPos(0.0, 0.0, -0.4)
+    skel = EsqueletoFnf(raiz, rig_nodes)
+    assert all(peca.alvo_rig != rig_nodes["head"] for peca in skel._pecas)
+    assert any(peca.alvo_rig == rig_nodes["peitoral"] for peca in skel._pecas)
+    skel.atualizar(0.85, raiz)
+    assert not skel.root.isHidden()
+    skel.limpar()

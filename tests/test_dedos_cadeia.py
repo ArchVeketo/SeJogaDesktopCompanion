@@ -309,9 +309,9 @@ def test_leque_afasta_as_pontas_no_asset_real():
 
     core = pytest.importorskip("panda3d.core")
     gltf = pytest.importorskip("gltf")
-    from sejoga.animacao.gestos_dedos import FingerGestures
     from sejoga.nucleo.recursos import resolve_model
     from sejoga.render.dedos_malha import fatiar_dedos
+    from sejoga.render.gestos_dedos import FingerGestures
 
     model = core.NodePath(gltf.load_model(str(resolve_model())))
     fatiar_dedos(model)
@@ -339,9 +339,9 @@ def test_gesto_apresenta_a_mao_sem_mudar_eixo_do_punho():
 
     core = pytest.importorskip("panda3d.core")
     gltf = pytest.importorskip("gltf")
-    from sejoga.animacao.gestos_dedos import FingerGestures
     from sejoga.nucleo.recursos import resolve_model
     from sejoga.render.dedos_malha import fatiar_dedos
+    from sejoga.render.gestos_dedos import FingerGestures
 
     model = core.NodePath(gltf.load_model(str(resolve_model())))
     fatiar_dedos(model)
@@ -363,3 +363,98 @@ def test_gesto_apresenta_a_mao_sem_mudar_eixo_do_punho():
     assert model.getRelativeVector(hand, core.Vec3(1, 0, 0)).almostEqual(eixo, 1e-6)
     assert abs(model.getRelativeVector(hand, core.Vec3(0, 0, 1)).y) > abs(normal.y)
     assert hand.getMat().almostEqual(outline_hand.getMat(), 1e-6)
+
+
+def test_flexao_do_bloco_nao_desloca_as_bases_dos_dedos_da_palma():
+    from types import SimpleNamespace
+    import gltf
+    from panda3d.core import NodePath
+    from sejoga.nucleo.recursos import resolve_model
+    from sejoga.render.dedos_malha import fatiar_dedos, pivos_da_cadeia
+    from sejoga.render.gestos_dedos import FingerGestures
+
+    model = NodePath(gltf.load_model(str(resolve_model())))
+    fatiar_dedos(model)
+    outline = model.copyTo(NodePath('contorno'))
+    nomes = ('hand', 'hand2', 'fingers', 'fingers2')
+    nodes = {n: model.find('**/' + n) for n in nomes}
+    bases = {n: tuple(node.getHpr()) for n, node in nodes.items()}
+    pivots = [pivos_da_cadeia(model, m)[0][0] for m in (33, 34, 35, 36)]
+    antes = [p.getPos(model) for p in pivots]
+    animator = FingerGestures(SimpleNamespace(
+        model_np=model, outline_np=outline, _rig_nodes=nodes,
+        _outline_nodes={n: outline.find('**/' + n) for n in nomes}, _rig_base_hpr=bases,
+    ))
+    nodes['fingers'].setR(nodes['fingers'].getR() + 30)
+    animator.update(1 / 60, 'idle')
+    for p, pos in zip(pivots, antes, strict=True):
+        assert p.getPos(model).almostEqual(pos, 1e-6)
+
+
+def test_joinha_mede_polegar_articulado_e_preserva_eixo_do_pulso():
+    from types import SimpleNamespace
+    import gltf
+    from panda3d.core import NodePath, Vec3
+    from sejoga.nucleo.recursos import resolve_model
+    from sejoga.render.dedos_malha import (
+        fatiar_dedos, medir_direcao_polegar, alinhar_pulso_polegar,
+    )
+
+    model = NodePath(gltf.load_model(str(resolve_model())))
+    fatiar_dedos(model)
+    assert model.find('**/mesh32').isEmpty()
+    hand = model.find('**/hand')
+    hand.getParent().setHpr(18, 30, -70)
+    eixo = model.getRelativeVector(hand, Vec3(1, 0, 0))
+    pos = hand.getPos(model)
+    polegar = medir_direcao_polegar(SimpleNamespace(model_np=model))
+    assert polegar.length() == pytest.approx(1)
+    alinhar_pulso_polegar(hand, model, polegar, 1)
+    assert model.getRelativeVector(hand, Vec3(1, 0, 0)).almostEqual(eixo, 1e-6)
+    assert hand.getPos(model).almostEqual(pos, 1e-6)
+
+
+def test_gestos_individuais_independentes_nas_duas_maos():
+    """As duas mãos executam gestos distintos por dedo (flexão + abertura) sem acoplar."""
+    from types import SimpleNamespace
+
+    gltf = pytest.importorskip("gltf")
+    from panda3d.core import NodePath
+
+    from sejoga.nucleo.recursos import resolve_model
+    from sejoga.render.dedos_malha import fatiar_dedos
+    from sejoga.render.gestos_dedos import FingerGestures
+
+    model = NodePath(gltf.load_model(str(resolve_model())))
+    fatiar_dedos(model)
+    outline = model.copyTo(NodePath("contorno-duas-maos"))
+    nomes = ("hand", "hand2", "fingers", "fingers2")
+    nodes = {n: model.find("**/" + n) for n in nomes}
+    animator = FingerGestures(
+        SimpleNamespace(
+            model_np=model,
+            outline_np=outline,
+            _rig_nodes=nodes,
+            _outline_nodes={n: outline.find("**/" + n) for n in nomes},
+            _rig_base_hpr={n: tuple(node.getHpr()) for n, node in nodes.items()},
+        )
+    )
+
+    for _ in range(45):
+        animator.update(1 / 60, "thumbs_up", gesto_esquerda="point")
+
+    # Direita: polegar esticado (~0..5°), indicador dobrado (>40°).
+    assert animator.angulos[(1, 0)][0] < 10.0
+    assert sum(animator.angulos[(1, 1)]) > 80.0
+    # Esquerda: indicador apontando esticado (<12°), médio dobrado (>80°).
+    assert sum(animator.angulos[(-1, 1)]) < 12.0
+    assert sum(animator.angulos[(-1, 2)]) > 80.0
+    assert animator.amounts_por_mao[1] != animator.amounts_por_mao[-1]
+
+    # Paz/V na direita afasta indicador e médio em sentidos opostos.
+    for _ in range(45):
+        animator.update(1 / 60, "peace", gesto_esquerda="thumbs_up")
+    assert animator.aberturas[(1, 1)] > 8.0
+    assert animator.aberturas[(1, 2)] < -8.0
+    assert animator.angulos[(-1, 0)][0] < 10.0
+    assert sum(animator.angulos[(-1, 1)]) > 80.0

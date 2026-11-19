@@ -56,6 +56,24 @@ def test_t_pose_do_asset_nao_conta_como_colisao(modelo):
     assert cb.penetracao_do_lado(modelo, "right", {}) <= cb.FOLGA_PENETRACAO_U
 
 
+def test_rotacao_do_ombro_move_so_a_capsula_da_peca(modelo):
+    repouso = cb.capsulas_do_braco(modelo, "right", {})
+    pose = {"shoulder": Rotation3(0, 0, radians(30))}
+    giradas = cb.capsulas_do_braco(modelo, "right", pose)
+
+    assert giradas[0].b != repouso[0].b
+    assert giradas[1:] == repouso[1:]
+
+
+def test_caixas_inferiores_seguem_quadril_independente_do_peitoral(modelo):
+    pose = {"legs": Rotation3(0, radians(90), 0)}
+    caixas = cb.caixas_corpo_na_pose(modelo, pose)
+    pe = cb.CAIXAS_CORPO["pe_direito"]
+    x, y, z = pe.centro
+    assert caixas["pe_direito"].centro == pytest.approx((-y, x, z))
+    assert caixas["tronco"] == cb.CAIXAS_CORPO["tronco"]
+
+
 def test_resolvedor_tira_o_braco_do_tronco_e_relaxa_depois(modelo):
     resolvedor = cb.ResolvedorBracos(modelo)
     invasora = dict(_pose_simetrica(modelo, "idle"), **POSE_INVASORA)

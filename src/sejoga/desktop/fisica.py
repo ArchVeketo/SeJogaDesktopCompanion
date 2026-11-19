@@ -493,8 +493,12 @@ class ScreenSpacePhysics:
         self._record_drag_sample()
         # Velocity será calculada no release baseado nos samples
 
-    def end_drag(self, cancel: bool = False) -> tuple[float, float]:
-        """Finaliza arraste - calcula velocidade e volta a DYNAMIC."""
+    def end_drag(
+        self,
+        cancel: bool = False,
+        extra_velocity: tuple[float, float] = (0.0, 0.0),
+    ) -> tuple[float, float]:
+        """Finaliza arraste - calcula velocidade + estilingue e volta a DYNAMIC."""
         if not self._drag_active:
             return (0, 0)
 
@@ -506,10 +510,16 @@ class ScreenSpacePhysics:
         self.body.moment = pymunk.moment_for_circle(mass, 0, self.mascot_radius)
         self.body.angular_velocity = 0.0
 
-        # Estima velocidade dos últimos samples
-        velocity = self._estimate_velocity_from_samples() if not cancel else (0.0, 0.0)
-        multiplier = self.settings.physics.throw_multiplier
-        velocity = (velocity[0] * multiplier, velocity[1] * multiplier)
+        # Estima velocidade dos últimos samples + tangencial do giro (estilingue)
+        if not cancel:
+            base_vx, base_vy = self._estimate_velocity_from_samples()
+            multiplier = self.settings.physics.throw_multiplier
+            velocity = (
+                base_vx * multiplier + float(extra_velocity[0]),
+                base_vy * multiplier + float(extra_velocity[1]),
+            )
+        else:
+            velocity = (0.0, 0.0)
 
         # Clamp
         speed = math.hypot(velocity[0], velocity[1])

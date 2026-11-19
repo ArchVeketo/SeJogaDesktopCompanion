@@ -199,11 +199,11 @@ class GateAtencao:
         candidatos = []
         for g in gatilhos:
             if g.fonte == "cursor" and self._cursor_novidade < 0.999:
-                # Decaimento de novidade (estilo ObjectLooker / Rain World):
-                # cursor imóvel por > 2s perde destaque para que olhares ambientais respirem.
+                # Decaimento suave sem cair abaixo da prioridade de borda quando
+                # parado perto da janela (evita piscar olhar cursor <-> borda).
                 novidade = self._cursor_novidade
                 peso_prioridade = (
-                    (PRIORIDADE_AMBIENTE * 0.9) * (1.0 - novidade)
+                    (PRIORIDADE_BORDA + 2.0) * (1.0 - novidade)
                     + g.prioridade * novidade
                 )
                 candidatos.append(
@@ -211,7 +211,7 @@ class GateAtencao:
                         g.fonte,
                         g.ponto,
                         peso_prioridade,
-                        g.forca * (0.35 + 0.65 * novidade),
+                        g.forca * (0.45 + 0.55 * novidade),
                     )
                 )
             else:
@@ -272,7 +272,7 @@ class GateAtencao:
             self._cursor_tempo_parado += max(0.0, dt)
             if self._cursor_tempo_parado > 2.0:
                 excesso = self._cursor_tempo_parado - 2.0
-                self._cursor_novidade = max(0.15, min(1.0, 2.718281828 ** (-excesso * 0.45)))
+                self._cursor_novidade = max(0.32, min(1.0, 2.718281828 ** (-excesso * 0.35)))
 
     def _avancar_ambiente(
         self,

@@ -230,52 +230,40 @@ def girar_pivo(
     pivo.setQuat(rotacao)
 
 
-def medir_direcao_polegar(renderer) -> Vec3:
-    """Direção longitudinal do polegar direito em coordenadas da mão."""
-    hand = renderer._rig_nodes.get("hand")
-    thumb_mesh = renderer.model_np.find("**/mesh32")
-    if hand is not None and not thumb_mesh.isEmpty():
-        bounds = thumb_mesh.getTightBounds(hand)
-        pivots = pivos_da_cadeia(renderer.model_np, 32)
-        if bounds and pivots:
-            base = pivots[0][0].getPos(hand)
-            center = (bounds[0] + bounds[1]) * 0.5
-            vec = center - base
-            if vec.lengthSquared() > 1e-6:
-                vec.normalize()
-                return vec
-    vec = Vec3(0.713, 0.673, -0.194)
-    vec.normalize()
-    return vec
+def medir_direcao_polegar(
+    renderer,
+    hand_name: str = "hand",
+    thumb_mesh: int = tuning_dedos.MESH_DEDOS_DIREITA[0],
+) -> Vec3:
+    """Direção longitudinal do polegar em coordenadas da mão correspondente."""
+    hand = renderer.model_np.find(f"**/{hand_name}")
+    pivots = pivos_da_cadeia(renderer.model_np, thumb_mesh)
+    if hand.isEmpty() or not pivots:
+        raise ValueError("Cadeia do polegar ausente: fatiar_dedos deve preceder os gestos")
+    base = pivots[0][0]
+    eixo = Vec3(*(float(v) for v in base.getTag(TAG_COMPRIMENTO).split()))
+    return hand.getRelativeVector(base, eixo).normalized()
 
 
 def alinhar_pulso_polegar(hand: NodePath, model_np: NodePath, thumb_local_dir: Vec3, presentation: float) -> None:
-    """Alinha o eixo real do polegar à vertical do modelo para joinha/pistolinha."""
-    from math import acos, degrees
+    """Apresenta o polegar por pronação, sem desviar a mão do eixo do antebraço."""
+    from math import atan2, degrees
 
     alvo = hand.getRelativeVector(model_np, (0, -0.12, 1.0))
-    if alvo.lengthSquared() <= 1e-5:
+    if alvo.y * alvo.y + alvo.z * alvo.z <= 1e-8:
         return
-    alvo.normalize()
-    dot = max(-1.0, min(1.0, thumb_local_dir.dot(alvo)))
-    eixo = thumb_local_dir.cross(alvo)
-    if eixo.lengthSquared() > 1e-7:
-        eixo.normalize()
-        angulo = degrees(acos(dot))
-    else:
-        eixo = Vec3(0, 0, 1) if dot < 0.0 else Vec3(0, 1, 0)
-        angulo = 180.0 if dot < 0.0 else 0.0
+    angulo = degrees(atan2(
+        thumb_local_dir.y * alvo.z - thumb_local_dir.z * alvo.y,
+        thumb_local_dir.y * alvo.y + thumb_local_dir.z * alvo.z,
+    ))
     dq = Quat()
-    dq.setFromAxisAngle(angulo * presentation, eixo)
+    dq.setFromAxisAngle(angulo * presentation, Vec3(1, 0, 0))
     hand.setQuat(hand, dq)
 
 
 def fatiar_dedos(model_np: NodePath) -> None:
-    """Fatia os 5 dedos de cada mão com eixo consistente nos dedos longos."""
+    """Fatia os 5 dedos de cada mão ao longo do eixo longitudinal próprio de cada bloco."""
     for meshes in (tuning_dedos.MESH_DEDOS_DIREITA, tuning_dedos.MESH_DEDOS_ESQUERDA):
-        ref_longa = _direcao_longitudinal_malha(
-            model_np, meshes[INDICE_REFERENCIA_LONGO]
-        )
         ordem = [*meshes[INDICE_REFERENCIA_EIXO:], meshes[INDICE_POLEGAR]]
 
         for mesh in ordem:
@@ -289,6 +277,6 @@ def fatiar_dedos(model_np: NodePath) -> None:
                 model_np,
                 mesh,
                 fracoes,
-                referencia_longitudinal=None if polegar else ref_longa,
+                referencia_longitudinal=None,
                 pronacao_graus=tuning_dedos.PRONACAO_POLEGAR_GRAUS if polegar else 0.0,
             )

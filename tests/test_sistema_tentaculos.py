@@ -224,7 +224,7 @@ def test_cores_dos_tentaculos_preservam_tons_de_rosa():
         while not reader.isAtEnd():
             r, g, b, _a = reader.getData4()
             assert r > b > g, f"cor saiu do rosa em {limb.morfologia}: {(r, g, b)}"
-            assert g >= 0.08
+            assert r >= 0.25 and (r - g) >= 0.15
 
 
 def test_coreografia_puxador_alcance_curto():
@@ -252,3 +252,78 @@ def test_coreografia_puxador_alcance_curto():
     assert FasePorta.VOLTANDO in fases_vistas
     assert director.coreografia.fase is FasePorta.FECHADA
     assert director.coreografia_ativa is False
+
+
+def test_interrupcao_forca_recuo_de_porta_e_arremesso_de_caixa():
+    pool, director = scene(3)
+    director.trigger_curious(count=2)
+    director._door_current = 70.0
+    director.coreografia.assumir_aberta()
+    for _ in range(10):
+        director.update(1 / 60, IdlePersonality.CALM)
+    assert director.coreografia_ativa is True
+
+    director.trigger_speaker_throw()
+    director.music_ejection = True
+    throw_limb = director.speaker_throw_limbs[0]
+    for _ in range(15):
+        director.update(1 / 60, IdlePersonality.CALM)
+    assert throw_limb.speaker_throw is True
+    assert director._fechar_apos_ejecao is True
+
+    director.encerrar_espiada(interromper=True)
+    assert director.coreografia.fase is FasePorta.FECHADA
+    assert director.coreografia_ativa is False
+    assert director.speaker_throw_remaining == 0.0
+    assert not director.speaker_throw_limbs
+    assert throw_limb.speaker_throw is False
+    assert director._door_requested == 0.0
+    for _ in range(45):
+        director.update(1 / 60, IdlePersonality.CALM)
+    assert director.coreografia.fase is FasePorta.FECHADA
+    assert all(t.state == TentacleState.DORMANT for t in pool.tentacles)
+
+
+def test_interrupcao_apos_espirro_nao_respawna_puxador():
+    pool, director = scene(TOTAL_ENXURRADA)
+    director._door_current = 80.0
+    director.trigger_sneeze()
+    for _ in range(20):
+        director.update(1 / 60, IdlePersonality.CALM)
+    assert director.burst is True
+    director.encerrar_espiada(interromper=True)
+    assert director.burst is False
+    assert director._fechar_apos_ejecao is False
+    for _ in range(90):
+        director.update(1 / 60, IdlePersonality.CALM)
+    assert director.coreografia.fase is FasePorta.FECHADA
+    assert director.coreografia_ativa is False
+    assert all(t.state == TentacleState.DORMANT for t in pool.tentacles)
+
+
+@pytest.mark.parametrize("estado_name", ["drag", "fall", "sleep"])
+def test_bloqueio_apendices_cancela_coreografia_tardia(estado_name: str):
+    from types import SimpleNamespace
+
+    from sejoga.animacao.controlador_animacao import AnimationState
+    from sejoga.render.renderizador import Panda3DRenderer
+
+    pool, director = scene(2)
+    director.trigger_curious(count=2)
+    director._door_current = 60.0
+    director.coreografia.assumir_aberta()
+    fake = SimpleNamespace(
+        tentacle_director=director,
+        tentacle_pool=pool,
+        _tentacles_were_visible=False,
+        _tempo_cobertura=1.2,
+        _cobertura_roupa=[pool.tentacles[0]],
+    )
+    fake._interromper_cobertura_roupa = lambda: Panda3DRenderer._interromper_cobertura_roupa(fake)
+    ctrl = SimpleNamespace(state=AnimationState(estado_name))
+    bloqueado, vis = Panda3DRenderer._sincronizar_bloqueio_apendices(fake, ctrl, False)
+    assert bloqueado is True
+    assert vis is False
+    assert director.coreografia_ativa is False
+    assert fake._tempo_cobertura == 0.0
+    assert not fake._cobertura_roupa

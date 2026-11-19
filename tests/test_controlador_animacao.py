@@ -195,14 +195,13 @@ def _arraste_por(part):
 def test_arraste_por_perna_pendura_bracos_e_cabeca():
     from math import degrees
 
-    # Pego pela perna/pé: braços e cabeça pendem. FK do grafo de cena: punhos
-    # abaixo do ombro nos dois lados (o mais baixo que o corpo permite, ver
-    # arm_targets: o short impede baixar mais sem atravessar).
+    # Pego pela perna/pé: pêndulo inverte (~±170°) e gravidade global faz braços
+    # apontarem para o chão do mundo (acima do ombro no espaço local do tronco)
+    # e a cabeça pender.
     for part in ("legs", "left-feet", "right-feet"):
         pose = _arraste_por(part)
-        assert punho(pose, "right")[1] < 0.0, part
-        assert punho(pose, "left")[1] < 0.0, part
-        # Cabeça pende (olhar para baixo no mundo com o tronco invertido).
+        assert punho(pose, "right")[1] > 0.1, part
+        assert punho(pose, "left")[1] > 0.1, part
         assert degrees(pose["head"].x) > 10, part
 
 
@@ -212,10 +211,12 @@ def test_arraste_por_perna_difere_de_corpo_e_braco():
     perna = _arraste_por("legs")
     corpo = _arraste_por("body")
     braco = _arraste_por("right-arm")
-    # FK do grafo de cena: pego pela perna os punhos ficam mais BAIXOS que no
-    # arraste pelo corpo (que leva as mãos à frente para se equilibrar).
-    assert punho(perna, "right")[1] < punho(corpo, "right")[1]
-    assert punho(perna, "left")[1] < punho(corpo, "left")[1]
+    # Pego pelo corpo (ereto): punhos pendem para baixo (y < 0); pela perna (invertido):
+    # gravidade mundial aponta os braços acima dos ombros locais (y > 0).
+    assert punho(corpo, "right")[1] < -0.1
+    assert punho(corpo, "left")[1] < -0.1
+    assert punho(perna, "right")[1] > punho(corpo, "right")[1]
+    assert punho(perna, "left")[1] > punho(corpo, "left")[1]
     # As três poses de arraste diferem entre si na posição do braço.
     assert degrees(perna["right-arm"].z) != degrees(braco["right-arm"].z)
 
@@ -508,3 +509,138 @@ def test_hover_inverte_o_alvo_local_quando_mario_esta_de_costas():
     animation.definir_orientacao("costas")
     animation.update(0.1, hovered=True, look_direction=0.6)
     assert animation._look_direction < 0
+
+
+def test_estados_migrados_nao_duplicam_caminho_legado_e_cobrem_tres_modos_sono():
+    from unittest.mock import patch
+
+    animation = controller()
+    with (
+        patch("sejoga.animacao.controlador_animacao.pose_idle", side_effect=AssertionError),
+        patch("sejoga.animacao.controlador_animacao.pose_interaction", side_effect=AssertionError),
+        patch("sejoga.animacao.controlador_animacao.pose_secondary", side_effect=AssertionError),
+    ):
+        animation.update(1 / 60)
+        animation.update(1 / 60, hovered=True, look_direction=0.5)
+        animation.update(1 / 60, velocity=(120.0, 0.0), grounded=True)
+        animation.update(1 / 60, velocity=(320.0, 0.0), grounded=True)
+        for modo in ("em_pe", "sentado", "deitado"):
+            animation.colocar_para_dormir(modo)
+            pose = animation.update(1 / 60)
+            assert animation.state == AnimationState.SLEEP
+            assert len(pose) == 30
+        animation.update(1 / 60, dragging=True)
+        assert animation.state == AnimationState.DRAG
+        pose_fall = animation.update(1 / 60, grounded=False, velocity=(0.0, 200.0))
+        assert animation.state == AnimationState.FALL
+        assert len(pose_fall) == 30
+
+
+def test_mixamo_rotas_locomocao() -> None:
+    animation = controller()
+    animation.update(1 / 60, velocity=(210.0, 0.0), grounded=True)
+    assert animation.state == AnimationState.WALK
+    assert animation.acao_clipe_ativa == "walk_standard"
+
+    animation.update(1 / 60, velocity=(130.0, 0.0), grounded=True)
+    assert animation.acao_clipe_ativa == "walk_standard"
+
+    animation.update(1 / 60, velocity=(-80.0, 0.0), grounded=True)
+    assert animation.acao_clipe_ativa == "walk_standard"
+
+    animation.update(1 / 60, velocity=(740.0, 0.0), grounded=True)
+    assert animation.state == AnimationState.RUN
+    assert animation.acao_clipe_ativa == "run_mixamo"
+
+    c_fall = controller()
+    c_fall.update(1 / 60, grounded=False, velocity=(120.0, 560.0))
+    assert c_fall.state == AnimationState.FALL
+    assert c_fall.acao_clipe_ativa == "swimming"
+    assert c_fall.raiz_quat_ativa is not None
+
+
+def test_mixamo_rotas_alongamento_e_pouso() -> None:
+    c_stretch = controller()
+    c_stretch.interact("stretch")
+    c_stretch.update(1 / 60)
+    assert c_stretch.state == AnimationState.STRETCH
+    assert c_stretch.acao_clipe_ativa == "arm_stretching"
+
+    c_land = controller()
+    c_land.interact("land", strength=1.7)
+    c_land.update(1 / 60)
+    assert c_land.state == AnimationState.LAND
+    assert c_land.acao_clipe_ativa == "cover_to_stand"
+
+
+def test_defesas_recuperam_movimento_sem_clipe_de_golpe() -> None:
+    for reacao in (AnimationState.HIT, AnimationState.POKE):
+        ctrl = controller()
+        ctrl.agencia.registrar_interacao_negativa(2.0)
+        for _ in range(15):
+            ctrl.update(1 / 60)
+        assert ctrl.state == AnimationState.IDLE
+        assert ctrl.acao_clipe_ativa is None
+
+        ctrl.interact(reacao.value, direction=1.0)
+        ctrl.update(1 / 60)
+        assert ctrl.state == reacao
+        assert ctrl.acao_clipe_ativa is None
+        for _ in range(64):
+            ctrl.update(1 / 60, velocity=(130.0, 0.0))
+        assert ctrl.state == AnimationState.WALK
+        assert ctrl.acao_clipe_ativa == "walk_standard"
+
+
+def test_teimosia_conecta_fases_e_so_corre_com_deslocamento() -> None:
+    ctrl = controller()
+    ctrl.preview_dance("hip_hop")
+    ctrl.interact("teimosia")
+    ctrl.update(1 / 60)
+    for tempo, fase in ((1.1, "repreensao"), (2.1, "bote"), (3.1, "roubo")):
+        ctrl._reaction_time = tempo
+        ctrl.update(1 / 60)
+        assert ctrl.state == AnimationState.TEIMOSIA
+        assert ctrl._teimosia_fase == fase
+        assert ctrl.pose_resolver._state_time < 0.04
+        assert ctrl.acao_clipe_ativa is None
+
+    ctrl.update(1 / 60, velocity=(-240.0, 0.0))
+    assert ctrl.acao_clipe_ativa == "run_mixamo"
+    ctrl.interact("drag_start")
+    ctrl.update(1 / 60, dragging=True)
+    assert ctrl.state == AnimationState.DRAG
+    assert ctrl.acao_clipe_ativa is None
+    assert ctrl._teimosia_fase == "resistencia"
+    ctrl.update(1 / 60)
+    assert ctrl.state == AnimationState.DANCE
+
+
+def test_cutucada_fica_visivel_antes_de_retomar_danca() -> None:
+    ctrl = controller()
+    ctrl.preview_dance("hip_hop")
+    ctrl.update(1 / 60)
+    assert ctrl.state == AnimationState.DANCE
+
+    ctrl.interact("poke")
+    ctrl.update(1 / 60)
+    assert ctrl.state == AnimationState.POKE
+    for _ in range(60):
+        ctrl.update(1 / 60)
+    assert ctrl.state == AnimationState.DANCE
+
+
+
+def test_resistencia_da_teimosia_planta_os_pes_sem_pedalar() -> None:
+    from sejoga.animacao.teimosia_pose import aplicar_fase
+
+    ctrl = controller()
+    ctrl.interact("teimosia")
+    ctrl.update(1 / 60)
+    coxas = []
+    for i in range(1, 60):
+        aplicar_fase(ctrl.rig, i / 60.0 * 0.95, 0.0)
+        coxas.append(ctrl.rig.current["coxa-direita"].x)
+    # sem ciclo de corrida: amplitude pequena e sinal único (agachada)
+    assert max(coxas) - min(coxas) < 0.35
+    assert ctrl.state == AnimationState.TEIMOSIA

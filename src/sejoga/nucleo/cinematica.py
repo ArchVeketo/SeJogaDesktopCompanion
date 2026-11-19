@@ -67,10 +67,18 @@ BASE_ADICIONAL_GRAUS: dict[str, tuple[float, float, float]] = {
 # --------------------------------------------------------------------------- #
 def mul(a: Mat3, b: Mat3) -> Mat3:
     """Produto ``a · b``."""
-    return tuple(  # type: ignore[return-value]
-        sum(a[i * 3 + k] * b[k * 3 + j] for k in range(3))
-        for i in range(3)
-        for j in range(3)
+    a0, a1, a2, a3, a4, a5, a6, a7, a8 = a
+    b0, b1, b2, b3, b4, b5, b6, b7, b8 = b
+    return (
+        a0 * b0 + a1 * b3 + a2 * b6,
+        a0 * b1 + a1 * b4 + a2 * b7,
+        a0 * b2 + a1 * b5 + a2 * b8,
+        a3 * b0 + a4 * b3 + a5 * b6,
+        a3 * b1 + a4 * b4 + a5 * b7,
+        a3 * b2 + a4 * b5 + a5 * b8,
+        a6 * b0 + a7 * b3 + a8 * b6,
+        a6 * b1 + a7 * b4 + a8 * b7,
+        a6 * b2 + a7 * b5 + a8 * b8,
     )
 
 

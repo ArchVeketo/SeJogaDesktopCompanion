@@ -115,6 +115,15 @@ Os 12 princípios da animação (*The Illusion of Life*, Thomas & Johnston) **n�
 - **12. Apelo:** Olhar atento e carismático com tracking sutil do cursor (`foco_atencao.py`).
 
 ### B. Locomoção (Caminhada, Corrida, Freada)
+
+**Roteiro por intenção.** A caminhada padrão (`walk_standard`) é a passada de
+deslocamento. Curioso ou desconfiado se aproxima devagar com
+`walk_strafe_slow`. Quando quer chamar atenção, Mário usa uma passada lateral
+em direção à meta (`walk_strafe_left` ou `walk_strafe_right`). Ao correr,
+entra `run_mixamo`. A troca entre caminhadas leva a fase da passada anterior
+para a próxima. Na revisão de cada take, observar a intenção antes do primeiro
+passo, a sola apoiada e o contrapeso entre braços e tronco. Na freada, observar
+o último plantio e a recuperação antes de voltar ao idle.
 - **1. Squash & Stretch:** Compressão corporal ao absorver impacto na descida (*down*); extensão e ganho de altura na passagem (*up*).
 - **2. Antecipação:** Inclinação do tronco à frente e flexão da perna de apoio antes do primeiro passo sair; passada firme de calcanhar para frear.
 - **3. Encenação:** Linha de ação inclinada no sentido do deslocamento; pernas abertas o suficiente para leitura clara da passada em visão desktop.
@@ -189,9 +198,16 @@ Os 12 princípios da animação (*The Illusion of Life*, Thomas & Johnston) **n�
 # 3. Anatomia do Rig e Especificação Técnica 3D
 
 ## 3.1 O Modelo Blockbench (`mario.gltf` / `projetoMARIO.bbmodel`)
-O modelo possui **43 malhas rígidas** distribuídas em **73 nós encadeados** (sem skinning/bones deformáveis clássicos).
+Inventário reconciliado pelo inspetor de ativos (`tools/inspecionar_modelo.py`, Achado 9):
 
-### Hierarquia Estrutural Canônica:
+- **`assets/model/mario.gltf` (ativo canônico de runtime):** **91 nós glTF**, **56 malhas / 56 primitivas** (`2104` vértices), 1 material, 1 textura (`0` skins clássicas e `0` animações embutidas). Os 91 nós compreendem os **30 grupos lógicos em `ALL_GROUPS`** (todos presentes), 2 nós raiz, `pelvis`, `fio do fone`, 4 nós das argolas da antena e 53 nós de malha. A citação histórica de *"43 malhas / 73 nós"* corresponde a uma exportação Blockbench anterior.
+- **Outros ativos da família:**
+  - `assets/model/projetoMARIO.bbmodel` (Blockbench `5.0`): `58` elementos, `30` grupos no campo raiz `groups`, `1` textura e `1` animação (`teste`).
+  - `assets/model/projetoMARIO.gltf`: `88` nós, `56` malhas/primitivas (`2104` vértices), `1` animação embutida, **sem o grupo `door`**.
+  - **Props complementares:** `assets/model/Boomboxes.gltf` (`3` nós, `3` malhas, `72` vértices, `2` texturas) e `assets/model/tentacle.gltf` (`1` nó `thick-tentacle`, `1` malha, `816` vértices, textura procedural/separada).
+- **Nós anexados em runtime pelo renderer:** malha deformável `PernasTecido` (28 vértices/26 faces da calça original, atlas preservado, duas cadeias de perna e normais planas; dados em `calca-autoral.json/.png`), cadeia Verlet de 8 segmentos do `fio do fone`, argolas/halo da antena, dobradiça visual da `door`, instâncias de tentáculos e caixas de som (`Boomboxes.gltf`).
+
+### Hierarquia Estrutural Canônica (`ALL_GROUPS` e grupos estruturais):
 - **Raiz / Deslocamento:** `root` $\to$ `body` (torso/quadril)
 - **Cabeça & Armário:** `head` (gabinete oco), `door` (porta com dobradiça local), `fones`, `fone-direito`, `fone-esquerdo`, `antena-direita`, `antena-esquerda`
 - **Fio do Fone:** 8 nós segmentados interligados por física Verlet passiva
@@ -222,6 +238,13 @@ O modelo possui **43 malhas rígidas** distribuídas em **73 nós encadeados** (
   - Restrições geométricas contra 40 volumes internos evitam que atravessem o armário.
 
 ## 3.4 O Palco Musical da Boombox 3D
+
+- Em **Caixa de som**, o palco de três caixas continua como opção padrão.
+  O **Rádio vermelho compacto** chega em um único arremesso e acompanha a
+  batida enquanto Mário dança no chão. Ambos os modelos ficam no ponto do
+  desktop onde foram colocados, mesmo se Mário sair do lugar.
+- Emotes com trilha horizontal usam o deslocamento da pelve extraído junto
+  das poses. O deslocamento atua sobre o corpo durante o clipe.
 - Composto por três caixas de som de alta definição Blockbench:
   - `BoomboxGRANDE.bbmodel`: Caixa central imponente (altura equivalente a 2x o mascote) com cones dinâmicos, seletores e decal autoral.
   - `BoomboxSIde1.bbmodel`: Duas caixas laterais anguladas com iluminação sincronizada.
@@ -293,6 +316,12 @@ O modelo possui **43 malhas rígidas** distribuídas em **73 nós encadeados** (
 | **DANÇA** | Áudio no PC, celebração ou menu | Groove rítmico estilizado na batida musical (FNF, Cyberpunk) | Fim da faixa ou interrupção por arraste |
 
 ---
+
+## Cenas contextuais de repouso — 17/11/2026
+
+`CENAS_IDLE` inclui `escutar_fone` (6,4 s), `disfarcar_olhar` (5,8 s) e `batida_guardada` (6,6 s a 100 BPM). São pistas locais autorais: antecipação, ação, sustentação, sobreposição e retorno. Não acrescentam VFX. O início de música durante repouso escolhe escuta ou marcação discreta; o retorno do cursor após 8 s pode provocar disfarce. O intervalo de 60 s impede insistência; não dispara cenas sozinho. Movimento, queda, arraste, reação, sono, metas, clipes e pacotes ativos impedem o disparo automático. Música contínua não repete a cena. A dança pode assumir depois da conclusão, respeitando sua chance configurada. Se a música já está ativa no primeiro frame da inicialização, a seleção existente pode ir diretamente à dança.
+
+As cenas compartilham o catálogo/editabilidade existente, a mistura de entrada/saída e a transição de pose atual entre comandos. Walks e idles anteriores continuam disponíveis.
 
 # 6. Engenharia, Testes, Build e Distribuição Windows
 

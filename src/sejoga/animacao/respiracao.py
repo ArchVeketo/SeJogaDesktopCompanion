@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from math import sin, tau
 
+from sejoga.animacao.dados_autorais import respiracao_ativa
 from sejoga.animacao.interpolacao import amostrar_pista
 from sejoga.animacao.movimento_corpo import Spring, clamp
 
@@ -17,7 +18,13 @@ _CICLO_REPOUSO = (
 
 def amostrar_respiracao_repouso(tempo: float) -> float:
     """Amostra um ciclo contínuo de inspiração e expiração, entre -1 e 1."""
-    return amostrar_pista(_CICLO_REPOUSO, tempo % _CICLO_REPOUSO[-1][0])[0]
+    cfg = respiracao_ativa()
+    ciclo = cfg.get("ciclo", _CICLO_REPOUSO)
+    curvas = cfg.get("ciclo_curvas")
+    dur = float(ciclo[-1][0]) if ciclo else 3.6
+    if dur <= 0.0:
+        return 0.0
+    return amostrar_pista(ciclo, tempo % dur, curvas=curvas)[0]
 
 # Frequência default do oscilador lento do idle (ciclos por segundo). ~0.25 Hz
 # dá uma inspiração/expiração a cada ~4 segundos, no ritmo de um corpo parado.

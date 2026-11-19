@@ -28,6 +28,7 @@ import enum
 import random
 import time
 from dataclasses import dataclass
+from math import hypot
 
 # ─── Humor / Estado Emocional ────────────────────────────────────────────────
 
@@ -188,6 +189,9 @@ class Agencia:
         self._interacoes_negativas: int = 0  # Arraste brusco, impacto
         self._tempo_ultima_interacao: float = 0.0
         self._tempo_ultimo_cursor_movimento: float = 0.0
+        self._carinhos_seguidos: int = 0
+        self._ultimo_carinho: float = -999.0
+        self._ultima_comemoracao: float = -999.0
 
         # Curiosidade: pontos de interesse na tela
         self._pontos_interesse: list[tuple[float, float]] = []
@@ -230,12 +234,26 @@ class Agencia:
         """True se Mário tem um objetivo ativo."""
         return self.meta_ativa is not None and not self.meta_ativa.esta_expirada(self._agora)
 
+    def definir_posicao_corpo(self, x: float, y: float) -> None:
+        """Atualiza a posição atual do mascote no espaço da tela."""
+        self._pos_x = x
+        self._pos_y = y
+
+    def direcao_para(self, pos_x: float, pos_y: float) -> tuple[float, float] | None:
+        """Direção normalizada até a meta ativa a partir de ``(pos_x, pos_y)``."""
+        if self.meta_ativa is None:
+            return None
+        dx = self.meta_ativa.alvo_x - pos_x
+        dy = self.meta_ativa.alvo_y - pos_y
+        dist = hypot(dx, dy)
+        if dist <= 1e-6:
+            return None
+        return (dx / dist, dy / dist)
+
     @property
     def direcao_meta(self) -> tuple[float, float] | None:
         """Direção normalizada até a meta ativa (ou None)."""
-        if self.meta_ativa is None:
-            return None
-        return (self.meta_ativa.alvo_x, self.meta_ativa.alvo_y)
+        return self.direcao_para(getattr(self, "_pos_x", 0.0), getattr(self, "_pos_y", 0.0))
 
     @property
     def resistencia_ao_arraste(self) -> float:
@@ -296,15 +314,22 @@ class Agencia:
 
     # ── Interações externas ──────────────────────────────────────────────
 
-    def registrar_interacao_positiva(self) -> None:
+    def registrar_interacao_positiva(self, *, carinho: bool = False) -> None:
         """Registra carinho, brincadeira suave, etc."""
         self._interacoes_positivas += 1
         self._tempo_ultima_interacao = self._agora
         self._humor_tempo[Humor.BRINQUEDOIRO] = 10.0
+        if carinho:
+            if (self._agora - self._ultimo_carinho) > 12.0:
+                self._carinhos_seguidos = 1
+            else:
+                self._carinhos_seguidos += 1
+            self._ultimo_carinho = self._agora
 
     def registrar_interacao_negativa(self, intensidade: float = 1.0) -> None:
         """Registra arraste brusco, impacto, etc."""
         self._interacoes_negativas += 1
+        self._carinhos_seguidos = 0
         self._tempo_ultima_interacao = self._agora
         self._humor_tempo[Humor.INDIGNADO] = 5.0 * intensidade
 
@@ -325,9 +350,30 @@ class Agencia:
         if self.meta_ativa is not None:
             self.meta_ativa = None
 
+    def consumir_vitoria_meta(self, meta: Meta | None) -> bool:
+        """Comemora apenas conquistas prioritárias (nunca passeios triviais), com cooldown longo."""
+        if meta is None or meta.tipo not in (MetaTipo.CAMINHAR_A_TELEFONE, MetaTipo.PROCURAR_ATENCAO):
+            return False
+        if meta.prioridade < 0.72 or (self._agora - self._ultima_comemoracao) < 90.0:
+            return False
+        self._ultima_comemoracao = self._agora
+        return True
+
+    def consumir_marco_carinho(self) -> bool:
+        """Premia sequência de 3 carinhos/duplos cliques recentes com comemoração."""
+        if self._carinhos_seguidos < 3 or (self._agora - self._ultima_comemoracao) < 90.0:
+            return False
+        self._carinhos_seguidos = 0
+        self._ultima_comemoracao = self._agora
+        return True
+
     def adicionar_ponto_interesse(self, x: float, y: float) -> None:
         """Adiciona um ponto de interesse na tela (ex: notificação)."""
+        if any(hypot(px - x, py - y) < 24.0 for px, py in self._pontos_interesse):
+            return
         self._pontos_interesse.append((x, y))
+        if len(self._pontos_interesse) > 16:
+            self._pontos_interesse = self._pontos_interesse[-16:]
 
     @property
     def tempo_sem_cursor_movimento(self) -> float:

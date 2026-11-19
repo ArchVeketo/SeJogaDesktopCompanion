@@ -43,11 +43,11 @@ MOLA_NECK_ROLL = MolaCorpo(frequencia=1.65, amortecimento=0.58)
 #: Pescoço acompanha o pitch do tronco.
 MOLA_NECK_PITCH = MolaCorpo(frequencia=1.75, amortecimento=0.60)
 #: Compressão (agachar/encolher no impacto).
-MOLA_COMPRESSION = MolaCorpo(frequencia=1.6, amortecimento=0.52)
+MOLA_COMPRESSION = MolaCorpo(frequencia=1.32, amortecimento=0.44)
 #: Suspensão (pendurado no arrasto/queda): firme, quase sem balanço.
-MOLA_SUSPENSION = MolaCorpo(frequencia=2.1, amortecimento=0.9)
-#: Balanço dos membros: solto, bastante balanço.
-MOLA_LIMBS = MolaCorpo(frequencia=1.1, amortecimento=0.30)
+MOLA_SUSPENSION = MolaCorpo(frequencia=1.9, amortecimento=0.88)
+#: Membros pendulares (braços/pernas) sob gravidade e arraste inercial: mais pesados.
+MOLA_LIMBS = MolaCorpo(frequencia=0.92, amortecimento=0.36)
 
 
 # --------------------------------------------------------------------------- #
@@ -67,7 +67,7 @@ IMPULSO_IMPACTO_ROLL = 48.0
 #: Pitch de pancada/aterrissagem: o tronco cede bastante.
 IMPULSO_IMPACTO_PITCH = 28.0
 #: Compressão de pancada/aterrissagem: o corpo agacha no impacto.
-IMPULSO_IMPACTO_COMPRESSION = 6.5
+IMPULSO_IMPACTO_COMPRESSION = 11.0
 
 #: Limites de normalização dos parâmetros do impulso.
 IMPULSO_DIRECAO_MIN = -1.0
@@ -96,27 +96,41 @@ PONTEIRO_SUAVIZACAO = 18.0
 
 
 # --------------------------------------------------------------------------- #
-# Alvos/clamps por estado: arrasto (drag).
+# Alvos/clamps por estado: arrasto (drag) e pêndulo contínuo 360°+.
 # --------------------------------------------------------------------------- #
-#: Ganho da velocidade horizontal do ponteiro no roll do arrasto.
-DRAG_ROLL_GANHO = 0.012
-DRAG_ROLL = FaixaClamp(minimo=-23.0, maximo=23.0)
+#: Ganho da velocidade horizontal do ponteiro no roll do arrasto (inercial).
+DRAG_ROLL_GANHO = 0.015
+DRAG_ROLL = FaixaClamp(minimo=-28.0, maximo=28.0)
 #: Offset de roll ao arrastar pelos pés (vira de cabeça para baixo).
-DRAG_ROLL_PES = 155.0
+DRAG_ROLL_PES = 175.0
 #: Offset de roll ao arrastar por um braço.
-DRAG_ROLL_BRACO = 45.0
-#: Pitch-base ao arrastar pelo corpo e ao arrastar por outra parte.
-DRAG_PITCH_BASE_CORPO = -26.0
-DRAG_PITCH_BASE_OUTRO = -9.0
+DRAG_ROLL_BRACO = 28.0
+#: Pitch-base com peso ao arrastar (peito cede para baixo).
+DRAG_PITCH_BASE_CORPO = -11.5
+DRAG_PITCH_BASE_OUTRO = -8.0
 #: Ganho da velocidade vertical do ponteiro no pitch do arrasto.
-DRAG_PITCH_GANHO = 0.009
-DRAG_PITCH = FaixaClamp(minimo=-36.0, maximo=4.0)
+DRAG_PITCH_GANHO = 0.021
+DRAG_PITCH = FaixaClamp(minimo=-38.0, maximo=30.0)
 #: Ganho da velocidade horizontal no yaw do arrasto.
-DRAG_YAW_GANHO = 0.003
-DRAG_YAW = FaixaClamp(minimo=-5.0, maximo=5.0)
+DRAG_YAW_GANHO = 0.011
+DRAG_YAW = FaixaClamp(minimo=-26.0, maximo=26.0)
 #: Ganho da velocidade horizontal no balanço dos membros ao arrastar.
-DRAG_LIMBS_GANHO = 0.021
-DRAG_LIMBS = FaixaClamp(minimo=-30.0, maximo=30.0)
+DRAG_LIMBS_GANHO = 0.046
+DRAG_LIMBS = FaixaClamp(minimo=-54.0, maximo=54.0)
+
+#: Pêndulo rígido contínuo (estilo SlugcatPet 360°+): gravidade / L e arrasto.
+PENDULO_GRAVIDADE_RAD_S2 = 24.5
+PENDULO_ACEL_GANHO = 0.0029
+PENDULO_ARRASTO_AR = 0.0085
+PENDULO_AMORTECIMENTO = 1.75
+PENDULO_ALAVANCA_MIN = 0.34
+PENDULO_CURVA_TORQUE_GANHO = 0.00028
+PENDULO_VEL_ANGULAR_MAX_RAD = 18.0
+PENDULO_PASSO_MAX = 1.0 / 120.0
+#: Raio efetivo padrão (px) para converter giro no soltar em velocidade de estilingue.
+PENDULO_RAIO_ESTILINGUE_PX = 140.0
+#: Limiar angular (graus/s) para preservar giro no salto/queda após soltar.
+DRAG_VEL_ANGULAR_ARREMESSO_MIN = 35.0
 
 
 # --------------------------------------------------------------------------- #
@@ -144,24 +158,24 @@ QUEDA_PITCH = FaixaClamp(minimo=-14.0, maximo=12.0)
 # Clamps e ganhos do snapshot de saída (BodyPose).
 # --------------------------------------------------------------------------- #
 SNAP_ROLL = FaixaClamp(minimo=-178.0, maximo=178.0)
-SNAP_PITCH = FaixaClamp(minimo=-38.0, maximo=16.0)
-SNAP_YAW = FaixaClamp(minimo=-7.0, maximo=7.0)
+SNAP_PITCH = FaixaClamp(minimo=-38.0, maximo=26.0)
+SNAP_YAW = FaixaClamp(minimo=-26.0, maximo=26.0)
 #: Cabeça = (pescoço - tronco) * ganho, clampado.
 SNAP_HEAD_ROLL_GANHO = 0.65
-SNAP_HEAD_ROLL = FaixaClamp(minimo=-8.0, maximo=8.0)
+SNAP_HEAD_ROLL = FaixaClamp(minimo=-14.0, maximo=14.0)
 SNAP_HEAD_PITCH_GANHO = 0.6
-#: Desconto do pitch da cabeça pela suspensão (olha para baixo ao pendurar).
-SNAP_HEAD_PITCH_SUSPENSAO = 5.0
-SNAP_HEAD_PITCH = FaixaClamp(minimo=-12.0, maximo=6.0)
+#: Desconto do pitch da cabeça pela suspensão (olha para baixo ao pendurar com peso).
+SNAP_HEAD_PITCH_SUSPENSAO = 9.5
+SNAP_HEAD_PITCH = FaixaClamp(minimo=-16.0, maximo=14.0)
 #: Atraso do braço = -velocidade do roll * ganho, clampado.
-SNAP_ARM_LAG_GANHO = 0.035
-SNAP_ARM_LAG = FaixaClamp(minimo=-6.0, maximo=6.0)
-SNAP_COMPRESSION = FaixaClamp(minimo=-0.12, maximo=0.20)
+SNAP_ARM_LAG_GANHO = 0.058
+SNAP_ARM_LAG = FaixaClamp(minimo=-36.0, maximo=36.0)
+SNAP_COMPRESSION = FaixaClamp(minimo=-0.14, maximo=0.30)
 SNAP_HANGING = FaixaClamp(minimo=0.0, maximo=1.0)
-SNAP_LIMB_SWING = FaixaClamp(minimo=-30.0, maximo=30.0)
-#: Estiramento ao arrastar: mais ao segurar por uma ponta que pelo corpo.
-SNAP_STRETCH_PONTA = 0.08
-SNAP_STRETCH_CORPO = 0.025
+SNAP_LIMB_SWING = FaixaClamp(minimo=-46.0, maximo=46.0)
+#: Estiramento ao arrastar: peso real alongando o corpo pela pega.
+SNAP_STRETCH_PONTA = 0.135
+SNAP_STRETCH_CORPO = 0.065
 SNAP_SUSPENSAO = FaixaClamp(minimo=0.0, maximo=1.0)
 
 
@@ -218,22 +232,36 @@ PENDURADO_LIMIAR = 0.05
 #: acompanha o corpo (o usuário achou duro). 0.3 dá um balanço próprio pequeno, em
 #: fase com braços e pernas. Subir se o peito parecer duro; descer se passar por
 #: cima dos braços ou dessincronizar. A_CONFIRMAR na GPU (recalibracao-gpu.md, C11).
-PEITO_FATOR_PENDURADO = 0.3
-#: Amplitude máxima (graus, por eixo) desse balanço extra do peito. Sem o limite,
-#: pegar pela perna (roll ~155°) somaria dezenas de graus. Com ~0.28 u de peito
-#: acima do pivô da coluna, 8° desloca o topo ~0.04 u, dentro da folga dos braços
-#: no tronco (``FOLGA_EXTRA_CAIXA_U``): o peito não sobe por cima dos braços.
-#: A_CONFIRMAR na GPU (C11).
-PEITO_PENDURADO_MAX_GRAUS = 8.0
+PEITO_FATOR_PENDURADO = 0.52
+#: Amplitude máxima (graus, por eixo) desse balanço extra do peito.
+PEITO_PENDURADO_MAX_GRAUS = 18.0
 
 # --------------------------------------------------------------------------- #
 # Arraste pendurado (pega por braço/perna): membros pendem para baixo no mundo
 # --------------------------------------------------------------------------- #
-#: Fecha os braços (longe dos ±62 abertos), em graus de ``right-arm.z``.
-ARRASTE_PENDENTE_BRACO_Z = 12.0
+#: Fecha os braços perto do tronco sob ação da gravidade.
+ARRASTE_PENDENTE_BRACO_Z = 7.5
 #: Joga os braços "para baixo" no mundo (graus de ``right-arm.x``).
-ARRASTE_PENDENTE_BRACO_X = 18.0
-#: Cabeça pende, olhando para baixo no mundo (graus de ``head.x``).
-ARRASTE_PENDENTE_CABECA_X = 22.0
-#: Resíduo de balanço do membro pendurado, reduzido.
-ARRASTE_PENDENTE_OSCILACAO = 0.18
+ARRASTE_PENDENTE_BRACO_X = 24.0
+#: Cabeça pende com o peso, olhando para baixo no mundo (graus de ``head.x``).
+ARRASTE_PENDENTE_CABECA_X = 26.0
+#: Resíduo de balanço do membro pendurado.
+ARRASTE_PENDENTE_OSCILACAO = 0.16
+
+# --------------------------------------------------------------------------- #
+# Giro em torno da pegada, cabeça ("meio peixe") e continuidade no arremesso.
+# --------------------------------------------------------------------------- #
+#: Ganho do torque de curva (produto vetorial da velocidade do ponteiro) no giro.
+DRAG_CURVA_GIRO_GANHO = 0.00028
+#: Amortecimento da velocidade angular do giro durante o arraste (1/s).
+DRAG_GIRO_AMORTECIMENTO = 2.6
+#: Limite do ângulo acumulado de giro durante curva no arraste (graus).
+DRAG_GIRO_MAX_GRAUS = 145.0
+#: Fator de decaimento do giro ao soltar no ar (orientação para a queda).
+QUEDA_GIRO_RETORNO = 2.2
+#: Limiar de velocidade do ponteiro (px/s) abaixo do qual a mão livre busca o cursor.
+DRAG_ALCANCE_VEL_MAX = 180.0
+#: Limiar de reversão brusca (px²/s²) para surpresa na pegada pela cabeça.
+DRAG_CABECA_SURPRESA_LIMIAR = -90000.0
+#: Duração (s) da sacudida curta de surpresa na pegada pela cabeça.
+DRAG_CABECA_SURPRESA_DURACAO = 0.36

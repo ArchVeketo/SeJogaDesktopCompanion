@@ -19,6 +19,14 @@ class DesktopIntegration:
         0x1F40: "hip_hop",
         0x1F50: "rock",
         0x1F60: "breakdance",
+        0x1F80: "street_groove",
+        0x1F90: "graffiti_dance",
+        0x1FA0: "cyber_bounce",
+        0x1FB0: "electro_swing",
+        0x1FC0: "boogie_down",
+        0x1FD0: "griddy",
+        0x1FE0: "jazz_dance",
+        0x1FF0: "criss_cross",
     }
     CAPTURE = 0x1F70
 
@@ -100,6 +108,8 @@ class DesktopIntegration:
         )
 
     def _window_proc(self, hwnd, message, wparam, lparam):
+        if message == win32con.WM_ERASEBKGND:
+            return 1  # WGL/layered surface já desenha o quadro inteiro; evita apagar para preto.
         if message == win32con.WM_QUERYENDSESSION:
             return 1  # Ready; do not close until shutdown is actually confirmed.
         if message == win32con.WM_ENDSESSION:
