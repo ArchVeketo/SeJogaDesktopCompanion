@@ -72,6 +72,37 @@ class SettingsDialog(QDialog):
 
         self.outline_input = QCheckBox("Mostrar contorno")
         self.outline_input.setChecked(settings.window.outline_enabled)
+
+        self.visual_filter_input = QComboBox()
+        for key, label in (
+            ("padrao", "Padrão (3D limpo)"),
+            ("pixel", "Pixel (~1.5px · estilo GIF)"),
+            ("rascunho", "Rascunho (Spider-Punk 8 FPS)"),
+        ):
+            self.visual_filter_input.addItem(label, key)
+        idx_vf = self.visual_filter_input.findData(settings.window.visual_filter)
+        self.visual_filter_input.setCurrentIndex(idx_vf if idx_vf >= 0 else 0)
+
+        self.vfx_enabled_input = QCheckBox("Ativar efeitos street-punk (emoções e quedas)")
+        self.vfx_enabled_input.setChecked(settings.window.vfx_enabled)
+        self.vfx_palette_input = QComboBox()
+        for key, label in (
+            ("pb_escuro", "P&B Nanquim (tinta preta + halo branco)"),
+            ("pb_claro", "P&B Giz Branco (tinta branca + contorno)"),
+            ("colorido", "Colorido Street Swag"),
+        ):
+            self.vfx_palette_input.addItem(label, key)
+        idx_vp = self.vfx_palette_input.findData(settings.window.vfx_palette)
+        self.vfx_palette_input.setCurrentIndex(idx_vp if idx_vp >= 0 else 0)
+        self.vfx_scale_input = QDoubleSpinBox()
+        self.vfx_scale_input.setRange(0.5, 1.6)
+        self.vfx_scale_input.setSingleStep(0.1)
+        self.vfx_scale_input.setDecimals(2)
+        self.vfx_scale_input.setValue(settings.window.vfx_scale)
+        self.vfx_palette_input.setEnabled(self.vfx_enabled_input.isChecked())
+        self.vfx_scale_input.setEnabled(self.vfx_enabled_input.isChecked())
+        self.vfx_enabled_input.toggled.connect(self.vfx_palette_input.setEnabled)
+        self.vfx_enabled_input.toggled.connect(self.vfx_scale_input.setEnabled)
         self.outline_width_input = QDoubleSpinBox()
         self.outline_width_input.setRange(
             const_desktop.CONTORNO_LARGURA_MINIMA, const_desktop.CONTORNO_LARGURA_MAXIMA
@@ -282,6 +313,10 @@ class SettingsDialog(QDialog):
         form = QFormLayout()
         form.addRow("Tamanho da janela", self.size_input)
         form.addRow("Escala do mascote", self.scale_input)
+        form.addRow("Filtro visual", self.visual_filter_input)
+        form.addRow(self.vfx_enabled_input)
+        form.addRow("Paleta dos efeitos", self.vfx_palette_input)
+        form.addRow("Tamanho dos efeitos", self.vfx_scale_input)
         form.addRow(self.outline_input)
         form.addRow("Cor do contorno", self.outline_color_button)
         form.addRow("Espessura do contorno", self.outline_width_input)
@@ -419,6 +454,10 @@ class SettingsDialog(QDialog):
         updated = self._settings.model_copy(deep=True)
         updated.window.size = self.size_input.value()
         updated.window.scale = self.scale_input.value()
+        updated.window.visual_filter = self.visual_filter_input.currentData()
+        updated.window.vfx_enabled = self.vfx_enabled_input.isChecked()
+        updated.window.vfx_palette = self.vfx_palette_input.currentData()
+        updated.window.vfx_scale = self.vfx_scale_input.value()
         updated.window.outline_enabled = self.outline_input.isChecked()
         updated.window.outline_color = self._outline_color
         updated.window.colorkey_color = self._colorkey_color

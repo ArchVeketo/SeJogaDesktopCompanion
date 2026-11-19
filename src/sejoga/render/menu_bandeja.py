@@ -61,6 +61,29 @@ def criar_menu_contexto_mascote(app) -> QMenu:
     menu.addAction("Dormir / Acordar").triggered.connect(
         lambda _checked=False: _alternar_sono(app)
     )
+
+    visual = menu.addMenu("Visual & Efeitos")
+    for key, rotulo in (
+        ("padrao", "Filtro: Padrão (3D)"),
+        ("pixel", "Filtro: Pixel (1.5px)"),
+        ("rascunho", "Filtro: Rascunho (Spider-Punk)"),
+    ):
+        visual.addAction(rotulo).triggered.connect(
+            lambda _checked=False, f=key: app._set_visual_filter(f)
+        )
+    visual.addSeparator()
+    for key, rotulo in (
+        ("pb_escuro", "Efeitos: P&B Nanquim"),
+        ("pb_claro", "Efeitos: P&B Giz Branco"),
+        ("colorido", "Efeitos: Colorido Street Swag"),
+    ):
+        visual.addAction(rotulo).triggered.connect(
+            lambda _checked=False, p=key: app._set_vfx_palette(p)
+        )
+    visual.addAction("Desligar efeitos").triggered.connect(
+        lambda _checked=False: app._set_vfx_enabled(False)
+    )
+
     menu.addSeparator()
     menu.addAction("Configurações...").triggered.connect(
         lambda _checked=False: app.open_settings_dialog()

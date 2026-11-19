@@ -597,8 +597,8 @@ class OverlayApp(ShowBase):
             self._ultimo_pico_queda_vy = 0.0
             forca_pouso = min(2.2, max(0.85, pico_vy / 520.0))
             self.animation_controller.interact("land", strength=forca_pouso)
-            if forca_pouso >= 1.35 and self.renderer:
-                self.renderer.disparar_flash_impacto(0.45)
+            if self.renderer and pico_vy >= 160.0:
+                self.renderer.disparar_impacto_chao(forca_pouso)
         self._was_grounded = state.grounded
         self._posicionar_mascote(*state.position)
         x = round(state.position[0] - self._offset_mascote[0])
@@ -625,8 +625,8 @@ class OverlayApp(ShowBase):
                 direction=max(-1, min(1, velocity[0] / COLISAO_DIVISOR_DIRECAO)),
                 strength=forca,
             )
-        if forca >= 0.75 and self.renderer:
-            self.renderer.disparar_flash_impacto(min(0.65, forca * 0.38))
+        if forca >= 0.65 and self.renderer:
+            self.renderer.disparar_impacto_parede(kind, velocity, forca)
 
     def _physics_tick(self, task: Task) -> int:
         """Task de física - roda a 120 Hz."""
@@ -1659,6 +1659,32 @@ class OverlayApp(ShowBase):
             self.animation_controller.set_idle_personality(personality)
         self._persist_settings()
 
+    def _set_visual_filter(self, filtro: str) -> None:
+        """Alterna e persiste o filtro visual do Mário ao vivo."""
+        if filtro not in ("padrao", "pixel", "rascunho"):
+            return
+        self.settings.window.visual_filter = cast(Any, filtro)
+        if self.renderer:
+            self.renderer.set_visual_filter(filtro)
+        self._persist_settings()
+
+    def _set_vfx_palette(self, paleta: str) -> None:
+        """Alterna a paleta dos efeitos street-punk (ativa VFX automaticamente) e salva."""
+        if paleta not in ("pb_escuro", "pb_claro", "colorido"):
+            return
+        self.settings.window.vfx_enabled = True
+        self.settings.window.vfx_palette = cast(Any, paleta)
+        if self.renderer:
+            self.renderer.set_vfx_settings(self.settings.window)
+        self._persist_settings()
+
+    def _set_vfx_enabled(self, enabled: bool) -> None:
+        """Liga ou desliga os efeitos street-punk ao vivo e salva."""
+        self.settings.window.vfx_enabled = bool(enabled)
+        if self.renderer:
+            self.renderer.set_vfx_settings(self.settings.window)
+        self._persist_settings()
+
     def _voltar_ao_plano_frontal(self) -> None:
         """Interrompe caminhadas/pacotes e retorna a `perto` e `frente` (§8.5.2)."""
         self._destino_caminhada_x = None
@@ -1949,6 +1975,8 @@ class OverlayApp(ShowBase):
                         self.animation_controller.interact("surprise", part="head")
                     else:
                         self.animation_controller.interact(event.kind, part=parte_tocada)
+                        if event.kind == "pet" and self.renderer:
+                            self.renderer.disparar_carinho()
             elif event.kind == "drag_shake":
                 if self.animation_controller:
                     self.animation_controller.notificar_sacudida()
@@ -2120,6 +2148,8 @@ class OverlayApp(ShowBase):
                 self._display_check = 0
                 self._sincronizar_desktop(0)
             self.renderer.set_outline_settings(updated.window)
+            self.renderer.set_visual_filter(updated.window.visual_filter)
+            self.renderer.set_vfx_settings(updated.window)
             if previous.music.speaker_style != updated.music.speaker_style:
                 self.renderer.trocar_caixa_de_som(updated.music.speaker_style)
         if self.animation_controller:

@@ -7,6 +7,7 @@ from math import pi, radians, tanh, tau
 from sejoga.animacao import braco_tuning as tun
 from sejoga.animacao.colisao_bracos import ResolvedorBracos
 from sejoga.animacao.interpolacao import suavizar_quintico
+from sejoga.animacao.ritmo_humano import MAX_FATOR_CASCATA, fator_cascata_grupo
 from sejoga.nucleo.esqueleto import Rotation3
 from sejoga.nucleo.modelo import Model
 
@@ -135,13 +136,20 @@ class PoseResolver:
     def _interpolar_transicao(
         self, pose_alvo: dict[str, Rotation3]
     ) -> dict[str, Rotation3]:
-        """Interpola por Hermite quíntico: ``origem + delta * w(u) + vel * dur * u * (1-u)^2``."""
-        dur = self._transition_seconds
-        u = max(0.0, min(1.0, self._state_time / dur))
-        peso = suavizar_quintico(u)
-        impulso_vel = dur * u * (1.0 - u) ** 2
+        """Interpolação Hermite quíntica em cascata orgânica por região do rig (v2.0).
+
+        Tronco e quadril lideram, cabeça/braços seguem e mãos/antenas assentam por último.
+        """
+        dur_base = self._transition_seconds
         pose: dict[str, Rotation3] = {}
         for grupo, alvo in pose_alvo.items():
+            dur_g = max(1e-5, dur_base * fator_cascata_grupo(grupo))
+            u = max(0.0, min(1.0, self._state_time / dur_g))
+            if u >= 1.0:
+                pose[grupo] = alvo
+                continue
+            peso = suavizar_quintico(u)
+            impulso_vel = dur_g * u * (1.0 - u) ** 2
             origem = self._transition_from.get(grupo, alvo)
             vel = self._transition_vel.get(grupo, Rotation3())
             pose[grupo] = Rotation3(
@@ -191,7 +199,10 @@ class PoseResolver:
         if state_time is not None:
             self._state_time = state_time
 
-        if self._state_time < self._transition_seconds and self._transition_seconds > 1e-6:
+        if (
+            self._state_time < self._transition_seconds * MAX_FATOR_CASCATA
+            and self._transition_seconds > 1e-6
+        ):
             pose = self._interpolar_transicao(pose_alvo)
         else:
             pose = dict(pose_alvo)

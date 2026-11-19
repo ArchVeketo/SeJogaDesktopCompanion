@@ -196,6 +196,10 @@ class Panda3DRenderer:
         self._deslocamento_danca = Vec3(0)
         self._choque_antenas_3d = None
         self.efeitos_cena = None
+        self.efeitos_street = None
+        self._visual_filter = "padrao"
+        self._vfx_enabled = True
+        self._filter_clock = 0.0
         self._paineis_armario: tuple = ()
         self._raiz_tilt_rad = 0.0
         self._lego_snapshot: list = []
@@ -756,12 +760,23 @@ class Panda3DRenderer:
     def _configurar_antenas_e_adornos(self, head_node) -> None:
         from sejoga.render.choque_antenas_3d import ChoqueAntenas3D
         from sejoga.render.efeitos_cena import GerenciadorEfeitosCena
+        from sejoga.render.efeitos_street import GerenciadorEfeitosStreet
 
         self.efeitos_cena = GerenciadorEfeitosCena(
             self.model_anchor,
             head_node=head_node,
             model_node=self.model_np,
         )
+        win_cfg = self.showbase.settings.window
+        self.efeitos_street = GerenciadorEfeitosStreet(
+            self.model_anchor,
+            head_node=head_node,
+            model_node=self.model_np,
+            paleta=getattr(win_cfg, "vfx_palette", "pb_escuro"),
+            escala_global=float(getattr(win_cfg, "vfx_scale", 1.0)),
+            habilitado=bool(getattr(win_cfg, "vfx_enabled", True)),
+        )
+        self._vfx_enabled = bool(getattr(win_cfg, "vfx_enabled", True))
         self._argolas_fx = []
         head_r_ant = head_node.find("**/antena-direita")
         head_l_ant = head_node.find("**/antena-esquerda")
@@ -896,6 +911,10 @@ class Panda3DRenderer:
         self.fio_fone = MalhaFioFone(self)
         self._configurar_antenas_e_adornos(head_node)
         self.set_outline_settings(self.showbase.settings.window)
+        self.set_visual_filter(
+            getattr(self.showbase.settings.window, "visual_filter", "padrao")
+        )
+        self.set_vfx_settings(self.showbase.settings.window)
         self.set_model_screen_position(
             self.width / 2,
             self.height - self._model_radius_px - 35,
@@ -1008,6 +1027,11 @@ uniform mat3 p3d_NormalMatrix;
 // o render não atualiza o runtime, preservando o comportamento estático.
 uniform float outline_thickness;
 uniform float outline_thickness_runtime;
+uniform float u_sketch_mode;
+uniform float u_sketch_time;
+float _sj_vhash(vec3 p) {
+    return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+}
 void main() {
     outline_uv = p3d_MultiTexCoord0;
     float thickness = outline_thickness_runtime > 0.0
@@ -1019,8 +1043,17 @@ void main() {
     vec3 view_pos = (p3d_ModelViewMatrix * p3d_Vertex).xyz;
     float facing = abs(dot(view_normal, normalize(-view_pos)));
     float orientacao = mix(1.15, 0.9, clamp(facing, 0.0, 1.0));
-    gl_Position = p3d_ModelViewProjectionMatrix *
-        (p3d_Vertex + vec4(normalize(p3d_Normal) * thickness * orientacao, 0.0));
+    vec3 normal_n = normalize(p3d_Normal);
+    vec3 offset = normal_n * thickness * orientacao;
+    if (u_sketch_mode > 0.5) {
+        // Modo Rascunho / Spider-Punk: contorno fervendo a 8 FPS com traço irregular!
+        float st = floor(u_sketch_time * 8.0);
+        float h1 = (_sj_vhash(floor(p3d_Vertex.xyz * 14.0) + vec3(st * 0.37)) - 0.5) * 2.0;
+        float h2 = (_sj_vhash(floor(p3d_Vertex.yzx * 14.0) + vec3(st * 0.71)) - 0.5) * 2.0;
+        offset = normal_n * thickness * orientacao * (1.35 + 0.48 * h1)
+            + vec3(h1, 0.0, h2) * thickness * 0.42;
+    }
+    gl_Position = p3d_ModelViewProjectionMatrix * (p3d_Vertex + vec4(offset, 0.0));
 }
 """
         fragment = f"""#version 130
@@ -1069,14 +1102,27 @@ void main() {{
         self.outline_np.setCollideMask(0)
         # Runtime 0 => shader usa a espessura estática até a respiração começar.
         self.outline_np.setShaderInput("outline_thickness_runtime", 0.0)
+        self.outline_np.setShaderInput("u_sketch_mode", 0.0)
+        self.outline_np.setShaderInput("u_sketch_time", 0.0)
 
     def set_outline_settings(self, settings) -> None:
-        """Aplica as configurações do contorno."""
+        """Aplica as configurações do contorno respeitando o filtro visual ativo."""
         if not self.outline_np:
             return
-        self._outline_enabled = bool(settings.outline_enabled)
+        filtro = getattr(self, "_visual_filter", "padrao")
+        # No filtro Pixel (~1.5px), oculta o contorno fino para ficar limpo como o turntable.gif.
+        # No filtro Rascunho (Spider-Punk), força o contorno fervendo em nanquim escuro!
+        habilitar = (
+            False
+            if filtro == "pixel"
+            else (True if filtro == "rascunho" else bool(settings.outline_enabled))
+        )
+        self._outline_enabled = habilitar
         self.outline_np.setShaderInput("outline_enabled", self._outline_enabled)
-        if not settings.outline_enabled:
+        self.outline_np.setShaderInput(
+            "u_sketch_mode", 1.0 if filtro == "rascunho" else 0.0
+        )
+        if not habilitar:
             # Disable both the duplicate model and all child shells. The shader
             # guard also suppresses stale per-mesh copies after live settings changes.
             self.outline_np.hide()
@@ -1084,9 +1130,12 @@ void main() {{
             return
         self.outline_np.unstash()
         self.outline_np.show()
-        color = settings.outline_color.lstrip("#")
-        rgb = tuple(int(color[index : index + 2], 16) / 255 for index in (0, 2, 4))
-        self._outline_color_rgba = (*rgb, 1.0)
+        if filtro == "rascunho":
+            self._outline_color_rgba = (0.06, 0.06, 0.08, 1.0)
+        else:
+            color = settings.outline_color.lstrip("#")
+            rgb = tuple(int(color[index : index + 2], 16) / 255 for index in (0, 2, 4))
+            self._outline_color_rgba = (*rgb, 1.0)
         self.outline_np.setShaderInput("outline_color", self._outline_color_rgba)
         if self.tentacle_pool:
             for tentacle in self.tentacle_pool.tentacles:
@@ -1096,7 +1145,8 @@ void main() {{
                     )
         # Model units per displayed pixel; the border follows each part's normals.
         visible_height = self.height * self.FRAME_FILL * settings.scale
-        thickness = settings.outline_width * self._model_dimensions.z / visible_height
+        largura = max(2.8, settings.outline_width) if filtro == "rascunho" else settings.outline_width
+        thickness = largura * self._model_dimensions.z / visible_height
         self.outline_np.setShaderInput("outline_thickness", thickness)
         # Guarda a base e (re)inicia a respiração no estado de repouso.
         self._outline_base_thickness = thickness
@@ -1104,8 +1154,65 @@ void main() {{
         self._outline_respiracao.reset(thickness)
         self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
 
+    def set_visual_filter(self, filter_name: str) -> None:
+        """Alterna o filtro visual ao vivo: ``padrao``, ``pixel`` (~1.5px) ou ``rascunho``."""
+        escolhido = filter_name if filter_name in ("padrao", "pixel", "rascunho") else "padrao"
+        self._visual_filter = escolhido
+        codigo = {"padrao": 0.0, "pixel": 1.0, "rascunho": 2.0}[escolhido]
+        if self._pbr_pipeline is not None:
+            from panda3d.core import SamplerState, Texture
+
+            quad = self._pbr_pipeline._post_process_quad
+            win = getattr(self.showbase, "win", None)
+            vw = float(win.getXSize()) if win else float(self.width)
+            vh = float(win.getYSize()) if win else float(self.height)
+            quad.setShaderInput("u_viewport_size", (vw, vh))
+            quad.setShaderInput("u_visual_filter", codigo)
+            quad.setShaderInput("u_pixel_size", 2.0)
+            scene_tex = quad.getShaderInput("tex").getTexture()
+            if scene_tex is not None:
+                filt = Texture.FTNearest if escolhido == "pixel" else Texture.FTLinear
+                scene_tex.setMinfilter(filt)
+                scene_tex.setMagfilter(filt)
+                sampler = SamplerState()
+                sampler.setMinfilter(filt)
+                sampler.setMagfilter(filt)
+                sampler.setWrapU(SamplerState.WMClamp)
+                sampler.setWrapV(SamplerState.WMClamp)
+                quad.setShaderInput("tex", scene_tex, sampler)
+        self.set_outline_settings(self.showbase.settings.window)
+
+    def set_vfx_settings(self, settings) -> None:
+        """Atualiza estado, paleta e escala dos efeitos street-punk ao vivo."""
+        self._vfx_enabled = bool(getattr(settings, "vfx_enabled", True))
+        if self.efeitos_street is not None:
+            self.efeitos_street.configurar(
+                habilitado=self._vfx_enabled,
+                paleta=str(getattr(settings, "vfx_palette", "pb_escuro")),
+                escala_global=float(getattr(settings, "vfx_scale", 1.0)),
+            )
+        if not self._vfx_enabled and self._choque_antenas_3d is not None:
+            self._choque_antenas_3d.ocultar()
+
+    def disparar_impacto_chao(self, forca: float = 1.0) -> None:
+        """Dispara impacto street-ink rente aos tênis no pouso/queda."""
+        if self.efeitos_street is not None and self._vfx_enabled:
+            self.efeitos_street.disparar_impacto_chao(forca)
+
+    def disparar_impacto_parede(
+        self, kind: str, velocity: tuple[float, float], forca: float = 1.0
+    ) -> None:
+        """Dispara impacto street-ink direcional ao bater na parede ou teto."""
+        if self.efeitos_street is not None and self._vfx_enabled:
+            self.efeitos_street.disparar_impacto_parede(kind, velocity, forca)
+
+    def disparar_carinho(self) -> None:
+        """Dispara coração street-ink saindo do topo da cabeça no carinho real."""
+        if self.efeitos_street is not None and self._vfx_enabled:
+            self.efeitos_street.disparar_carinho()
+
     def disparar_flash_impacto(self, forca: float = 0.45) -> None:
-        """Gancho de flash de impacto (desligado até a redefinição de VFX v2.0)."""
+        """Mantido por compatibilidade; o feedback visual de impacto agora vive nos efeitos street."""
         del forca
 
     def _update_outline_breath(self, dt, motion) -> None:
@@ -1637,12 +1744,35 @@ void main() {{
         brilho_alvo = brilho_atual
         for registro in getattr(self, "_argolas_fx", ()):
             self._atualizar_item_halo_rgb(registro, argolas_ativas, amostra, pulso_t, choque, brilho_alvo)
-        # Todos os efeitos de cena (2D/grafite/choque) limpos para redefinição do zero na v2.0.
-        efeitos = getattr(self, "efeitos_cena", None)
-        if efeitos is not None:
-            efeitos.limpar()
+
+        # Atualiza relógio de shaders dos filtros visuais (hachura/wobble a 8 FPS no modo Rascunho).
+        self._filter_clock += max(0.0, min(0.05, float(dt)))
+        if self._pbr_pipeline is not None:
+            self._pbr_pipeline._post_process_quad.setShaderInput(
+                "u_filter_time", self._filter_clock
+            )
+        if self.outline_np is not None and self._visual_filter == "rascunho":
+            self.outline_np.setShaderInput("u_sketch_time", self._filter_clock)
+
+        # Mantém efeitos 2D legados permanentemente silenciados.
+        efeitos_legado = getattr(self, "efeitos_cena", None)
+        if efeitos_legado is not None:
+            efeitos_legado.limpar()
+
+        # Efeitos Street-Punk desenhados à mão (ancorados anatomicamente ao rig).
+        efeitos_street = getattr(self, "efeitos_street", None)
+        if efeitos_street is not None:
+            if self._vfx_enabled:
+                params = self._coletar_parametros_efeitos(ctrl, motion, amostra, grounded)
+                efeitos_street.atualizar(dt, params)
+            else:
+                efeitos_street.limpar()
+
         if self._choque_antenas_3d is not None:
-            self._choque_antenas_3d.ocultar()
+            if self._vfx_enabled and choque:
+                self._choque_antenas_3d.atualizar(dt, True, 1.0)
+            else:
+                self._choque_antenas_3d.ocultar()
 
     def _coletar_caixas_som_pos(self, estado: str) -> tuple[Vec3, ...]:
         speaker = getattr(self, "music_speaker", None)
@@ -1729,6 +1859,10 @@ void main() {{
             ),
             "caixas_som_pos": caixas_pos,
             "gosma_evento": gosma,
+            "carinho": bool(
+                ctrl._reaction == AnimationState.PET or estado == "pet"
+            ),
+            "dragging": bool(getattr(self.showbase, "_drag_active", False)),
         }
 
     def ponto_local_no_grupo(self, grupo: str, ponto_modelo: Vec3) -> Vec3 | None:

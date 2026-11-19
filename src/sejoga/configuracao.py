@@ -121,6 +121,18 @@ class WindowSettings(BaseModel):
     diagnostic_colorkey: bool = False
     """Liga o fundo rosa de diagnóstico do color key (desligado no uso normal)."""
 
+    visual_filter: Literal["padrao", "pixel", "rascunho"] = "padrao"
+    """Filtro visual aplicado sobre o Mário: ``padrao``, ``pixel`` (~1.5px estilo turntable) ou ``rascunho`` (Spider-Punk)."""
+
+    vfx_enabled: bool = True
+    """Ativa os efeitos street-punk desenhados à mão (emoções, queda, impactos)."""
+
+    vfx_palette: Literal["pb_escuro", "pb_claro", "colorido"] = "pb_escuro"
+    """Paleta dos efeitos street-punk: ``pb_escuro`` (nanquim), ``pb_claro`` (giz branco) ou ``colorido`` (Street Swag)."""
+
+    vfx_scale: float = Field(default=1.0, ge=0.5, le=1.6)
+    """Multiplicador fino de tamanho dos efeitos street-punk (1.0 = compacto e anatômico)."""
+
     preferred_monitor: int | None = None
     """Índice do monitor na ordem de ``EnumDisplayMonitors``; ``None`` = automático."""
 

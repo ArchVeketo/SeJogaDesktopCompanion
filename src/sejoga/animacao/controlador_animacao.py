@@ -15,6 +15,7 @@ from typing import ClassVar
 from sejoga.animacao import movimento_corpo_tuning as tune
 from sejoga.animacao.agencia import Agencia, Humor, MetaTipo
 from sejoga.animacao.antenas_expressivas import delta_expressao_viva
+from sejoga.animacao.ritmo_humano import RitmoHumano
 from sejoga.animacao.braco_hpr import braco_hpr_graus
 from sejoga.animacao.camadas_animacao import (
     MASCARA_MUSICA,
@@ -201,6 +202,7 @@ class AnimationController:
         self.tontura = 0.0
         self._ultima_faixa_musica = ""
         self._indice_cena_estilo = 0
+        self.ritmo = RitmoHumano()
         self._personality_rng = random.Random()
         # Start in a composed idle pose. Starting every joint at zero exposes
         # the asset's T-pose during the first state crossfade.
@@ -1165,6 +1167,7 @@ class AnimationController:
         desejos_antes = len(self.agencia._desejos)
         meta_antes = self.agencia.meta_ativa
         self.agencia.atualizar(dt)
+        self.ritmo.atualizar(dt)
         self._atualizar_sinais_cena_contextual(
             dt,
             grounded=grounded,
@@ -1184,6 +1187,7 @@ class AnimationController:
             and self.state in (AnimationState.IDLE, AnimationState.HOVER)
             and abs(velocity[0]) < 75.0 and abs(velocity[1]) < 75.0
             and not self._sleep_locked and self._reaction is None
+            and not self.ritmo.em_rebalanceio
             and not self._cena_idle_nome and not self._clipe_gltf_nome
             and not self.pacote_olhar_tela.ativo and not self.agencia.tem_meta_ativa
             and self.orientacao_manual is None and self.appendage_remaining <= 0.0
@@ -1201,6 +1205,7 @@ class AnimationController:
                 hovered=hovered,
             )
             if cena:
+                self.ritmo.sortear_intencao("calma")
                 self.interact(cena)
                 self._cooldowns["cena_contextual"] = self.clock + recarga
                 self._tempo_musica_discreta = 0.0
@@ -1464,35 +1469,46 @@ class AnimationController:
         if next_state != self.state:
             self._estado_origem = self.state.value if self.state is not None else ""
             if next_state in (AnimationState.FALL, AnimationState.HIT):
-                self._active_transition_seconds = min(self.transition_seconds, 0.11)
+                self.ritmo.sortear_intencao("impacto")
+                self._active_transition_seconds = self.ritmo.duracao_transicao(0.14)
             elif next_state in (
                 AnimationState.DRAG,
                 AnimationState.POKE,
                 AnimationState.BLUE_BALLS,
                 AnimationState.VIRTUAL_INSANITY,
             ):
-                self._active_transition_seconds = min(self.transition_seconds, 0.14)
+                self.ritmo.sortear_intencao("impacto")
+                self._active_transition_seconds = self.ritmo.duracao_transicao(0.18)
             else:
-                self._active_transition_seconds = self.transition_seconds
+                calma = next_state in (AnimationState.IDLE, AnimationState.HOVER, AnimationState.SLEEP)
+                self.ritmo.sortear_intencao("calma" if calma else "normal")
+                base_tr = max(self.transition_seconds, 0.62) if calma else self.transition_seconds
+                self._active_transition_seconds = self.ritmo.duracao_transicao(base_tr, calma=calma)
 
             if next_state == AnimationState.SLEEP:
-                # Adormecer é lento: crossfade longo para o corpo não cair de uma vez.
-                self._active_transition_seconds = max(
-                    self.transition_seconds, SONO_TRANSICAO_S
+                self._active_transition_seconds = self.ritmo.duracao_transicao(
+                    max(self.transition_seconds, SONO_TRANSICAO_S), calma=True
                 )
             elif next_state == AnimationState.WAKE:
-                self._active_transition_seconds = 0.65
+                self._active_transition_seconds = self.ritmo.duracao_transicao(0.85, calma=True)
             elif (
-                self.state in (AnimationState.HIT, AnimationState.POKE, AnimationState.LAND, AnimationState.TEIMOSIA)
+                self.state in (AnimationState.HIT, AnimationState.POKE, AnimationState.LAND, AnimationState.TEIMOSIA, AnimationState.SURPRISE)
                 and next_state in (AnimationState.IDLE, AnimationState.HOVER, AnimationState.WALK, AnimationState.RUN, AnimationState.DANCE)
             ):
-                self._active_transition_seconds = min(self.transition_seconds, 0.34)
+                # Recuperação respirada e orgânica após impacto/reação + tempo de rebalanceio!
+                self._active_transition_seconds = self.ritmo.duracao_transicao(0.68, calma=True)
+                self.ritmo.iniciar_rebalanceio(1.45)
+            elif (
+                self.state in (AnimationState.WALK, AnimationState.RUN, AnimationState.DANCE, AnimationState.CELEBRATE)
+                and next_state == AnimationState.IDLE
+            ):
+                self._active_transition_seconds = self.ritmo.duracao_transicao(0.72, calma=True)
+                self.ritmo.iniciar_rebalanceio(1.25)
             elif (
                 next_state in (AnimationState.HOVER, AnimationState.IDLE)
                 and self.state in (AnimationState.HOVER, AnimationState.IDLE)
             ):
-                # Entrada/saída de hover sem tranco nas mãos ou cabeça.
-                self._active_transition_seconds = max(self.transition_seconds, 0.28)
+                self._active_transition_seconds = self.ritmo.duracao_transicao(0.46, calma=True)
 
             self.pose_resolver.iniciar_transicao(
                 dict(self._pose), transition_seconds=self._active_transition_seconds
@@ -1546,7 +1562,7 @@ class AnimationController:
             else 1.18 if humor_atual in (Humor.INDIGNADO, Humor.TEIMOSO)
             else 1.08 if humor_atual == Humor.BRINQUEDOIRO
             else 1.0
-        )
+        ) * self.ritmo.modulacao_respiracao(self.clock)
         ciclo = amostrar_respiracao_repouso(
             self.clock, cadencia=cadencia_resp, esforco=self.esforco
         )
@@ -1676,7 +1692,7 @@ class AnimationController:
                 max(0.8, min(1.3, music_bpm / 100.0))
                 if self._cena_idle_nome in ("batida_guardada", "checar_walkman", "groove_um_pe")
                 and music_bpm
-                else 1.0
+                else self.ritmo.escala_velocidade
             )
             self._cena_idle_tempo += dt * ritmo_cena
             self.cena_idle_amostra = amostrar_cena_idle(
@@ -1687,10 +1703,11 @@ class AnimationController:
             if not self.cena_idle_amostra.ativa:
                 self._cena_idle_nome = ""
                 self._cena_idle_tempo = 0.0
+                self.ritmo.iniciar_rebalanceio(1.6)
                 if cena_anterior_ativa and self.pose_resolver._state_time > 1e-6:
                     self.pose_resolver.iniciar_transicao(
                         dict(self._pose),
-                        transition_seconds=min(self.transition_seconds, 0.40),
+                        transition_seconds=self.ritmo.duracao_transicao(0.58, calma=True),
                     )
             elif self.cena_idle_amostra.delta_rig:
                 if self.cena_idle_amostra.peso_mistura > 0.0:
