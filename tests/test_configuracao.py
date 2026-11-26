@@ -163,3 +163,27 @@ def test_locked_profile_directories_use_portable_bundle_profile(tmp_path, monkey
     settings.window.outline_width = 3.5
     assert save_settings(settings) == portable
     assert load_settings().window.outline_width == 3.5
+
+
+def test_catalogos_ui_sem_tags_dev_e_sem_engines():
+    import ast
+    from pathlib import Path
+
+    from sejoga import catalogos_ui
+    from sejoga.configuracao import ESTILOS_DANCA_UI
+
+    assert ESTILOS_DANCA_UI is catalogos_ui.ESTILOS_DANCA_UI
+    assert dict(catalogos_ui.ENCERRAMENTOS_UI)["sonic_classic"] == "Sonic Classic (pulo e queda)"
+    proibidas = ("(v2.0)", "(emote)", "(Mixamo)")
+    for bloco in (
+        catalogos_ui.ESTILOS_DANCA_UI,
+        catalogos_ui.ESTILOS_DANCA_RAPIDOS_MASCOTE,
+        catalogos_ui.CENAS_IDLE_UI,
+        catalogos_ui.ACOES_RAPIDAS_MASCOTE_UI,
+    ):
+        for _, rotulo in bloco:
+            assert not any(tag in rotulo for tag in proibidas), rotulo
+    arvore = ast.parse(Path(catalogos_ui.__file__).read_text("utf-8"))
+    for nodo in ast.walk(arvore):
+        if isinstance(nodo, ast.ImportFrom) and nodo.module:
+            assert not nodo.module.startswith(("panda3d", "PySide6", "win32"))

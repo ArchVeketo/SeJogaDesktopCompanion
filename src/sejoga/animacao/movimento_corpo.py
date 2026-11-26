@@ -188,19 +188,23 @@ _CM_ALTURA_MODELO = 0.48
 def _alvo_pendulo_bruto(
     grab_part: str, grab_point: tuple[float, float, float] | None
 ) -> tuple[float, float]:
-    """Calcula ``(r0x, r0z)`` do pivô ao CM conforme a parte agarrada."""
+    """Calcula ``(r0x, r0z)`` do pivô ao CM (no referencial de autoria) conforme a parte agarrada."""
     if grab_part in ("right-arm", "left-arm"):
         sinal = 1.0 if grab_part == "right-arm" else -1.0
-        r0x = clamp(abs(float(grab_point[0])) * 0.6, 0.14, 0.24) * sinal if grab_point is not None else 0.18 * sinal
-        return r0x, -0.40
+        r0x = clamp(abs(float(grab_point[0])) * 0.65, 0.16, 0.28) * sinal if grab_point is not None else 0.20 * sinal
+        # Alavanca mais longa no braço transmite sensação de peso real pendurado pela mão/antebraço.
+        return r0x, -0.52
     if grab_part in ("legs", "left-feet", "right-feet"):
         r0x = {"left-feet": -0.05, "right-feet": 0.05}.get(grab_part, 0.04)
-        r0z = clamp(_CM_ALTURA_MODELO - float(grab_point[2]), 0.26, 0.44) if grab_point is not None else 0.36
+        r0z = clamp(_CM_ALTURA_MODELO - float(grab_point[2]), 0.28, 0.48) if grab_point is not None else 0.40
         return r0x, r0z
     if grab_point is None:
-        return (0.0, -0.36) if grab_part == "head" else (0.0, -0.18)
-    lim_z = (-0.46, -0.20) if grab_part == "head" else (-0.32, -0.10)
-    return clamp(float(grab_point[0]), -0.22, 0.22), clamp(_CM_ALTURA_MODELO - float(grab_point[2]), *lim_z)
+        return (0.0, -0.42) if grab_part == "head" else (0.0, -0.24)
+    lim_z = (-0.50, -0.24) if grab_part == "head" else (-0.36, -0.14)
+    # ``grab_point`` vem no espaço de ``model_np`` (+X = direita da tela), enquanto
+    # o pêndulo opera no referencial de autoria (+X = direita do mascote = esquerda da tela).
+    x_autoria = -float(grab_point[0])
+    return clamp(x_autoria, -0.22, 0.22), clamp(_CM_ALTURA_MODELO - float(grab_point[2]), *lim_z)
 
 
 def _geometria_pendulo(
@@ -311,8 +315,8 @@ class BodyMotion:
                 self.compression.velocity += i_comp * 0.45 * strength
         elif kind == "celebrate":
             self.compression.velocity += i_comp * 0.65 * strength
-            self.pitch.velocity -= c_pitch * 0.85 * strength
-            self.roll.velocity += (direction or 0.6) * c_roll * 0.55 * strength
+            self.pitch.velocity -= c_pitch * 0.55 * strength
+            self.roll.velocity += (direction or 0.35) * c_roll * 0.16 * strength
         elif kind == "pet":
             self.roll.velocity += direction * p_roll * strength
         elif kind in ("hit", "land"):
@@ -458,7 +462,7 @@ class BodyMotion:
                 1.0 - exp(-5.5 * dt)
             )
         else:
-            self._reach_cursor = 0.0
+            self._reach_cursor *= exp(-8.0 * dt)
         if (
             grab_part == "head"
             and (prev_vx * raw[0] + prev_vy * raw[1]) < tune.DRAG_CABECA_SURPRESA_LIMIAR
@@ -506,12 +510,18 @@ class BodyMotion:
             self.roll.value = ((degrees(self._pendulo_angulo) + 180.0) % 360.0) - 180.0
             self.neck_roll.value = ((self.neck_roll.value + 180.0) % 360.0) - 180.0
             vel_deg = degrees(self._pendulo_vel)
-            if abs(vel_deg) >= tune.DRAG_VEL_ANGULAR_ARREMESSO_MIN and not grounded:
-                self.roll.velocity = clamp(vel_deg, -1100.0, 1100.0)
+            if not grounded:
+                # Mistura contínua entre amortecimento suave e arremesso pleno (sem degrau no limiar)
+                lim = max(1.0, tune.DRAG_VEL_ANGULAR_ARREMESSO_MIN)
+                u_arr = clamp((abs(vel_deg) - lim * 0.65) / (lim * 0.70), 0.0, 1.0)
+                u_arr = u_arr * u_arr * (3.0 - 2.0 * u_arr)
+                ganho = 0.4 + 0.6 * u_arr
+                teto = 360.0 + (1100.0 - 360.0) * u_arr
+                self.roll.velocity = clamp(vel_deg * ganho, -teto, teto)
             else:
                 self.roll.velocity = clamp(vel_deg * 0.4, -360.0, 360.0)
         self._sling_velocity = (0.0, 0.0)
-        self._reach_cursor = 0.0
+        self._reach_cursor *= exp(-8.0 * dt)
         self._spin_velocity *= exp(-tune.QUEDA_GIRO_RETORNO * dt)
         self._spin_angle *= exp(-tune.QUEDA_GIRO_RETORNO * dt)
         if hovered:
@@ -620,7 +630,13 @@ class BodyMotion:
         if dragging or not grounded:
             roll_out = self.roll.value
         else:
-            roll_out = clamp(self.roll.value, tune.SNAP_ROLL.minimo, tune.SNAP_ROLL.maximo)
+            # No pouso, evita salto C0 se o corpo ainda estava girando acima do limite de chão.
+            clamped = clamp(self.roll.value, tune.SNAP_ROLL.minimo, tune.SNAP_ROLL.maximo)
+            if self.suspension.value > 0.05:
+                f_chao = 1.0 - clamp(self.suspension.value, 0.0, 1.0)
+                roll_out = self.roll.value + (clamped - self.roll.value) * f_chao
+            else:
+                roll_out = clamped
 
         self.snapshot = BodyPose(
             roll=roll_out,

@@ -24,20 +24,26 @@ def escolher_estado(
     music_playing: bool,
     music_intensity: float,
     current_state: AnimationState | None = None,
+    sitting: bool = False,
+    jumping: bool = False,
 ) -> AnimationState:
     """Escolhe o estado de animação com base nos estímulos atuais (com histerese)."""
     from sejoga.animacao.controlador_animacao import AnimationState
 
     if dragging:
         return AnimationState.DRAG
+    if jumping:
+        return AnimationState.JUMP
     if gravity_active or (not grounded and speed > 120.0):
         return AnimationState.FALL
     if music_playing and music_intensity > 0.01:
         return AnimationState.DANCE
-    limiar_run = 560.0 if current_state == AnimationState.RUN else 700.0
+    limiar_run = 340.0 if current_state == AnimationState.RUN else 420.0
     if grounded and speed > limiar_run:
         return AnimationState.RUN
     limiar_walk = 75.0 if current_state == AnimationState.WALK else 120.0
     if grounded and speed > limiar_walk:
         return AnimationState.WALK
+    if sitting and grounded:
+        return AnimationState.SIT
     return AnimationState.IDLE

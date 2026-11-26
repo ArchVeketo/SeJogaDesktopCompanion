@@ -7,8 +7,8 @@ asset segue intacto; o contorno recebe os mesmos ângulos nos pivôs copiados.
 
 from math import atan2, degrees, exp
 
-from sejoga.animacao import dedos_cascata as cascata
-from sejoga.animacao import dedos_tuning as tuning_dedos
+from sejoga.animacao import gestos_dedos as cascata
+from sejoga.animacao import gestos_dedos as tuning_dedos
 from sejoga.animacao.gestos_dedos import (
     GESTURES,
     LADO_DOS_GESTOS,
@@ -27,6 +27,8 @@ from sejoga.render.dedos_malha import (
 )
 
 _MAO_POR_LADO = {1: "hand", -1: "hand2"}
+# Somente sinais mostrados ao observador podem girar o pulso da pose.
+_SINAIS_DE_APRESENTACAO = frozenset({"hang_loose", "thumbs_up", "rock", "finger_gun", "peace", "point"})
 
 
 def _girar_cadeias(cadeias, angulos, abertura) -> None:
@@ -209,11 +211,31 @@ class FingerGestures:
         for idx_mao, (lado, grupo, _meshes) in enumerate(MAOS):
             estado_mao, com_gesto = por_mao[lado]
             target = GESTURES.get(estado_mao, (0, 0, 0, 0, 0)) if com_gesto else (0, 0, 0, 0, 0)
+            apresentar = com_gesto and estado_mao in _SINAIS_DE_APRESENTACAO
+            if (com_gesto and not apresentar) or estado_mao in ("close_fists", "open_hands"):
+                # O contato e a guarda têm orientação própria. Uma torção
+                # residual do sinal anterior também deslocaria as pontas.
+                self.presentation_por_mao[lado] = 0.0
+                self.wrist_twist_por_mao[lado] = 0.0
             self.presentation_por_mao[lado] += (
-                (1.0 if com_gesto else 0.0) - self.presentation_por_mao[lado]
+                (1.0 if apresentar else 0.0) - self.presentation_por_mao[lado]
             ) * blend
             if self.presentation_por_mao[lado] > 0.001:
-                self._alinhar_pulso(lado, _MAO_POR_LADO[lado], estado_mao, blend)
+                if apresentar:
+                    self._alinhar_pulso(lado, _MAO_POR_LADO[lado], estado_mao, blend)
+                else:
+                    self.wrist_twist_por_mao[lado] += (
+                        0.0 - self.wrist_twist_por_mao[lado]
+                    ) * blend
+                    hand = self.renderer._rig_nodes.get(_MAO_POR_LADO[lado])
+                    if hand is not None and abs(self.wrist_twist_por_mao[lado]) > 0.02:
+                        hand.setP(
+                            hand,
+                            self.wrist_twist_por_mao[lado] * self.presentation_por_mao[lado],
+                        )
+                        out_hand = self.renderer._outline_nodes.get(_MAO_POR_LADO[lado])
+                        if out_hand is not None:
+                            out_hand.setMat(hand.getMat())
             else:
                 self.wrist_twist_por_mao[lado] = 0.0
             self.amounts_por_mao[lado] = [

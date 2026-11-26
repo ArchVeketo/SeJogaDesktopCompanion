@@ -32,22 +32,22 @@ class MolaCorpo:
 # --------------------------------------------------------------------------- #
 # Molas do corpo (uma por eixo/articulação de BodyMotion).
 # --------------------------------------------------------------------------- #
-#: Rolagem do tronco: rigidez média, bom balanço.
-MOLA_ROLL = MolaCorpo(frequencia=1.15, amortecimento=0.58)
+#: Rolagem do tronco: massa firme com balanço pesado.
+MOLA_ROLL = MolaCorpo(frequencia=1.02, amortecimento=0.54)
 #: Inclinação à frente/trás: um pouco mais firme que o roll.
-MOLA_PITCH = MolaCorpo(frequencia=1.25, amortecimento=0.60)
+MOLA_PITCH = MolaCorpo(frequencia=1.12, amortecimento=0.56)
 #: Giro do tronco: firme e assentado.
-MOLA_YAW = MolaCorpo(frequencia=1.2, amortecimento=0.78)
+MOLA_YAW = MolaCorpo(frequencia=1.15, amortecimento=0.76)
 #: Pescoço acompanha o roll do tronco com um pouco de atraso.
-MOLA_NECK_ROLL = MolaCorpo(frequencia=1.65, amortecimento=0.58)
+MOLA_NECK_ROLL = MolaCorpo(frequencia=1.45, amortecimento=0.54)
 #: Pescoço acompanha o pitch do tronco.
-MOLA_NECK_PITCH = MolaCorpo(frequencia=1.75, amortecimento=0.60)
+MOLA_NECK_PITCH = MolaCorpo(frequencia=1.55, amortecimento=0.56)
 #: Compressão (agachar/encolher no impacto).
-MOLA_COMPRESSION = MolaCorpo(frequencia=1.32, amortecimento=0.44)
-#: Suspensão (pendurado no arrasto/queda): firme, quase sem balanço.
-MOLA_SUSPENSION = MolaCorpo(frequencia=1.9, amortecimento=0.88)
+MOLA_COMPRESSION = MolaCorpo(frequencia=1.28, amortecimento=0.46)
+#: Suspensão (pendurado no arrasto/queda): firme, com entrada orgânica de peso.
+MOLA_SUSPENSION = MolaCorpo(frequencia=1.75, amortecimento=0.86)
 #: Membros pendulares (braços/pernas) sob gravidade e arraste inercial: mais pesados.
-MOLA_LIMBS = MolaCorpo(frequencia=0.92, amortecimento=0.36)
+MOLA_LIMBS = MolaCorpo(frequencia=0.74, amortecimento=0.34)
 
 
 # --------------------------------------------------------------------------- #
@@ -92,7 +92,8 @@ DT_MAXIMO = 0.1
 #: Clamp da velocidade crua do ponteiro (px/s) antes de suavizar.
 VELOCIDADE_PONTEIRO = FaixaClamp(minimo=-2500.0, maximo=2500.0)
 #: Taxa de suavização exponencial da velocidade do ponteiro (1 - e^(-k*dt)).
-PONTEIRO_SUAVIZACAO = 18.0
+#: Menor que antes para dar atraso físico de massa pesada ao puxar o armário.
+PONTEIRO_SUAVIZACAO = 11.5
 
 
 # --------------------------------------------------------------------------- #
@@ -118,14 +119,14 @@ DRAG_YAW = FaixaClamp(minimo=-26.0, maximo=26.0)
 DRAG_LIMBS_GANHO = 0.046
 DRAG_LIMBS = FaixaClamp(minimo=-54.0, maximo=54.0)
 
-#: Pêndulo rígido contínuo (estilo SlugcatPet 360°+): gravidade / L e arrasto.
-PENDULO_GRAVIDADE_RAD_S2 = 24.5
-PENDULO_ACEL_GANHO = 0.0029
-PENDULO_ARRASTO_AR = 0.0085
-PENDULO_AMORTECIMENTO = 1.75
-PENDULO_ALAVANCA_MIN = 0.34
-PENDULO_CURVA_TORQUE_GANHO = 0.00028
-PENDULO_VEL_ANGULAR_MAX_RAD = 18.0
+#: Pêndulo rígido contínuo com peso de gabinete sólido (~0.75–0.95 Hz natural).
+PENDULO_GRAVIDADE_RAD_S2 = 16.0
+PENDULO_ACEL_GANHO = 0.0024
+PENDULO_ARRASTO_AR = 0.0105
+PENDULO_AMORTECIMENTO = 2.65
+PENDULO_ALAVANCA_MIN = 0.42
+PENDULO_CURVA_TORQUE_GANHO = 0.00024
+PENDULO_VEL_ANGULAR_MAX_RAD = 12.0
 PENDULO_PASSO_MAX = 1.0 / 120.0
 #: Raio efetivo padrão (px) para converter giro no soltar em velocidade de estilingue.
 PENDULO_RAIO_ESTILINGUE_PX = 140.0

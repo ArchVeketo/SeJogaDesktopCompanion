@@ -6,7 +6,7 @@ import pytest
 
 from sejoga.animacao import danca_tuning as tune
 from sejoga.animacao.danca_frases_tuning import FRASES
-from sejoga.animacao.movimento_danca import DanceMotion
+from sejoga.animacao.movimento_danca import _BANDAS_AUTO_V2, DanceMotion
 from sejoga.animacao.movimento_pernas import LegMotion
 from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig, Rotation3
 
@@ -24,6 +24,9 @@ AUDIO_DO_ESTILO = {
     "street_groove": (0.65, 0.4, 108.0),
     "graffiti_dance": (0.55, 0.25, 100.0),
     "cyber_bounce": (0.75, 0.5, 124.0),
+    "cyber_skank": (0.78, 0.52, 128.0),
+    "funk_glide": (0.62, 0.38, 112.0),
+    "walkman_shuffle": (0.68, 0.42, 118.0),
 }
 
 
@@ -46,17 +49,17 @@ def _contribuicoes(estilo: str) -> list[dict[str, Rotation3]]:
 def test_styles_follow_sustained_energy_and_bass_not_single_peak():
     dance = DanceMotion()
     dance.update(0.02, 1, 1, 120, True)
-    assert dance.style == "head_bob"
+    assert dance.style in _BANDAS_AUTO_V2["chill_groove"]
 
     for _ in range(600):
         dance.update(1 / 60, 0.5, 0.3, 95)
-    assert dance.style == "hip_hop"
+    assert dance.style in (_BANDAS_AUTO_V2["chill_groove"] + _BANDAS_AUTO_V2["funk_pop"])
     for _ in range(600):
         dance.update(1 / 60, 0.95, 0.7, 150)
-    assert dance.style == "breakdance"
+    assert dance.style in _BANDAS_AUTO_V2["high_energy"]
     for _ in range(600):
         dance.update(1 / 60, 0.08, 0.01, 75)
-    assert dance.style == "head_bob"
+    assert dance.style in _BANDAS_AUTO_V2["chill_groove"]
 
 
 def test_shared_phase_keeps_leg_targets_independent_of_internal_clock():

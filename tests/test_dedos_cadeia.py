@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from sejoga.animacao import dedos_cascata as cascata
-from sejoga.animacao import dedos_tuning as tuning_dedos
+from sejoga.animacao import gestos_dedos as cascata
+from sejoga.animacao import gestos_dedos as tuning_dedos
 from sejoga.nucleo import malha_corte as mc
 
 #: Lâmina sintética: comprimento (X), espessura (Z, eixo "cima") e largura (Y).
@@ -365,6 +365,53 @@ def test_gesto_apresenta_a_mao_sem_mudar_eixo_do_punho():
     assert hand.getMat().almostEqual(outline_hand.getMat(), 1e-6)
 
 
+def test_teleporte_preserva_palmas_da_pose_apos_gesto_para_camera():
+    from types import SimpleNamespace
+
+    pytest.importorskip("PySide6.QtWidgets")
+    core = pytest.importorskip("panda3d.core")
+    gltf = pytest.importorskip("gltf")
+    from sejoga.animacao.poses_base import pose_goku_teleport
+    from sejoga.nucleo import cinematica as cin
+    from sejoga.nucleo.esqueleto import Rig
+    from sejoga.nucleo.modelo import load_model
+    from sejoga.nucleo.recursos import resolve_model
+    from sejoga.render.dedos_malha import fatiar_dedos
+    from sejoga.render.gestos_dedos import FingerGestures
+
+    caminho = resolve_model()
+    rig = Rig.from_model(load_model(caminho))
+    model = core.NodePath(gltf.load_model(str(caminho)))
+    fatiar_dedos(model)
+    outline = model.copyTo(core.NodePath("contorno"))
+    nos = {g: model.find("**/" + g) for g in rig.groups}
+    copias = {g: outline.find("**/" + g) for g in rig.groups}
+    bases = {g: tuple(no.getHpr()) for g, no in nos.items()}
+    animador = FingerGestures(SimpleNamespace(
+        model_np=model, outline_np=outline, _rig_nodes=nos,
+        _outline_nodes=copias, _rig_base_hpr=bases,
+    ))
+    animador.update(1 / 30, "peace", gesto_esquerda="rock")
+    pose_goku_teleport(rig, 0.7)
+    for g, rot in rig.pose().items():
+        extra = cin.BASE_ADICIONAL_GRAUS.get(g, (0, 0, 0))
+        nos[g].setHpr(*(a + b + c for a, b, c in zip(bases[g], extra, cin.graus(rot), strict=True)))
+        copias[g].setMat(nos[g].getMat())
+    punhos = {g: nos[g].getMat() for g in ("hand", "hand2")}
+    for _ in range(30):
+        animador.update(1 / 30, "goku_teleport", gesto_esquerda="close_fists")
+        for g, matriz in punhos.items():
+            assert nos[g].getMat().almostEqual(matriz, 1e-5)
+            assert copias[g].getMat().almostEqual(matriz, 1e-5)
+
+    base_indicador, _, dorso = animador.cadeias[1, 1][0][0]
+    cabeca = nos["head"]
+    palma = cabeca.getRelativeVector(base_indicador, -dorso).normalized()
+    para_tempora = core.Point3(0.11, 0.16, 0.26) - base_indicador.getPos(cabeca)
+    assert palma.dot(para_tempora.normalized()) > 0
+    assert sum(animador.angulos[1, 3]) > sum(animador.angulos[1, 1])
+
+
 def test_flexao_do_bloco_nao_desloca_as_bases_dos_dedos_da_palma():
     from types import SimpleNamespace
     import gltf
@@ -451,10 +498,11 @@ def test_gestos_individuais_independentes_nas_duas_maos():
     assert sum(animator.angulos[(-1, 2)]) > 80.0
     assert animator.amounts_por_mao[1] != animator.amounts_por_mao[-1]
 
-    # Paz/V na direita afasta indicador e médio em sentidos opostos.
+    # Paz/V na direita afasta indicador e médio em sentidos opostos sem colidir com o anelar.
     for _ in range(45):
         animator.update(1 / 60, "peace", gesto_esquerda="thumbs_up")
-    assert animator.aberturas[(1, 1)] > 8.0
-    assert animator.aberturas[(1, 2)] < -8.0
+    assert animator.aberturas[(1, 1)] > 10.0
+    assert animator.aberturas[(1, 2)] < -1.0
+    assert animator.aberturas[(1, 1)] - animator.aberturas[(1, 2)] > 12.0
     assert animator.angulos[(-1, 0)][0] < 10.0
     assert sum(animator.angulos[(-1, 1)]) > 80.0

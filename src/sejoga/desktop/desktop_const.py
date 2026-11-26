@@ -4,7 +4,7 @@ Separa número "mágico" de código em dois grupos nomeados:
 
 - **Layout/UX do diálogo de configurações** (``interface.py``): faixas, passos e
   larguras dos widgets Qt. São escolhas de interface, não limiares de domínio
-  (estes vivem em ``fisica_tuning.py``); os extremos espelham os limites de
+  (estes vivem em ``fisica.py``); os extremos espelham os limites de
   validação de ``configuracao.py``.
 - **Protocolo Win32 da bandeja e da janela** (``registro_bandeja.py``,
   ``integracao_desktop.py``): mensagens, flags e tamanhos de ícone exigidos pela

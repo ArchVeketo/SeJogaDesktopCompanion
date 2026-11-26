@@ -51,9 +51,11 @@ AMBIENTE_DURACAO = 1.5
 
 # Surpresa: diferença angular mínima (em unidades de direção, -1..1) entre o
 # alvo atual e o anterior para disparar o susto. Evita sustos por micro-ajustes.
-SURPRESA_LIMIAR_SALTO = 0.9
+SURPRESA_LIMIAR_SALTO = 1.35
 # Intensidade mínima do gatilho para um susto valer a pena.
-SURPRESA_FORCA_MINIMA = 0.5
+SURPRESA_FORCA_MINIMA = 0.78
+SURPRESA_COOLDOWN_S = 18.0
+_FONTES_SEM_SURPRESA = frozenset({"beat", "ambiente", "meta", "borda"})
 
 
 def ponto_para_direcao(
@@ -131,6 +133,7 @@ class GateAtencao:
     _ambiente_restante: float = 0.0
     _ambiente_ponto: tuple[float, float] | None = None
     _direcao_anterior: float | None = None
+    _vertical_anterior: float | None = None
     _surpresa_cooldown: float = 0.0
     _inicializado: bool = False
     _cursor_ultimo_ponto: tuple[float, float] | None = None
@@ -151,13 +154,18 @@ class GateAtencao:
             origem_janela[1] + self.rng.uniform(-margem_y, margem_y),
         )
 
-    def _consumir_surpresa(self, direcao: float, vencedor: GatilhoAtencao) -> bool:
-        """Registra direcao anterior (exceto beat/ambiente) e aplica cooldown de susto."""
-        surpresa = self._detectar_surpresa(direcao, vencedor.forca, vencedor.fonte)
-        if vencedor.fonte not in ("beat", "ambiente"):
+    def _consumir_surpresa(
+        self, direcao: float, vertical: float, vencedor: GatilhoAtencao
+    ) -> bool:
+        """Registra direcao anterior (exceto fontes passivas) e aplica cooldown de susto."""
+        surpresa = self._detectar_surpresa(
+            direcao, vertical, vencedor.forca, vencedor.fonte
+        )
+        if vencedor.fonte not in _FONTES_SEM_SURPRESA:
             self._direcao_anterior = direcao
+            self._vertical_anterior = vertical
         if surpresa:
-            self._surpresa_cooldown = 6.0
+            self._surpresa_cooldown = SURPRESA_COOLDOWN_S
         return surpresa
 
     def atualizar(
@@ -184,11 +192,7 @@ class GateAtencao:
             self._inicializado = True
 
         if not habilitado:
-            # Feature desligada: zera tudo e não produz movimento nem susto.
-            self._direcao_anterior = None
-            self._surpresa_cooldown = 0.0
-            self._ambiente_restante = 0.0
-            return AlvoAtencao()
+            return self._desabilitar()
 
         self._surpresa_cooldown = max(0.0, self._surpresa_cooldown - max(0.0, dt))
         self._avancar_ambiente(dt, origem_janela, largura, altura, ambiente_habilitado)
@@ -199,13 +203,10 @@ class GateAtencao:
         candidatos = []
         for g in gatilhos:
             if g.fonte == "cursor" and self._cursor_novidade < 0.999:
-                # Decaimento suave sem cair abaixo da prioridade de borda quando
-                # parado perto da janela (evita piscar olhar cursor <-> borda).
+                # Decai gradualmente abaixo de ambiente/borda quando o cursor fica
+                # parado por muito tempo, liberando o olhar autônomo do mascote.
                 novidade = self._cursor_novidade
-                peso_prioridade = (
-                    (PRIORIDADE_BORDA + 2.0) * (1.0 - novidade)
-                    + g.prioridade * novidade
-                )
+                peso_prioridade = 2.0 * (1.0 - novidade) + g.prioridade * novidade
                 candidatos.append(
                     GatilhoAtencao(
                         g.fonte,
@@ -227,6 +228,7 @@ class GateAtencao:
 
         if not candidatos:
             self._direcao_anterior = None
+            self._vertical_anterior = None
             return AlvoAtencao()
 
         vencedor = max(candidatos, key=lambda g: g.prioridade)
@@ -234,9 +236,8 @@ class GateAtencao:
             vencedor.ponto, origem_janela, largura, altura
         )
 
-        # Batidas musicais e olhares espontâneos não geram susto nem apagam a
-        # referência direcional anterior (evita falso susto ao voltar para o cursor).
-        surpresa = self._consumir_surpresa(direcao, vencedor)
+        # Fontes contínuas/passivas não geram susto nem apagam a referência direcional.
+        surpresa = self._consumir_surpresa(direcao, vertical, vencedor)
 
         return AlvoAtencao(
             direcao=direcao,
@@ -245,6 +246,13 @@ class GateAtencao:
             forca=vencedor.forca,
             surpresa=surpresa,
         )
+
+    def _desabilitar(self) -> AlvoAtencao:
+        self._direcao_anterior = None
+        self._vertical_anterior = None
+        self._surpresa_cooldown = 0.0
+        self._ambiente_restante = 0.0
+        return AlvoAtencao()
 
     def _atualizar_novidade_cursor(
         self, dt: float, cursor: GatilhoAtencao | None
@@ -272,7 +280,7 @@ class GateAtencao:
             self._cursor_tempo_parado += max(0.0, dt)
             if self._cursor_tempo_parado > 2.0:
                 excesso = self._cursor_tempo_parado - 2.0
-                self._cursor_novidade = max(0.32, min(1.0, 2.718281828 ** (-excesso * 0.35)))
+                self._cursor_novidade = max(0.0, min(1.0, 2.718281828 ** (-excesso * 0.35)))
 
     def _avancar_ambiente(
         self,
@@ -299,13 +307,43 @@ class GateAtencao:
             self._ambiente_em = self._sortear_intervalo_ambiente()
 
     def _detectar_surpresa(
-        self, direcao: float, forca: float, fonte: str | None = None
+        self,
+        direcao: float,
+        vertical: float,
+        forca: float,
+        fonte: str | None = None,
     ) -> bool:
-        """Susto quando o olhar salta muito para um gatilho forte (fora beat/ambiente)."""
-        if fonte in ("beat", "ambiente") or self._surpresa_cooldown > 0.0:
+        """Susto quando o olhar salta bruscamente em 2D para um gatilho forte."""
+        if fonte in _FONTES_SEM_SURPRESA or self._surpresa_cooldown > 0.0:
             return False
         if forca < SURPRESA_FORCA_MINIMA:
             return False
         if self._direcao_anterior is None:
             return False
-        return abs(direcao - self._direcao_anterior) >= SURPRESA_LIMIAR_SALTO
+        dv = (vertical - self._vertical_anterior) if self._vertical_anterior is not None else 0.0
+        salto = ((direcao - self._direcao_anterior) ** 2 + (dv * 0.65) ** 2) ** 0.5
+        return salto >= SURPRESA_LIMIAR_SALTO
+
+
+class HoverAttention:
+    """Atenção ao cursor sob hover, com atraso para retomar o idle."""
+
+    def __init__(self, resume_delay=1.0):
+        """Guarda o atraso de retomada após o cursor sair."""
+        self.resume_delay = resume_delay
+        self.resume_at = 0.0
+
+    def update(
+        self,
+        now,
+        *,
+        external_press=False,
+        typing=False,
+        busy_cursor=False,
+        focus_changed=False,
+    ):
+        """Atualiza a atenção a partir do hover e da posição do cursor."""
+        if external_press or typing or busy_cursor or focus_changed:
+            self.resume_at = now + self.resume_delay
+            return False
+        return now >= self.resume_at

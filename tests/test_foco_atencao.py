@@ -207,3 +207,35 @@ def test_batida_musical_e_ambiente_nao_disparam_surpresa_em_loop():
         ambiente_habilitado=False,
     )
     assert alvo_cursor.surpresa is False
+
+
+def test_meta_borda_e_gatilhos_distantes_nao_assustam():
+    gate = _gate()
+    gate.atualizar(
+        1 / 60,
+        gatilhos=[GatilhoAtencao("cursor", (1300.0, 1100.0), PRIORIDADE_CURSOR, forca=0.85)],
+        origem_janela=(1000.0, 1000.0),
+        largura=200,
+        altura=200,
+        ambiente_habilitado=False,
+    )
+    for fonte in ("meta", "borda"):
+        alvo = gate.atualizar(
+            1 / 60,
+            gatilhos=[GatilhoAtencao(fonte, (700.0, 1100.0), PRIORIDADE_FOCO, forca=1.0)],
+            origem_janela=(1000.0, 1000.0),
+            largura=200,
+            altura=200,
+            ambiente_habilitado=False,
+        )
+        assert not alvo.surpresa
+    # Troca de foco/cursor distante com força reduzida (< 0.78) não dispara susto.
+    alvo_longe = gate.atualizar(
+        1 / 60,
+        gatilhos=[GatilhoAtencao("foco", (700.0, 1100.0), PRIORIDADE_FOCO, forca=0.45)],
+        origem_janela=(1000.0, 1000.0),
+        largura=200,
+        altura=200,
+        ambiente_habilitado=False,
+    )
+    assert not alvo_longe.surpresa

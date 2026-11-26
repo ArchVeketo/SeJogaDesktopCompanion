@@ -22,7 +22,7 @@ from sejoga.nucleo.esqueleto import Rotation3
 
 Vec3 = tuple[float, float, float]
 
-GRUPOS_CORPO_INTEIRO = frozenset({"body", "cintura", "legs"})
+GRUPOS_CORPO_INTEIRO = frozenset({"body", "cintura", "legs", "pelvis"})
 
 _ESPEC_IK_FIXA: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "hand": ("ik_braco_dir", "Mão direita (IK braço)", ("right-arm", "ant-arm")),

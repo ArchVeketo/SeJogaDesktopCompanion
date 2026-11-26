@@ -25,13 +25,15 @@ from __future__ import annotations
 
 from math import atan2, cos, degrees, radians, sin, sqrt
 
-from sejoga.nucleo.cinematica_const import (
-    EPSILON_DEGENERADO,
-    TORCAO_BASE_ANTEBRACO_GRAUS,
-    TORCAO_BASE_MAO_GRAUS,
-)
 from sejoga.nucleo.esqueleto import ALL_GROUPS, Rotation3
 from sejoga.nucleo.modelo import Model
+
+#: Torção fixa (graus, em P/``Rotation3.x``) do antebraço em relação ao braço.
+TORCAO_BASE_ANTEBRACO_GRAUS = 90.0
+#: Pronação anatômica base (graus, em P/``Rotation3.x``) do punho (``hand``/``hand2``).
+TORCAO_BASE_MAO_GRAUS = -104.0
+#: Norma abaixo da qual um vetor é tratado como nulo (direção degenerada).
+EPSILON_DEGENERADO = 1e-9
 
 Vec3 = tuple[float, float, float]
 #: Matriz 3x3 linha-maior (9 floats), aplicada a vetores coluna.

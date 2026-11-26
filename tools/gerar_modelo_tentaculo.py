@@ -43,7 +43,14 @@ def add(items, width, fmt, component, kind):
     start = len(data)
     for item in items:
         data.extend(struct.pack("<" + fmt * width, *item))
-    views.append({"buffer": 0, "byteOffset": start, "byteLength": len(data) - start})
+    views.append(
+        {
+            "target": 34963 if kind == "SCALAR" else 34962,
+            "buffer": 0,
+            "byteOffset": start,
+            "byteLength": len(data) - start,
+        }
+    )
     accessor = {
         "bufferView": len(views) - 1,
         "componentType": component,
@@ -59,6 +66,12 @@ def add(items, width, fmt, component, kind):
 
 position = add(vertices, 3, "f", 5126, "VEC3")
 normal = add(normals, 3, "f", 5126, "VEC3")
+altura = max(p[1] for p in vertices)
+coordenadas_uv = [
+    (0.5 + (p[2] if abs(n[0]) > abs(n[2]) else p[0]) * 4.0, 1.0 - p[1] / altura)
+    for p, n in zip(vertices, normals, strict=True)
+]
+uv = add(coordenadas_uv, 2, "f", 5126, "VEC2")
 color = add(colors, 4, "f", 5126, "VEC4")
 index = add([(i,) for i in indices], 1, "H", 5123, "SCALAR")
 document = {
@@ -73,6 +86,7 @@ document = {
                     "attributes": {
                         "POSITION": position,
                         "NORMAL": normal,
+                        "TEXCOORD_0": uv,
                         "COLOR_0": color,
                     },
                     "indices": index,
@@ -81,11 +95,25 @@ document = {
             ]
         }
     ],
+    "samplers": [{"magFilter": 9728, "minFilter": 9728}],
+    "textures": [{"source": 0, "sampler": 0}],
+    "images": [
+        {
+            "uri": "data:image/png;base64,"
+            + base64.b64encode(
+                (ROOT / "assets/textures/acabamentos/pele.png").read_bytes()
+            ).decode()
+        }
+    ],
     "materials": [
         {
             "name": "purple-pink-tentacle",
             "doubleSided": True,
-            "pbrMetallicRoughness": {"metallicFactor": 0, "roughnessFactor": 0.85},
+            "pbrMetallicRoughness": {
+                "baseColorTexture": {"index": 0},
+                "metallicFactor": 0,
+                "roughnessFactor": 0.85,
+            },
         }
     ],
     "buffers": [

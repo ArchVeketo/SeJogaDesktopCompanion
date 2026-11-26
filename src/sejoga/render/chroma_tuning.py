@@ -30,8 +30,9 @@ CHROMA_MAGENTA_RGB: tuple[float, float, float] = (1.0, 0.0, 1.0)
 CHROMA_CLEAR_MAGENTA: tuple[float, float, float, float] = (1.0, 0.0, 1.0, 0.0)
 
 # Cobertura mínima (alpha pós-MSAA) para o pixel contar como superfície; abaixo
-# disso o pixel é resolvido para o chroma de fundo.
-COBERTURA_MINIMA = 0.5
+# disso o pixel é resolvido para o chroma de fundo. 0.58 elimina a mini borda
+# acinzentada/suja de pixels com cobertura muito baixa no LWA_COLORKEY binário.
+COBERTURA_MINIMA = 0.58
 
 # Epsilon que evita divisão por zero ao normalizar a cor pela cobertura parcial.
 COBERTURA_EPSILON = 0.001
@@ -43,16 +44,10 @@ CALIBRACAO_VERMELHO_MIN = 128
 CALIBRACAO_VERDE_MAX = 20
 CALIBRACAO_AZUL_MIN = 128
 
-# DESPILL (remoção da contaminação do chroma na borda). Os pixels de borda com
-# cobertura MSAA parcial carregam uma fração da cor do chroma misturada à
-# superfície; a normalização por cobertura já remove a maior parte, mas sobra
-# uma franja tingida (a "rebarba"). O despill abaixo puxa, APÓS a normalização,
-# os canais do pixel na direção do canal menos contaminado pelo chroma, só onde
-# a cobertura é parcial. Vale COM e SEM contorno (correção na origem, não
-# mascarada pela outline). Validar a ausência da franja na GPU.
-
-# Força do despill (0 = desligado, 1 = remoção total da dominância do chroma).
-DESPILL_FORCA = 1.0
+# DESPILL (remoção da contaminação do chroma na borda).
+# Com o FBO MSAA limpo em (0, 0, 0, 0) em vez do chroma key, a divisão pela
+# cobertura resolve a cor pura sem resíduo rosa/amarelo, dispensando despill.
+DESPILL_FORCA = 0.0
 
 # Cobertura acima da qual o pixel é considerado interior sólido e dispensa
 # despill (evita alterar a cor do corpo longe da borda).
@@ -112,3 +107,20 @@ def pixel_e_chroma(rgb_255: tuple[int, int, int], config: ChromaConfig) -> bool:
         minimo <= valor <= maximo
         for valor, (minimo, maximo) in zip(rgb_255, config.limites, strict=True)
     )
+
+
+def seguro_contra_chroma_255(
+    r: int, g: int, b: int, colorkey_hex: str = CHROMA_HEX_PADRAO
+) -> tuple[int, int, int]:
+    """Afasta uma cor RGB 0-255 do color key pós-tonemap configurado."""
+    cfg = derivar_chroma(colorkey_hex)
+    kr, kg, kb = (round(c * 214) for c in cfg.rgb)
+    # Verifica tanto colisão direta com o key pós-tonemap quanto a zona calibrável.
+    dist_sq = (r - kr) ** 2 + (g - kg) ** 2 + (b - kb) ** 2
+    if dist_sq >= 28 * 28 and not pixel_e_chroma((r, g, b), cfg):
+        return (r, g, b)
+    # Desloca prioritariamente o canal com menor presença no key configurado.
+    canais = [r, g, b]
+    idx_menor = min(range(3), key=lambda i: cfg.rgb[i])
+    canais[idx_menor] = min(255, max(76, canais[idx_menor] + 68)) if canais[idx_menor] < 180 else max(0, canais[idx_menor] - 68)
+    return (canais[0], canais[1], canais[2])

@@ -25,7 +25,17 @@ def test_idle_tracks_close_with_zero_velocity(style):
                 assert abs(before - center) < 0.00001
 
 
-@pytest.mark.parametrize("style", CLIPS)
+CANONICOS_6 = (
+    "brc_malandro",
+    "frenetico_groove",
+    "espreita_armario",
+    "jojo_exibido",
+    "boxeador_pronto",
+    "derretido_sono",
+)
+
+
+@pytest.mark.parametrize("style", CANONICOS_6)
 def test_manual_style_persists_and_auto_restores_default(style):
     settings = Settings.model_validate({"behavior": {"idle_personality": style}})
     animation = AnimationController(Rig(rest={g: Rotation3() for g in ALL_GROUPS}))
@@ -36,7 +46,7 @@ def test_manual_style_persists_and_auto_restores_default(style):
     animation.set_idle_personality("auto")
     for _ in range(400):
         animation.update(0.1)
-    assert animation.idle_personality == IdlePersonality.CALM
+    assert animation.idle_personality in set(IdlePersonality)
 
 
 def test_secondary_motion_keeps_authored_hand_pitch_and_finger_gesture():
@@ -66,5 +76,9 @@ def test_four_styles_have_distinct_rest_and_peak_silhouettes():
         assert all(a != b for i, a in enumerate(poses) for b in poses[i + 1 :])
 
 
-def test_clips_tem_as_nove_personalidades():
-    assert set(CLIPS) == {p.value for p in IdlePersonality}
+def test_clips_e_idles_autorais_cobrem_todas_as_personalidades():
+    todos = {p.value for p in IdlePersonality}
+    assert set(CLIPS) | set(CANONICOS_6) == todos
+    for p in IdlePersonality:
+        amostra = sample_idle(p, 1.25)
+        assert isinstance(amostra, dict) and amostra

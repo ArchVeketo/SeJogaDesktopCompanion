@@ -20,8 +20,8 @@ from sejoga.nucleo.esqueleto import IdlePersonality
 
 # --- Porta -------------------------------------------------------------------
 
-#: Abaixo disso a porta conta como fechada (o idle deixa a porta entreaberta até 3°).
-LIMIAR_PORTA_FECHADA_GRAUS = 5.0
+#: Abaixo disso a porta conta como fechada (idle/emoção deixam a porta entreaberta até 8.5°).
+LIMIAR_PORTA_FECHADA_GRAUS = 12.0
 #: Pedido de porta vindo do rig acima disso = outra animação é dona da porta.
 LIMIAR_PEDIDO_EXTERNO_GRAUS = 5.0
 #: Os tentáculos só aparecem com a porta acima deste ângulo.
@@ -115,6 +115,12 @@ SAIDA_POR_TEMPERAMENTO: dict[IdlePersonality, SaidaTuning] = {
     IdlePersonality.STYLISH: SAIDA_CURIOSA,
     IdlePersonality.BRC_STANCE: SAIDA_CONFIANTE,
     IdlePersonality.VIBING: SAIDA_CALMA,
+    IdlePersonality.BRC_MALANDRO: SAIDA_CONFIANTE,
+    IdlePersonality.FRENETICO_GROOVE: SAIDA_AGITADA,
+    IdlePersonality.ESPREITA_ARMARIO: SAIDA_CURIOSA,
+    IdlePersonality.JOJO_EXIBIDO: SAIDA_CONFIANTE,
+    IdlePersonality.BOXEADOR_PRONTO: SAIDA_CONFIANTE,
+    IdlePersonality.DERRETIDO_SONO: SAIDA_TIMIDA,
 }
 
 

@@ -33,6 +33,8 @@ from typing import Literal
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from sejoga.catalogos_ui import ESTILOS_DANCA_UI as ESTILOS_DANCA_UI
+
 APP_NAME = "SeJogaDesktopCompanion"
 APP_AUTHOR = "ArchVeketo"
 
@@ -89,6 +91,37 @@ class LoggingSettings(BaseModel):
     """Nível mínimo de log; ``INFO`` é o padrão."""
 
 
+FILTROS_VISUAIS_CANONICOS: tuple[str, ...] = (
+    "blockbench",
+    "street",
+    "anime",
+    "spiderverse",
+    "holograma",
+)
+
+MIGRACAO_FILTRO_LEGADO: dict[str, str] = {
+    "padrao": "street",
+    "hifi_comic": "street",
+    "cyberfunk": "street",
+    "rascunho": "spiderverse",
+    "anime_impact": "anime",
+    "manga_papel": "anime",
+    "pixel": "blockbench",
+    "lowpoly_block": "blockbench",
+    "gameboy": "blockbench",
+}
+
+
+def normalizar_filtro_visual(valor: object) -> str:
+    """Normaliza filtros legados salvos em TOML para os 5 estilos canônicos."""
+    if not isinstance(valor, str):
+        return "blockbench"
+    chave = valor.strip().lower()
+    if chave in FILTROS_VISUAIS_CANONICOS:
+        return chave
+    return MIGRACAO_FILTRO_LEGADO.get(chave, "blockbench")
+
+
 class WindowSettings(BaseModel):
     """Comportamento da janela que hospeda o personagem."""
 
@@ -121,14 +154,40 @@ class WindowSettings(BaseModel):
     diagnostic_colorkey: bool = False
     """Liga o fundo rosa de diagnóstico do color key (desligado no uso normal)."""
 
-    visual_filter: Literal["padrao", "pixel", "rascunho"] = "padrao"
-    """Filtro visual aplicado sobre o Mário: ``padrao``, ``pixel`` (~1.5px estilo turntable) ou ``rascunho`` (Spider-Punk)."""
+    visual_filter: Literal[
+        "blockbench",
+        "street",
+        "anime",
+        "spiderverse",
+        "holograma",
+    ] = "blockbench"
+    """Filtro visual canônico aplicado sobre o Mário (Blockbench padrão, Street, Anime, Spider-Verse ou Holograma)."""
+
+    @field_validator("visual_filter", mode="before")
+    @classmethod
+    def _normalizar_visual_filter_legado(cls, valor: object) -> object:
+        """Migra filtros legados salvos anteriormente para os 5 estilos canônicos."""
+        if isinstance(valor, str):
+            chave = valor.strip().lower()
+            if chave in MIGRACAO_FILTRO_LEGADO:
+                return MIGRACAO_FILTRO_LEGADO[chave]
+            return chave
+        return valor
 
     vfx_enabled: bool = True
-    """Ativa os efeitos street-punk desenhados à mão (emoções, queda, impactos)."""
+    """Ativa os efeitos visuais desenhados à mão / estilizados (emoções, queda, impactos, eletricidade)."""
 
-    vfx_palette: Literal["pb_escuro", "pb_claro", "colorido"] = "pb_escuro"
-    """Paleta dos efeitos street-punk: ``pb_escuro`` (nanquim), ``pb_claro`` (giz branco) ou ``colorido`` (Street Swag)."""
+    vfx_palette: Literal[
+        "auto",
+        "pb_escuro",
+        "pb_claro",
+        "colorido",
+        "hifi_rush",
+        "spider_verse",
+        "anime_sakuga",
+        "lowpoly_3d",
+    ] = "auto"
+    """Ilustração extra nos acentos. Em auto, apenas a coreografia do filtro é emitida."""
 
     vfx_scale: float = Field(default=1.0, ge=0.5, le=1.6)
     """Multiplicador fino de tamanho dos efeitos street-punk (1.0 = compacto e anatômico)."""
@@ -143,6 +202,8 @@ class WindowSettings(BaseModel):
         "run_from_depth",
         "kagebunshin_in",
         "sandevistan_in",
+        "goku_teleport_in",
+        "hero_drop_in",
         "aleatoria",
     ] = "padrao"
     """Animação executada ao abrir o aplicativo."""
@@ -156,6 +217,8 @@ class WindowSettings(BaseModel):
         "peace_fade_out",
         "virtual_insanity_out",
         "cyberpsicopata_out",
+        "goku_teleport_out",
+        "portal_pull_out",
         "aleatoria",
     ] = "classic"
     """Animação executada ao fechar/encerrar o aplicativo."""
@@ -190,6 +253,7 @@ class MusicSettings(BaseModel):
     """``auto`` = mídia + loopback; ``media_session`` = SMTC; ``loopback`` = áudio do sistema."""
 
     react_to_beat: bool = True
+    ignore_video_sessions: bool = True
     speaker_style: Literal["palco", "radio"] = "palco"
     sensitivity: float = Field(default=0.6, ge=0.0, le=1.0)
     dance_chance: float = Field(default=0.35, ge=0.0, le=1.0)
@@ -244,46 +308,6 @@ class MusicSettings(BaseModel):
         return valor
 
 
-ESTILOS_DANCA_UI: tuple[tuple[str, str], ...] = (
-    ("head_bob", "Head bob"),
-    ("hip_hop", "Hip hop"),
-    ("rock", "Rock"),
-    ("breakdance", "Breakdance"),
-    ("street_groove", "Street groove"),
-    ("graffiti_dance", "Graffiti dance"),
-    ("cyber_bounce", "Cyber bounce"),
-    ("funk_glide", "Funk glide (v2.0)"),
-    ("cyber_skank", "Cyber skank (v2.0)"),
-    ("walkman_shuffle", "Walkman shuffle (v2.0)"),
-    ("electro_swing", "Electro Swing (emote)"),
-    ("passinho", "Passinho / Fancy Feet (emote)"),
-    ("master_of_mystery", "Master of Mystery (emote)"),
-    ("she_bugging", "She Bugging (emote)"),
-    ("miku", "Miku (emote)"),
-    ("dont_start_now", "Don't Start Now (emote)"),
-    ("popular", "Popular · The Weeknd (emote)"),
-    ("griddy", "Griddy (emote)"),
-    ("boogie_down", "Boogie Down (emote)"),
-    ("jabba_switchway", "Jabba Switchway (emote)"),
-    ("go_mufasa", "Go Mufasa (emote)"),
-    ("jazz_dance", "Jazz Dance (emote)"),
-    ("criss_cross", "Criss Cross (emote)"),
-    ("celebration_dance", "Celebration Dance (emote)"),
-    ("kpop_dance_03", "K-Pop Dance (emote)"),
-    ("macaroons", "Macarena / Macaroons (emote)"),
-    ("speed_dial", "Speed Dial (emote)"),
-    ("cyclone_headbang", "Cyclone Headbang (emote)"),
-    ("january_bop", "January Bop (emote)"),
-    ("jiggle", "Jiggle Jiggle (emote)"),
-    ("lets_begin", "Let's Begin (emote)"),
-    ("aloa", "Aloa (emote)"),
-    ("bbd", "BBD (emote)"),
-    ("flair", "Flair Breakdance (Mixamo)"),
-    ("breakdance_1990", "Breakdance 1990 (Mixamo)"),
-    ("breakdance_freeze", "Breakdance Freeze (Mixamo)"),
-    ("breakdance_uprock", "Breakdance Uprock (Mixamo)"),
-    ("dancing_twerk", "Groove Twerk (Mixamo)"),
-)
 
 
 class BehaviorSettings(BaseModel):
@@ -292,18 +316,33 @@ class BehaviorSettings(BaseModel):
     idle_animation: bool = True
     idle_personality: Literal[
         "auto",
-        "calm",
-        "curious",
-        "playful",
-        "shy",
-        "confident",
-        "street",
-        "fighter",
-        "rhythm",
-        "stylish",
-        "brc_stance",
-        "vibing",
+        "brc_malandro",
+        "frenetico_groove",
+        "espreita_armario",
+        "jojo_exibido",
+        "boxeador_pronto",
+        "derretido_sono",
     ] = "auto"
+
+    @field_validator("idle_personality", mode="before")
+    @classmethod
+    def _normalizar_idle_personality_legado(cls, valor: object) -> object:
+        if isinstance(valor, str):
+            mapa = {
+                "calm": "brc_malandro",
+                "confident": "brc_malandro",
+                "street": "brc_malandro",
+                "brc_stance": "brc_malandro",
+                "stylish": "brc_malandro",
+                "rhythm": "frenetico_groove",
+                "vibing": "frenetico_groove",
+                "playful": "frenetico_groove",
+                "curious": "espreita_armario",
+                "shy": "espreita_armario",
+                "fighter": "boxeador_pronto",
+            }
+            return mapa.get(valor, valor)
+        return valor
     wander: bool = True
     react_to_click: bool = True
     react_to_drag: bool = True

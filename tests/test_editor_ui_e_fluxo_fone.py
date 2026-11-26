@@ -43,22 +43,28 @@ def _executar_etapas_fone(janela: JanelaEditor, doc: DocumentoEditor) -> None:
     janela.definir_modo_camera(ModoCamera.LATERAL)
     janela.selecionar_junta("right-arm")
 
+    chave_orig = min(
+        doc.rascunho["CENAS_IDLE"]["fone_com_problema"]["tracks"]["right-arm"],
+        key=lambda kv: abs(kv[0] - 0.85),
+    )
+    y_orig = float(chave_orig[1][1])
+    y_novo = -45.0
     janela._on_gizmo_iniciado("right-arm", "y")
     janela._on_gizmo_atualizado("right-arm", (61.4, -60.0, 23.6))
-    janela._on_gizmo_confirmado("right-arm", (61.4, -52.0, 23.6))
+    janela._on_gizmo_confirmado("right-arm", (61.4, y_novo, 23.6))
     assert doc.pode_desfazer
     chave_alvo = min(
         doc.rascunho["CENAS_IDLE"]["fone_com_problema"]["tracks"]["right-arm"],
         key=lambda kv: abs(kv[0] - 0.85),
     )
-    assert abs(chave_alvo[1][1] - (-52.0)) < 1e-2
+    assert abs(chave_alvo[1][1] - y_novo) < 1e-2
 
     janela.desfazer()
     chave_desf = min(
         doc.rascunho["CENAS_IDLE"]["fone_com_problema"]["tracks"]["right-arm"],
         key=lambda kv: abs(kv[0] - 0.85),
     )
-    assert abs(chave_desf[1][1] - (-80.9)) < 1e-2
+    assert abs(chave_desf[1][1] - y_orig) < 1e-2
     janela.refazer()
 
     janela._on_efeito_janela_preview("estouro_fone", 3.60, 4.00)

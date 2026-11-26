@@ -147,9 +147,9 @@ def test_analisador_ignora_fala_isolada_e_silencio_sem_smtc() -> None:
     frames_fala = _simular_fluxo(speech, sample_rate=sr, smtc_playing=False)
     assert all(not frame.music_active for _, frame in frames_fala[200:])
 
-    # Se SMTC afirmar explicitamente que há mídia tocando, força music_active.
+    # Mesmo com SMTC sinalizando playing, o DSP puro não aceita fala isolada sem ritmo.
     frames_smtc = _simular_fluxo(speech * 0.2, sample_rate=sr, smtc_playing=True)
-    assert frames_smtc[-1][1].music_active is True
+    assert frames_smtc[-1][1].music_active is False
 
     frames_silencio = _simular_fluxo(np.zeros(n, dtype=np.float64), sample_rate=sr)
     assert frames_silencio[-1][1].music_active is False
@@ -210,3 +210,186 @@ def test_music_listener_auto_inicia_workers_e_degrada_sem_soundcard(monkeypatch)
 def test_configuracao_aceita_todas_as_fontes_de_musica(legacy_source: str) -> None:
     s = Settings.model_validate({"music": {"source": legacy_source}})
     assert s.music.source == legacy_source
+
+
+def test_classificador_midia_separa_musica_de_videos_e_podcasts() -> None:
+    from sejoga.musica.classificador_midia import (
+        MetadadosSessao,
+        classificar_sessao_midia,
+        pontuar_sessao_para_selecao,
+    )
+
+    spotify_musica = MetadadosSessao(
+        source_app_id="Spotify.exe",
+        title="Around the World",
+        artist="Daft Punk",
+        album="Homework",
+        playback_type="music",
+        duration_seconds=240.0,
+    )
+    spotify_podcast = MetadadosSessao(
+        source_app_id="Spotify.exe",
+        title="Episódio 42 - Conversa Tech",
+        artist="Flow Podcast",
+        album="Flow Podcast",
+        playback_type="music",
+        duration_seconds=3600.0,
+    )
+    yt_clipe = MetadadosSessao(
+        source_app_id="chrome.exe",
+        title="Harder, Better, Faster, Stronger (Official Audio)",
+        artist="Daft Punk - Topic",
+        album="Discovery",
+        playback_type="video",
+        duration_seconds=224.0,
+    )
+    yt_vlog = MetadadosSessao(
+        source_app_id="chrome.exe",
+        title="Review completo do novo notebook - Unboxing",
+        artist="Canal Tech",
+        playback_type="video",
+        duration_seconds=1120.0,
+    )
+    yt_shorts = MetadadosSessao(
+        source_app_id="msedge.exe",
+        title="Dica rápida #shorts",
+        artist="Criador",
+        playback_type="video",
+        duration_seconds=22.0,
+    )
+    twitch = MetadadosSessao(
+        source_app_id="Twitch.exe",
+        title="Ao vivo jogando",
+        artist="Streamer",
+        playback_type="video",
+        duration_seconds=0.0,
+    )
+    vlc_filme = MetadadosSessao(
+        source_app_id="vlc.exe",
+        title="Filme.2025.1080p.mkv",
+        playback_type="video",
+        duration_seconds=5400.0,
+    )
+
+    assert classificar_sessao_midia(spotify_musica).categoria == "music_app"
+    assert classificar_sessao_midia(spotify_podcast).categoria == "video_or_speech"
+    assert classificar_sessao_midia(yt_clipe).categoria == "browser_music"
+    assert classificar_sessao_midia(yt_vlog).categoria == "video_or_speech"
+    assert classificar_sessao_midia(yt_shorts).categoria == "video_or_speech"
+    assert classificar_sessao_midia(twitch).categoria == "video_or_speech"
+    assert classificar_sessao_midia(vlc_filme).categoria == "video_or_speech"
+
+    assert pontuar_sessao_para_selecao(spotify_musica) > pontuar_sessao_para_selecao(yt_clipe)
+    assert pontuar_sessao_para_selecao(yt_clipe) > pontuar_sessao_para_selecao(yt_vlog)
+
+
+def test_escolher_sessao_prioriza_spotify_sobre_navegador_em_video() -> None:
+    from datetime import timedelta
+
+    chrome_vid = SimpleNamespace(
+        source_app_user_model_id="chrome.exe",
+        get_playback_info=lambda: SimpleNamespace(playback_status=3, playback_type=2),
+        get_timeline_properties=lambda: SimpleNamespace(
+            start_time=timedelta(0), end_time=timedelta(minutes=25)
+        ),
+    )
+    spotify = SimpleNamespace(
+        source_app_user_model_id="Spotify.exe",
+        get_playback_info=lambda: SimpleNamespace(playback_status=3, playback_type=1),
+        get_timeline_properties=lambda: SimpleNamespace(
+            start_time=timedelta(0), end_time=timedelta(minutes=3, seconds=20)
+        ),
+    )
+    manager = SimpleNamespace(
+        get_current_session=lambda: chrome_vid,
+        get_sessions=lambda: [chrome_vid, spotify],
+    )
+    assert MusicListener._escolher_sessao(manager, 3) is spotify
+
+
+def test_analisador_rejeita_fala_masculina_grave_e_fala_com_bgm_baixa() -> None:
+    sr = 48_000
+    n = int(sr * 8.0)
+    tt = np.arange(n) / sr
+    rng = np.random.default_rng(19)
+
+    # 1) Voz masculina grave (135 Hz fundamental + formantes 650/1200 Hz + sibilantes + pausas)
+    fala_grave = np.zeros(n, dtype=np.float64)
+    pos = 0
+    while pos < n - int(0.45 * sr):
+        dur_sil = int(rng.uniform(0.14, 0.28) * sr)
+        pausa = int(rng.uniform(0.12, 0.36) * sr)
+        seg_t = np.arange(min(dur_sil, n - pos)) / sr
+        env = np.hanning(len(seg_t))
+        pulso = (
+            0.22 * np.sin(2 * np.pi * 135.0 * seg_t)
+            + 0.30 * np.sin(2 * np.pi * 680.0 * seg_t)
+            + 0.16 * np.sin(2 * np.pi * 1350.0 * seg_t)
+            + 0.08 * rng.normal(0.0, 0.4, len(seg_t))
+        ) * env
+        fala_grave[pos : pos + len(seg_t)] = pulso
+        pos += dur_sil + pausa
+
+    frames_fala = _simular_fluxo(fala_grave, sample_rate=sr)
+    assert all(not f.music_active for _, f in frames_fala[150:])
+
+    # 2) Fala em primeiro plano com música de fundo fraca (-16 dB)
+    bgm = 0.03 * np.sin(2 * np.pi * 180.0 * tt) + 0.02 * np.sin(2 * np.pi * 360.0 * tt)
+    misto = fala_grave + bgm
+    frames_bgm = _simular_fluxo(misto, sample_rate=sr)
+    assert all(not f.music_active for _, f in frames_bgm[180:])
+
+
+def test_fusao_smtc_dsp_e_debounce_de_entrada_no_controlador() -> None:
+    from sejoga.animacao.controlador_animacao import AnimationController, AnimationState
+    from sejoga.musica.classificador_midia import decidir_musica_ativa
+    from sejoga.nucleo.esqueleto import Rig
+    from sejoga.nucleo.modelo import load_model
+    from sejoga.nucleo.recursos import resolve_model
+
+    # Vídeo no navegador nunca dispara música mesmo com áudio alto
+    tocar_video, conf_video = decidir_musica_ativa(
+        "auto",
+        "video_or_speech",
+        True,
+        audio_active=True,
+        audio_level=0.8,
+        music_confidence=0.9,
+        ignore_video_sessions=True,
+    )
+    assert (tocar_video, conf_video) == (False, 0.0)
+
+    # Spotify tocando música audível aprova mesmo com trecho calmo
+    tocar_spot, conf_spot = decidir_musica_ativa(
+        "auto",
+        "music_app",
+        True,
+        audio_active=False,
+        audio_level=0.25,
+        music_confidence=0.35,
+    )
+    assert tocar_spot is True and conf_spot >= 0.75
+
+    # Debounce de 1.0s no controlador evita disparo em pulso rápido (< 1s)
+    ctrl = AnimationController(Rig.from_model(load_model(resolve_model())))
+    ctrl.agencia._gerar_desejo_espontaneo = lambda: None
+    ctrl._cooldowns["cena_contextual"] = 999.0
+    for _ in range(5):
+        ctrl.update(
+            0.1,
+            music_playing=True,
+            music_entry_debounce_s=1.0,
+            music_intensity=0.7,
+            dance_chance=1.0,
+        )
+    assert ctrl.state != AnimationState.DANCE
+
+    for _ in range(7):
+        ctrl.update(
+            0.1,
+            music_playing=True,
+            music_entry_debounce_s=1.0,
+            music_intensity=0.7,
+            dance_chance=1.0,
+        )
+    assert ctrl.state == AnimationState.DANCE

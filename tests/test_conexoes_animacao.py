@@ -102,7 +102,7 @@ def test_troca_fone_com_problema_para_outra_cena_sem_salto():
     ctrl.agencia._gerar_desejo_espontaneo = lambda: None
     ctrl.update(0.1)
     ctrl.interact("fone_com_problema")
-    for _ in range(315):
+    for _ in range(370):
         ctrl.update(1 / 60, grounded=True)
     assert ctrl.cena_idle_amostra.ativa
     assert ctrl.cena_idle_amostra.pernas_graus is not None

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from panda3d.core import NodePath, TextureStage, Vec3
 
-from sejoga.musica.efeitos_caixa_som import SpeakerEffects
+from sejoga.musica.caixa_som import SpeakerEffects
 
 
 def test_slime_flows_then_clears_and_can_replay():

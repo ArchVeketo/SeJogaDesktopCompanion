@@ -17,8 +17,30 @@ from __future__ import annotations
 from itertools import pairwise
 from math import copysign, sqrt
 
-from sejoga.animacao import fio_tuning as tuning
 from sejoga.animacao.primitivas_colisao import CaixaOrientada, Capsula
+
+# --------------------------------------------------------------------------- #
+# Constantes calibráveis da corda (ex-``fio_tuning``)
+# --------------------------------------------------------------------------- #
+SEGMENTOS_RAMO_ORELHA = 4
+SEGMENTOS_HASTE = 7
+COMPRIMENTO_RAMO_ORELHA_U = 0.34
+COMPRIMENTO_HASTE_U = 0.255
+RAIO_VISUAL_FIO_U = 0.014
+COR_FIO = (0.043, 0.0, 0.267, 1.0)
+ANCORA_ORELHA_U = (0.225, 0.04, -0.085)
+ANCORA_APARELHO_U = (0.117, 0.032, -0.174)
+GRAVIDADE_FIO_U = 7.0
+VELOCIDADE_RESTANTE_POR_SEGUNDO = 0.12
+ITERACOES_FIO = 5
+PASSO_FIO_S = 1.0 / 60.0
+TEMPO_MAXIMO_QUADRO_FIO_S = 0.05
+SALTO_REINICIO_FIO_U = 0.8
+FRACAO_MINIMA_DOBRA = 0.55
+RIGIDEZ_DOBRA = 0.25
+PASSOS_ASSENTAMENTO_FIO = 150
+RAIO_COLISAO_FIO_U = 0.026
+RAIO_BRACO_PARA_FIO_U = 0.115
 
 Vetor3 = tuple[float, float, float]
 
@@ -124,6 +146,7 @@ def _empurrar_local_caixa(
     my: float,
     mz: float,
     folga: float,
+    frente_local: tuple[float, float, float] | None = None,
 ) -> Vetor3 | None:
     """Resolve empurrão no espaço local da caixa; retorna ``None`` se já livre."""
     ex0, ex1, ex2 = abs(l0) - mx, abs(l1) - my, abs(l2) - mz
@@ -138,6 +161,21 @@ def _empurrar_local_caixa(
         fator = folga / sqrt(dist2)
         return (pr0 + d0 * fator, pr1 + d1 * fator, pr2 + d2 * fator)
 
+    if frente_local is not None:
+        ab = (abs(frente_local[0]), abs(frente_local[1]), abs(frente_local[2]))
+        kf = 0 if (ab[0] >= ab[1] and ab[0] >= ab[2]) else (1 if ab[1] >= ab[2] else 2)
+        locais = [l0, l1, l2]
+        meias = (mx, my, mz)
+        sf = 1.0 if frente_local[kf] >= 0.0 else -1.0
+        if ab[kf] > 0.5 and locais[kf] * sf >= -0.35 * meias[kf]:
+            dist_frente = meias[kf] - locais[kf] * sf
+            exs = (ex0, ex1, ex2)
+            outros = [i for i in (0, 1, 2) if i != kf]
+            melhor_outro = min(outros, key=lambda i: -exs[i])
+            if -exs[melhor_outro] >= dist_frente / 2.5:
+                locais[kf] = sf * (meias[kf] + folga)
+                return (locais[0], locais[1], locais[2])
+
     dl0, dl1, dl2 = l0, l1, l2
     if ex0 >= ex1 and ex0 >= ex2:
         dl0 = copysign(mx + folga, l0 or 1.0)
@@ -149,7 +187,12 @@ def _empurrar_local_caixa(
 
 
 def empurrar_ponto_de_caixa(
-    ponto: Vetor3, caixa: CaixaOrientada, folga: float
+    ponto: Vetor3,
+    caixa: CaixaOrientada,
+    folga: float,
+    *,
+    preferir_frente: bool = False,
+    frente_modelo: Vetor3 = (0.0, -1.0, 0.0),
 ) -> Vetor3:
     """Afasta ``ponto`` da caixa até ficar ``folga`` fora da superfície."""
     px, py, pz = ponto
@@ -164,6 +207,16 @@ def empurrar_ponto_de_caixa(
     e0x, e0y, e0z = e0
     e1x, e1y, e1z = e1
     e2x, e2y, e2z = e2
+    fx, fy, fz = frente_modelo
+    frente_local = (
+        (
+            fx * e0x + fy * e0y + fz * e0z,
+            fx * e1x + fy * e1y + fz * e1z,
+            fx * e2x + fy * e2y + fz * e2z,
+        )
+        if preferir_frente
+        else None
+    )
     empurrado = _empurrar_local_caixa(
         rx * e0x + ry * e0y + rz * e0z,
         rx * e1x + ry * e1y + rz * e1z,
@@ -172,6 +225,7 @@ def empurrar_ponto_de_caixa(
         my,
         mz,
         folga,
+        frente_local,
     )
     if empurrado is None:
         return ponto
@@ -196,8 +250,8 @@ class FioFone:
 
     def __init__(self, ancoras: tuple[Vetor3, Vetor3, Vetor3]) -> None:
         """Cria a corda reta entre as âncoras (orelha, orelha, aparelho)."""
-        ramo = tuning.SEGMENTOS_RAMO_ORELHA
-        haste = tuning.SEGMENTOS_HASTE
+        ramo = SEGMENTOS_RAMO_ORELHA
+        haste = SEGMENTOS_HASTE
         self._indice_juncao = 2 * ramo
         self._indice_aparelho = 2 * ramo + haste
         total = self._indice_aparelho + 1
@@ -221,9 +275,9 @@ class FioFone:
     def _comprimento_do_segmento(ordem_da_cadeia: int) -> float:
         """Comprimento de repouso de cada segmento da cadeia (ramo ou haste)."""
         if ordem_da_cadeia == ORDEM_HASTE:
-            return tuning.COMPRIMENTO_HASTE_U / tuning.SEGMENTOS_HASTE
+            return COMPRIMENTO_HASTE_U / SEGMENTOS_HASTE
 
-        return tuning.COMPRIMENTO_RAMO_ORELHA_U / tuning.SEGMENTOS_RAMO_ORELHA
+        return COMPRIMENTO_RAMO_ORELHA_U / SEGMENTOS_RAMO_ORELHA
 
     def _montar_ligacoes(self) -> list[tuple[int, int, float]]:
         ligacoes = []
@@ -239,7 +293,7 @@ class FioFone:
 
         for ordem, cadeia in enumerate(self.cadeias):
             minimo = (
-                2.0 * self._comprimento_do_segmento(ordem) * tuning.FRACAO_MINIMA_DOBRA
+                2.0 * self._comprimento_do_segmento(ordem) * FRACAO_MINIMA_DOBRA
             )
             dobras.extend(
                 (a, b, minimo) for a, b in zip(cadeia, cadeia[2:], strict=False)
@@ -247,14 +301,33 @@ class FioFone:
 
         return dobras
 
-    def reiniciar(self, ancoras: tuple[Vetor3, Vetor3, Vetor3]) -> None:
-        """Estica a corda em linhas retas entre as âncoras, sem velocidade."""
+    def reiniciar(
+        self,
+        ancoras: tuple[Vetor3, Vetor3, Vetor3],
+        *,
+        caixas: list[CaixaOrientada] = (),  # type: ignore[assignment]
+        capsulas: list[Capsula] = (),  # type: ignore[assignment]
+        frente_modelo: Vetor3 = (0.0, -1.0, 0.0),
+    ) -> None:
+        """Estica a corda em linhas retas à frente do peito, assentando colisões se dadas."""
         esquerda, direita, aparelho = ancoras
-        juncao = _esc(_soma(_soma(esquerda, direita), aparelho), 1.0 / 3.0)
+        fx, fy, fz = frente_modelo
+        jx = (esquerda[0] + direita[0] + aparelho[0]) / 3.0 + fx * 0.055
+        jy = (esquerda[1] + direita[1] + aparelho[1]) / 3.0 + fy * 0.055
+        jz = (esquerda[2] + direita[2] + aparelho[2]) / 3.0 + fz * 0.055
+        if abs(fy + 1.0) < 1e-4 and abs(fx) < 1e-4 and abs(fz) < 1e-4:
+            jy = min(esquerda[1], direita[1], aparelho[1]) - 0.055
+        juncao = (jx, jy, jz)
 
         for ordem, cadeia in enumerate(self.cadeias):
             self._distribuir(cadeia, ancoras[ordem], juncao, ordem == ORDEM_HASTE)
 
+        self._acumulado = 0.0
+        if caixas or capsulas:
+            for _ in range(3):
+                self._colidir(list(caixas), list(capsulas), frente_modelo=frente_modelo)
+                self._resolver_ligacoes()
+                self._prender(ancoras)
         self._anteriores = list(self.posicoes)
 
     def _distribuir(
@@ -273,6 +346,8 @@ class FioFone:
         gravidade: Vetor3,
         caixas: list[CaixaOrientada],
         capsulas: list[Capsula],
+        *,
+        frente_modelo: Vetor3 = (0.0, -1.0, 0.0),
     ) -> None:
         """Avança a corda ``dt`` segundos.
 
@@ -280,15 +355,28 @@ class FioFone:
         das âncoras e dos colisores.
         """
         if self._salto_grande(ancoras):
-            self.reiniciar(ancoras)
-
-        self._acumulado += max(0.0, min(dt, tuning.TEMPO_MAXIMO_QUADRO_FIO_S))
-
-        while self._acumulado >= tuning.PASSO_FIO_S:
-            self._acumulado -= tuning.PASSO_FIO_S
-            self._passo_fixo(
-                ancoras, _esc(gravidade, tuning.GRAVIDADE_FIO_U), caixas, capsulas
+            self.reiniciar(
+                ancoras, caixas=caixas, capsulas=capsulas, frente_modelo=frente_modelo
             )
+
+        self._acumulado += max(0.0, min(dt, TEMPO_MAXIMO_QUADRO_FIO_S))
+
+        passos = 0
+        while self._acumulado >= PASSO_FIO_S:
+            self._acumulado -= PASSO_FIO_S
+            self._passo_fixo(
+                ancoras,
+                _esc(gravidade, GRAVIDADE_FIO_U),
+                caixas,
+                capsulas,
+                frente_modelo=frente_modelo,
+            )
+            passos += 1
+        if passos == 0:
+            # Em monitores >60Hz mantém pontas presas e ligações esticadas mesmo sem passo físico.
+            self._prender(ancoras)
+            self._resolver_ligacoes()
+            self._prender(ancoras)
 
     def _passo_fixo(
         self,
@@ -296,31 +384,35 @@ class FioFone:
         aceleracao: Vetor3,
         caixas: list[CaixaOrientada],
         capsulas: list[Capsula],
+        *,
+        frente_modelo: Vetor3 = (0.0, -1.0, 0.0),
     ) -> None:
-        self._integrar(tuning.PASSO_FIO_S, aceleracao)
+        self._integrar(PASSO_FIO_S, aceleracao)
         self._prender(ancoras)
 
-        for iteracao in range(tuning.ITERACOES_FIO):
+        for iteracao in range(ITERACOES_FIO):
             self._resolver_ligacoes()
             self._prender(ancoras)
 
-            # Colisão é a parte cara: só na metade e no fim, e o fim manda (a
-            # corda nunca termina o quadro dentro do corpo).
-            if iteracao in (tuning.ITERACOES_FIO // 2, tuning.ITERACOES_FIO - 1):
-                self._colidir(caixas, capsulas)
+            # Colisão distribuída garante que o fio não afunde na barriga/pélvis.
+            if iteracao in (1, 3, ITERACOES_FIO - 1):
+                self._colidir(caixas, capsulas, frente_modelo=frente_modelo)
+        self._resolver_ligacoes()
+        self._colidir(caixas, capsulas, frente_modelo=frente_modelo)
+        self._prender(ancoras)
 
     def _salto_grande(self, ancoras: tuple[Vetor3, Vetor3, Vetor3]) -> bool:
         for indice, ordem in self._fixos.items():
             if (
                 _norma(_sub(self.posicoes[indice], ancoras[ordem]))
-                > tuning.SALTO_REINICIO_FIO_U
+                > SALTO_REINICIO_FIO_U
             ):
                 return True
 
         return False
 
     def _integrar(self, passo: float, aceleracao: Vetor3) -> None:
-        mantida = tuning.VELOCIDADE_RESTANTE_POR_SEGUNDO**passo
+        mantida = VELOCIDADE_RESTANTE_POR_SEGUNDO**passo
         p2 = passo * passo
         gx = aceleracao[0] * p2
         gy = aceleracao[1] * p2
@@ -347,7 +439,7 @@ class FioFone:
         for a, b, comprimento in self._ligacoes:
             self._corrigir_par(a, b, comprimento, 1.0, esticar=True)
 
-        rigidez = tuning.RIGIDEZ_DOBRA
+        rigidez = RIGIDEZ_DOBRA
         for a, b, minimo in self._dobras:
             self._corrigir_par(a, b, minimo, rigidez, esticar=False)
 
@@ -387,8 +479,14 @@ class FioFone:
         if livres_b:
             posicoes[b] = (bx - cx, by - cy, bz - cz)
 
-    def _colidir(self, caixas: list[CaixaOrientada], capsulas: list[Capsula]) -> None:
-        folga = tuning.RAIO_COLISAO_FIO_U
+    def _colidir(
+        self,
+        caixas: list[CaixaOrientada],
+        capsulas: list[Capsula],
+        *,
+        frente_modelo: Vetor3 = (0.0, -1.0, 0.0),
+    ) -> None:
+        folga = RAIO_COLISAO_FIO_U
 
         for indice, ponto in enumerate(self.posicoes):
             if indice in self._fixos:
@@ -398,9 +496,58 @@ class FioFone:
                 ponto = empurrar_ponto_de_capsula(ponto, capsula, folga)
 
             for caixa in caixas:
-                ponto = empurrar_ponto_de_caixa(ponto, caixa, folga)
+                ponto = empurrar_ponto_de_caixa(
+                    ponto, caixa, folga, preferir_frente=True, frente_modelo=frente_modelo
+                )
 
             self.posicoes[indice] = ponto
+
+        # Colisão de ponto médio dos segmentos: impede que um trecho reto entre duas
+        # partículas externas corte cantos do peitoral, da barriga ou da pélvis.
+        posicoes = self.posicoes
+        fixos = self._fixos
+        for a, b, _ in self._ligacoes:
+            livre_a = a not in fixos
+            livre_b = b not in fixos
+            if not (livre_a or livre_b):
+                continue
+            pa = posicoes[a]
+            pb = posicoes[b]
+            meio = ((pa[0] + pb[0]) * 0.5, (pa[1] + pb[1]) * 0.5, (pa[2] + pb[2]) * 0.5)
+            corrigido = meio
+            for capsula in capsulas:
+                corrigido = empurrar_ponto_de_capsula(corrigido, capsula, folga)
+            for caixa in caixas:
+                corrigido = empurrar_ponto_de_caixa(
+                    corrigido, caixa, folga, preferir_frente=True, frente_modelo=frente_modelo
+                )
+            dx = corrigido[0] - meio[0]
+            dy = corrigido[1] - meio[1]
+            dz = corrigido[2] - meio[2]
+            if dx * dx + dy * dy + dz * dz > 1e-12:
+                if livre_a and livre_b:
+                    posicoes[a] = (pa[0] + dx, pa[1] + dy, pa[2] + dz)
+                    posicoes[b] = (pb[0] + dx, pb[1] + dy, pb[2] + dz)
+                elif livre_a:
+                    posicoes[a] = (pa[0] + dx * 1.5, pa[1] + dy * 1.5, pa[2] + dz * 1.5)
+                else:
+                    posicoes[b] = (pb[0] + dx * 1.5, pb[1] + dy * 1.5, pb[2] + dz * 1.5)
+
+        for indice, ponto in enumerate(posicoes):
+            if indice in fixos:
+                continue
+            orig = ponto
+            for capsula in capsulas:
+                ponto = empurrar_ponto_de_capsula(ponto, capsula, folga)
+            for caixa in caixas:
+                ponto = empurrar_ponto_de_caixa(
+                    ponto, caixa, folga, preferir_frente=True, frente_modelo=frente_modelo
+                )
+            posicoes[indice] = ponto
+            # Amortece velocidade normal para eliminar zumbido contínuo contra o tronco.
+            px, py, pz = self._anteriores[indice]
+            pdx, pdy, pdz = ponto[0] - orig[0], ponto[1] - orig[1], ponto[2] - orig[2]
+            self._anteriores[indice] = (px + pdx * 0.45, py + pdy * 0.45, pz + pdz * 0.45)
 
     def assentar(
         self,
@@ -408,10 +555,19 @@ class FioFone:
         gravidade: Vetor3,
         caixas: list[CaixaOrientada],
         capsulas: list[Capsula],
+        *,
+        frente_modelo: Vetor3 = (0.0, -1.0, 0.0),
     ) -> None:
         """Roda a simulação por ``PASSOS_ASSENTAMENTO_FIO`` quadros até a corda cair."""
-        for _ in range(tuning.PASSOS_ASSENTAMENTO_FIO):
-            self.atualizar(tuning.PASSO_FIO_S, ancoras, gravidade, caixas, capsulas)
+        for _ in range(PASSOS_ASSENTAMENTO_FIO):
+            self.atualizar(
+                PASSO_FIO_S,
+                ancoras,
+                gravidade,
+                caixas,
+                capsulas,
+                frente_modelo=frente_modelo,
+            )
 
     def pontos_das_cadeias(self) -> list[list[Vetor3]]:
         """Pontos de cada ramo, na ordem de ``cadeias``."""

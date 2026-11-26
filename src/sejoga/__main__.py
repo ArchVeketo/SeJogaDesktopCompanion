@@ -107,21 +107,16 @@ def run() -> int:
     from PySide6.QtWidgets import QApplication
 
     from sejoga.configuracao import load_settings
-    from sejoga.desktop.carregamento import LoadingSplash
+    from sejoga.desktop.carregamento import animacao_de_abertura
 
     settings = load_settings()
-    qt_app = QApplication.instance() or QApplication(sys.argv)
-    splash = LoadingSplash(settings)
-    splash.show()
-    qt_app.processEvents()
+    qt_app = QApplication.instance() or QApplication(sys.argv)  # mantém o QApplication vivo
+    with animacao_de_abertura(settings) as progresso:
+        from sejoga.render.janela import OverlayApp
 
-    from sejoga.render.janela import OverlayApp
-
-    try:
-        app = OverlayApp(settings)
-    finally:
-        splash.finish()
-    app.run()
+        progresso.value = 0.18
+        app = OverlayApp(settings, loading_progress=progresso)
+        app.run()
     return 0
 
 

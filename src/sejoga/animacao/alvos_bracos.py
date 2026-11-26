@@ -100,8 +100,8 @@ ALVO_FALL = AlvoBraco(alvo=(0.21, -0.02, 0.08))
 ALVO_CRUZADO_DIR = AlvoBraco(alvo=(0.10, -0.04, 0.21))
 ALVO_CRUZADO_ESQ = AlvoBraco(alvo=(0.10, -0.06, 0.16))
 
-#: Chifre do rock: braço erguido e cotovelo dobrado (~52°) ao lado do fone.
-ALVO_CHIFRE = AlvoBraco(alvo=(0.17, 0.18, 0.08))
+#: Chifre do rock: braço erguido e cotovelo dobrado, aberto com folga clara do fone.
+ALVO_CHIFRE = AlvoBraco(alvo=(0.200, 0.149, 0.127))
 
 #: Contrapeso do hip hop: braço aberto com cotovelo flexionado (~52°) no groove.
 ALVO_CONTRAPESO = AlvoBraco(alvo=(0.185, -0.085, 0.145))

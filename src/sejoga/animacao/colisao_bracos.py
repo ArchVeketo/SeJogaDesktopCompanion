@@ -21,7 +21,7 @@ FRONTEIRA: Python puro (só ``math`` e módulos puros do projeto).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import radians
+from math import degrees, radians
 
 from sejoga.animacao.braco_tuning import (
     FOLGA_EXTRA_CAIXA_U,
@@ -87,21 +87,25 @@ def _espelhada(caixa: CaixaOrientada) -> CaixaOrientada:
 _ORELHA = _caixa(0.146, 0.303, -0.126, 0.112, 0.789, 1.027)
 _CHAPEU_LATERAL = _caixa(0.240, 0.394, -0.200, -0.030, 1.018, 1.125)
 _PE = _caixa(0.028, 0.230, -0.120, 0.220, 0.091, 0.350)
+_COXA = _caixa(0.028, 0.195, -0.115, 0.115, 0.220, 0.445)
+_PIVO_COXA_DIR = (0.110, 0.0, 0.440)
+_PIVO_COXA_ESQ = (-0.110, 0.0, 0.440)
 
-#: Volumes do corpo que BLOQUEIAM os braços: tronco, cabeça, quadril e pés.
-#: Orelhas, chapéu e topo da cabeça seguem apenas em ``CAIXAS_DIAGNOSTICO`` para não
-#: travar arcos altos/laterais (aceno, comemoração, chifre). Quadril e pés usam
-#: as folgas configuradas em ``braco_tuning.FOLGA_EXTRA_CAIXA_U``.
+#: Volumes do corpo que BLOQUEIAM os braços: tronco, cabeça, topo da cabeça,
+#: quadril, coxas e pés. Orelhas e chapéu lateral ficam no diagnóstico para não
+#: travar arcos altos/laterais (comemoração, chifre, graffiti).
 CAIXAS_CORPO: dict[str, CaixaOrientada] = {
     "tronco": _caixa(-0.165, 0.165, -0.130, 0.130, 0.420, 0.723),
     "cabeca": _caixa(-0.146, 0.146, -0.161, 0.151, 0.651, 1.100),
+    "topo_cabeca": _caixa(-0.195, 0.195, -0.070, 0.032, 1.140, 1.234),
     "quadril": _caixa(-0.205, 0.205, -0.155, 0.155, 0.135, 0.474),
+    "coxa_direita": _COXA,
+    "coxa_esquerda": _espelhada(_COXA),
     "pe_direito": _PE,
     "pe_esquerdo": _espelhada(_PE),
 }
 CAIXAS_DIAGNOSTICO: dict[str, CaixaOrientada] = {
     **CAIXAS_CORPO,
-    "topo_cabeca": _caixa(-0.195, 0.195, -0.070, 0.032, 1.140, 1.234),
     "orelha_direita": _ORELHA,
     "orelha_esquerda": _espelhada(_ORELHA),
     "chapeu_direito": _CHAPEU_LATERAL,
@@ -126,11 +130,11 @@ FOLGA_PENETRACAO_U = 0.01
 #: usuário notar engasgos ao entrar/sair de gestos.
 #: Passos de melhoria por quadro, combinados com limite suave de variação por eixo
 #: para contornar o tronco gradualmente sem saltos nem travar em mínimos locais.
-ITERACOES_POR_QUADRO = 6
+ITERACOES_POR_QUADRO = 4
 #: Deslocamento máximo acumulado (graus) por grau de liberdade.
 DESLOCAMENTO_MAXIMO_GRAUS = 70.0
 #: Variação máxima (graus/quadro) permitida em roços leves.
-MAX_VARIACAO_POR_QUADRO_GRAUS = 4.5
+MAX_VARIACAO_POR_QUADRO_GRAUS = 10.0
 #: Fração do deslocamento mantida por quadro quando a pose já está livre.
 RELAXAMENTO_POR_QUADRO = 0.85
 #: Deslocamento (graus) abaixo do qual o relaxamento zera de vez.
@@ -175,14 +179,6 @@ def capsulas_do_braco(
     )
     raiz, cotovelo = nos[braco][1], nos[antebraco][1]
     fim_ombro = cotovelo
-    ombro = _OMBROS[lado]
-    if not _rotacao_nula(pose.get(ombro)):
-        base = dict(pose)
-        base.pop(ombro)
-        r_base, o_base = cin.transformacao_no(model, ombro, base)
-        r_ombro, o_ombro = cin.transformacao_no(model, ombro, pose)
-        local = cin.aplicar(cin.transposta(r_base), cin.subtrair(cotovelo, o_base))
-        fim_ombro = cin.somar(o_ombro, cin.aplicar(r_ombro, local))
     restante = raiz_isenta(model)
     capsulas: list[Capsula] = []
 
@@ -239,51 +235,70 @@ def _rotacao_nula(rot: Rotation3 | None) -> bool:
     )
 
 
-def caixas_corpo_na_pose(
-    model: Model, pose: dict[str, Rotation3]
-) -> dict[str, CaixaOrientada]:
-    """Caixas de ``CAIXAS_CORPO`` no referencial local do peitoral para a ``pose`` atual.
-
-    Em runtime (``FlexibleRig``), ``peitoral`` carrega ``head`` e os braços.
-    Assim, ``tronco`` acompanha o peitoral, ``cabeca`` gira pela rotação local
-    de ``head`` e ``quadril``/``pe_*`` giram pelo inverso de ``peitoral``.
-    """
-    rot_head = pose.get("head")
-    tem_head = not _rotacao_nula(rot_head)
-    tem_tronco = any(
-        not _rotacao_nula(pose.get(g))
-        for g in ("body", "cintura", "abdomen", "peitoral")
-    )
+def _rotacionar_caixas_inferiores(
+    model: Model,
+    pose: dict[str, Rotation3],
+    caixas: dict[str, CaixaOrientada],
+    leg_pose: object | None,
+) -> bool:
+    """Aplica pitch das coxas, rotação de ``legs`` e inverso de ``peitoral`` às caixas inferiores."""
+    ang_dir = float(getattr(leg_pose, "right", 0.0) or 0.0) if leg_pose is not None else 0.0
+    ang_esq = float(getattr(leg_pose, "left", 0.0) or 0.0) if leg_pose is not None else 0.0
+    tem_coxas = abs(ang_dir) > 1.0 or abs(ang_esq) > 1.0
+    tem_tronco = any(not _rotacao_nula(pose.get(g)) for g in ("body", "cintura", "abdomen", "peitoral"))
     tem_quadril = not _rotacao_nula(pose.get("legs"))
-    if not tem_head and not tem_tronco and not tem_quadril:
-        return CAIXAS_CORPO
-
-    caixas = dict(CAIXAS_CORPO)
-    if tem_head:
-        r_base, o_base = cin.transformacao_no(model, "head")
-        r_head, o_head = cin.transformacao_no(model, "head", pose)
-        m_head = cin.mul(r_head, cin.transposta(r_base))
-        caixas["cabeca"] = _rotacionar_caixa(caixas["cabeca"], m_head, o_base, o_head)
-
-    inferiores = ("quadril", "pe_direito", "pe_esquerdo")
+    if not (tem_coxas or tem_tronco or tem_quadril):
+        return False
+    if abs(ang_dir) > 1.0:
+        caixas["coxa_direita"] = _rotacionar_caixa(
+            caixas["coxa_direita"], cin.rot_x(-radians(ang_dir)), _PIVO_COXA_DIR
+        )
+    if abs(ang_esq) > 1.0:
+        caixas["coxa_esquerda"] = _rotacionar_caixa(
+            caixas["coxa_esquerda"], cin.rot_x(-radians(ang_esq)), _PIVO_COXA_ESQ
+        )
+    inferiores = ("quadril", "coxa_direita", "coxa_esquerda", "pe_direito", "pe_esquerdo")
     if tem_quadril:
         r_base, o_base = cin.transformacao_no(model, "legs")
         r_legs, o_legs = cin.transformacao_no(model, "legs", pose)
         r_quadril = cin.mul(r_legs, cin.transposta(r_base))
         for nome in inferiores:
-            caixas[nome] = _rotacionar_caixa(
-                caixas[nome], r_quadril, o_base, o_legs
-            )
-
+            caixas[nome] = _rotacionar_caixa(caixas[nome], r_quadril, o_base, o_legs)
     if tem_tronco:
         r_peit, o_peit = cin.transformacao_no(model, "peitoral", pose)
         r_peit_repouso, o_peit_repouso = cin.transformacao_no(model, "peitoral")
         r_inv = cin.mul(r_peit_repouso, cin.transposta(r_peit))
         for nome in inferiores:
-            caixas[nome] = _rotacionar_caixa(
-                caixas[nome], r_inv, o_peit, o_peit_repouso
-            )
+            caixas[nome] = _rotacionar_caixa(caixas[nome], r_inv, o_peit, o_peit_repouso)
+    return True
 
+
+def caixas_corpo_na_pose(
+    model: Model,
+    pose: dict[str, Rotation3],
+    *,
+    somente_cabeca: bool = False,
+    leg_pose: object | None = None,
+) -> dict[str, CaixaOrientada]:
+    """Caixas de ``CAIXAS_CORPO`` no referencial local do peitoral para a ``pose`` atual.
+
+    Em runtime (``FlexibleRig``), ``peitoral`` carrega ``head`` e os braços.
+    Assim, ``tronco`` acompanha o peitoral, ``cabeca``/``topo_cabeca`` giram pela
+    rotação local de ``head`` e ``quadril``/``coxa_*``/``pe_*`` giram pelo inverso
+    de ``peitoral`` (mais o pitch real do quadril em ``leg_pose``).
+    """
+    tem_head = not _rotacao_nula(pose.get("head"))
+    caixas = {"cabeca": CAIXAS_CORPO["cabeca"]} if somente_cabeca else dict(CAIXAS_CORPO)
+    if tem_head:
+        r_base, o_base = cin.transformacao_no(model, "head")
+        r_head, o_head = cin.transformacao_no(model, "head", pose)
+        m_head = cin.mul(r_head, cin.transposta(r_base))
+        for nome in (("cabeca",) if somente_cabeca else ("cabeca", "topo_cabeca")):
+            caixas[nome] = _rotacionar_caixa(caixas[nome], m_head, o_base, o_head)
+    if somente_cabeca:
+        return caixas
+    if not _rotacionar_caixas_inferiores(model, pose, caixas, leg_pose) and not tem_head:
+        return CAIXAS_CORPO
     return caixas
 
 
@@ -293,6 +308,9 @@ def penetracao_do_lado(
     pose: dict[str, Rotation3],
     do_outro: list[Capsula] | None = None,
     caixas: dict[str, CaixaOrientada] | None = None,
+    *,
+    somente_mao: bool = False,
+    caixas_isentas: set[str] | frozenset[str] = frozenset(),
 ) -> float:
     """Maior penetração (u) das cápsulas do ``lado`` no corpo e no outro braço.
 
@@ -300,6 +318,8 @@ def penetracao_do_lado(
     lado muda (busca do resolvedor).
     """
     minhas = capsulas_do_braco(model, lado, pose)
+    if somente_mao:
+        minhas = minhas[-1:]
 
     if do_outro is None and COLISAO_ENTRE_BRACOS:
         do_outro = capsulas_do_braco(
@@ -313,10 +333,10 @@ def penetracao_do_lado(
 
     for capsula in minhas:
         for nome, caixa in caixas.items():
-            if _longe(capsula, caixa):
+            if nome in caixas_isentas or _longe(capsula, caixa):
                 continue
 
-            folga_extra = FOLGA_EXTRA_CAIXA_U.get(nome, 0.0)
+            folga_extra = 0.0 if somente_mao else FOLGA_EXTRA_CAIXA_U.get(nome, 0.0)
             maior = max(maior, penetracao_capsula_caixa(capsula, caixa) - folga_extra)
 
         for alheia in do_outro:
@@ -330,6 +350,8 @@ def _com_deslocamento(
 ) -> dict[str, Rotation3]:
     """Pose com o deslocamento (graus, convenção do braço DIREITO) somado ao lado."""
     braco, antebraco, _mao = _GRUPOS[lado]
+    if not any(deslocamento) and braco in pose and antebraco in pose:
+        return pose
     dp, dh, dr, dflexao = (radians(v) for v in deslocamento)
     atual_braco = pose.get(braco, Rotation3())
     atual_ante = pose.get(antebraco, Rotation3())
@@ -362,11 +384,15 @@ class ResolvedorBracos:
     """Corrige a pose para os braços não atravessarem o corpo (com estado)."""
 
     model: Model
+    somente_cabeca: bool = False
 
     def __post_init__(self) -> None:
         """Valida e normaliza os campos após a criação."""
         self._do_outro: list[Capsula] | None = None
         self._caixas_pose: dict[str, CaixaOrientada] | None = None
+        self._isentas_lado_atual: set[str] | frozenset[str] = frozenset()
+        self._ultimo_cache_chave: tuple | None = None
+        self._ultima_pose_cache: dict[str, Rotation3] | None = None
         self._deslocamento: dict[str, list[float]] = {
             "right": [0.0] * GRAUS_DE_LIBERDADE,
             "left": [0.0] * GRAUS_DE_LIBERDADE,
@@ -374,27 +400,97 @@ class ResolvedorBracos:
 
     def zerar(self) -> None:
         """Zera os deslocamentos acumulados ao iniciar uma transição explícita."""
+        self._ultimo_cache_chave = None
+        self._ultima_pose_cache = None
         for desloc in self._deslocamento.values():
             desloc[:] = [0.0] * GRAUS_DE_LIBERDADE
+
+    def relaxar_suave(self, dt: float = 1.0 / 60.0) -> None:
+        """Decai suavemente os deslocamentos sem estalar braços nas transições."""
+        self._ultimo_cache_chave = None
+        passo = max(1e-4, min(0.05, float(dt)))
+        fator = RELAXAMENTO_POR_QUADRO ** (passo * 60.0)
+        for desloc in self._deslocamento.values():
+            for i, val in enumerate(desloc):
+                novo = val * fator
+                desloc[i] = 0.0 if abs(novo) < DESLOCAMENTO_DESPREZIVEL_GRAUS else novo
 
     def deslocamento(self, lado: str) -> tuple[float, ...]:
         """Deslocamento corrente (graus) do lado, para diagnóstico."""
         return tuple(self._deslocamento[lado])
 
+    @staticmethod
+    def _assinatura_pose(
+        pose: dict[str, Rotation3],
+        peso: float,
+        leg_pose: object | None,
+        isentas: dict[str, set[str]] | None,
+    ) -> tuple:
+        itens = tuple(
+            (g, round(r.x, 4), round(r.y, 4), round(r.z, 4))
+            for g, r in sorted(pose.items())
+        )
+        perna = (
+            (
+                round(float(getattr(leg_pose, "left", 0.0) or 0.0), 2),
+                round(float(getattr(leg_pose, "right", 0.0) or 0.0), 2),
+            )
+            if leg_pose is not None
+            else (0.0, 0.0)
+        )
+        is_key = (
+            tuple((k, tuple(sorted(v))) for k, v in sorted(isentas.items()))
+            if isentas
+            else ()
+        )
+        return (itens, round(peso, 3), perna, is_key)
+
     def resolver(
-        self, pose: dict[str, Rotation3], *, peso: float = 1.0
+        self,
+        pose: dict[str, Rotation3],
+        *,
+        peso: float = 1.0,
+        dt: float = 1.0 / 60.0,
+        leg_pose: object | None = None,
+        caixas_isentas_por_lado: dict[str, set[str]] | None = None,
     ) -> dict[str, Rotation3]:
         """Devolve a pose com os braços corrigidos (cópia; a original não muda)."""
+        dt_s = max(1e-4, min(0.05, float(dt)))
         fator = max(0.0, min(1.0, peso))
         if fator <= 1e-4:
-            self.zerar()
+            self.relaxar_suave(dt_s)
             return dict(pose)
+        chave = self._assinatura_pose(pose, fator, leg_pose, caixas_isentas_por_lado)
+        if (
+            chave == self._ultimo_cache_chave
+            and self._ultima_pose_cache is not None
+            and not any(self._deslocamento["right"])
+            and not any(self._deslocamento["left"])
+        ):
+            return dict(self._ultima_pose_cache)
+        self._dt_escala = dt_s * 60.0
+        self._fator_relax = RELAXAMENTO_POR_QUADRO ** self._dt_escala
         resultado = dict(pose)
-        self._caixas_pose = caixas_corpo_na_pose(self.model, pose)
+        self._caixas_pose = caixas_corpo_na_pose(
+            self.model,
+            pose,
+            somente_cabeca=self.somente_cabeca,
+            leg_pose=leg_pose,
+        )
 
         for lado in ("right", "left"):
+            self._isentas_lado_atual = (
+                frozenset(caixas_isentas_por_lado.get(lado, ()))
+                if caixas_isentas_por_lado
+                else frozenset()
+            )
             resultado = self._resolver_lado(resultado, lado, peso=fator)
-
+        self._isentas_lado_atual = frozenset()
+        if not any(self._deslocamento["right"]) and not any(self._deslocamento["left"]):
+            self._ultimo_cache_chave = chave
+            self._ultima_pose_cache = dict(resultado)
+        else:
+            self._ultimo_cache_chave = None
         return resultado
 
     def _penetracao(
@@ -406,6 +502,8 @@ class ResolvedorBracos:
             _com_deslocamento(pose, lado, desloc),
             do_outro=self._do_outro,
             caixas=self._caixas_pose,
+            somente_mao=self.somente_cabeca,
+            caixas_isentas=self._isentas_lado_atual,
         )
 
     def _testar_eixos_passo(
@@ -442,22 +540,24 @@ class ResolvedorBracos:
     ) -> float:
         """Executa busca em grade decrescente para afastar o braço da colisão."""
         desloc_inicial = list(desloc)
+        escala_dt = getattr(self, "_dt_escala", 1.0)
         limite_var = (
-            MAX_VARIACAO_POR_QUADRO_GRAUS
+            MAX_VARIACAO_POR_QUADRO_GRAUS * escala_dt
             if atual <= 0.02
-            else 28.0
+            else 28.0 * min(2.0, max(0.25, escala_dt))
         )
         for _ in range(ITERACOES_POR_QUADRO):
             if atual <= FOLGA_PENETRACAO_U:
                 break
             melhor: list[float] | None = None
             melhor_pen = atual
-            for passo in PASSOS_BUSCA_GRAUS:
+            passos = PASSOS_BUSCA_GRAUS[::-1] if atual > 0.012 else PASSOS_BUSCA_GRAUS
+            for passo in passos:
                 melhor, melhor_pen = self._testar_eixos_passo(
                     pose, lado, desloc, desloc_inicial, limite_var, passo, melhor_pen
                 )
                 if melhor is not None:
-                    break  # o menor passo que melhora vence (correção mínima)
+                    break
             if melhor is None:
                 break  # sem progresso (mínimo local ou limite): aceita o que há
             desloc[:] = melhor
@@ -468,7 +568,8 @@ class ResolvedorBracos:
         self, pose: dict[str, Rotation3], lado: str, desloc: list[float], eixo: int
     ) -> None:
         """Relaxa um eixo individualmente para não congelar os demais."""
-        for fator in (RELAXAMENTO_POR_QUADRO, 0.5 * (1.0 + RELAXAMENTO_POR_QUADRO)):
+        fator_rel = getattr(self, "_fator_relax", RELAXAMENTO_POR_QUADRO)
+        for fator in (fator_rel, 0.5 * (1.0 + fator_rel)):
             novo = desloc[eixo] * fator
             valor = 0.0 if abs(novo) < DESLOCAMENTO_DESPREZIVEL_GRAUS else novo
             tentativa = list(desloc)
@@ -481,8 +582,9 @@ class ResolvedorBracos:
         self, pose: dict[str, Rotation3], lado: str, desloc: list[float]
     ) -> None:
         """Retorna suavemente o deslocamento ao repouso quando fora de colisão."""
+        fator_rel = getattr(self, "_fator_relax", RELAXAMENTO_POR_QUADRO)
         relaxado = [
-            0.0 if abs(v * RELAXAMENTO_POR_QUADRO) < DESLOCAMENTO_DESPREZIVEL_GRAUS else v * RELAXAMENTO_POR_QUADRO
+            0.0 if abs(v * fator_rel) < DESLOCAMENTO_DESPREZIVEL_GRAUS else v * fator_rel
             for v in desloc
         ]
         if self._penetracao(pose, lado, relaxado) <= FOLGA_PENETRACAO_U:
@@ -492,18 +594,63 @@ class ResolvedorBracos:
             if desloc[eixo] != 0.0:
                 self._relaxar_eixo(pose, lado, desloc, eixo)
 
+    def _liberar_mao_do_visor(
+        self, pose: dict[str, Rotation3], lado: str, desloc: list[float], atual: float
+    ) -> float:
+        """Em um corte abrupto, recua só o trecho necessário em direção ao braço aberto."""
+        braco, antebraco, _ = _GRUPOS[lado]
+        ombro = pose.get(braco, Rotation3())
+        cotovelo = pose.get(antebraco, Rotation3())
+        if lado == "left":
+            ombro = cin.espelhar_rotacao(ombro)
+            cotovelo = cin.espelhar_rotacao(cotovelo)
+        angulos = (ombro.x, ombro.y, ombro.z, cotovelo.z)
+        recuos = [
+            (-degrees(a) - d + 180.0) % 360.0 - 180.0
+            for a, d in zip(angulos, desloc, strict=True)
+        ]
+
+        def amostrar(fracao: float) -> list[float]:
+            return [d + r * fracao for d, r in zip(desloc, recuos, strict=True)]
+
+        # O braço aberto aponta para fora do gabinete. A bisseção preserva o
+        # máximo do gesto, inclusive quando a busca por eixo parou num canto.
+        aberto = amostrar(1.0)
+        if self._penetracao(pose, lado, aberto) > FOLGA_PENETRACAO_U:
+            return atual
+        dentro, fora = 0.0, 1.0
+        for _ in range(7):
+            meio = (dentro + fora) * 0.5
+            if self._penetracao(pose, lado, amostrar(meio)) > FOLGA_PENETRACAO_U:
+                dentro = meio
+            else:
+                fora = meio
+        desloc[:] = amostrar(fora)
+        return self._penetracao(pose, lado, desloc)
+
     def _resolver_lado(
         self, pose: dict[str, Rotation3], lado: str, *, peso: float = 1.0
     ) -> dict[str, Rotation3]:
         """Resolve a colisão do braço esquerdo ou direito mantendo o movimento mínimo."""
         desloc = self._deslocamento[lado]
-        if COLISAO_ENTRE_BRACOS:
+        if COLISAO_ENTRE_BRACOS and not self.somente_cabeca:
             outro = "left" if lado == "right" else "right"
             self._do_outro = capsulas_do_braco(self.model, outro, pose)
         else:
-            self._do_outro = ()
+            self._do_outro = []
         atual = self._penetracao(pose, lado, desloc)
         atual = self._buscar_correcao(pose, lado, desloc, atual)
+        if self.somente_cabeca and atual > FOLGA_PENETRACAO_U:
+            # Um corte de pose pode deixar a correção anterior do lado errado
+            # do visor. Tenta a pose autoral antes de prolongar esse desvio.
+            neutro = [0.0] * GRAUS_DE_LIBERDADE
+            pen_neutra = self._penetracao(pose, lado, neutro)
+            if pen_neutra < atual:
+                desloc[:] = neutro
+                atual = pen_neutra
+            atual = self._buscar_correcao(pose, lado, desloc, atual)
+            if atual > FOLGA_PENETRACAO_U:
+                atual = self._liberar_mao_do_visor(pose, lado, desloc, atual)
         if any(desloc) and atual <= FOLGA_PENETRACAO_U:
             self._relaxar_deslocamento(pose, lado, desloc)
         if peso < 1.0 - 1e-4:

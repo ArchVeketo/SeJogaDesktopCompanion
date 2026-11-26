@@ -94,6 +94,35 @@ class EstadoProfundidade:
         self._vel_escala: float = 0.0
         self.subida_atual: float = 0.0
         self._vel_subida: float = 0.0
+        self._atraso_s: float = 0.0
+        self._caminhando_s: float = 0.0
+
+    def agendar_caminhada(
+        self, atraso_giro_s: float = 0.0, duracao_passo_s: float = 0.95
+    ) -> None:
+        """Agenda atraso de giro antes do deslocamento Z e janela de passos ativos."""
+        self._atraso_s = max(0.0, float(atraso_giro_s))
+        self._caminhando_s = max(0.0, self._atraso_s + max(0.0, float(duracao_passo_s)))
+
+    @property
+    def em_caminhada(self) -> bool:
+        """Indica se o mascote está virando ou dando passos para mudar de plano."""
+        alvo_e = ESCALA_POR_PROFUNDIDADE[self.nivel_alvo]
+        alvo_s = SUBIDA_POR_PROFUNDIDADE[self.nivel_alvo]
+        return bool(
+            self._caminhando_s > 0.0
+            or self._atraso_s > 0.0
+            or abs(self.escala_atual - alvo_e) > 0.008
+            or abs(self.subida_atual - alvo_s) > 0.004
+        )
+
+    @property
+    def velocidade_caminhada(self) -> float:
+        """Velocidade equivalente do passo sincronizada com a mola de profundidade."""
+        if not self.em_caminhada:
+            return 0.0
+        vel = max(abs(self._vel_escala) * 440.0, abs(self._vel_subida) * 520.0)
+        return max(65.0, min(260.0, vel))
 
     def definir_nivel(self, nivel: NivelProfundidade | str) -> None:
         """Define o nível-alvo de profundidade (`perto`, `medio` ou `longe`)."""
@@ -113,8 +142,20 @@ class EstadoProfundidade:
 
     def atualizar(self, dt: float, *, arrastando: bool = False) -> tuple[float, float]:
         """Atualiza ``(escala, subida_fracao)``; puxa para ``perto`` se arrastado."""
+        dt_c = max(0.0, float(dt))
         if arrastando:
             self.nivel_alvo = NivelProfundidade.PERTO
+            self._atraso_s = 0.0
+            self._caminhando_s = 0.0
+        else:
+            if self._caminhando_s > 0.0:
+                self._caminhando_s = max(0.0, self._caminhando_s - dt_c)
+            if self._atraso_s > 0.0:
+                if dt_c <= self._atraso_s:
+                    self._atraso_s -= dt_c
+                    return self.escala_atual, self.subida_atual
+                dt_c -= self._atraso_s
+                self._atraso_s = 0.0
         meia_vida = (
             MEIA_VIDA_PROFUNDIDADE_PUXADO_S
             if arrastando
@@ -123,10 +164,10 @@ class EstadoProfundidade:
         alvo_escala = ESCALA_POR_PROFUNDIDADE[self.nivel_alvo]
         alvo_subida = SUBIDA_POR_PROFUNDIDADE[self.nivel_alvo]
         self.escala_atual, self._vel_escala = avancar_mola_critica(
-            self.escala_atual, self._vel_escala, alvo_escala, meia_vida, dt
+            self.escala_atual, self._vel_escala, alvo_escala, meia_vida, dt_c
         )
         self.subida_atual, self._vel_subida = avancar_mola_critica(
-            self.subida_atual, self._vel_subida, alvo_subida, meia_vida, dt
+            self.subida_atual, self._vel_subida, alvo_subida, meia_vida, dt_c
         )
         return self.escala_atual, self.subida_atual
 
@@ -160,17 +201,23 @@ class PacoteOlharTela:
         self.ativo: bool = False
         self.tempo: float = 0.0
         self.lado: float = 1.0
+        self.caminhar_no_fundo: bool = False
+        self.em_passo_atual: bool = False
 
-    def iniciar(self, *, lado: float = 1.0) -> None:
+    def iniciar(self, *, lado: float = 1.0, caminhar_no_fundo: bool = False) -> None:
         """Dispara o pacote 'Olhar a tela' pelo lado indicado (+1 ou -1)."""
         self.ativo = True
         self.tempo = 0.0
         self.lado = 1.0 if lado >= 0.0 else -1.0
+        self.caminhar_no_fundo = bool(caminhar_no_fundo)
+        self.em_passo_atual = False
 
     def interromper(self) -> None:
         """Interrompe o pacote imediatamente (ex.: em caso de arraste ou clique)."""
         self.ativo = False
         self.tempo = 0.0
+        self.caminhar_no_fundo = False
+        self.em_passo_atual = False
 
     def _amostrar_fase(self, t):
         t1 = DURACAO_FASE_OMBRO_S
@@ -184,10 +231,15 @@ class PacoteOlharTela:
             u = suavizar_quintico((t - t1) / DURACAO_FASE_VIRAR_COSTAS_S)
             return "virar_costas", lado * 180.0 * u, True, 1.0 - u, 0.0
         if t < t3:
-            u = (t - t2) / DURACAO_FASE_OBSERVAR_TELA_S
-            return "observar_tela", lado * 180.0, False, 0.0, sin(u * pi)
+            dt_obs = t - t2
+            u = dt_obs / DURACAO_FASE_OBSERVAR_TELA_S
+            andando_fundo = bool(self.caminhar_no_fundo and dt_obs < 1.15)
+            cur = suavizar_quintico(u / 0.26) * (1.0 - suavizar_quintico((u - 0.74) / 0.26))
+            return "observar_tela", lado * 180.0, andando_fundo, 0.0, cur
         u = suavizar_quintico((t - t3) / DURACAO_FASE_VOLTAR_FRENTE_S)
-        return "voltar_frente", lado * 180.0 * (1.0 - u), True, 0.0, 0.0
+        # Cabeça inicia o retorno antes do tronco para quebrar o giro rígido de cilindro
+        torcao_volta = -sin(u * pi) * 0.42
+        return "voltar_frente", lado * 180.0 * (1.0 - u), True, torcao_volta, 0.0
 
     def atualizar(self, dt: float, *, interromper: bool = False) -> AmostraOlharTela:
         """Avança o pacote por ``dt`` e devolve a amostra para o controlador."""
@@ -202,25 +254,30 @@ class PacoteOlharTela:
             return AmostraOlharTela(False, "inativo", None, False, {})
 
         fase, giro_corpo, em_passo, torcao, curiosidade = self._amostrar_fase(t)
+        # Cascata de atraso na coluna: cabeça lidera, tronco acompanha com leve defasagem
+        _, _, _, torcao_peito, _ = self._amostrar_fase(max(0.0, t - 0.06))
+        _, _, _, torcao_abd, _ = self._amostrar_fase(max(0.0, t - 0.11))
+        _, _, _, torcao_cint, _ = self._amostrar_fase(max(0.0, t - 0.16))
+        self.em_passo_atual = em_passo
         s = self.lado
 
         # Torção distribuída ("olhar por cima do ombro"): cintura + abdomen + peitoral + head
         osc_obs = sin(t * 2.4) * curiosidade
         delta: dict[str, Rotation3] = {
             "cintura": Rotation3(
-                radians(-2.0 * torcao),
-                radians(s * 14.0 * torcao + osc_obs * 3.0),
-                radians(s * 2.5 * torcao),
+                radians(-2.0 * torcao_cint),
+                radians(s * 14.0 * torcao_cint + osc_obs * 3.0),
+                radians(s * 2.5 * torcao_cint),
             ),
             "abdomen": Rotation3(
-                radians(-3.0 * torcao),
-                radians(s * 20.0 * torcao + osc_obs * 4.5),
-                radians(s * 3.5 * torcao),
+                radians(-3.0 * torcao_abd),
+                radians(s * 20.0 * torcao_abd + osc_obs * 4.5),
+                radians(s * 3.5 * torcao_abd),
             ),
             "peitoral": Rotation3(
-                radians(-4.0 * torcao - 3.0 * curiosidade),
-                radians(s * 26.0 * torcao + osc_obs * 6.0),
-                radians(s * 4.5 * torcao),
+                radians(-4.0 * torcao_peito - 3.0 * curiosidade),
+                radians(s * 26.0 * torcao_peito + osc_obs * 6.0),
+                radians(s * 4.5 * torcao_peito),
             ),
             "head": Rotation3(
                 radians(-6.0 * torcao - 5.0 * curiosidade),

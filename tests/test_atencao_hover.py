@@ -1,6 +1,6 @@
 """Testa a atenção ao cursor sob hover."""
 
-from sejoga.animacao.atencao_hover import HoverAttention
+from sejoga.animacao.foco_atencao import HoverAttention
 
 
 def test_external_interactions_suspend_hover_until_idle():

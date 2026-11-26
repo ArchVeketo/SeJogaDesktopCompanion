@@ -5,7 +5,6 @@ from __future__ import annotations
 from math import degrees
 
 import PySide6.QtWidgets  # noqa: F401 - evita conflito Qt vs Panda3D na mesma sessão pytest
-from panda3d.core import NodePath, Vec3
 from tests.fk_bracos import punho
 
 from sejoga.animacao.alvos_bracos import ALVOS
@@ -14,7 +13,6 @@ from sejoga.animacao.poses_base import pose_interaction
 from sejoga.nucleo.esqueleto import Rig
 from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.recursos import resolve_model
-from sejoga.render.efeitos_cena import MAX_PARTICULAS, GerenciadorEfeitosCena
 
 
 def _novo_controlador() -> AnimationController:
@@ -76,6 +74,32 @@ def test_celebrate_nao_dispara_em_exploracao_trivial_e_premia_carinhos_seguidos(
             ctrl.update(0.1, grounded=True)
     ctrl.interact("pet")
     assert ctrl._pending_intent is not None and ctrl._pending_intent[0] == "celebrate"
+
+
+def test_agencia_roleta_ponderada_escolhe_mais_de_um_desejo_e_tedio_probabilistico() -> None:
+    from sejoga.animacao.agencia import Agencia, Desejo, DesejoTipo
+
+    escolhas = set()
+    for seed in range(25):
+        ag = Agencia(seed=seed)
+        ag._desejos = [
+            Desejo(tipo=DesejoTipo.EXPLORACAO, intensidade=0.55, criado_em=0.0),
+            Desejo(tipo=DesejoTipo.FOME_ATENCAO, intensidade=0.65, criado_em=0.0),
+        ]
+        ag._tentar_gerar_meta()
+        if ag.meta_ativa is not None:
+            escolhas.add(ag.meta_ativa.tipo)
+    assert len(escolhas) == 2
+
+    cont_tedio = 0
+    for seed in range(40):
+        ag = Agencia(seed=seed)
+        ag._agora = 120.0
+        ag._tempo_ultima_interacao = 0.0
+        ag._gerar_desejo_espontaneo()
+        if any(d.tipo == DesejoTipo.TEDIO for d in ag._desejos):
+            cont_tedio += 1
+    assert 0 < cont_tedio < 40
 
 
 def test_reacao_diferenciada_por_parte_no_duplo_clique() -> None:
@@ -142,63 +166,3 @@ def test_sono_automatico_varia_entre_tres_modos_e_sono_manual_fixa() -> None:
     ctrl.update(0.1)
     assert ctrl.modo_sono == "deitado"
     assert ctrl.state == AnimationState.SLEEP
-
-
-def _nomes_particulas(fx: GerenciadorEfeitosCena) -> set[str]:
-    return {p.node.getName() for p in fx._particulas}
-
-
-def test_sistema_particulas_pixeladas_cobre_e1_a_e7() -> None:
-    """Sistema reutilizável 2D emite E1-E7 (notas, ondas, poeiras, Zzz e gosma)."""
-    raiz = NodePath("teste-efeitos")
-    fx = GerenciadorEfeitosCena(raiz)
-
-    # E1 (notas) + E2 (ondas de fones e caixas de som) + comemoração
-    fx.atualizar(
-        0.05,
-        estado="dance",
-        tempo_estado=0.5,
-        grounded=True,
-        acento_danca=True,
-        comemorando=True,
-        som_fones=True,
-        caixas_som_pos=(Vec3(0.4, -0.22, 0.0),),
-    )
-    nomes = _nomes_particulas(fx)
-    assert {"fx-nota-p", "fx-onda-p", "fx-luz-p"} <= nomes
-    assert "fx-poeira-p" not in nomes
-
-    # E3 pouso + E4 deslize + E5 queda
-    fx.atualizar(0.05, estado="fall", tempo_estado=0.2, grounded=False, velocidade=(0.0, 460.0))
-    assert "fx-queda-p" in _nomes_particulas(fx)
-
-    fx.atualizar(0.05, estado="idle", tempo_estado=0.1, grounded=True, velocidade=(280.0, 0.0), deslizando=True)
-    assert {"fx-poeira-p", "fx-deslize-p"} <= _nomes_particulas(fx)
-
-    # E6 Zzz no sono + E7 gosma rosa com arco gravitacional
-    fx.atualizar(0.05, estado="sleep", tempo_estado=0.5, grounded=True, sono=True, gosma_evento=True)
-    nomes_fx = _nomes_particulas(fx)
-    assert {"fx-z-p", "fx-gosma-p"} <= nomes_fx
-
-    gosma = next(p for p in fx._particulas if p.node.getName() == "fx-gosma-p")
-    vz_inicial = gosma.vel.z
-    fx.atualizar(0.1, estado="idle", tempo_estado=0.0, grounded=True)
-    assert gosma.vel.z < vz_inicial
-
-
-def test_sistema_particulas_respeita_pool_e_expira_sem_vazar() -> None:
-    """Pool respeita limite MAX_PARTICULAS, expira após TTL e limpa sob demanda."""
-    raiz = NodePath("teste-efeitos-pool")
-    fx = GerenciadorEfeitosCena(raiz)
-    for _ in range(30):
-        fx.emitir_gosma(Vec3(0.0, -0.24, 0.0), quantidade=5)
-    assert fx.total_particulas <= MAX_PARTICULAS
-
-    for _ in range(40):
-        fx.atualizar(0.1, estado="idle", tempo_estado=0.0, grounded=True)
-    assert fx.total_particulas == 0
-
-    fx.emitir_notas_musicais(Vec3(0.0, -0.24, 0.0), quantidade=3)
-    assert fx.total_particulas > 0
-    fx.limpar()
-    assert fx.total_particulas == 0

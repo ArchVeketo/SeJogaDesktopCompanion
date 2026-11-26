@@ -82,12 +82,10 @@ class FlexibleRig:
         self.shoulder = Spring(1.3, 0.42)
         self._air_clock = 0.0
 
-    def _impulso_aereo(self, dt: float, motion) -> tuple[float, float, float, float]:
-        airborne = (
-            getattr(motion, "hanging", 0.0) > 0.1
-            or abs(getattr(motion, "pitch", 0.0)) > 0.5
-            or abs(getattr(motion, "stretch", 0.0)) > 0.06
-        )
+    def _impulso_aereo(
+        self, dt: float, motion, *, grounded: bool = True, dragging: bool = False
+    ) -> tuple[float, float, float, float]:
+        airborne = (not grounded) or dragging or getattr(motion, "hanging", 0.0) > 0.1
         if not airborne:
             self._air_clock = 0.0
             return (0.0, 0.0, 0.0, 0.0)
@@ -98,29 +96,40 @@ class FlexibleRig:
         air_pitch = -2.4 * hang + sin(self._air_clock * 5.6 + 0.7) * 2.2
         return (air_roll, air_pitch, -air_roll * 0.65, -air_pitch * 0.75 + 1.5 * hang)
 
-    def update(self, dt, motion):
+    def update(
+        self,
+        dt,
+        motion,
+        *,
+        grounded: bool = True,
+        dragging: bool = False,
+        atenuacao: float = 1.0,
+    ):
         """Avança as molas um passo de ``dt`` seguindo o movimento do corpo."""
         dt = max(0, min(0.05, dt))
-        air_roll, air_pitch, air_neck_roll, air_neck_pitch = self._impulso_aereo(dt, motion)
+        escala = max(0.0, min(1.0, float(atenuacao)))
+        air_roll, air_pitch, air_neck_roll, air_neck_pitch = self._impulso_aereo(
+            dt, motion, grounded=grounded, dragging=dragging
+        )
 
-        limb_swing = getattr(motion, "limb_swing", 0.0)
-        pitch = getattr(motion, "pitch", 0.0)
-        neck_pitch = getattr(motion, "neck_pitch", 0.0)
-        arm_lag = getattr(motion, "arm_lag", 0.0)
+        limb_swing = getattr(motion, "limb_swing", 0.0) * escala
+        pitch = getattr(motion, "pitch", 0.0) * escala
+        head_pitch = getattr(motion, "head_pitch", 0.0) * escala
+        arm_lag = getattr(motion, "arm_lag", 0.0) * escala
         self.spine.update(
-            dt, clamp(limb_swing * 0.12 + air_roll, -5.5, 5.5)
+            dt, clamp(limb_swing * 0.12 + air_roll * escala, -5.5, 5.5)
         )
         self.spine_pitch.update(
-            dt, clamp(-pitch * 0.14 + air_pitch, -6.0, 6.0)
+            dt, clamp(-pitch * 0.14 + air_pitch * escala, -6.0, 6.0)
         )
         self.neck.update(
-            dt, clamp(-limb_swing * 0.18 + air_neck_roll, -7.0, 7.0)
+            dt, clamp(-limb_swing * 0.18 + air_neck_roll * escala, -7.0, 7.0)
         )
         self.neck_pitch.update(
-            dt, clamp(neck_pitch * 0.18 + air_neck_pitch, -7.0, 7.0)
+            dt, clamp(head_pitch * 0.18 + air_neck_pitch * escala, -7.0, 7.0)
         )
         self.shoulder.update(
-            dt, clamp(arm_lag * 0.6 + air_roll * 0.5, -5.5, 5.5)
+            dt, clamp(arm_lag * 0.6 + air_roll * 0.5 * escala, -5.5, 5.5)
         )
         for spine, neck, shoulders in self.chains:
             spine.setPos(0, 0, tune.TRONCO_PIVO_Z)

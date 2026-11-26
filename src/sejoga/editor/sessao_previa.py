@@ -28,7 +28,7 @@ from sejoga.animacao.clipes_ocioso import (
     sample_idle,
 )
 from sejoga.animacao.controlador_animacao import AnimationController
-from sejoga.animacao.danca_clipes import carregar_clipe_emote
+from sejoga.animacao.danca_clipes import carregar_clipe_acao, carregar_clipe_emote
 from sejoga.animacao.movimento_danca import DanceMotion
 from sejoga.animacao.movimento_pernas import LegMotion, LegPose
 from sejoga.animacao.pose_repouso import pose_repouso
@@ -342,9 +342,9 @@ def _aplicar_mascaras_pistas(
     for grupo in ALL_GROUPS:
         if pista_solo is not None:
             if grupo != pista_solo:
-                saida[grupo] = base_neutra[grupo]
+                saida[grupo] = base_neutra.get(grupo, Rotation3())
         elif grupo in pistas_silenciadas:
-            saida[grupo] = base_neutra[grupo]
+            saida[grupo] = base_neutra.get(grupo, Rotation3())
     return saida
 
 
@@ -675,7 +675,24 @@ class SessaoPrevia:
             self._controller.colocar_para_dormir(self.roteiro.modo_sono)
         elif chave.startswith("duracoes:"):
             kind = _chave_segundo_segmento(chave)
-            if kind in ("click", "double_click", "pet", "hit", "land", "surprise", "wave", "stretch", "poke"):
+            if kind in (
+                "click",
+                "double_click",
+                "pet",
+                "hit",
+                "land",
+                "surprise",
+                "wave",
+                "stretch",
+                "poke",
+                "celebrate",
+                "goku_teleport",
+                "virtual_insanity",
+                "peace",
+                "blue_balls",
+                "open_hands",
+                "close_fists",
+            ):
                 self._controller.interact(kind)
 
     def _simular_ate(self, tempo_alvo: float) -> QuadroPrevia:
@@ -1129,7 +1146,7 @@ class SessaoPrevia:
             dance_style=estilo,
             dance_time=self._dance_tomada.tempo_clipe,
         )
-        clipe_e = carregar_clipe_emote(estilo)
+        clipe_e = carregar_clipe_emote(estilo) or carregar_clipe_acao(estilo)
         raiz_q = self._dance_tomada.raiz_quat_emote if clipe_e is not None else None
         return QuadroPrevia(
             pose=pose,
@@ -1173,22 +1190,58 @@ class SessaoPrevia:
 
     def _tomada_transicao(self, chave: str, tempo_s: float) -> QuadroPrevia:
         rig_tmp = _novo_rig()
-        pose_idle(rig_tmp, tempo_s, IdlePersonality.CALM)
+        rig_tmp.current = pose_repouso()
         estilo = _chave_segundo_segmento(chave)
         if chave.startswith("entradas:"):
             fr_in = IntroAnimation(estilo, from_side=1).sample(tempo_s)
+            loc = fr_in.locomotion
+            pernas = None
+            if loc in ("run", "walk"):
+                pose_walk(rig_tmp, tempo_s, run=(loc == "run"))
+                vel_x = 660.0 if loc == "run" else 125.0
+                self._leg_tomada.update(STEP_SIM_S, loc, (vel_x, 0.0), tempo_s, 0.0)
+                pernas = self._leg_tomada.pose
+            elif loc == "fall":
+                pose_interaction(rig_tmp, "fall", tempo_s)
+                self._leg_tomada.update(STEP_SIM_S, "fall", (0.0, 380.0), tempo_s, 0.0)
+                pernas = self._leg_tomada.pose
+            elif loc in ("land", "goku_teleport", "virtual_insanity"):
+                pose_interaction(rig_tmp, loc, tempo_s)
+                self._leg_tomada.update(STEP_SIM_S, loc, (0.0, 0.0), tempo_s, 0.0)
+                pernas = self._leg_tomada.pose
+            elif loc == "wave":
+                pose_flourish(rig_tmp, "wave", tempo_s)
+            elif loc == "ajeitar_fone":
+                pose_idle(rig_tmp, tempo_s, IdlePersonality.CALM)
+                amostra = amostrar_cena_idle("ajeitar_fone", tempo_s)
+                if amostra.ativa:
+                    for g, d in amostra.delta_rig.items():
+                        if g in rig_tmp.current:
+                            rig_tmp.current[g] = _somar_rot(rig_tmp.current[g], d)
+            else:
+                pose_idle(rig_tmp, tempo_s, IdlePersonality.CALM)
             return QuadroPrevia(
                 pose=rig_tmp.pose(),
                 pose_pretendida=rig_tmp.pose(),
+                pernas=pernas,
                 deslocamento_corpo=(fr_in.offset_x / 216.8, fr_in.offset_y / 216.8, 0.0),
                 orientacao_graus=(fr_in.pitch, fr_in.yaw, fr_in.roll),
                 escala=fr_in.scale,
                 dissolve=fr_in.dissolve,
             )
         fr_out = ExitAnimation((400, 400), 260, (0, 0, 1280, 720), style=estilo).sample(tempo_s)
+        loc_out = getattr(fr_out, "locomotion", None)
+        pernas_out = None
+        if loc_out:
+            pose_interaction(rig_tmp, loc_out, tempo_s)
+            self._leg_tomada.update(STEP_SIM_S, loc_out, (0.0, 0.0), tempo_s, 0.0)
+            pernas_out = self._leg_tomada.pose
+        else:
+            pose_idle(rig_tmp, tempo_s, IdlePersonality.CALM)
         return QuadroPrevia(
             pose=rig_tmp.pose(),
             pose_pretendida=rig_tmp.pose(),
+            pernas=pernas_out,
             deslocamento_corpo=((fr_out.x - 400) / 216.8, (fr_out.y - 400) / 216.8, 0.0),
             orientacao_graus=(fr_out.pitch, fr_out.yaw, fr_out.roll),
             escala=fr_out.scale,
@@ -1225,10 +1278,35 @@ class SessaoPrevia:
             return QuadroPrevia(
                 pose=rig_tmp.pose(), pose_pretendida=rig_tmp.pose(), pernas=self._leg_tomada.pose
             )
-        kind = _chave_segundo_segmento(chave) if chave.startswith("duracoes:") else "click"
+        reacoes_validas = {
+            "click",
+            "double_click",
+            "pet",
+            "hit",
+            "land",
+            "surprise",
+            "wave",
+            "stretch",
+            "poke",
+            "celebrate",
+            "goku_teleport",
+            "virtual_insanity",
+            "peace",
+            "blue_balls",
+            "open_hands",
+            "close_fists",
+        }
+        kind = _chave_segundo_segmento(chave) if chave.startswith("duracoes:") else chave
+        if kind not in reacoes_validas:
+            kind = "click"
         pose_interaction(rig_tmp, kind, tempo_s)
         pose_secondary(rig_tmp, tempo_s, kind, IdlePersonality.CALM)
-        return QuadroPrevia(pose=rig_tmp.pose(), pose_pretendida=rig_tmp.pose())
+        self._leg_tomada.update(STEP_SIM_S, kind, (0.0, 0.0), tempo_s, 0.0)
+        return QuadroPrevia(
+            pose=rig_tmp.pose(),
+            pose_pretendida=rig_tmp.pose(),
+            pernas=self._leg_tomada.pose,
+        )
 
     def _tomada_vfx(self, tempo_s: float, _tempo_ant: float) -> QuadroPrevia:
         assert self.acao is not None

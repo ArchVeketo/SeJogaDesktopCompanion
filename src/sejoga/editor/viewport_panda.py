@@ -1450,10 +1450,26 @@ class PandaViewportSession:
     def _posicao_ancora_vfx(self, nome_ancora: str) -> tuple[float, float, float]:
         from panda3d.core import Point3
 
-        ef = getattr(self.renderer, "efeitos_cena", None)
+        ef = getattr(self.renderer, "efeitos_street", None)
         if ef is not None:
             ancs = ef._calcular_ancoras()
-            pt_loc = ancs.get(nome_ancora) or ancs.get("cabeca")
+            mapa_legado = {
+                "cabeca": "cabeca_topo",
+                "pes": "pes",
+                "tronco": "tronco",
+                "fone_dir": "fone_dir",
+                "fone_esq": "fone_esq",
+                "raiva": "templo",
+                "boca": "visor_lado",
+                "antena_d": "antena_d",
+                "antena_e": "antena_e",
+                "antenas": "antenas_meio",
+            }
+            pt_loc = (
+                ancs.get(nome_ancora)
+                or ancs.get(mapa_legado.get(nome_ancora, "cabeca_topo"))
+                or ancs.get("cabeca")
+            )
             if pt_loc is not None:
                 p = self.showbase.render.getRelativePoint(ef.root, Point3(pt_loc))
                 return (float(p.x), float(p.y), float(p.z))
@@ -1576,9 +1592,12 @@ class PandaViewportSession:
         """Limpa partículas e tentáculos em busca reversa ou retorno ao loop."""
         from sejoga.tentaculos.sistema_tentaculos import TentacleState
 
-        efeitos = getattr(self.renderer, "efeitos_cena", None)
-        if efeitos is not None:
-            efeitos.limpar()
+        ef = getattr(self.renderer, "efeitos_street", None)
+        if ef is not None:
+            ef.limpar()
+        choque = getattr(self.renderer, "_choque_antenas_3d", None)
+        if choque is not None:
+            choque.ocultar()
         if self.renderer.tentacle_pool is not None:
             for t in self.renderer.tentacle_pool.tentacles:
                 t.state = TentacleState.DORMANT
@@ -1685,33 +1704,44 @@ class PandaViewportSession:
         self.renderer.model_anchor.setScale(quadro.escala)
 
     def _atualizar_efeitos_quadro(self, quadro: QuadroPrevia) -> None:
-        efeitos = getattr(self.renderer, "efeitos_cena", None)
-        if efeitos is None:
-            return
         ativos = set(quadro.janelas_vfx_ativas) | {e.nome for e in quadro.eventos_vfx}
         amostra = quadro.amostra_cena
         estouro = "estouro_fone" in ativos or bool(amostra and amostra.estouro_fone)
         choque = "choque_argolas" in ativos or bool(amostra and amostra.choque_argolas)
-        efeitos.atualizar(
-            STEP_SIM_S,
-            estado=quadro.estado_contexto,
-            tempo_estado=quadro.tempo_s,
-            grounded=True,
-            velocidade=(125.0, 0.0) if "derrapagem" in ativos else (0.0, 0.0),
-            medo="suor" in ativos,
-            tremor="tremor" in ativos,
-            susto="susto" in ativos,
-            raiva="raiva" in ativos,
-            tontura="tontura" in ativos,
-            sono="zzz" in ativos,
-            estouro_fone=estouro,
-            choque_argolas=choque,
-            acento_danca="notas" in ativos or quadro.batida_ativa,
-            deslizando="derrapagem" in ativos,
-            comemorando="comemoracao" in ativos,
-            som_fones="ondas" in ativos,
-            gosma_evento="gosma" in ativos,
-        )
+        efeitos_st = getattr(self.renderer, "efeitos_street", None)
+        if efeitos_st is not None:
+            params = {
+                "estado": quadro.estado_contexto,
+                "tempo_estado": quadro.tempo_s,
+                "grounded": True,
+                "velocidade": (560.0, 0.0) if "derrapagem" in ativos else (0.0, 0.0),
+                "medo": "suor" in ativos,
+                "tremor": "tremor" in ativos,
+                "susto": "susto" in ativos,
+                "raiva": "raiva" in ativos,
+                "tontura": "tontura" in ativos,
+                "sono": "zzz" in ativos,
+                "estouro_fone": estouro,
+                "choque_argolas": choque,
+                "acento_danca": "notas" in ativos or quadro.batida_ativa,
+                "deslizando": "derrapagem" in ativos,
+                "comemorando": "comemoracao" in ativos,
+                "som_fones": "ondas" in ativos or "notas" in ativos,
+                "gosma_evento": "gosma" in ativos,
+                "carinho": "carinho" in ativos,
+            }
+            efeitos_st.atualizar(STEP_SIM_S, params)
+        choque_3d = getattr(self.renderer, "_choque_antenas_3d", None)
+        if choque_3d is not None:
+            if choque or estouro:
+                choque_3d.atualizar(
+                    STEP_SIM_S,
+                    aviso_antena=0.35 if choque else 0.0,
+                    choque_argolas=bool(choque or estouro),
+                    permitir_ponte=True,
+                )
+            else:
+                choque_3d.ocultar()
 
     def step(self) -> None:
         """Processa interação de mouse contínua e avança um passo do Panda3D."""

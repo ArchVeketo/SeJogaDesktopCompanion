@@ -89,6 +89,25 @@ RESPIRACAO_POR_PERSONALIDADE: dict[IdlePersonality, ParametrosRespiracao] = {
     IdlePersonality.VIBING: ParametrosRespiracao(
         frequencia=0.35, amplitude=0.6, bounce=0.25
     ),
+    # 6 Idles Base Canônicos v2.0
+    IdlePersonality.BRC_MALANDRO: ParametrosRespiracao(
+        frequencia=0.28, amplitude=0.95, bounce=0.18
+    ),
+    IdlePersonality.FRENETICO_GROOVE: ParametrosRespiracao(
+        frequencia=0.40, amplitude=0.55, bounce=0.26
+    ),
+    IdlePersonality.ESPREITA_ARMARIO: ParametrosRespiracao(
+        frequencia=0.32, amplitude=0.80, bounce=0.14
+    ),
+    IdlePersonality.JOJO_EXIBIDO: ParametrosRespiracao(
+        frequencia=0.22, amplitude=1.05, bounce=0.12
+    ),
+    IdlePersonality.BOXEADOR_PRONTO: ParametrosRespiracao(
+        frequencia=0.38, amplitude=0.85, bounce=0.18
+    ),
+    IdlePersonality.DERRETIDO_SONO: ParametrosRespiracao(
+        frequencia=0.19, amplitude=1.15, bounce=0.10
+    ),
 }
 
 

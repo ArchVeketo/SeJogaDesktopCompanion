@@ -86,6 +86,16 @@ def textura_pixel(name, image):
     return texture
 
 
+@cache
+def textura_acabamento(nome):
+    """Lê o tile pintado no espaço UV, compartilhado entre instâncias."""
+    path = assets_dir() / "textures" / "acabamentos" / f"{nome}.png"
+    image = PNMImage()
+    if not image.read(StringStream(path.read_bytes()), path.name):
+        raise ValueError(f"Textura de acabamento inválida: {path}")
+    return textura_pixel(nome, image)
+
+
 def cartao_pixel(parent, name, texture):
     """Cria um cartão no plano XZ preservando a proporção dos pixels, sem hit-test."""
     card = CardMaker(name)
@@ -99,6 +109,7 @@ def cartao_pixel(parent, name, texture):
     node.setTexture(texture)
     node.setTwoSided(True)
     node.setLightOff(1)
+    node.setDepthWrite(False)
     node.setTransparency(TransparencyAttrib.MNone)
     node.setAttrib(AlphaTestAttrib.make(AlphaTestAttrib.MGreater, 0.14))
     node.setShader(shader_sprite_bayer(), 2)

@@ -111,9 +111,16 @@ class IdlePersonality(StrEnum):
     FIGHTER = "fighter"
     RHYTHM = "rhythm"
     STYLISH = "stylish"
-    # BRC — posturas inspiradas em Bomb Rush Cyberfunk
+    # BRC — posturas inspiradas em Bomb Rush Cyberfunk (legado)
     BRC_STANCE = "brc_stance"
     VIBING = "vibing"
+    # Idles Base Canônicos v2.0 (silhuetas marcantes — SPEC_ROTEIROS_IDLES_E_ACOES)
+    BRC_MALANDRO = "brc_malandro"
+    FRENETICO_GROOVE = "frenetico_groove"
+    ESPREITA_ARMARIO = "espreita_armario"
+    JOJO_EXIBIDO = "jojo_exibido"
+    BOXEADOR_PRONTO = "boxeador_pronto"
+    DERRETIDO_SONO = "derretido_sono"
 
 
 @dataclass(frozen=True, slots=True)

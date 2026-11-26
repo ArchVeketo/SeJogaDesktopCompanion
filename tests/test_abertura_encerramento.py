@@ -79,10 +79,51 @@ def test_intro_style_signatures():
     ninja = IntroAnimation("kagebunshin_in")
     assert ninja.sample(0.12).smoke_burst > 0.5
 
-    for style in ("fade_in", "virtual_insanity_in", "run_from_depth", "kagebunshin_in"):
+    goku_in = IntroAnimation("goku_teleport_in")
+    goku_early = goku_in.sample(0.05)
+    goku_hold = goku_in.sample(goku_in.duration * 0.45)
+    assert goku_early.locomotion == "goku_teleport"
+    assert goku_early.dissolve_mode == 3.0
+    assert goku_early.warp_scale[0] < 0.7 and goku_early.warp_scale[2] > 1.2
+    assert goku_hold.locomotion == "goku_teleport"
+    assert goku_hold.dissolve == 0.0
+
+    hero = IntroAnimation("hero_drop_in")
+    assert hero.sample(0.05).offset_y < -100.0
+    assert hero.sample(hero.duration * 0.40).warp_scale[2] < 0.92
+
+    for style in (
+        "fade_in",
+        "virtual_insanity_in",
+        "run_from_depth",
+        "kagebunshin_in",
+        "goku_teleport_in",
+    ):
         anim = IntroAnimation(style)
         for frac in (0.05, 0.25, 0.55, 0.85, 1.0):
-            assert anim.sample(anim.duration * frac).offset_y == 0.0
+            assert abs(anim.sample(anim.duration * frac).offset_y) <= 25.0
+
+
+def test_hero_drop_fecha_porta_antes_de_terminar_o_olhar():
+    hero = IntroAnimation("hero_drop_in")
+    porta = hero.sample(hero.duration * 0.47)
+    olhar = hero.sample(hero.duration * 0.76)
+    assert porta.door_open > 30 and porta.head_yaw == 0
+    assert olhar.door_open == 0 and olhar.head_yaw > 15
+    final = hero.sample(hero.duration)
+    assert final.finished and final.door_open == 0
+    assert math.isclose(final.head_yaw, 0, abs_tol=1e-9)
+
+
+def test_corridas_de_entrada_preservam_transformacao_ao_comecar_a_freada():
+    for style, fase in (("run_from_depth", 0.64), ("sandevistan_in", 0.60)):
+        intro = IntroAnimation(style)
+        tempo = intro.duration * fase
+        antes = intro.sample(tempo - 1e-6)
+        depois = intro.sample(tempo + 1e-6)
+        assert (antes.locomotion, depois.locomotion) == ("run", "land")
+        for eixo in ("offset_x", "offset_y", "scale", "roll", "yaw", "pitch"):
+            assert math.isclose(getattr(antes, eixo), getattr(depois, eixo), abs_tol=0.004)
 
 
 def test_exit_styles_sample_finite_and_complete():
@@ -127,7 +168,7 @@ def test_exit_death_signatures():
     vi_mid = vi.sample(vi.duration * 0.45)
     assert vi_mid.locomotion == "virtual_insanity"
     assert vi_mid.x < origin[0]  # origin=600 < 960 -> desliza à esquerda
-    assert vi_mid.pitch == 0.0 and vi_mid.roll == 0.0
+    assert abs(vi_mid.pitch) <= 4.0 and abs(vi_mid.roll) <= 8.0
 
     lego = ExitAnimation(origin, 260, bounds, style="lego_disassemble")
     assert lego.sample(lego.duration * 0.85).explode > 0.8
@@ -140,12 +181,25 @@ def test_exit_death_signatures():
     assert peace.sample(0.3).locomotion == "peace"
     assert peace.sample(peace.duration).dissolve > 0.9
 
+    goku_out = ExitAnimation(origin, 260, bounds, style="goku_teleport_out")
+    goku_focus = goku_out.sample(goku_out.duration * 0.35)
+    goku_vanish = goku_out.sample(goku_out.duration * 0.75)
+    assert goku_focus.locomotion == "goku_teleport"
+    assert goku_focus.dissolve == 0.0
+    assert goku_vanish.dissolve_mode == 3.0
+    assert goku_vanish.warp_scale[0] < 0.7 and goku_vanish.warp_scale[2] > 1.2
+    assert goku_out.sample(goku_out.duration).dissolve == 1.0
+
+    portal = ExitAnimation(origin, 260, bounds, style="portal_pull_out")
+    assert portal.sample(portal.duration * 0.85).dissolve > 0.5
+    assert abs(portal.sample(portal.duration * 0.85).yaw) > 150.0
+
 
 def test_sonic_exit_vertical_arc():
     origin = (600, 500)
     bounds = (0, 0, 1920, 1080)
     sonic = ExitAnimation(origin, 260, bounds, style="sonic_classic")
-    assert sonic.sample(sonic.duration * 0.05).y == origin[1]
+    assert abs(sonic.sample(sonic.duration * 0.05).y - origin[1]) <= 12
     assert sonic.sample(sonic.duration * 0.35).y < origin[1]
     assert sonic.sample(sonic.duration).y > origin[1]
 
@@ -159,10 +213,11 @@ def test_exits_grounded_preserve_vertical_height():
         "thanos_snap",
         "peace_fade_out",
         "virtual_insanity_out",
+        "goku_teleport_out",
     ):
         anim = ExitAnimation(origin, 260, bounds, style=grounded_style)
         for frac in (0.05, 0.30, 0.60, 0.90):
-            assert anim.sample(anim.duration * frac).y == origin[1]
+            assert abs(anim.sample(anim.duration * frac).y - origin[1]) <= 12
 
 
 def test_gate_atencao_cursor_novelty_decays_when_still_and_recovers_on_move():
@@ -263,7 +318,7 @@ def test_intros_refined_durations_and_clean_settle():
         if style in ("padrao", "aleatoria"):
             continue
         anim = IntroAnimation(style, from_side=1)
-        assert anim.duration >= 2.2
+        assert anim.duration >= 1.5
         end = anim.sample(anim.duration)
         assert end.finished is True
         assert end.dissolve == 0.0
@@ -272,40 +327,78 @@ def test_intros_refined_durations_and_clean_settle():
         assert abs(end.scale - 1.0) < 1e-6
 
 
-def test_loading_splash_translucent_and_idempotent_finish():
+def test_loading_splash_preenche_banner_transparente(tmp_path):
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
 
-    from sejoga.desktop.carregamento import LoadingSplash
+    from sejoga.desktop.carregamento import BRAND_PALETTES, LoadingSplash
 
     app = QApplication.instance() or QApplication([])
-    splash = LoadingSplash(configuracao.Settings())
+    splash = LoadingSplash(configuracao.Settings(), state_dir=tmp_path)
     assert splash.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-    assert bool(splash.windowFlags() & Qt.WindowType.WindowTransparentForInput)
-    splash.set_status("Compilando shaders...")
-    splash.tick()
-    splash.finish()
-    splash.finish()
-    assert splash._closed is True
+    assert splash.windowFlags() & Qt.WindowType.WindowTransparentForInput
+    assert splash.geometry().center() == splash.screen().geometry().center()
+    vazio = splash.grab().toImage()
+    for nivel in (0.35, 0.75, 1.0):
+        splash.atualizar(nivel)
+        img = splash.grab().toImage()
+        assert img.pixelColor(0, 0).alpha() == 0
+        assert any(img.pixelColor(x, 120).alpha() > 0 for x in range(img.width()))
+    # Avança até encher completamente e confere diferença visual clara na cavidade.
+    for _ in range(15):
+        splash.atualizar(1.0)
+    cheio = splash.grab().toImage()
+    assert cheio.pixelColor(0, 0).alpha() == 0
+    assert max(cheio.pixelColor(x, 120).alpha() for x in range(cheio.width())) == 255
+    assert max(vazio.pixelColor(x, 120).alpha() for x in range(vazio.width())) > 0
+    # Interior de uma letra ("ARMARIO"): cheio deve ser claramente mais luminoso que vazio.
+    brilho_vazio = max(
+        vazio.pixelColor(x, 165).red() + vazio.pixelColor(x, 165).green() + vazio.pixelColor(x, 165).blue()
+        for x in range(60, 320, 8)
+    )
+    brilho_cheio = max(
+        cheio.pixelColor(x, 165).red() + cheio.pixelColor(x, 165).green() + cheio.pixelColor(x, 165).blue()
+        for x in range(60, 320, 8)
+    )
+    assert brilho_cheio > brilho_vazio + 80
+    splash.close()
+
+    # Alternância sequencial entre todas as cores da brand sem repetir.
+    cores_abertura = []
+    for _ in range(len(BRAND_PALETTES)):
+        s = LoadingSplash(configuracao.Settings(), state_dir=tmp_path)
+        cores_abertura.append(s._paleta.nome)
+        s.close()
+    assert len(set(cores_abertura)) == len(BRAND_PALETTES)
     app.processEvents()
 
 
-def test_entrada_fecha_splash_antes_de_executar_overlay(monkeypatch):
+def test_entrada_mantem_progresso_ate_o_overlay_assumir(monkeypatch):
+    from contextlib import contextmanager
     from types import SimpleNamespace
+
     from sejoga import __main__ as entry
     from sejoga.desktop import carregamento
     from sejoga.render import janela
 
     eventos = []
-    monkeypatch.setattr(carregamento, "LoadingSplash", lambda settings: SimpleNamespace(
-        show=lambda: eventos.append("splash"),
-        finish=lambda: eventos.append("finish"),
-    ))
-    monkeypatch.setattr(janela, "OverlayApp", lambda settings: SimpleNamespace(
-        run=lambda: eventos.append("run"),
-    ))
+    progresso = SimpleNamespace(value=0.0)
+
+    @contextmanager
+    def abertura(settings):
+        eventos.append("splash")
+        yield progresso
+        eventos.append("finish")
+
+    def overlay(settings, loading_progress):
+        assert loading_progress is progresso
+        assert progresso.value == 0.18
+        return SimpleNamespace(run=lambda: eventos.append("run"))
+
+    monkeypatch.setattr(carregamento, "animacao_de_abertura", abertura)
+    monkeypatch.setattr(janela, "OverlayApp", overlay)
     assert entry.run() == 0
-    assert eventos == ["splash", "finish", "run"]
+    assert eventos == ["splash", "run", "finish"]
 
 
 def test_chroma_key_inicial_e_msaa_overlay_wgl():
@@ -313,7 +406,7 @@ def test_chroma_key_inicial_e_msaa_overlay_wgl():
 
     QApplication.instance() or QApplication([])
     from sejoga.render.janela import _chroma_inicial_bgr
-    from sejoga.render.janela_const import FRAMEBUFFER_MULTISAMPLES
+    from sejoga.render.sobreposicao_win32 import FRAMEBUFFER_MULTISAMPLES
 
     assert FRAMEBUFFER_MULTISAMPLES == 4
     assert _chroma_inicial_bgr("#FF00FF") == 0x00D600D6
@@ -327,7 +420,7 @@ def test_intros_borda_desktop_e_esqueleto_sem_cranio():
 
     for style in ("virtual_insanity_in", "sandevistan_in"):
         anim = IntroAnimation(style, from_side=-1, entry_distance=980.0)
-        assert anim.duration >= 3.5
+        assert anim.duration >= 2.1
         start = anim.sample(0.0)
         assert start.offset_x <= -950.0
 

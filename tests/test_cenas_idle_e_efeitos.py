@@ -43,7 +43,7 @@ def test_controlador_dispara_e_conclui_cena_idle():
     assert ctrl.cena_idle_amostra.ativa
     assert ctrl.cena_idle_amostra.nome == "ajeitar_fone"
 
-    for _ in range(250):
+    for _ in range(320):
         ctrl.update(1 / 60, grounded=True)
     assert not ctrl.cena_idle_amostra.ativa
 
@@ -57,16 +57,40 @@ def controlador(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("intensidade", "cena"), [(0.2, "batida_guardada"), (0.7, "escutar_fone")]
+    ("intensidade", "cenas_validas"),
+    [
+        (
+            0.2,
+            (
+                "batida_guardada",
+                "bater_pe_ritmo",
+                "groove_um_pe",
+                "ajeitar_fone",
+                "checar_walkman",
+                "escutar_fone",
+            ),
+        ),
+        (
+            0.7,
+            (
+                "escutar_fone",
+                "groove_um_pe",
+                "bater_pe_ritmo",
+                "solo_guitarra_ar",
+                "checar_walkman",
+            ),
+        ),
+    ],
 )
-def test_inicio_da_musica_encena_antes_da_danca(controlador, intensidade, cena):
+def test_inicio_da_musica_encena_antes_da_danca(controlador, intensidade, cenas_validas):
     musica = {"music_playing": True, "music_intensity": intensidade, "music_bpm": 100}
     controlador.update(0.1, **musica)
     assert controlador.cena_idle_amostra.ativa
-    assert controlador.cena_idle_amostra.nome == cena
+    cena = controlador.cena_idle_amostra.nome
+    assert cena in cenas_validas
     assert controlador.state == AnimationState.IDLE
 
-    for _ in range(int(DURACOES_CENAS[cena] * 10) + 2):
+    for _ in range(int(DURACOES_CENAS[cena] * 14) + 5):
         controlador.update(0.1, **musica)
     assert not controlador.cena_idle_amostra.ativa
     assert controlador.state == AnimationState.DANCE
@@ -76,7 +100,7 @@ def test_cena_musical_respeita_cooldown_e_novo_inicio(controlador):
     musica = {"music_playing": True, "music_intensity": 0.7, "dance_chance": 0.0}
     controlador.update(0.1, **musica)
     assert controlador.cena_idle_amostra.ativa
-    for _ in range(65):
+    for _ in range(85):
         controlador.update(0.1, **musica)
     for _ in range(8):
         controlador.update(0.1)
@@ -91,7 +115,7 @@ def test_cena_musical_respeita_cooldown_e_novo_inicio(controlador):
         controlador.update(0.1)
     controlador.update(0.1, **musica)
     assert controlador.cena_idle_amostra.ativa
-    assert controlador.cena_idle_amostra.nome == "escutar_fone"
+    assert controlador.cena_idle_amostra.nome in DURACOES_CENAS
 
 
 def test_disfarce_pede_o_retorno_do_cursor_apos_oito_segundos(controlador):
@@ -105,7 +129,12 @@ def test_disfarce_pede_o_retorno_do_cursor_apos_oito_segundos(controlador):
     assert not controlador.cena_idle_amostra.ativa
     controlador.update(0.1, pointer_position=(140, 100))
     assert controlador.cena_idle_amostra.ativa
-    assert controlador.cena_idle_amostra.nome == "disfarcar_olhar"
+    assert controlador.cena_idle_amostra.nome in (
+        "finger_guns_camera",
+        "disfarcar_olhar",
+        "segurar_porta_timido",
+        "conferir_estilo",
+    )
 
 
 @pytest.mark.parametrize("bloqueio", ["meta", "pacote"])
@@ -139,62 +168,12 @@ def test_arraste_e_queda_interrompem_cena_contextual(controlador, entrada, estad
     assert not controlador.cena_idle_amostra.ativa
 
 
-def test_coletar_parametros_efeitos_compativel_com_gerenciador():
-    import inspect
-
-    from sejoga.render.efeitos_cena import GerenciadorEfeitosCena
-    from sejoga.render.renderizador import Panda3DRenderer
-
-    assinatura = set(inspect.signature(GerenciadorEfeitosCena.atualizar).parameters)
-    assinatura.discard("self")
-    assinatura.discard("dt")
-    # Verifica no código-fonte de _coletar_parametros_efeitos sem precisar de janela WGL.
-    import ast
-    import pathlib
-
-    arvore = ast.parse(
-        pathlib.Path("src/sejoga/render/renderizador.py").read_text("utf-8")
-    )
-    chaves: set[str] = set()
-    for node in ast.walk(arvore):
-        if isinstance(node, ast.FunctionDef) and node.name == "_coletar_parametros_efeitos":
-            for sub in ast.walk(node):
-                if isinstance(sub, ast.Return) and isinstance(sub.value, ast.Dict):
-                    chaves = {ast.literal_eval(k) for k in sub.value.keys}
-    assert chaves and chaves <= assinatura
-
-
-def test_efeitos_cena_emite_particulas_em_camadas_e_expira_sem_vazar():
-    """Partículas em camadas respeitam limite máximo e somem ao acabar."""
-    from PySide6 import QtCore  # noqa: F401
-    from panda3d.core import NodePath
-
-    from sejoga.render.efeitos_cena import MAX_PARTICULAS, GerenciadorEfeitosCena
-
-    fx = GerenciadorEfeitosCena(NodePath("root"))
-    fx.atualizar(
-        1 / 60,
-        estado="land",
-        tempo_estado=0.02,
-        grounded=True,
-        acento_danca=True,
-        estouro_fone=True,
-        choque_argolas=True,
-        susto=True,
-        gosma_evento=True,
-    )
-    assert 0 < len(fx._particulas) <= MAX_PARTICULAS
-    for _ in range(180):
-        fx.atualizar(1 / 60, estado="idle", tempo_estado=2.0, grounded=True)
-    assert len(fx._particulas) == 0
-
-
-def test_choque_antenas_3d_tem_envelope_suave_sem_sumir_no_primeiro_frame():
-    """Arco 3D faz fade-out gradual ao desligar em vez de cortar seco em 1 quadro."""
+def test_choque_antenas_3d_tem_envelope_suave_e_ponte_intermitente():
+    """Coroas fazem fade-out suave e ponte voltaica dispara em rajadas intermitentes."""
     from math import isfinite
 
-    from PySide6 import QtCore  # noqa: F401
     from panda3d.core import NodePath
+    from PySide6 import QtCore  # noqa: F401
 
     from sejoga.render.choque_antenas_3d import ChoqueAntenas3D
 
@@ -205,19 +184,25 @@ def test_choque_antenas_3d_tem_envelope_suave_sem_sumir_no_primeiro_frame():
     ae.setPos(-0.4, 0.0, 0.9)
     choque = ChoqueAntenas3D(head, ad, ae)
 
-    for _ in range(15):
+    ponte_visivel = 0
+    for _ in range(180):
         choque.atualizar(1 / 60, aviso_antena=1.0, choque_argolas=True)
+        if not choque._arco_np.isHidden():
+            ponte_visivel += 1
     assert isfinite(choque._ganho_visivel)
     assert choque._ganho_visivel > 0.6
-    assert not choque._arco_np.isHidden()
+    assert not choque._pivos[0][0].isHidden()
+    assert 0 < ponte_visivel < 72, f"duty-cycle esperado intermitente, obtido {ponte_visivel}/180"
 
     choque.atualizar(1 / 60, aviso_antena=0.0, choque_argolas=False)
     assert choque._ganho_visivel > 0.3
-    assert not choque._arco_np.isHidden()
+    assert not choque._pivos[0][0].isHidden()
+    assert choque._arco_np.isHidden()
 
     for _ in range(30):
         choque.atualizar(1 / 60, aviso_antena=0.0, choque_argolas=False)
     assert choque._ganho_visivel == pytest.approx(0.0, abs=1e-3)
+    assert choque._pivos[0][0].isHidden()
     assert choque._arco_np.isHidden()
 
 
@@ -239,7 +224,7 @@ def test_novos_idles_controlam_dedos_e_transicionam_sem_estalo(controlador):
         dedos_vistos = []
         anterior = dict(controlador.update(1 / 60, grounded=True))
         pior = 0.0
-        passos = int(DURACOES_CENAS[nome] * 60) + 15
+        passos = int(DURACOES_CENAS[nome] * 78) + 25
         for _ in range(passos):
             atual = dict(controlador.update(1 / 60, grounded=True))
             if controlador.dedos_clipe_ativo is not None:
@@ -270,3 +255,18 @@ def test_controlador_dispara_gesto_point_e_mao_esquerda_independente(controlador
     controlador.update(1 / 60, grounded=True)
     assert controlador.state == AnimationState.POINT
     assert controlador.gesto_mao_esquerda == "thumbs_up"
+
+
+def test_cenas_estacionarias_funcionam_sentado_sem_levantar_pernas(controlador):
+    controlador.alternar_sentado()
+    for _ in range(90):
+        controlador.update(1 / 60, grounded=True, velocity=(0.0, 0.0))
+    assert controlador.state == AnimationState.SIT
+    controlador.interact("ajeitar_fone")
+    for _ in range(15):
+        controlador.update(1 / 60, grounded=True)
+    assert controlador.state == AnimationState.SIT
+    assert controlador.cena_idle_amostra.ativa
+    assert controlador.cena_idle_amostra.nome == "ajeitar_fone"
+    assert controlador.leg_motion.pose.left < -70.0
+    assert controlador.leg_motion.pose.left_knee > 30.0

@@ -10,8 +10,8 @@ import pytest
 
 from sejoga.animacao.poses_base import pose_idle, pose_thrown, pose_walk
 from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig
-from sejoga.nucleo.modelo import load_model
-from sejoga.nucleo.recursos import resolve_model
+from sejoga.nucleo.modelo import load_gltf_document, load_model
+from sejoga.nucleo.recursos import model_dir, resolve_model
 
 
 @pytest.fixture(scope="module")
@@ -73,3 +73,20 @@ def test_pose_presets_do_not_raise(model):
     for fn, args in ((pose_idle, (0.5,)), (pose_walk, (0.2,))):
         fn(rig, *args)
     pose_thrown(rig)
+
+@pytest.mark.parametrize(
+    "arquivo",
+    sorted(p for p in model_dir().rglob("*") if p.suffix.lower() in {".gltf", ".glb"}),
+    ids=lambda p: p.name,
+)
+def test_modelos_usam_pintura_pixel_com_uv_e_amostragem_nearest(arquivo):
+    doc = load_gltf_document(arquivo)
+    for malha in doc["meshes"]:
+        for primitiva in malha["primitives"]:
+            material = doc["materials"][primitiva["material"]]
+            pintura = material["pbrMetallicRoughness"]["baseColorTexture"]
+            assert f"TEXCOORD_{pintura.get('texCoord', 0)}" in primitiva["attributes"]
+            textura = doc["textures"][pintura["index"]]
+            assert doc["images"][textura["source"]]
+            sampler = doc["samplers"][textura["sampler"]]
+            assert sampler["minFilter"] == sampler["magFilter"] == 9728

@@ -27,14 +27,20 @@ from panda3d.core import (
     Mat4,
     NodePath,
     Point3,
-    Texture,
     Vec3,
 )
 
-from sejoga.animacao import fio_tuning as tuning
+from sejoga.animacao import fio_corda as tuning
 from sejoga.animacao.colisao_bracos import COMPRIMENTO_MAO_U
-from sejoga.animacao.fio_corda import FioFone, construir_tubo, indices_dos_tubos
+from sejoga.animacao.fio_corda import (
+    FioFone,
+    construir_tubo,
+    empurrar_ponto_de_caixa,
+    indices_dos_tubos,
+)
 from sejoga.animacao.primitivas_colisao import CaixaOrientada, Capsula
+
+from sejoga.render.sprites_efeitos import textura_acabamento
 
 #: Grupo do fio desenhado no asset rigado (filho de ``head``).
 NOME_GRUPO_FIO = "fio do fone"
@@ -42,14 +48,29 @@ NOME_GRUPO_FIO = "fio do fone"
 NOME_PECA_RIGIDA = "mesh18"
 #: Eixo para a câmera no referencial de ``model_np`` (a frente é -Y).
 REFERENCIA_VISUAL = (0.0, -1.0, 0.0)
-#: Caixas do corpo para o fio: (nó do rig, grupo/malha cujo volume vira a
-#: caixa; vazio = nó inteiro, usado nos pés). O primeiro nome encontrado vale.
+#: Caixas do corpo para o fio: (nó do rig, grupo/malha específica cujo volume vira
+#: a caixa; vazio = GeomNodes diretos do nó). Usar malhas específicas evita que
+#: ``peitoral.getTightBounds(body)`` englobe cabeça e braços reparentados pelo
+#: ``FlexibleRig`` (o que gerava uma caixa gigante e ejetava o fio para as costas).
 CAIXAS_DO_CORPO = (
-    ("body", ("peitoral", "mesh20")),
-    ("legs", ("pelvis", "mesh30")),
+    ("peitoral", ("mesh28", "mesh20")),
+    ("abdomen", ("mesh27",)),
+    ("pelvis", ("mesh45",)),
+    ("shoulder", ("mesh29",)),
+    ("shoulder2", ("mesh37",)),
+    ("coxa-direita", ("mesh46",)),
+    ("coxa-esquerda", ("mesh49",)),
     ("head", ("Armario", "mesh0")),
+    ("fone-direito", ()),
+    ("fone-esquerdo", ()),
+    ("canela-direita", ()),
+    ("canela-esquerda", ()),
     ("left-feet", ()),
     ("right-feet", ()),
+)
+#: Subconjunto de colisores do tronco/pélvis/coxas usado também para blindar a malha do asset.
+_NOMES_CAIXAS_TRONCO = frozenset(
+    ("peitoral", "abdomen", "pelvis", "calca-autoral", "coxa-direita", "coxa-esquerda")
 )
 #: Braços: (ombro, cotovelo, punho, sentido do osso da mão no eixo x).
 BRACOS = (
@@ -124,6 +145,7 @@ class MalhaFioFone:
         nos = renderer._rig_nodes
         self._cabeca: NodePath = nos["head"]
         self._corpo: NodePath = nos["body"]
+        self._peitoral: NodePath = nos.get("peitoral", self._corpo)
         # Ancoragem v2.0: prende cada ponta diretamente ao fone real e ao abdômen/walkman
         # mantendo a posição exata de repouso, mas acompanhando o balanço dos fones e da cintura.
         self._no_fone_esq: NodePath = nos.get("fone-esquerdo", self._cabeca)
@@ -140,6 +162,7 @@ class MalhaFioFone:
             self._corpo, _gltf_para_panda(tuning.ANCORA_APARELHO_U)
         )
         self._caixas_locais = self._medir_caixas(nos)
+        self._caixas_tronco_atuais: list[CaixaOrientada] = []
         self._bracos = [
             (nos[ombro], nos[cotovelo], nos[punho], sentido)
             for ombro, cotovelo, punho, sentido in BRACOS
@@ -147,15 +170,21 @@ class MalhaFioFone:
         ]
         ancoras = self._ancoras()
         self._fio = FioFone(ancoras)
-        self._fio.assentar(ancoras, self._gravidade(), *self._colisores())
+        caixas_ini, capsulas_ini = self._colisores()
+        frente_ini = self._frente_modelo()
+        self._fio.assentar(
+            ancoras, self._gravidade(), caixas_ini, capsulas_ini, frente_modelo=frente_ini
+        )
         self._malha: NodePath | None = None
         self._contorno: NodePath | None = None
         self._nos_fio: list[NodePath] = []
         self._visivel = True
-        self._pecas_asset: list[tuple[GeomVertexData, list, list]] = []
+        self._pecas_asset: list[tuple[GeomVertexData, list, list, GeomVertexRewriter]] = []
+        self._tempo_parado: float = 0.0
+        self._ultima_chave_parada: tuple | None = None
         if not self._ligar_fio_do_asset(renderer.outline_np):
             self._criar_malha(renderer.outline_np)
-        self._escrever_vertices()
+        self._escrever_vertices(frente=frente_ini)
 
     # ------------------------------------------------------------------ #
     # Fio desenhado no asset
@@ -174,6 +203,16 @@ class MalhaFioFone:
             n.normalize()
             normais.append(n)
         ligacoes = [_ponto_mais_proximo(p, self._corda_repouso) for p in repouso]
+        # Remove folga traseira (+Y em model_np) já presente no asset em repouso.
+        repouso_limpo: list[Vec3] = []
+        for p, (c, k, t) in zip(repouso, ligacoes, strict=True):
+            a = self._corda_repouso[c][k]
+            b = self._corda_repouso[c][k + 1]
+            p_corda = a + (b - a) * t
+            if p.y - p_corda.y > 0.008:
+                repouso_limpo.append(Vec3(p.x, p_corda.y + 0.008, p.z))
+            else:
+                repouso_limpo.append(p)
         # Assa a pose de repouso nos vértices: a peça passa a viver direto
         # no referencial de model_np (a corda já segue cabeça e corpo).
         escritor_n = GeomVertexRewriter(dados, "normal")
@@ -182,7 +221,7 @@ class MalhaFioFone:
         malha.wrtReparentTo(self._model_np)
         malha.setMat(identidade)
         malha.setCollideMask(0)
-        return dados, repouso, ligacoes
+        return dados, repouso_limpo, ligacoes
 
     def _ligar_fio_do_asset(self, contorno_np: NodePath) -> bool:
         """Prende os vértices dos planos de ``fio do fone`` à corda em repouso."""
@@ -215,10 +254,10 @@ class MalhaFioFone:
                 contorno.wrtReparentTo(contorno_np)
                 contorno.setMat(identidade)
                 self._nos_fio.append(contorno)
-            self._pecas_asset.append((dados, repouso, ligacoes))
+            self._pecas_asset.append((dados, repouso, ligacoes, GeomVertexRewriter(dados, "vertex")))
         return True
 
-    def _escrever_fio_do_asset(self) -> None:
+    def _escrever_fio_do_asset(self, frente: tuple[float, float, float] | None = None) -> None:
         agora = self._fio.pontos_das_cadeias()
         deltas: list[list[tuple[float, float, float, float, float, float]]] = []
         for c, pontos in enumerate(agora):
@@ -237,12 +276,35 @@ class MalhaFioFone:
                 ddz = (b1z - b0.z) - daz
                 seg_deltas.append((dax, day, daz, ddx, ddy, ddz))
             deltas.append(seg_deltas)
-        for dados, repouso, ligacoes in self._pecas_asset:
-            escritor = GeomVertexRewriter(dados, "vertex")
+        caixas_tronco = self._caixas_tronco_atuais
+        frente_atual = frente if frente is not None else self._frente_modelo()
+        for _dados, repouso, ligacoes, escritor in self._pecas_asset:
+            escritor.setRow(0)
             escrever = escritor.setData3
             for p, (c, k, t) in zip(repouso, ligacoes, strict=True):
                 dax, day, daz, ddx, ddy, ddz = deltas[c][k]
-                escrever(p.x + dax + ddx * t, p.y + day + ddy * t, p.z + daz + ddz * t)
+                vx = p.x + dax + ddx * t
+                vy = p.y + day + ddy * t
+                vz = p.z + daz + ddz * t
+                if caixas_tronco:
+                    ponto_proj = (vx, vy, vz)
+                    for cx in caixas_tronco:
+                        ponto_proj = empurrar_ponto_de_caixa(
+                            ponto_proj, cx, 0.008, preferir_frente=True, frente_modelo=frente_atual
+                        )
+                    vx, vy, vz = ponto_proj
+                escrever(vx, vy, vz)
+        for no in self._nos_fio:
+            if not no.isEmpty() and no.node() is not None:
+                no.node().markInternalBoundsStale()
+
+    def _frente_modelo(self) -> tuple[float, float, float]:
+        """Direção frontal atual do tórax em ``model_np`` (acompanha giros de 180°)."""
+        v = self._model_np.getRelativeVector(self._peitoral, Vec3(0, 1, 0))
+        if v.lengthSquared() < 1e-8:
+            return REFERENCIA_VISUAL
+        v.normalize()
+        return (float(v.x), float(v.y), float(v.z))
 
     # ------------------------------------------------------------------ #
     # Leitura da pose
@@ -261,20 +323,60 @@ class MalhaFioFone:
                 return achado
         return None
 
-    def _medir_caixas(self, nos) -> list[tuple[NodePath, Vec3, Vec3]]:
-        caixas = []
+    @staticmethod
+    def _limites_sem_antena(no: NodePath) -> tuple[Vec3, Vec3] | None:
+        """Limites locais ao ``no`` ignorando qualquer subárvore ``antena-*``."""
+        min_x = min_y = min_z = 1e9
+        max_x = max_y = max_z = -1e9
+        achou = False
+        for geom_np in no.findAllMatches("**/+GeomNode"):
+            cur = geom_np
+            tem_antena = False
+            while not cur.isEmpty() and cur != no:
+                if cur.getName().startswith("antena"):
+                    tem_antena = True
+                    break
+                cur = cur.getParent()
+            if tem_antena:
+                continue
+            limites = geom_np.getTightBounds(no)
+            if not limites:
+                continue
+            achou = True
+            lo, hi = limites
+            min_x, min_y, min_z = min(min_x, float(lo.x)), min(min_y, float(lo.y)), min(min_z, float(lo.z))
+            max_x, max_y, max_z = max(max_x, float(hi.x)), max(max_y, float(hi.y)), max(max_z, float(hi.z))
+        return (Vec3(min_x, min_y, min_z), Vec3(max_x, max_y, max_z)) if achou else None
+
+    def _medir_caixas(self, nos) -> list[tuple[str, NodePath, Vec3, Vec3]]:
+        caixas: list[tuple[str, NodePath, Vec3, Vec3]] = []
 
         for nome_no, nomes_malha in CAIXAS_DO_CORPO:
             no = nos.get(nome_no)
-            malha = self._malha_da_caixa(no, nomes_malha)
-            limites = (
-                malha.getTightBounds(no)
-                if malha is not None and not malha.isEmpty()
-                else None
-            )
+            if no is not None and not no.isEmpty() and not nomes_malha and nome_no.startswith("fone-"):
+                limites = self._limites_sem_antena(no)
+            else:
+                malha = self._malha_da_caixa(no, nomes_malha)
+                limites = (
+                    malha.getTightBounds(no)
+                    if malha is not None and not malha.isEmpty()
+                    else None
+                )
 
             if limites:
-                caixas.append((no, Vec3(limites[0]), Vec3(limites[1])))
+                caixas.append((nome_no, no, Vec3(limites[0]), Vec3(limites[1])))
+
+        pelvis = nos.get("pelvis")
+        if pelvis is not None and not pelvis.isEmpty():
+            # Volume explícito do cós/baixo-ventre de calca-autoral no referencial local da pelvis.
+            caixas.append(
+                (
+                    "calca-autoral",
+                    pelvis,
+                    Vec3(-0.228, -0.162, -0.045),
+                    Vec3(0.228, 0.148, 0.095),
+                )
+            )
 
         return caixas
 
@@ -301,8 +403,9 @@ class MalhaFioFone:
 
     def _caixas_atuais(self) -> list[CaixaOrientada]:
         caixas = []
+        tronco = []
 
-        for no, minimo, maximo in self._caixas_locais:
+        for nome_caixa, no, minimo, maximo in self._caixas_locais:
             mat = no.getMat(self._model_np)
             centro = mat.xformPoint((minimo + maximo) * 0.5)
             meias = (maximo - minimo) * 0.5
@@ -319,10 +422,14 @@ class MalhaFioFone:
                     eixos.append((1.0 if indice == 0 else 0.0, 1.0 if indice == 1 else 0.0, 1.0 if indice == 2 else 0.0))
                 meias_reais.append(meias[indice] * escala)
 
-            caixas.append(
-                CaixaOrientada((centro.x, centro.y, centro.z), tuple(eixos), tuple(meias_reais))  # type: ignore[arg-type]
+            caixa = CaixaOrientada(
+                (centro.x, centro.y, centro.z), tuple(eixos), tuple(meias_reais)  # type: ignore[arg-type]
             )
+            caixas.append(caixa)
+            if nome_caixa in _NOMES_CAIXAS_TRONCO:
+                tronco.append(caixa)
 
+        self._caixas_tronco_atuais = tronco
         return caixas
 
     def _capsulas_atuais(self) -> list[Capsula]:
@@ -349,12 +456,15 @@ class MalhaFioFone:
     def _criar_malha(self, contorno_np: NodePath) -> None:
         quantidades = [len(cadeia) for cadeia in self._fio.cadeias]
         total_vertices = sum((q - 1) * 16 for q in quantidades)
-        dados = GeomVertexData("fio-fone", GeomVertexFormat.getV3n3c4(), Geom.UHDynamic)
+        dados = GeomVertexData("fio-fone", GeomVertexFormat.getV3n3c4t2(), Geom.UHDynamic)
         dados.setNumRows(total_vertices)
         cores = GeomVertexWriter(dados, "color")
 
-        for _ in range(total_vertices):
-            cores.addData4f(*tuning.COR_FIO)
+        uv = GeomVertexWriter(dados, "texcoord")
+        for _ in range(total_vertices // 4):
+            for u, v in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                cores.addData4f(*tuning.COR_FIO)
+                uv.addData2f(u, v)
 
         triangulos = GeomTriangles(Geom.UHStatic)
 
@@ -369,11 +479,7 @@ class MalhaFioFone:
         self._malha = self._model_np.attachNewNode(no_geom)
         self._malha.setTwoSided(True)
         self._malha.setCollideMask(0)
-        # Textura opaca real: o shader do contorno descarta pelo alpha dela.
-        branca = Texture("fio-fone-opaca")
-        branca.setup2dTexture(1, 1, Texture.TUnsignedByte, Texture.FRgba)
-        branca.setRamImage(bytes((255, 255, 255, 255)))
-        self._malha.setTexture(branca, 1)
+        self._malha.setTexture(textura_acabamento("borracha"), 1)
         self._contorno = self._malha.copyTo(contorno_np)
         self._contorno.setName("fio-fone-contorno")
         self._nos_fio.extend((self._malha, self._contorno))
@@ -381,9 +487,9 @@ class MalhaFioFone:
         self._escritor_vertices = GeomVertexRewriter(dados, "vertex")
         self._escritor_normais = GeomVertexRewriter(dados, "normal")
 
-    def _escrever_vertices(self) -> None:
+    def _escrever_vertices(self, *, frente: tuple[float, float, float] | None = None) -> None:
         if self._pecas_asset:
-            self._escrever_fio_do_asset()
+            self._escrever_fio_do_asset(frente=frente)
             return
         self._escritor_vertices.setRow(0)
         self._escritor_normais.setRow(0)
@@ -396,6 +502,9 @@ class MalhaFioFone:
             for vertice, normal in zip(vertices, normais, strict=True):
                 self._escritor_vertices.setData3(*vertice)
                 self._escritor_normais.setData3(*normal)
+        for no in self._nos_fio:
+            if not no.isEmpty() and no.node() is not None:
+                no.node().markInternalBoundsStale()
 
     def definir_visivel(self, visivel: bool) -> None:
         """Exibe ou oculta o fio do fone (usado durante desmontagem LEGO)."""
@@ -408,6 +517,32 @@ class MalhaFioFone:
         """Avança a corda ``dt`` segundos e reescreve a malha."""
         if not self._visivel:
             return
+        ancoras = self._ancoras()
+        frente = self._frente_modelo()
+        gravidade = self._gravidade()
+        chave = (
+            tuple(round(c, 4) for p in ancoras for c in p),
+            tuple(round(c, 4) for c in frente),
+            tuple(round(c, 4) for c in gravidade),
+        )
+        max_v2 = max(
+            (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2
+            for p, q in zip(self._fio.posicoes, self._fio._anteriores, strict=True)
+        )
+        if chave == self._ultima_chave_parada and max_v2 < 1e-10:
+            self._tempo_parado += max(0.0, float(dt))
+            if self._tempo_parado >= 0.35:
+                return
+        else:
+            self._ultima_chave_parada = chave
+            self._tempo_parado = 0.0
         caixas, capsulas = self._colisores()
-        self._fio.atualizar(dt, self._ancoras(), self._gravidade(), caixas, capsulas)  # type: ignore[arg-type]
-        self._escrever_vertices()
+        self._fio.atualizar(
+            dt,
+            ancoras,
+            gravidade,
+            caixas,
+            capsulas,
+            frente_modelo=frente,
+        )  # type: ignore[arg-type]
+        self._escrever_vertices(frente=frente)

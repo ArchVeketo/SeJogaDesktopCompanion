@@ -70,13 +70,6 @@ class DesktopIntegration:
         win32gui.AppendMenu(menu, win32con.MF_SEPARATOR, 0, "")
         win32gui.AppendMenu(menu, win32con.MF_STRING, self.SETTINGS, "Configurações...")
         win32gui.AppendMenu(menu, win32con.MF_STRING, self.PEEK, "Mostrar tentáculos")
-        for command, style in self.DANCE_COMMANDS.items():
-            win32gui.AppendMenu(
-                menu,
-                win32con.MF_STRING,
-                command,
-                "Prévia silenciosa: " + style.replace("_", " "),
-            )
         win32gui.AppendMenu(
             menu, win32con.MF_STRING, self.CAPTURE, "Capturar diagnóstico"
         )

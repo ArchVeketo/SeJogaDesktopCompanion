@@ -20,7 +20,7 @@ from sejoga.animacao.braco_hpr import braco_hpr_graus
 from sejoga.animacao.clipes_animacao import amostrar_clipe, ciclo_da_fase
 from sejoga.animacao.clipes_ocioso import camada_respiracao, sample_idle
 from sejoga.animacao.dados_autorais import reacoes_ativas
-from sejoga.animacao.interpolacao import amostrar_pista
+from sejoga.animacao.interpolacao import amostrar_pista, suavizar_quintico
 from sejoga.animacao.movimento_corpo import BodyPose
 from sejoga.animacao.pose_repouso import REPOUSO
 from sejoga.animacao.ruido_procedural import delta_micro_ruido_idle
@@ -71,6 +71,7 @@ def delta_idle(
     look_vertical: float = 0.0,
     torso_look_direction: float | None = None,
     torso_look_vertical: float | None = None,
+    respiracao_cascata: tuple[float, float, float] | None = None,
 ) -> dict[str, Rotation3]:
     """Delta aditivo do estado idle sobre a pose de repouso.
 
@@ -111,12 +112,16 @@ def delta_idle(
     # Princípio 7 (Arcos): figura-8 lemniscata orgânica em cascata garante que nenhuma
     # personalidade congele em linha reta ou no trecho inicial de respiração.
     escala_arco = (
-        0.28
-        if personality in (IdlePersonality.CALM, IdlePersonality.SHY)
+        0.58
+        if personality == IdlePersonality.CALM
         else (
-            0.52
-            if personality in (IdlePersonality.PLAYFUL, IdlePersonality.VIBING, IdlePersonality.RHYTHM)
-            else 0.40
+            0.36
+            if personality == IdlePersonality.SHY
+            else (
+                0.56
+                if personality in (IdlePersonality.PLAYFUL, IdlePersonality.VIBING, IdlePersonality.RHYTHM)
+                else 0.44
+            )
         )
     )
     for grupo, (ax, ay, az) in idle_arco_composto(t, frequencia_base=0.18).items():
@@ -148,9 +153,11 @@ def delta_idle(
                 base_delta.z + radians(az),
             )
 
-    # Respiração sobre a pose do estilo ativo.
-    if respiracao:
-        camada_resp = camada_respiracao(respiracao, 1.0)
+    # Respiração sobre a pose do estilo ativo (com cascata opcional por segmento).
+    if respiracao or respiracao_cascata is not None:
+        camada_resp = camada_respiracao(
+            respiracao, 1.0, respiracao_cascata=respiracao_cascata
+        )
         for grupo, (ex, ey, ez) in camada_resp.items():
             base_delta = delta.get(grupo, Rotation3())
             delta[grupo] = Rotation3(
@@ -162,6 +169,29 @@ def delta_idle(
     return delta
 
 
+def delta_indignacao(t: float, peso: float) -> dict[str, Rotation3]:
+    """Postura aditiva de indignação/cisma (braços fechados em atitude, tronco firme)."""
+    p = max(0.0, min(1.0, float(peso)))
+    if p <= 1e-4:
+        return {}
+    tap = 2.0 * sin(t * 2.2) * p
+    return {
+        "cintura": Rotation3(radians(2.0 * p), 0.0, radians(1.5 * p)),
+        "peitoral": Rotation3(radians(-4.5 * p), radians(-4.0 * p), radians(-2.5 * p)),
+        "body": Rotation3(radians(-3.0 * p), radians(-5.0 * p), radians(tap)),
+        "head": Rotation3(radians(-5.5 * p), radians(8.0 * p), radians(-4.5 * p)),
+        "shoulder": Rotation3(radians(3.0 * p), 0.0, radians(6.0 * p)),
+        "shoulder2": Rotation3(radians(3.0 * p), 0.0, radians(-6.0 * p)),
+        "right-arm": Rotation3(radians(18.0 * p), radians(-24.0 * p), radians(-12.0 * p)),
+        "left-arm": Rotation3(radians(18.0 * p), radians(24.0 * p), radians(12.0 * p)),
+        "ant-arm": Rotation3(radians(-14.0 * p), 0.0, radians(38.0 * p)),
+        "ant-arm2": Rotation3(radians(-14.0 * p), 0.0, radians(-38.0 * p)),
+        "hand": Rotation3(radians(12.0 * p), radians(-8.0 * p), radians(8.0 * p)),
+        "hand2": Rotation3(radians(12.0 * p), radians(8.0 * p), radians(-8.0 * p)),
+        "door": Rotation3(0.0, radians(1.8 * p), 0.0),
+    }
+
+
 def delta_hover(
     t: float,
     personality: IdlePersonality,
@@ -170,6 +200,7 @@ def delta_hover(
     look_vertical: float = 0.0,
     torso_look_direction: float | None = None,
     torso_look_vertical: float | None = None,
+    respiracao_cascata: tuple[float, float, float] | None = None,
 ) -> dict[str, Rotation3]:
     """Delta aditivo do estado hover: base de idle + alcance direcional ao cursor."""
     delta = delta_idle(
@@ -180,6 +211,7 @@ def delta_hover(
         look_vertical=look_vertical,
         torso_look_direction=torso_look_direction,
         torso_look_vertical=torso_look_vertical,
+        respiracao_cascata=respiracao_cascata,
     )
     dir_c = max(-1.0, min(1.0, look_direction))
     ver_c = max(-1.0, min(1.0, look_vertical))
@@ -381,20 +413,59 @@ def _delta_drag_braco_pego(
     fator_upe: float,
     atraso: float,
 ) -> None:
-    """Pega por um braço: braço segurado estica, livre pende e busca o cursor."""
+    """Pega por um braço: braço segurado acompanha dinamicamente o mouse e o pêndulo."""
     pego_dir = grab_part == "right-arm"
     lado_livre = "left" if pego_dir else "right"
     sinal_pego = 1.0 if pego_dir else -1.0
     braco_pego = "right-arm" if pego_dir else "left-arm"
     ante_pego = "ant-arm" if pego_dir else "ant-arm2"
+    mao_pega = "hand" if pego_dir else "hand2"
     braco_livre = "left-arm" if pego_dir else "right-arm"
     ante_livre = "ant-arm2" if pego_dir else "ant-arm"
 
+    # Contra-rotação dinâmica pelo pêndulo do corpo: enquanto o tronco balança em
+    # ``motion.roll``, o ombro articulado mantém o braço segurado alinhado à tração
+    # do mouse em vez de congelar numa estátua rígida para cima.
+    roll_norm = ((motion.roll + 180.0) % 360.0) - 180.0
+    susp = max(0.0, min(1.0, getattr(motion, "hanging", 0.0)))
+    roll_vel = getattr(motion, "roll_velocity", 0.0)
+    tensao_vel = min(1.0, abs(roll_vel) / 140.0 + abs(motion.arm_lag) / 30.0)
+
+    # No espaço local do tronco, +Z mundo gira em -roll_norm.
+    # A base dinâmica (-68° * sinal) contra-gira com -roll_norm * 0.72 e responde
+    # à inércia do mouse sem encostar na lateral da cabeça.
+    z_alvo = (
+        sinal_pego * (-68.0)
+        - roll_norm * 0.72
+        - motion.arm_lag * 0.24
+        - motion.limb_swing * 0.14
+    )
+    if pego_dir:
+        z_pego = max(-68.0, min(18.0, z_alvo))
+    else:
+        z_pego = max(-18.0, min(68.0, z_alvo))
+
+    # Cotovelo relaxa levemente quando parado (~22°) e estica sob tensão do arraste (~6°),
+    # balançando com o chicote da velocidade angular.
+    cotovelo_flex = (22.0 - 14.0 * tensao_vel) * sinal_pego - max(
+        -16.0, min(16.0, roll_vel * 0.08 + motion.arm_lag * 0.18)
+    )
+    x_pego = max(-28.0, min(22.0, -6.0 - motion.pitch * 0.35))
+    y_pego = max(-24.0, min(24.0, -6.0 * sinal_pego + motion.yaw * 0.32))
+
     delta[braco_pego] = _delta_absoluto_para_repouso(
-        braco_pego, -8.0 - motion.pitch * 0.20, -4.0 * sinal_pego, -64.0 * sinal_pego
+        braco_pego, x_pego, y_pego, z_pego
     )
     delta[ante_pego] = _delta_absoluto_para_repouso(
-        ante_pego, 0.0, 0.0, 8.0 * sinal_pego
+        ante_pego,
+        max(-12.0, min(12.0, motion.pitch * 0.18)),
+        0.0,
+        cotovelo_flex,
+    )
+    delta[mao_pega] = Rotation3(
+        radians(max(-20.0, min(20.0, -10.0 * susp + motion.pitch * 0.25))),
+        radians(max(-16.0, min(16.0, -motion.yaw * 0.22))),
+        radians(max(-24.0, min(24.0, -cotovelo_flex * 0.45 - roll_vel * 0.06))),
     )
     delta.update(_braco_pendente_mundo(lado_livre, motion.roll, motion.pitch, atraso))
 
@@ -410,10 +481,11 @@ def _delta_drag_braco_pego(
             delta[ante_livre], alcance[ante_livre], t_alcance * 0.7
         )
 
+    # Cabeça olha na direção do braço segurado/mouse com peso natural
     delta["head"] = Rotation3(
-        radians(-8.0 * max(0.0, fator_upe) + 12.0 * max(0.0, -fator_upe)),
-        radians(motion.yaw * 0.6),
-        radians(motion.head_roll * 0.8 + motion.limb_swing * 0.12),
+        radians(-6.0 * max(0.0, fator_upe) + 12.0 * max(0.0, -fator_upe)),
+        radians(-12.0 * sinal_pego * susp + motion.yaw * 0.55),
+        radians(motion.head_roll * 0.8 + motion.limb_swing * 0.14 - 8.0 * sinal_pego * susp),
     )
 
 
@@ -502,17 +574,19 @@ def _aplicar_cadencia_arraste_tronco_maos(
     pitch_sp = max(-16.0, min(16.0, motion.pitch * 0.36))
     yaw_sp = max(-18.0, min(18.0, motion.yaw * 0.42))
     roll_sp = max(-22.0, min(22.0, motion.limb_swing * 0.20 + whip * 0.62))
-    # Coluna cede ao peso do corpo suspenso e propaga atraso da cintura ao peitoral.
-    _somar_clamped(delta, "cintura", pitch_sp * 0.30 + 2.8 * susp, yaw_sp * 0.28, roll_sp * 0.32)
-    _somar_clamped(delta, "abdomen", pitch_sp * 0.36 + 3.8 * susp, yaw_sp * 0.36, roll_sp * 0.38)
-    _somar_clamped(delta, "peitoral", pitch_sp * 0.42 + 4.8 * susp, yaw_sp * 0.44, roll_sp * 0.44)
+    # Coluna cede suavemente para frente sob o peso suspenso (-X = frente) e propaga atraso.
+    _somar_clamped(delta, "cintura", pitch_sp * 0.30 - 1.6 * susp, yaw_sp * 0.28, roll_sp * 0.32)
+    _somar_clamped(delta, "abdomen", pitch_sp * 0.36 - 2.2 * susp, yaw_sp * 0.36, roll_sp * 0.38)
+    _somar_clamped(delta, "peitoral", pitch_sp * 0.42 - 2.8 * susp, yaw_sp * 0.44, roll_sp * 0.44)
     punho_atraso = max(-30.0, min(30.0, motion.arm_lag * 0.56 + whip * 0.60))
     for braco, sh, ant, mao, sinal in (
         ("right-arm", "shoulder", "ant-arm", "hand", 1.0),
         ("left-arm", "shoulder2", "ant-arm2", "hand2", -1.0),
     ):
         if grab_part == braco:
-            _somar_clamped(delta, sh, 0.0, 0.0, 14.0 * sinal * susp)
+            # Manga e junta do braço pego reagem elasticamente à tração sem travar rígido
+            _somar_clamped(delta, sh, -pitch_sp * 0.18, 0.0, (10.0 * sinal + roll_sp * 0.25) * susp)
+            _somar_clamped(delta, mao, pitch_sp * 0.16, 0.0, max(-14.0, min(14.0, whip * 0.22)))
             continue
         ombro_z = (8.0 if grab_part == "body" else -6.0) * sinal * susp
         flare_z = -24.0 * sinal * centrifugo
@@ -524,9 +598,9 @@ def _aplicar_cadencia_arraste_tronco_maos(
     for ant_nome, s_ant in (("antena-direita", -1.0), ("antena-esquerda", 1.0)):
         _somar_clamped(delta, ant_nome, -pitch_sp * 0.30, 0.0, roll_sp * 0.42 + s_ant * 10.0 * centrifugo)
     if grab_part == "head":
-        _somar_clamped(delta, "head", -pitch_sp * 0.34 - 5.0 * susp, yaw_sp * 0.30, -roll_sp * 0.28)
+        _somar_clamped(delta, "head", -pitch_sp * 0.34 - 4.0 * susp, yaw_sp * 0.30, -roll_sp * 0.28)
     elif susp > 0.05:
-        _somar_clamped(delta, "head", 4.5 * susp, 0.0, roll_sp * 0.16)
+        _somar_clamped(delta, "head", -2.5 * susp, 0.0, roll_sp * 0.16)
 
 
 def _somar(
@@ -596,6 +670,90 @@ def delta_dance(
         "head": Rotation3(radians(-bounce * 2), radians(sway * 0.5), 0),
         "right-arm": Rotation3(0, 0, radians(-bounce * 15)),
         "left-arm": Rotation3(0, 0, radians(bounce * 15)),
+    }
+
+
+def delta_sit(
+    t: float,
+    look_direction: float = 0.0,
+    look_vertical: float = 0.0,
+    respiracao: float = 0.0,
+) -> dict[str, Rotation3]:
+    """Delta aditivo de sentado acordado (descanso alerta com respiração e olhar)."""
+    dir_c = max(-1.0, min(1.0, look_direction))
+    ver_c = max(-1.0, min(1.0, look_vertical))
+    balanco = sin(t * 0.85) * 1.8
+    resp_x = respiracao * 1.4
+    return {
+        "cintura": Rotation3(radians(2.5), 0.0, radians(balanco * 0.4)),
+        "abdomen": Rotation3(radians(2.0), 0.0, 0.0),
+        "peitoral": Rotation3(radians(-1.5 + resp_x * 0.5 - ver_c * 2.0), radians(dir_c * 4.5), radians(balanco * 0.5)),
+        "body": Rotation3(radians(4.0 + resp_x), radians(dir_c * 3.0), radians(balanco * 0.6)),
+        "head": Rotation3(radians(-3.0 - ver_c * 11.0 + resp_x * 0.4), radians(dir_c * 18.0), radians(dir_c * 3.0)),
+        "shoulder": Rotation3(radians(2.0), 0.0, radians(3.5)),
+        "shoulder2": Rotation3(radians(2.0), 0.0, radians(-3.5)),
+        "right-arm": Rotation3(radians(14.0), radians(-14.0), radians(-42.0 - resp_x * 1.2)),
+        "left-arm": Rotation3(radians(14.0), radians(14.0), radians(42.0 + resp_x * 1.2)),
+        "ant-arm": Rotation3(radians(-10.0), 0.0, radians(28.0)),
+        "ant-arm2": Rotation3(radians(-10.0), 0.0, radians(-28.0)),
+        "hand": Rotation3(radians(-12.0), 0.0, radians(8.0)),
+        "hand2": Rotation3(radians(-12.0), 0.0, radians(-8.0)),
+        "door": Rotation3(0.0, radians(max(0.0, 1.0 + respiracao * 0.9)), 0.0),
+    }
+
+
+def delta_jump(
+    t: float,
+    velocity: tuple[float, float] = (0.0, -400.0),
+) -> dict[str, Rotation3]:
+    """Delta aditivo do salto: antecipação contínua (0..0.11s) e impulso aéreo sem corte."""
+    vx, vy = velocity
+    inclin = max(-14.0, min(14.0, vx * 0.035))
+    coil = suavizar_quintico(max(0.0, min(1.0, t / 0.11)))
+    pose_coil: dict[str, tuple[float, float, float]] = {
+        "cintura": (-6.0 * coil, 0.0, 0.0),
+        "peitoral": (-8.0 * coil, 0.0, 0.0),
+        "body": (-10.0 * coil, 0.0, -inclin * 0.3),
+        "head": (10.0 * coil, 0.0, 0.0),
+        "shoulder": (0.0, 0.0, 0.0),
+        "shoulder2": (0.0, 0.0, 0.0),
+        "right-arm": (-22.0 * coil, 16.0 * coil, 14.0 * coil),
+        "left-arm": (-22.0 * coil, -16.0 * coil, -14.0 * coil),
+        "ant-arm": (0.0, 0.0, 36.0 * coil),
+        "ant-arm2": (0.0, 0.0, -36.0 * coil),
+        "door": (0.0, 0.0, 0.0),
+    }
+    if t <= 0.11:
+        return {
+            g: Rotation3(radians(x), radians(y), radians(z))
+            for g, (x, y, z) in pose_coil.items()
+        }
+    voo = suavizar_quintico(min(1.0, max(0.0, (t - 0.11) / 0.16)))
+    asc = max(0.0, min(1.0, abs(min(0.0, vy)) / 420.0))
+    elev = 48.0 + 18.0 * asc
+    pose_voo: dict[str, tuple[float, float, float]] = {
+        "cintura": (5.0, 0.0, inclin * 0.25),
+        "peitoral": (6.0, inclin * 0.4, inclin * 0.35),
+        "body": (8.0, inclin * 0.3, inclin * 0.5),
+        "head": (-6.0, inclin * 0.5, -inclin * 0.3),
+        "shoulder": (-6.0, 0.0, -8.0),
+        "shoulder2": (-6.0, 0.0, 8.0),
+        "right-arm": (-8.0, 12.0, -elev),
+        "left-arm": (10.0, -14.0, elev * 0.85),
+        "ant-arm": (0.0, 0.0, 22.0),
+        "ant-arm2": (0.0, 0.0, -32.0),
+        "door": (0.0, 8.0, 0.0),
+    }
+    inv = 1.0 - voo
+    return {
+        g: Rotation3(
+            radians(ax * inv + bx * voo),
+            radians(ay * inv + by * voo),
+            radians(az * inv + bz * voo),
+        )
+        for g, ((ax, ay, az), (bx, by, bz)) in (
+            (g, (pose_coil[g], pose_voo[g])) for g in pose_coil
+        )
     }
 
 
@@ -712,36 +870,34 @@ def _delta_sleep_sentado(
     respiracao: float,
     curl: float,
 ) -> dict[str, Rotation3]:
-    coxa = _s(cfg, "sentado_coxa_graus", sono.SONO_SENTADO_COXA_GRAUS)
-    canela = _s(cfg, "sentado_canela_graus", sono.SONO_SENTADO_CANELA_GRAUS)
     braco_z = _s(cfg, "sentado_braco_z", sono.SONO_SENTADO_BRACO_Z)
     ant_z = _s(cfg, "sentado_antebraco_z", sono.SONO_SENTADO_ANTEBRACO_Z)
     r_peito = _s(cfg, "respiracao_peito", sono.SONO_RESPIRACAO_PEITO)
     r_cab = _s(cfg, "respiracao_cabeca", sono.SONO_RESPIRACAO_CABECA)
     delta = {
+        # Coluna relaxada em curva C contínua para frente (-X), nunca tombada para trás.
         "body": Rotation3(
             radians(_s(cfg, "sentado_corpo_x", sono.SONO_SENTADO_CORPO_X) + respiracao * r_peito),
             0,
-            radians(-3.0),
+            radians(-2.5),
         ),
-        "cintura": Rotation3(radians(4.0), 0, 0),
-        "abdomen": Rotation3(radians(6.0), 0, 0),
-        "peitoral": Rotation3(radians(8.0), 0, 0),
+        "cintura": Rotation3(radians(-2.0), 0, 0),
+        "abdomen": Rotation3(radians(-2.5), 0, 0),
+        "peitoral": Rotation3(radians(-3.0), 0, 0),
         "head": Rotation3(
             radians(_s(cfg, "sentado_cabeca_x", sono.SONO_SENTADO_CABECA_X) + respiracao * r_cab + _cochilo(t)),
             0,
             radians(_s(cfg, "sentado_cabeca_z", sono.SONO_SENTADO_CABECA_Z)),
         ),
-        "coxa-direita": Rotation3(radians(coxa), 0, 0),
-        "coxa-esquerda": Rotation3(radians(coxa), 0, 0),
-        "canela-direita": Rotation3(radians(canela), 0, 0),
-        "canela-esquerda": Rotation3(radians(canela), 0, 0),
-        "joelho-direito": Rotation3(radians(canela * 0.5), 0, 0),
-        "joelho-esquerdo": Rotation3(radians(canela * 0.5), 0, 0),
-        "right-arm": Rotation3(radians(-12.0), radians(6.0), radians(braco_z)),
-        "left-arm": Rotation3(radians(-12.0), radians(-6.0), radians(-braco_z)),
-        "ant-arm": Rotation3(radians(-8.0), 0, radians(ant_z)),
-        "ant-arm2": Rotation3(radians(-8.0), 0, radians(-ant_z)),
+        # Braços baixos e relaxados pousando as mãos sobre o colo/coxas
+        "shoulder": Rotation3(radians(2.0), 0, radians(3.0)),
+        "shoulder2": Rotation3(radians(2.0), 0, radians(-3.0)),
+        "right-arm": Rotation3(radians(10.0), radians(-14.0), radians(braco_z)),
+        "left-arm": Rotation3(radians(10.0), radians(14.0), radians(-braco_z)),
+        "ant-arm": Rotation3(radians(-12.0), 0, radians(ant_z)),
+        "ant-arm2": Rotation3(radians(-12.0), 0, radians(-ant_z)),
+        "hand": Rotation3(radians(-10.0), 0, radians(6.0)),
+        "hand2": Rotation3(radians(-10.0), 0, radians(-6.0)),
     }
     delta.update(_delta_dedos(curl))
     return delta
@@ -772,20 +928,12 @@ def delta_sleep(t: float, modo: str = "em_pe") -> dict[str, Rotation3]:
     r_peito = _s(cfg, "respiracao_peito", sono.SONO_RESPIRACAO_PEITO)
     r_cab = _s(cfg, "respiracao_cabeca", sono.SONO_RESPIRACAO_CABECA)
     if modo == "deitado":
-        d_coxa = _s(cfg, "deitado_coxa_graus", sono.SONO_DEITADO_COXA_GRAUS)
-        d_can = _s(cfg, "deitado_canela_graus", sono.SONO_DEITADO_CANELA_GRAUS)
         d_br = _s(cfg, "deitado_braco_z", sono.SONO_DEITADO_BRACO_Z)
         d_ant = _s(cfg, "deitado_antebraco_z", sono.SONO_DEITADO_ANTEBRACO_Z)
         delta = {
             "body": Rotation3(radians(respiracao * r_peito * 0.8), 0, 0),
             "cintura": Rotation3(0, 0, radians(-4.0)),
             "head": Rotation3(radians(-6.0 + respiracao * r_cab), 0, radians(-10.0)),
-            "coxa-direita": Rotation3(radians(d_coxa), 0, radians(8.0)),
-            "coxa-esquerda": Rotation3(radians(d_coxa * 0.7), 0, radians(-6.0)),
-            "canela-direita": Rotation3(radians(d_can), 0, 0),
-            "canela-esquerda": Rotation3(radians(d_can * 0.8), 0, 0),
-            "joelho-direito": Rotation3(radians(d_can * 0.5), 0, 0),
-            "joelho-esquerdo": Rotation3(radians(d_can * 0.4), 0, 0),
             "right-arm": Rotation3(radians(-10.0), 0, radians(d_br)),
             "left-arm": Rotation3(radians(-16.0), 0, radians(-d_br * 0.8)),
             "ant-arm": Rotation3(0, 0, radians(d_ant)),
@@ -972,7 +1120,10 @@ def _delta_bracos_secundarios(saida, state, delta_estado, t, personality):
             if personality in (IdlePersonality.CURIOUS, IdlePersonality.PLAYFUL)
             else 5.0
         )
-        curl = 3.0 + sin(t * 0.62 - side * 0.3) * amplitude + wrist_follow * 0.3
+        # ``wrist_follow`` segue o sinal espelhado de ``arm_z``; multiplicar por ``side``
+        # mantém a flexão dos dedos simétrica entre mão direita e esquerda (sem fechar
+        # a mão esquerda em punho durante o idle).
+        curl = 3.0 + sin(t * 0.62 - side * 0.3) * amplitude + (side * wrist_follow) * 0.25
         if state == "idle":
             idle_wrist, curl = _gesto_punho_idle(t, personality, side, curl)
         saida[hand] = Rotation3(
@@ -1115,14 +1266,91 @@ def _trilhas_arranque(destino: str, duracao: float) -> dict[str, tuple[tuple[flo
     }
 
 
+def _trilhas_conexao_estatico(
+    origem: str, destino: str
+) -> tuple[float, dict[str, tuple[tuple[float, tuple[float, float, float]], ...]]] | None:
+    repousos = ("idle", "hover")
+    if destino == "surprise":
+        return 0.42, {
+            "cintura": ((0.0, (0.0, 0.0, 0.0)), (0.10, (-3.8, 0.0, 0.0)), (0.26, (2.2, 0.0, 0.0)), (0.42, (0.0, 0.0, 0.0))),
+            "peitoral": ((0.0, (0.0, 0.0, 0.0)), (0.10, (-5.5, 0.0, 0.0)), (0.26, (3.2, 0.0, 0.0)), (0.42, (0.0, 0.0, 0.0))),
+            "shoulder": ((0.0, (0.0, 0.0, 0.0)), (0.12, (-3.0, -2.0, 4.5)), (0.28, (1.5, 1.0, -1.8)), (0.42, (0.0, 0.0, 0.0))),
+            "shoulder2": ((0.0, (0.0, 0.0, 0.0)), (0.12, (-3.0, 2.0, -4.5)), (0.28, (1.5, -1.0, 1.8)), (0.42, (0.0, 0.0, 0.0))),
+            "head": ((0.0, (0.0, 0.0, 0.0)), (0.11, (5.5, 0.0, 0.0)), (0.27, (-2.2, 0.0, 0.0)), (0.42, (0.0, 0.0, 0.0))),
+            "antena-direita": ((0.0, (0.0, 0.0, 0.0)), (0.13, (9.0, 0.0, -3.5)), (0.29, (-4.5, 0.0, 2.0)), (0.42, (0.0, 0.0, 0.0))),
+            "antena-esquerda": ((0.0, (0.0, 0.0, 0.0)), (0.13, (9.0, 0.0, 3.5)), (0.29, (-4.5, 0.0, -2.0)), (0.42, (0.0, 0.0, 0.0))),
+        }
+    if origem == "surprise" and destino in (*repousos, "sit"):
+        return 0.48, {
+            "cintura": ((0.0, (0.0, 0.0, 0.0)), (0.16, (2.2, 0.0, 0.0)), (0.34, (-0.8, 0.0, 0.0)), (0.48, (0.0, 0.0, 0.0))),
+            "peitoral": ((0.0, (0.0, 0.0, 0.0)), (0.16, (3.2, 0.0, 0.0)), (0.34, (-1.2, 0.0, 0.0)), (0.48, (0.0, 0.0, 0.0))),
+            "head": ((0.0, (0.0, 0.0, 0.0)), (0.18, (-2.5, 0.0, 0.0)), (0.36, (1.0, 0.0, 0.0)), (0.48, (0.0, 0.0, 0.0))),
+        }
+    if destino == "jump":
+        return 0.36, {
+            "cintura": ((0.0, (0.0, 0.0, 0.0)), (0.09, (5.5, 0.0, 0.0)), (0.22, (-4.5, 0.0, 0.0)), (0.36, (0.0, 0.0, 0.0))),
+            "peitoral": ((0.0, (0.0, 0.0, 0.0)), (0.09, (6.5, 0.0, 0.0)), (0.22, (-5.5, 0.0, 0.0)), (0.36, (0.0, 0.0, 0.0))),
+            "right-arm": ((0.0, (0.0, 0.0, 0.0)), (0.10, (4.0, 0.0, 12.0)), (0.24, (-3.0, 0.0, -14.0)), (0.36, (0.0, 0.0, 0.0))),
+            "left-arm": ((0.0, (0.0, 0.0, 0.0)), (0.10, (4.0, 0.0, -12.0)), (0.24, (-3.0, 0.0, 14.0)), (0.36, (0.0, 0.0, 0.0))),
+        }
+    if origem == "jump" and destino in ("fall", "land"):
+        return 0.34, {
+            "peitoral": ((0.0, (0.0, 0.0, 0.0)), (0.12, (-3.5, 0.0, 0.0)), (0.24, (2.5, 0.0, 0.0)), (0.34, (0.0, 0.0, 0.0))),
+            "antena-direita": ((0.0, (0.0, 0.0, 0.0)), (0.14, (-8.0, 0.0, 3.0)), (0.34, (0.0, 0.0, 0.0))),
+            "antena-esquerda": ((0.0, (0.0, 0.0, 0.0)), (0.14, (-8.0, 0.0, -3.0)), (0.34, (0.0, 0.0, 0.0))),
+        }
+    if origem in repousos and destino == "sit":
+        return 0.52, {
+            "cintura": ((0.0, (0.0, 0.0, 0.0)), (0.18, (4.0, 0.0, 0.0)), (0.36, (-1.6, 0.0, 0.0)), (0.52, (0.0, 0.0, 0.0))),
+            "peitoral": ((0.0, (0.0, 0.0, 0.0)), (0.18, (4.5, 0.0, 0.0)), (0.36, (-2.0, 0.0, 0.0)), (0.52, (0.0, 0.0, 0.0))),
+            "shoulder": ((0.0, (0.0, 0.0, 0.0)), (0.20, (1.8, -1.0, 3.0)), (0.38, (-1.0, 0.6, -1.2)), (0.52, (0.0, 0.0, 0.0))),
+            "shoulder2": ((0.0, (0.0, 0.0, 0.0)), (0.20, (1.8, 1.0, -3.0)), (0.38, (-1.0, -0.6, 1.2)), (0.52, (0.0, 0.0, 0.0))),
+        }
+    if origem == "sit" and destino in (*repousos, "walk", "run", "dance"):
+        return 0.56, {
+            "cintura": ((0.0, (0.0, 0.0, 0.0)), (0.16, (5.5, 0.0, 0.0)), (0.36, (-2.4, 0.0, 0.0)), (0.56, (0.0, 0.0, 0.0))),
+            "peitoral": ((0.0, (0.0, 0.0, 0.0)), (0.16, (6.5, 0.0, 0.0)), (0.36, (-2.8, 0.0, 0.0)), (0.56, (0.0, 0.0, 0.0))),
+            "head": ((0.0, (0.0, 0.0, 0.0)), (0.18, (-3.2, 0.0, 0.0)), (0.38, (1.5, 0.0, 0.0)), (0.56, (0.0, 0.0, 0.0))),
+        }
+    if (origem == "walk" and destino == "run") or (origem == "run" and destino == "walk"):
+        pitch = 4.2 if destino == "run" else -4.2
+        return 0.42, {
+            "cintura": ((0.0, (0.0, 0.0, 0.0)), (0.14, (pitch * 0.6, 0.0, 0.0)), (0.29, (-pitch * 0.25, 0.0, 0.0)), (0.42, (0.0, 0.0, 0.0))),
+            "peitoral": ((0.0, (0.0, 0.0, 0.0)), (0.14, (pitch, 0.0, 0.0)), (0.29, (-pitch * 0.35, 0.0, 0.0)), (0.42, (0.0, 0.0, 0.0))),
+            "antena-direita": ((0.0, (0.0, 0.0, 0.0)), (0.18, (-pitch * 1.4, 0.0, 2.2)), (0.42, (0.0, 0.0, 0.0))),
+            "antena-esquerda": ((0.0, (0.0, 0.0, 0.0)), (0.18, (-pitch * 1.4, 0.0, -2.2)), (0.42, (0.0, 0.0, 0.0))),
+        }
+    if destino == "drag" and origem not in ("drag", ""):
+        return 0.36, {
+            "shoulder": ((0.0, (0.0, 0.0, 0.0)), (0.12, (-3.5, -1.5, 4.5)), (0.26, (1.5, 0.8, -1.8)), (0.36, (0.0, 0.0, 0.0))),
+            "shoulder2": ((0.0, (0.0, 0.0, 0.0)), (0.12, (-3.5, 1.5, -4.5)), (0.26, (1.5, -0.8, 1.8)), (0.36, (0.0, 0.0, 0.0))),
+            "head": ((0.0, (0.0, 0.0, 0.0)), (0.13, (-4.0, 0.0, 0.0)), (0.27, (1.8, 0.0, 0.0)), (0.36, (0.0, 0.0, 0.0))),
+            "antena-direita": ((0.0, (0.0, 0.0, 0.0)), (0.15, (6.5, 0.0, -2.5)), (0.36, (0.0, 0.0, 0.0))),
+            "antena-esquerda": ((0.0, (0.0, 0.0, 0.0)), (0.15, (6.5, 0.0, 2.5)), (0.36, (0.0, 0.0, 0.0))),
+        }
+    return None
+
+
 def _curva_conexao_simples(
     origem: str, destino: str
 ) -> tuple[float, tuple[tuple[float, tuple[float, float, float]], ...]] | None:
     repousos = ("idle", "hover")
     if origem in ("drag", *repousos, "walk", "run") and destino == "fall":
         return 0.32, ((0.0, (0.0, 0.0, 0.0)), (0.11, (-4.5, 0.0, 0.0)), (0.23, (3.2, 0.0, 0.0)), (0.32, (0.0, 0.0, 0.0)))
+    if origem == "fall" and destino == "land":
+        return 0.36, ((0.0, (0.0, 0.0, 0.0)), (0.10, (-6.0, 0.0, 0.0)), (0.24, (2.6, 0.0, 0.0)), (0.36, (0.0, 0.0, 0.0)))
     if origem == "fall" and destino in (*repousos, "wake"):
         return 0.55, ((0.0, (0.0, 0.0, 0.0)), (0.16, (5.5, 0.0, 0.0)), (0.38, (-2.0, 0.0, 0.0)), (0.55, (0.0, 0.0, 0.0)))
+    if origem in (*repousos, "sit") and destino == "sleep":
+        return 0.72, ((0.0, (0.0, 0.0, 0.0)), (0.24, (-3.6, 0.0, 0.0)), (0.50, (1.4, 0.0, 0.0)), (0.72, (0.0, 0.0, 0.0)))
+    if origem in ("walk", "run") and destino == "dance":
+        return 0.46, ((0.0, (0.0, 0.0, 0.0)), (0.14, (-4.8, 0.0, 0.0)), (0.30, (2.8, 0.0, 0.0)), (0.46, (0.0, 0.0, 0.0)))
+    if origem in ("walk", "run", "dance") and destino == "sit":
+        return 0.58, ((0.0, (0.0, 0.0, 0.0)), (0.18, (4.8, 0.0, 0.0)), (0.40, (-1.8, 0.0, 0.0)), (0.58, (0.0, 0.0, 0.0)))
+    if origem == "drag" and destino in ("walk", "run", "dance"):
+        return 0.48, ((0.0, (0.0, 0.0, 0.0)), (0.14, (-4.2, 0.0, 0.0)), (0.32, (2.0, 0.0, 0.0)), (0.48, (0.0, 0.0, 0.0)))
+    if origem == "land" and destino in ("sit", "sleep", "drag", "fall"):
+        return 0.44, ((0.0, (0.0, 0.0, 0.0)), (0.14, (3.8, 0.0, 0.0)), (0.30, (-1.6, 0.0, 0.0)), (0.44, (0.0, 0.0, 0.0)))
     if origem in ("hit", "poke", "land", "teimosia") and destino in (*repousos, "walk", "run", "dance"):
         return 0.56, ((0.0, (0.0, 0.0, 0.0)), (0.16, (5.0, 0.0, 0.0)), (0.35, (-1.8, 0.0, 0.0)), (0.56, (0.0, 0.0, 0.0)))
     if origem == "sleep" and destino in ("wake", *repousos):
@@ -1147,12 +1375,24 @@ def delta_conexao(origem: str, destino: str, tempo: float) -> dict[str, Rotation
         return {} if tempo >= 0.52 else _amostrar_trilhas_conexao(_trilhas_freada_walk(0.52), tempo)
     if origem in repousos and destino in ("walk", "run", "dance"):
         return {} if tempo >= 0.65 else _amostrar_trilhas_conexao(_trilhas_arranque(destino, 0.65), tempo)
+    est = _trilhas_conexao_estatico(origem, destino)
+    if est is not None:
+        duracao, trilhas = est
+        return {} if tempo >= duracao else _amostrar_trilhas_conexao(trilhas, tempo)
     simples = _curva_conexao_simples(origem, destino)
     if simples is None or tempo >= simples[0]:
         return {}
-    pitch = radians(amostrar_pista(simples[1], tempo)[0])
+    curva = simples[1]
+    pitch = radians(amostrar_pista(curva, tempo)[0])
+    pitch_lag = radians(amostrar_pista(curva, max(0.0, tempo - 0.05))[0])
     return {
         "cintura": Rotation3(pitch * 0.45, 0.0, 0.0),
+        "abdomen": Rotation3(pitch * 0.68, 0.0, 0.0),
         "peitoral": Rotation3(pitch, 0.0, 0.0),
-        "head": Rotation3(-pitch * 0.6, 0.0, 0.0),
+        "shoulder": Rotation3(-pitch * 0.35, 0.0, pitch * 0.45),
+        "shoulder2": Rotation3(-pitch * 0.35, 0.0, -pitch * 0.45),
+        "head": Rotation3(-pitch_lag * 0.6, 0.0, 0.0),
+        "fones": Rotation3(pitch_lag * 0.42, 0.0, 0.0),
+        "antena-direita": Rotation3(pitch_lag * 0.85, 0.0, -pitch_lag * 0.35),
+        "antena-esquerda": Rotation3(pitch_lag * 0.85, 0.0, pitch_lag * 0.35),
     }

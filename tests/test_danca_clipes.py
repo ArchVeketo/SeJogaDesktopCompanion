@@ -11,20 +11,28 @@ from sejoga.animacao.danca_clipes import (
 )
 from sejoga.animacao.movimento_danca import DanceMotion
 from sejoga.nucleo.esqueleto import Rig
+from sejoga.nucleo.modelo import load_model
+from sejoga.nucleo.recursos import resolve_model
 
 
 def test_deslocamento_tem_trajeto_real_e_acompanha_a_fase():
-    from sejoga.animacao.danca_clipes import amostrar_deslocamento_emote, carregar_clipe_emote
+    from sejoga.animacao.danca_clipes import (
+        _catmull_rom_escalar,
+        amostrar_deslocamento_emote,
+        carregar_clipe_emote,
+    )
 
     clipe = carregar_clipe_emote("jazz_dance")
     assert clipe is not None
     assert max(abs(x) for x, _ in clipe.deslocamento) > 0.15
     i = 35
-    a, b = clipe.deslocamento[i:i + 2]
+    p0, p1, p2, p3 = clipe.deslocamento[i - 1 : i + 3]
     meio = amostrar_deslocamento_emote(clipe, (i + 0.5) / clipe.fps)
-    assert meio == pytest.approx(tuple((x + y) / 2 for x, y in zip(a, b)))
-from sejoga.nucleo.modelo import load_model
-from sejoga.nucleo.recursos import resolve_model
+    esperado = (
+        _catmull_rom_escalar(p0[0], p1[0], p2[0], p3[0], 0.5),
+        _catmull_rom_escalar(p0[1], p1[1], p2[1], p3[1], 0.5),
+    )
+    assert meio == pytest.approx(esperado)
 
 
 def test_clipes_emote_carregam_e_fazem_loop_continuo():
@@ -177,5 +185,42 @@ def test_amostragem_dedos_e_espelho_clipe_completo() -> None:
     assert abs(pernas0["left"] - pernas1["right"]) < 1e-4
     assert abs(pernas0["left_knee"] - pernas1["right_knee"]) < 1e-4
     assert abs(yaw0 + yaw1) < 1e-4
+
+
+def test_deduplicacao_loop_catmull_wrap_e_antispike_em_loops() -> None:
+    import math
+
+    from sejoga.animacao.danca_clipes import (
+        _catmull_rom_ang,
+        carregar_clipe_acao,
+    )
+
+    jazz = carregar_clipe_danca("jazz_dance")
+    run_clipe = carregar_clipe_acao("run_mixamo")
+    strafe = carregar_clipe_acao("walk_strafe_slow")
+    brk = carregar_clipe_danca("breakdance")
+    assert jazz is not None and run_clipe is not None and strafe is not None and brk is not None
+    # Loop deduplicado mantém quadros únicos (sem duplicar o quadro final no inicial) e run_mixamo mantém ciclo denso.
+    assert len(jazz.quadros) >= 200
+    assert len(run_clipe.quadros) >= 12
+    assert jazz.quadros[0] != jazz.quadros[-1] or len(jazz.quadros) > 1
+    # Wrap Catmull-Rom em torno de ±pi interpola pelo menor arco sem atravessar zero.
+    curva = _catmull_rom_ang(math.pi - 0.15, math.pi - 0.05, -math.pi + 0.05, -math.pi + 0.15, 0.5)
+    assert abs(abs(curva) - math.pi) < 0.05
+    # Anti-spike em loops e pernas evita saltos bruscos de punho/perna.
+    pior_punho = max(
+        math.degrees(abs(((brk.quadros[i][g].z - brk.quadros[i - 1][g].z + math.pi) % math.tau) - math.pi))
+        for i in range(1, len(brk.quadros))
+        for g in ("hand", "hand2")
+        if g in brk.quadros[i] and g in brk.quadros[i - 1]
+    )
+    assert pior_punho < 25.0
+    pior_reverso_perna = max(
+        min(abs(cur[k] - ant[k]), abs(seg[k] - cur[k]))
+        for ant, cur, seg in zip(strafe.quadros_pernas, strafe.quadros_pernas[1:], strafe.quadros_pernas[2:], strict=False)
+        for k in cur
+        if (cur[k] - ant.get(k, 0.0)) * (seg.get(k, 0.0) - cur[k]) < 0.0
+    )
+    assert pior_reverso_perna <= 22.0
 
 

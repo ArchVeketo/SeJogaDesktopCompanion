@@ -42,7 +42,7 @@ def test_agencia_pontos_interesse_deduplicados_e_limitados():
 
 def test_selecao_estado_unificada_com_histerese():
     s_novo = escolher_estado(
-        speed=600.0,
+        speed=380.0,
         grounded=True,
         gravity_active=False,
         dragging=False,
@@ -51,7 +51,7 @@ def test_selecao_estado_unificada_com_histerese():
         current_state=AnimationState.WALK,
     )
     s_continua = escolher_estado(
-        speed=600.0,
+        speed=380.0,
         grounded=True,
         gravity_active=False,
         dragging=False,
@@ -62,7 +62,7 @@ def test_selecao_estado_unificada_com_histerese():
     assert s_novo == AnimationState.WALK
     assert s_continua == AnimationState.RUN
     assert s_continua == AnimationController._choose_state(
-        speed=600.0,
+        speed=380.0,
         grounded=True,
         gravity_active=False,
         dragging=False,
@@ -133,3 +133,56 @@ def test_controlador_encaminha_body_position_e_beat_phase():
         body_position=(0.0, 0.0),
     )
     assert ctrl.agencia.direcao_meta == (1.0, 0.0)
+
+
+def test_menu_bugs_frente3_acoes_manuais_e_orientacao():
+    from sejoga.animacao.controlador_animacao import AnimationController, AnimationState
+    from sejoga.animacao.pose_repouso import pose_repouso
+    from sejoga.nucleo.esqueleto import Rig
+
+    ctrl = AnimationController(Rig(pose_repouso()))
+    ctrl.colocar_para_dormir("sentado")
+    assert ctrl.state == AnimationState.SLEEP
+    ctrl.preview_dance("rock")
+    ctrl.update(1 / 60, grounded=True)
+    assert ctrl.state == AnimationState.DANCE
+
+    ctrl.alternar_sentado()
+    ctrl.update(1 / 60, grounded=True)
+    assert ctrl.state == AnimationState.SIT
+    ctrl.iniciar_pacote_olhar_tela()
+    ctrl.update(1 / 60, grounded=True)
+    assert ctrl.state != AnimationState.SIT
+
+    ctrl.definir_orientacao("costas")
+    assert ctrl.orientacao_manual is not None
+    ctrl.definir_orientacao("frente")
+    assert ctrl.orientacao_manual is None
+
+
+def test_menu_bugs_frente3_pulo_sem_mouse_e_caminhada_bounds():
+    from types import SimpleNamespace
+
+    from sejoga.animacao.controlador_animacao import AnimationController
+    from sejoga.animacao.pose_repouso import pose_repouso
+    from sejoga.configuracao import Settings
+    from sejoga.nucleo.esqueleto import Rig
+    from sejoga.render.janela import OverlayApp
+
+    ctrl = AnimationController(Rig(pose_repouso()))
+    app = OverlayApp.__new__(OverlayApp)
+    app.settings = Settings()
+    app._drag_active = False
+    app._mouse_screen = None
+    app.animation_controller = ctrl
+    chamadas_pulo = []
+    ctrl.pular = lambda vx, vy: chamadas_pulo.append((vx, vy))
+    app.physics = SimpleNamespace(
+        bounds=(100.0, 0.0, 900.0, 700.0),
+        get_state=lambda: SimpleNamespace(grounded=True, position=(400.0, 500.0)),
+        get_shelf_above=lambda _px, _py: None,
+    )
+    assert app.pular_mascote() is True
+    assert len(chamadas_pulo) == 1
+    app.caminhar_destino_aleatorio()
+    assert 100.0 <= app._destino_caminhada_x <= 900.0

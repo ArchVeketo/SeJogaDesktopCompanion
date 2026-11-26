@@ -279,7 +279,7 @@ def medir_dedos(modelo) -> list[dict]:  # noqa: PLR0915  # TODO convenção: fer
     loadPrcFileData("", "window-type none\naudio-library-name null")
     import gltf
 
-    from sejoga.animacao import dedos_tuning as tuning_dedos
+    from sejoga.animacao import gestos_dedos as tuning_dedos
     from sejoga.render import dedos_malha as dm
 
     raiz = NodePath(gltf.load_model(str(resolve_model())))

@@ -10,10 +10,10 @@ FRONTEIRA: Python puro, sem engine.
 
 from __future__ import annotations
 
-from sejoga.nucleo.cinematica_const import (
+from sejoga.nucleo.cinematica import (
     EPSILON_DEGENERADO as EPSILON_DEGENERADO,
 )
-from sejoga.nucleo.cinematica_const import (
+from sejoga.nucleo.cinematica import (
     TORCAO_BASE_ANTEBRACO_GRAUS as TORCAO_BASE_ANTEBRACO_GRAUS,
 )
 
@@ -76,11 +76,14 @@ FRACAO_NUCLEO_BRACO = 0.5
 #: largas que o tecido) têm folga; cabeça, fone e o outro braço seguem
 #: estritos (folga 0).
 FOLGA_EXTRA_CAIXA_U = {
-    "tronco": 0.044,
-    "quadril": 0.028,
-    "cabeca": 0.028,
-    "pe_direito": 0.030,
-    "pe_esquerdo": 0.030,
+    "tronco": 0.040,
+    "quadril": 0.024,
+    "cabeca": 0.008,
+    "topo_cabeca": 0.006,
+    "coxa_direita": 0.024,
+    "coxa_esquerda": 0.024,
+    "pe_direito": 0.024,
+    "pe_esquerdo": 0.024,
 }
 #: Passos (graus) da busca em cada grau de liberdade: finos e progressivos para
 #: evitar trancos de 9°-27° num único quadro e ainda contornar mínimos locais.

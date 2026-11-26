@@ -22,6 +22,7 @@ class FrameRitmo:
     music_active: bool = False
     music_confidence: float = 0.0
     rms: float = 0.0
+    speech_like: bool = False
 
 
 class AnalisadorRitmo:
@@ -33,6 +34,20 @@ class AnalisadorRitmo:
     _PREF_BPM = 118.0
     _BEAT_HOLD_S = 0.048
     _REFRACTORY_S = 0.24
+    _ENTRADA_HISTERESE_S = 1.80
+    _SAIDA_HISTERESE_S = 1.80
+    _CV_IOI_MAXIMO = 0.18
+    _FALA_PAUSE_RAZAO_RMS = 0.28
+    _FALA_PAUSE_LIMIAR = 0.22
+    _VOCAL_DOMINANCIA_FALA = 0.56
+    _SUB_REAL_MAX_FALA = 0.11
+    _PROEMINENCIA_FALA_MAX = 0.12
+    _VOCAL_FALA_COM_BGM = 0.36
+    _SUB_FALA_COM_BGM_MAX = 0.05
+    _GAP_FALA_COM_BGM_MIN = 0.35
+    _PROM_FALA_COM_BGM_MAX = 0.45
+    _PROEMINENCIA_RITMO_MIN = 0.12
+    _CLAREZA_RITMO_MIN = 0.20
 
     def __init__(
         self,
@@ -53,6 +68,7 @@ class AnalisadorRitmo:
     def _init_bandas_espectrais(self) -> None:
         freqs = np.fft.rfftfreq(self.window_size, 1.0 / self.sample_rate)
         self._mask_sub = (freqs >= 35.0) & (freqs < 125.0)
+        self._mask_sub_real = (freqs >= 35.0) & (freqs < 110.0)
         self._mask_punch = (freqs >= 125.0) & (freqs < 280.0)
         self._mask_bass_full = (freqs >= 35.0) & (freqs <= 240.0)
         self._mask_vocal = (freqs >= 300.0) & (freqs < 2500.0)
@@ -76,7 +92,9 @@ class AnalisadorRitmo:
         self._onset_curve: deque[float] = deque(maxlen=max(128, round(6.5 * self.frame_rate)))
         hist_len = max(16, round(1.5 * self.frame_rate))
         self._bass_share_hist: deque[float] = deque(maxlen=hist_len)
+        self._sub_share_hist: deque[float] = deque(maxlen=hist_len)
         self._vocal_share_hist: deque[float] = deque(maxlen=hist_len)
+        self._rms_hist: deque[float] = deque(maxlen=max(24, round(2.5 * self.frame_rate)))
 
         self._prev_nov = 0.0
         self._prev2_nov = 0.0
@@ -93,15 +111,19 @@ class AnalisadorRitmo:
         self._candidate_bpm: float | None = None
         self._candidate_streak = 0
         self._pulse_clarity = 0.0
+        self._pulse_prominence = 0.0
         self._phase = 0.0
         self._phase_offbeat_streak = 0
         self._music_active = False
+        self._speech_like = False
         self._music_on_accum = 0.0
         self._music_off_accum = 0.0
         self._music_confidence = 0.0
         self._ultimo_frame = FrameRitmo()
 
-    def _limpar_estado_silencio(self, rms: float, now: float) -> FrameRitmo:
+    def _limpar_estado_silencio(
+        self, rms: float, now: float, *, smtc_playing: bool = False
+    ) -> FrameRitmo:
         """Decai suavemente níveis e reseta fase após silêncio prolongado."""
         decay_lvl = math.exp(-self.hop_dt * 12.0)
         self._audio_level *= decay_lvl
@@ -112,6 +134,7 @@ class AnalisadorRitmo:
         self._prev2_nov = 0.0
         self._novelty_hist.append(0.0)
         self._onset_curve.append(0.0)
+        self._rms_hist.append(rms)
 
         recent_onset = self._last_onset_at > 0.0 and (now - self._last_onset_at) <= 2.5
         if recent_onset and self._hop_count % self._tempo_check_interval == 0:
@@ -122,11 +145,13 @@ class AnalisadorRitmo:
             self._candidate_bpm = None
             self._candidate_streak = 0
             self._pulse_clarity = 0.0
+            self._pulse_prominence = 0.0
             self._ioi_times.clear()
             self._bass_share_hist.clear()
+            self._sub_share_hist.clear()
             self._vocal_share_hist.clear()
 
-        self._atualizar_gate_musica(rms, now=now, smtc_playing=False)
+        self._atualizar_gate_musica(rms, now=now, smtc_playing=smtc_playing)
         self._ultimo_frame = FrameRitmo(
             audio_level=self._audio_level,
             bass_level=self._bass_level,
@@ -136,12 +161,13 @@ class AnalisadorRitmo:
             music_active=self._music_active,
             music_confidence=self._music_confidence,
             rms=rms,
+            speech_like=self._speech_like,
         )
         return self._ultimo_frame
 
     def _calcular_espectro_e_fluxo(
         self, mono_window: np.ndarray, rms: float
-    ) -> tuple[float, float, float]:
+    ) -> tuple[float, float, float, float]:
         """Calcula fluxo espectral multi-banda em magnitude logarítmica."""
         agc_decay = math.exp(-self.hop_dt / 3.5)
         self._peak_rms = max(0.02, self._peak_rms * agc_decay, rms)
@@ -152,6 +178,7 @@ class AnalisadorRitmo:
         power = spectrum * spectrum
         total_pow = max(1e-12, float(power.sum()))
         bass_share = float(power[self._mask_bass_full].sum()) / total_pow
+        sub_share = float(power[self._mask_sub_real].sum()) / total_pow
         vocal_share = float(power[self._mask_vocal].sum()) / total_pow
 
         raw_bass_lvl = max(0.0, min(1.0, raw_audio_lvl * (bass_share**0.45)))
@@ -163,7 +190,7 @@ class AnalisadorRitmo:
         log_mag = np.log1p(22.0 * (spectrum / scale))
         if self._prev_log_mag is None:
             self._prev_log_mag = log_mag
-            return 0.0, bass_share, vocal_share
+            return 0.0, bass_share, vocal_share, sub_share
 
         diff = np.maximum(0.0, log_mag - self._prev_log_mag)
         self._prev_log_mag = log_mag
@@ -171,7 +198,7 @@ class AnalisadorRitmo:
         flux_punch = float(diff[self._mask_punch].sum()) / self._punch_norm
         flux_air = float(diff[self._mask_air].sum()) / self._air_norm
         novelty = 1.85 * flux_sub + 1.25 * flux_punch + 0.75 * flux_air
-        return novelty, bass_share, vocal_share
+        return novelty, bass_share, vocal_share, sub_share
 
     def _detectar_pico_onset(self, novelty: float, now: float, sensitivity: float) -> bool:
         """Executa peak-picking adaptativo sobre a curva de fluxo espectral."""
@@ -221,16 +248,26 @@ class AnalisadorRitmo:
         self._last_onset_at = onset_time
         self._beat_hold_until = max(self._beat_hold_until, onset_time + self._BEAT_HOLD_S)
 
-        if self._bpm is None and len(self._ioi_times) >= 3:
-            intervals = [
-                b - a
-                for a, b in itertools.pairwise(self._ioi_times)
-                if 0.30 <= (b - a) <= 1.50
-            ]
-            if len(intervals) >= 2:
-                med_ioi = float(np.median(intervals))
-                self._bpm = max(self._MIN_BPM, min(self._MAX_BPM, 60.0 / med_ioi))
+        if self._bpm is None and len(self._ioi_times) >= 4:
+            self._estimar_bpm_inicial_ioi()
+        self._alinhar_pll_no_onset()
 
+    def _estimar_bpm_inicial_ioi(self) -> None:
+        intervals = [
+            b - a
+            for a, b in itertools.pairwise(self._ioi_times)
+            if 0.30 <= (b - a) <= 1.50
+        ]
+        if len(intervals) < 3:
+            return
+        mean_ioi = sum(intervals) / len(intervals)
+        var_ioi = sum((x - mean_ioi) ** 2 for x in intervals) / len(intervals)
+        cv_ioi = math.sqrt(var_ioi) / max(1e-6, mean_ioi)
+        if cv_ioi <= self._CV_IOI_MAXIMO:
+            med_ioi = float(np.median(intervals))
+            self._bpm = max(self._MIN_BPM, min(self._MAX_BPM, 60.0 / med_ioi))
+
+    def _alinhar_pll_no_onset(self) -> None:
         err = ((0.0 - self._phase + 0.5) % 1.0) - 0.5
         if abs(err) <= 0.28:
             self._phase = (self._phase + 0.38 * err) % 1.0
@@ -302,7 +339,9 @@ class AnalisadorRitmo:
         if lag_max <= lag_min:
             return
         best_lag, best_score, raw_peak = self._melhor_lag_comb(ac, lag_min, lag_max)
+        median_ac = float(np.median(ac[lag_min : lag_max + 1]))
         self._pulse_clarity = raw_peak
+        self._pulse_prominence = max(0.0, raw_peak - median_ac)
         if self._pulse_clarity < 0.14 or best_score <= 0.0:
             return
         refined_lag = self._refinar_pico_parabolico(ac, best_lag, lag_min, lag_max)
@@ -339,12 +378,17 @@ class AnalisadorRitmo:
             self._candidate_streak = 0
 
     def _medias_bandas_gate(
-        self, bass_share: float | None, vocal_share: float | None
-    ) -> tuple[float, float]:
+        self,
+        bass_share: float | None,
+        vocal_share: float | None,
+        sub_share: float | None,
+    ) -> tuple[float, float, float]:
         if bass_share is not None:
             self._bass_share_hist.append(bass_share)
         if vocal_share is not None:
             self._vocal_share_hist.append(vocal_share)
+        if sub_share is not None:
+            self._sub_share_hist.append(sub_share)
         avg_bass = (
             sum(self._bass_share_hist) / len(self._bass_share_hist)
             if self._bass_share_hist
@@ -355,18 +399,35 @@ class AnalisadorRitmo:
             if self._vocal_share_hist
             else 0.0
         )
-        return avg_bass, avg_vocal
+        avg_sub = (
+            sum(self._sub_share_hist) / len(self._sub_share_hist)
+            if self._sub_share_hist
+            else 0.0
+        )
+        return avg_bass, avg_vocal, avg_sub
+
+    def _calcular_silence_gap_ratio(self) -> float:
+        """Mede fração de pausas típicas de fala na envoltória recente de RMS."""
+        min_amostras = max(12, round(0.8 * self.frame_rate))
+        if len(self._rms_hist) < min_amostras:
+            return 0.0
+        arr = np.fromiter(self._rms_hist, dtype=np.float64)
+        p90 = float(np.percentile(arr, 90))
+        if p90 <= self._SILENCE_RMS:
+            return 1.0
+        limiar_pausa = self._FALA_PAUSE_RAZAO_RMS * p90
+        return float(np.mean(arr < limiar_pausa))
 
     def _aplicar_histerese_gate(self, rhythmic: bool) -> None:
         if rhythmic:
             self._music_on_accum += self.hop_dt
             self._music_off_accum = 0.0
-            if self._music_on_accum >= 0.45:
+            if self._music_on_accum >= self._ENTRADA_HISTERESE_S:
                 self._music_active = True
             return
         self._music_on_accum = max(0.0, self._music_on_accum - self.hop_dt * 0.5)
         self._music_off_accum += self.hop_dt
-        if self._music_off_accum >= 1.8:
+        if self._music_off_accum >= self._SAIDA_HISTERESE_S:
             self._music_active = False
 
     def _atualizar_gate_musica(
@@ -377,19 +438,32 @@ class AnalisadorRitmo:
         smtc_playing: bool,
         bass_share: float | None = None,
         vocal_share: float | None = None,
+        sub_share: float | None = None,
     ) -> None:
-        """Distingue música ativa de silêncio ou fala isolada com histerese."""
-        avg_bass, avg_vocal = self._medias_bandas_gate(bass_share, vocal_share)
-        if smtc_playing:
-            self._music_active = True
-            self._music_on_accum = 1.0
-            self._music_off_accum = 0.0
-            self._music_confidence = max(0.85, self._pulse_clarity)
-            return
-
+        """Distingue música ativa de silêncio ou fala/vídeo sem bypass cego de SMTC."""
+        _ = smtc_playing
+        avg_bass, avg_vocal, avg_sub = self._medias_bandas_gate(
+            bass_share, vocal_share, sub_share
+        )
+        silence_gap_ratio = self._calcular_silence_gap_ratio()
         recent_beat = self._last_onset_at > 0.0 and (now - self._last_onset_at) <= 1.35
         audible = (rms >= self._SILENCE_RMS * 1.1) or recent_beat
-        speech_like = avg_vocal > 0.60 and avg_bass < 0.12 and not recent_beat
+        fala_pura = (
+            avg_vocal > self._VOCAL_DOMINANCIA_FALA
+            and avg_sub < self._SUB_REAL_MAX_FALA
+            and (
+                silence_gap_ratio > self._FALA_PAUSE_LIMIAR
+                or self._pulse_prominence < self._PROEMINENCIA_FALA_MAX
+            )
+        )
+        fala_com_fundo = (
+            avg_vocal > self._VOCAL_FALA_COM_BGM
+            and avg_sub < self._SUB_FALA_COM_BGM_MAX
+            and silence_gap_ratio > self._GAP_FALA_COM_BGM_MIN
+            and self._pulse_prominence < self._PROM_FALA_COM_BGM_MAX
+        )
+        speech_like = fala_pura or fala_com_fundo
+        self._speech_like = speech_like
         if speech_like:
             self._bpm = None
             self._candidate_bpm = None
@@ -398,20 +472,23 @@ class AnalisadorRitmo:
             audible
             and not speech_like
             and (
-                self._pulse_clarity >= 0.17
+                self._pulse_prominence >= self._PROEMINENCIA_RITMO_MIN
+                or self._pulse_clarity >= self._CLAREZA_RITMO_MIN
                 or (
                     recent_beat
-                    and (self._bpm is not None or avg_bass >= 0.12 or len(self._ioi_times) >= 3)
+                    and self._bpm is not None
+                    and self._pulse_prominence >= 0.08
                 )
             )
         )
+        ritmo_norm = max(self._pulse_clarity / 0.32, self._pulse_prominence / 0.24)
         conf_raw = (
-            0.55 * min(1.0, self._pulse_clarity / 0.35)
-            + 0.30 * min(1.0, avg_bass / 0.25)
+            0.50 * min(1.0, ritmo_norm)
+            + 0.35 * min(1.0, max(avg_bass, avg_sub * 1.5) / 0.20)
             + (0.15 if audible and not speech_like else 0.0)
         )
         if speech_like:
-            conf_raw *= 0.25
+            conf_raw *= 0.20
         self._music_confidence += (
             max(0.0, min(1.0, conf_raw)) - self._music_confidence
         ) * min(1.0, self.hop_dt * 6.0)
@@ -432,9 +509,12 @@ class AnalisadorRitmo:
         self._phase = (self._phase + self.hop_dt * bpm_pll / 60.0) % 1.0
 
         if rms < self._SILENCE_RMS:
-            return self._limpar_estado_silencio(rms, now)
+            return self._limpar_estado_silencio(rms, now, smtc_playing=smtc_playing)
 
-        novelty, bass_share, vocal_share = self._calcular_espectro_e_fluxo(self._ring, rms)
+        self._rms_hist.append(rms)
+        novelty, bass_share, vocal_share, sub_share = self._calcular_espectro_e_fluxo(
+            self._ring, rms
+        )
         onset_fired = self._detectar_pico_onset(novelty, now, sensitivity)
         if self._hop_count % self._tempo_check_interval == 0:
             self._estimar_tempograma()
@@ -445,6 +525,7 @@ class AnalisadorRitmo:
             smtc_playing=smtc_playing,
             bass_share=bass_share,
             vocal_share=vocal_share,
+            sub_share=sub_share,
         )
         self._ultimo_frame = FrameRitmo(
             audio_level=self._audio_level,
@@ -455,6 +536,7 @@ class AnalisadorRitmo:
             music_active=self._music_active,
             music_confidence=self._music_confidence,
             rms=rms,
+            speech_like=self._speech_like,
         )
         return self._ultimo_frame
 

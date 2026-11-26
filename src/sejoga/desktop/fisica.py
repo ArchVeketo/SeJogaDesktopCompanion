@@ -33,7 +33,30 @@ import win32gui
 import win32process
 
 from sejoga.configuracao import Settings, load_settings
-from sejoga.desktop.fisica_tuning import FISICA
+
+
+@dataclass(frozen=True, slots=True)
+class FisicaTuning:
+    """Tabela de limiares calibráveis da física de tela."""
+
+    PASSAGEM_VY_SUBINDO: float = -1.0
+    PASSAGEM_FOLGA_TOPO: float = 6.0
+    IMPACTO_VELOCIDADE_SEM_QUIQUE: float = 160.0
+    IMPACTO_VELOCIDADE_EVENTO: float = 200.0
+    IMPACTO_COOLDOWN: float = 0.2
+    BORDA_ELASTICIDADE: float = 0.25
+    BORDA_ATRITO: float = 1.0
+    APOIO_NORMAL_MINIMA: float = 0.65
+    APOIO_VY_MAXIMA: float = 60.0
+    ASSENTAMENTO_VX_MINIMA: float = 5.0
+    ASSENTAMENTO_FATOR_ATRITO: float = 8.0
+    ARREMESSO_JANELA_AMOSTRAS: float = 0.06
+    ARREMESSO_MAX_AMOSTRAS: int = 10
+    DT_MAXIMO: float = 0.05
+
+
+#: Instância única de calibração usada pela física de tela.
+FISICA = FisicaTuning()
 
 # Project imports
 
@@ -264,6 +287,10 @@ class ScreenSpacePhysics:
         self.own_hwnd = own_hwnd
         self.own_pid = own_pid
         self.settings = settings or load_settings()
+        self._wall_thickness = float(
+            getattr(self.settings.physics, "wall_thickness", WALL_THICKNESS)
+        )
+        self._gravity_before_drag = False
 
         # Physics space
         self.space = pymunk.Space()
@@ -368,7 +395,7 @@ class ScreenSpacePhysics:
             ((left, top), (left, bottom)),
             ((right, top), (right, bottom)),
         ):
-            shape = pymunk.Segment(self.space.static_body, a, b, WALL_THICKNESS)
+            shape = pymunk.Segment(self.space.static_body, a, b, self._wall_thickness)
             shape.collision_type = CAT_SCREEN_EDGE
             shape.elasticity = FISICA.BORDA_ELASTICIDADE
             shape.friction = FISICA.BORDA_ATRITO
@@ -399,6 +426,35 @@ class ScreenSpacePhysics:
         self._contact_response(arbiter)
         return True
 
+    def _classificar_impacto(self, arbiter) -> str:
+        """Identifica a superfície exata da colisão (chão, prateleira, teto ou parede)."""
+        shapes = getattr(arbiter, "shapes", ())
+        other = None
+        for s in shapes:
+            if s is not getattr(self, "shape", None):
+                other = s
+                break
+        edges = getattr(self, "_edges", ())
+        if other is not None and len(edges) >= 4:
+            if other is edges[0]:
+                return "floor"
+            if other is edges[1]:
+                return "ceiling"
+            if other is edges[2]:
+                return "wall_left"
+            if other is edges[3]:
+                return "wall_right"
+        if other is not None and other in getattr(self, "shelf_shapes", {}).values():
+            return "shelf"
+        vx, vy = float(self.body.velocity.x), float(self.body.velocity.y)
+        if abs(vy) >= abs(vx) * 1.15:
+            return "ceiling" if vy < 0 else "floor"
+        if vx < -25.0:
+            return "wall_left"
+        if vx > 25.0:
+            return "wall_right"
+        return "impact"
+
     def _contact_response(self, arbiter) -> None:
         speed = self.body.velocity.length
         if speed < FISICA.IMPACTO_VELOCIDADE_SEM_QUIQUE:
@@ -410,7 +466,7 @@ class ScreenSpacePhysics:
         ):
             self._last_impact = now
             if self.on_collision:
-                self.on_collision("impact", tuple(self.body.velocity))
+                self.on_collision(self._classificar_impacto(arbiter), tuple(self.body.velocity))
 
     def refresh_shelves(self, force: bool = False) -> None:
         """Atualiza cache de prateleiras (janelas)."""
@@ -434,7 +490,7 @@ class ScreenSpacePhysics:
                 self.space.static_body,
                 (shelf.left, shelf.top_y),
                 (shelf.right, shelf.top_y),
-                WALL_THICKNESS,
+                self._wall_thickness,
             )
             shape.collision_type = CAT_SHELF
             shape.elasticity = FISICA.BORDA_ELASTICIDADE
@@ -456,6 +512,46 @@ class ScreenSpacePhysics:
                 return shelf
         return None
 
+    def get_floor_y_under(self, x: float, feet_y: float) -> float:
+        """Retorna a coordenada Y da superfície de apoio mais próxima abaixo dos pés."""
+        floor_y = float(self.bounds[3] - self._wall_thickness)
+        for shelf in self.shelves:
+            if shelf.left <= x <= shelf.right and shelf.top_y >= feet_y - 4.0:
+                floor_y = min(floor_y, float(shelf.top_y - self._wall_thickness))
+        return floor_y
+
+    def get_shelf_above(
+        self, x: float, feet_y: float, max_height_px: float = 520.0
+    ) -> Shelf | None:
+        """Retorna uma janela/prateleira alcançável por salto acima do mascote."""
+        melhor: Shelf | None = None
+        for shelf in self.shelves:
+            altura = feet_y - shelf.top_y
+            if 28.0 <= altura <= max_height_px and (shelf.left - 180.0) <= x <= (shelf.right + 180.0):
+                if melhor is None or shelf.top_y > melhor.top_y:
+                    melhor = shelf
+        return melhor
+
+    def jump(self, vx: float = 0.0, vy_impulse: float = -560.0) -> bool:
+        """Dispara salto físico para cima com gravidade ativa (e suporte a prateleiras)."""
+        if self._drag_active or not self.state.grounded:
+            return False
+        if not (math.isfinite(vx) and math.isfinite(vy_impulse)):
+            return False
+        self.body.body_type = pymunk.Body.DYNAMIC
+        if self.body.mass <= 0.0 or self.body.moment <= 0.0:
+            mass = self.settings.physics.mass
+            self.body.mass = mass
+            self.body.moment = pymunk.moment_for_circle(mass, 0, self.mascot_radius)
+        vy = min(-160.0, max(-MAX_VELOCITY, float(vy_impulse)))
+        vx_clamped = max(-MAX_VELOCITY * 0.6, min(MAX_VELOCITY * 0.6, float(vx)))
+        self.body.velocity = (vx_clamped, vy)
+        self.state.grounded = False
+        self.state.on_shelf = None
+        self.set_gravity(True)
+        self.state.velocity = tuple(self.body.velocity)
+        return True
+
     # ============================================================
     # Drag & Throw
     # ============================================================
@@ -464,8 +560,11 @@ class ScreenSpacePhysics:
         """Inicia arraste - corpo vira KINEMATIC."""
         if self._drag_active:
             return
+        if not (math.isfinite(mouse_x) and math.isfinite(mouse_y)):
+            return
 
         self._drag_active = True
+        self._gravity_before_drag = self.space.gravity != (0, 0)
         self._drag_offset = (
             self.body.position.x - mouse_x,
             self.body.position.y - mouse_y,
@@ -483,6 +582,8 @@ class ScreenSpacePhysics:
     def update_drag(self, mouse_x: float, mouse_y: float) -> None:
         """Atualiza posição durante drag."""
         if not self._drag_active:
+            return
+        if not (math.isfinite(mouse_x) and math.isfinite(mouse_y)):
             return
 
         self.body.position = (
@@ -515,16 +616,17 @@ class ScreenSpacePhysics:
             base_vx, base_vy = self._estimate_velocity_from_samples()
             multiplier = self.settings.physics.throw_multiplier
             ex, ey = extra_velocity if extra_velocity is not None else (0.0, 0.0)
-            velocity = (
-                base_vx * multiplier + float(ex),
-                base_vy * multiplier + float(ey),
-            )
+            vx = base_vx * multiplier + (float(ex) if math.isfinite(ex) else 0.0)
+            vy = base_vy * multiplier + (float(ey) if math.isfinite(ey) else 0.0)
+            velocity = (vx, vy) if (math.isfinite(vx) and math.isfinite(vy)) else (0.0, 0.0)
         else:
             velocity = (0.0, 0.0)
 
         # Clamp
         speed = math.hypot(velocity[0], velocity[1])
-        if speed > MAX_VELOCITY:
+        if not math.isfinite(speed):
+            velocity = (0.0, 0.0)
+        elif speed > MAX_VELOCITY:
             scale = MAX_VELOCITY / speed
             velocity = (velocity[0] * scale, velocity[1] * scale)
 
@@ -533,14 +635,14 @@ class ScreenSpacePhysics:
 
         # Constrain a release to the selected monitor, keeping negative origins.
         left, top, right, bottom = self.bounds
-        r = self.mascot_radius + WALL_THICKNESS
+        r = self.mascot_radius + self._wall_thickness
         self.body.position = (
             max(left + r, min(right - r, self.body.position.x)),
             max(top + r, min(bottom - r, self.body.position.y)),
         )
         self.state.position = tuple(self.body.position)
         self.state.velocity = velocity
-        self.set_gravity(not cancel)
+        self.set_gravity((not cancel) or self._gravity_before_drag)
 
         return velocity
 
@@ -584,7 +686,11 @@ class ScreenSpacePhysics:
         if total_weight == 0:
             return (0.0, 0.0)
 
-        return (vx / total_weight, vy / total_weight)
+        vx_out = vx / total_weight
+        vy_out = vy / total_weight
+        if not (math.isfinite(vx_out) and math.isfinite(vy_out)):
+            return (0.0, 0.0)
+        return (vx_out, vy_out)
 
     # ============================================================
     # Gravity / Grounded State
@@ -646,6 +752,8 @@ class ScreenSpacePhysics:
 
     def step(self, dt: float) -> PhysicsState:
         """Avança simulação por dt segundos."""
+        if not math.isfinite(dt):
+            dt = 0.0
         if self.settings.physics.collide_with_windows:
             self.refresh_shelves()
         # Accumulator para step fixo
@@ -659,6 +767,23 @@ class ScreenSpacePhysics:
                 self._walk_speed = self.body.velocity.x
             self.space.step(FIXED_DT)
             self._accumulator -= FIXED_DT
+
+        # Clamp de velocidade máxima e sanidade contra NaN/Inf.
+        px, py = float(self.body.position.x), float(self.body.position.y)
+        vx, vy = float(self.body.velocity.x), float(self.body.velocity.y)
+        if not (
+            math.isfinite(px)
+            and math.isfinite(py)
+            and math.isfinite(vx)
+            and math.isfinite(vy)
+        ):
+            self.body.position = self.state.position
+            self.body.velocity = (0.0, 0.0)
+        else:
+            vel_mag = math.hypot(vx, vy)
+            if vel_mag > MAX_VELOCITY:
+                escala = MAX_VELOCITY / vel_mag
+                self.body.velocity = (vx * escala, vy * escala)
 
         # Update grounded state
         self.update_grounded_state()
@@ -686,6 +811,8 @@ class ScreenSpacePhysics:
 
     def set_position(self, x: float, y: float) -> None:
         """Define posição do mascote (teleport)."""
+        if not (math.isfinite(x) and math.isfinite(y)):
+            return
         self.body.position = (x, y)
         self.body.velocity = (0, 0)
         self.state.position = (x, y)
@@ -695,6 +822,8 @@ class ScreenSpacePhysics:
 
     def apply_impulse(self, impulse: tuple[float, float]) -> None:
         """Aplica impulso instantâneo no centro de massa."""
+        if not (math.isfinite(impulse[0]) and math.isfinite(impulse[1])):
+            return
         self.body.apply_impulse_at_world_point(impulse, self.body.position)
 
     def get_state(self) -> PhysicsState:
@@ -702,12 +831,18 @@ class ScreenSpacePhysics:
         return self.state
 
     def cleanup(self) -> None:
-        """Limpeza."""
-        self.space.remove(self.body, self.shape)
-        for shape in self.shelf_shapes.values():
-            self.space.remove(shape)
-        self.space.remove(self._bottom_shape)
-        # Screen edges são no static_body, não precisam remover individualmente
+        """Limpeza segura do espaço Pymunk e todas as formas registradas."""
+        for obj in (self.body, self.shape):
+            if obj in self.space.bodies or obj in self.space.shapes:
+                self.space.remove(obj)
+        for shape in list(self.shelf_shapes.values()):
+            if shape in self.space.shapes:
+                self.space.remove(shape)
+        self.shelf_shapes.clear()
+        for edge in list(getattr(self, "_edges", ())):
+            if edge in self.space.shapes:
+                self.space.remove(edge)
+        self._edges.clear()
 
 
 # ============================================================

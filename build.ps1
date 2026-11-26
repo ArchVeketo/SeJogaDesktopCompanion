@@ -1,4 +1,4 @@
-param([string]$Python = 'python')
+﻿param([string]$Python = 'python')
 $ErrorActionPreference = 'Stop'
 # Do not let Codex's private runtime DLLs enter the application bundle.
 # PyInstaller replaces the onedir output. Preserve the user's portable profile.
@@ -14,6 +14,15 @@ $env:PATH = (($env:PATH -split ';' | Where-Object { $_ -notmatch 'codex-runtimes
 $panda3dDir = & $Python -c 'import pathlib, panda3d; print(pathlib.Path(panda3d.__file__).parent)'
 if ($LASTEXITCODE -ne 0) { throw 'O Python escolhido não possui Panda3D.' }
 
+# Prepara copia de assets de runtime sem arquivos fonte (.blend, .psd, .xcf, .bbmodel, raw/, vfx_grafite/).
+# Os arquivos .blend e fontes permanecem intactos no repositorio git.
+$assetsStage = Join-Path $PSScriptRoot '.local\assets-stage'
+if (Test-Path -LiteralPath $assetsStage) { Remove-Item -LiteralPath $assetsStage -Recurse -Force }
+New-Item -ItemType Directory -Force -Path $assetsStage | Out-Null
+& robocopy (Join-Path $PSScriptRoot 'assets') $assetsStage /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 `
+    /XD raw assets vfx_grafite /XF *.blend *.blend1 *.psd *.xcf *.bbmodel /NFL /NDL /NP /NJH /NJS | Out-Null
+if ($LASTEXITCODE -ge 8) { throw 'Falha ao preparar stage de assets para o bundle.' }
+
 & $Python -m PyInstaller `
     --paths src `
     --clean `
@@ -22,7 +31,12 @@ if ($LASTEXITCODE -ne 0) { throw 'O Python escolhido não possui Panda3D.' }
     --version-file "assets\brand\version_info.txt" `
     --windowed `
     --onedir `
-    --add-data "assets;assets" `
+    --add-data "$assetsStage;assets" `
+    --exclude-module=sejoga.editor `
+    --exclude-module=sejoga.rig_mapa `
+    --exclude-module=pytest `
+    --exclude-module=_pytest `
+    --exclude-module=mypy `
     --collect-all simplepbr `
     --add-binary "$panda3dDir\libpandagl.dll;panda3d" `
     --add-binary "$panda3dDir\libp3windisplay.dll;panda3d" `

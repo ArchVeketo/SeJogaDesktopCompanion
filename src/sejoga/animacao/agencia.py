@@ -172,22 +172,21 @@ class Agencia:
 
         # Estado emocional
         self.humor: Humor = Humor.CALMO
-        self._humor_tempo: dict[Humor, float] = {}
-        for h in Humor:
-            self._humor_tempo[h] = 0.0
+        self._humor_tempo: dict[Humor, float] = {h: 0.0 for h in Humor}
 
-        # Metas ativas
+        # Metas ativas e desejos pendentes
         self._metas: list[Meta] = []
         self.meta_ativa: Meta | None = None
-
-        # Desejos pendentes
         self._desejos: list[Desejo] = []
 
         # Interrupções e teimosia
         self.interrupcoes = InterrupcaoRegistro()
         self._teimosia_nivel: float = 0.0  # 0..1
         self._teimosia_ativa: bool = False
+        self._inicializar_historico_e_cooldowns()
 
+    def _inicializar_historico_e_cooldowns(self) -> None:
+        """Inicializa histórico afetivo, pontos de interesse e janelas de cooldown."""
         # Histórico de interações (inicia em self._agora para não nascer "entediado")
         self._interacoes_positivas: int = 0  # Carinho, brincadeira
         self._interacoes_negativas: int = 0  # Arraste brusco, impacto
@@ -372,7 +371,7 @@ class Agencia:
         """Comemora apenas conquistas prioritárias (nunca passeios triviais), com cooldown longo."""
         if meta is None or meta.tipo not in (MetaTipo.CAMINHAR_A_TELEFONE, MetaTipo.PROCURAR_ATENCAO):
             return False
-        if meta.prioridade < 0.72 or (self._agora - self._ultima_comemoracao) < 90.0:
+        if meta.prioridade < 0.55 or (self._agora - self._ultima_comemoracao) < 90.0:
             return False
         self._ultima_comemoracao = self._agora
         return True
@@ -410,8 +409,8 @@ class Agencia:
         tempo_sem_interacao = self.tempo_sem_interacao
         tempo_sem_cursor = self.tempo_sem_cursor_movimento
 
-        # Tédio após tempo sem interação
-        if tempo_sem_interacao > 60:
+        # Tédio após tempo sem interação (probabilístico para equilibrar metas)
+        if tempo_sem_interacao > 60 and self._rng.random() < 0.45:
             self._desejos.append(Desejo(
                 tipo=DesejoTipo.TEDIO,
                 intensidade=min(1.0, (tempo_sem_interacao - 60) / 120),
@@ -442,13 +441,22 @@ class Agencia:
                 criado_em=self._agora,
             ))
 
+    def _sortear_desejo_ponderado(self) -> Desejo:
+        total_pesos = sum(max(0.05, d.intensidade) for d in self._desejos)
+        roleta = self._rng.uniform(0.0, total_pesos)
+        acum = 0.0
+        for candidato in self._desejos:
+            acum += max(0.05, candidato.intensidade)
+            if acum >= roleta:
+                return candidato
+        return self._desejos[-1]
+
     def _tentar_gerar_meta(self) -> None:
         """Tenta converter um desejo em meta concreta."""
         if not self._desejos:
             return
 
-        # Escolhe o desejo mais intenso
-        desejo = max(self._desejos, key=lambda d: d.intensidade)
+        desejo = self._sortear_desejo_ponderado()
 
         if desejo.tipo == DesejoTipo.CURIOSIDADE and self._pontos_interesse:
             # Olhar ou caminhar até um ponto de interesse recente na tela
@@ -464,6 +472,7 @@ class Agencia:
                 alvo_y=ponto[1],
                 prioridade=desejo.intensidade,
                 criado_em=self._agora,
+                tempo_maximo=3.5 if tipo_meta == MetaTipo.OLHAR_PONTO else 12.0,
             )
 
         elif desejo.tipo == DesejoTipo.TEDIO:

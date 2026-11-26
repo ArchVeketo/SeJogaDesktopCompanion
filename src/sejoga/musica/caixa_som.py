@@ -6,8 +6,8 @@ import gltf
 from panda3d.core import NodePath, PNMImage, Point3, Texture, TransparencyAttrib, Vec3
 
 from sejoga.animacao.interpolacao import suavizar_quintico
-from sejoga.musica.efeitos_caixa_som import SpeakerEffects
 from sejoga.nucleo.recursos import model_dir
+from sejoga.render.sprites_efeitos import atlas_gosma, cartao_pixel, quadro_gosma
 
 PRIMEIRO_ARREMESSO_S = 1.65
 INTERVALO_ARREMESSOS_S = 0.95
@@ -16,6 +16,34 @@ BATIDAS_ARREMESSO_S = tuple(
     PRIMEIRO_ARREMESSO_S + index * INTERVALO_ARREMESSOS_S for index in range(3)
 )
 DURACAO_SALTO_S = 1.05
+
+
+class SpeakerEffects:
+    """Espalha a gosma pelas duas quinas inferiores e seca no chão."""
+
+    def __init__(self, geometry):
+        """Cria um respingo para cada quina voltada à câmera."""
+        self.slime = []
+        for _ in range(2):
+            node = cartao_pixel(geometry, "speaker-splash", atlas_gosma())
+            node.setColorScale(1.22, 0.64, 0.91, 1)
+            node.hide()
+            self.slime.append(node)
+
+    def update(self, age):
+        """Expande os respingos no impacto e troca pelos quadros de secagem."""
+        for lado, node in zip((-1, 1), self.slime, strict=True):
+            if not 0 <= age < 1.4:
+                node.hide()
+                continue
+            node.show()
+            espalha = min(1.0, age / 0.28)
+            node.setPos(lado * (0.72 + 0.13 * espalha), 0.015, 0.12 - 0.05 * espalha)
+            node.setScale(0.26 + 0.25 * espalha, 1, 0.28 - 0.10 * espalha)
+            if age < 0.28:
+                quadro_gosma(node, 0, min(3, int(age / 0.07)))
+            else:
+                quadro_gosma(node, 3, min(3, int((age - 0.28) / 0.28)))
 
 
 class MusicSpeaker:
@@ -31,16 +59,18 @@ class MusicSpeaker:
         self._measure_character()
         render_root = getattr(renderer.showbase, "render", None)
         self.root = (render_root or renderer.model_anchor).attachNewNode("music-speaker")
-        self.root.setTransparency(TransparencyAttrib.MAlpha)
+        self.root.setTransparency(TransparencyAttrib.MNone)
         self.root.setCollideMask(0)
         arquivo = "radio-compacto.glb" if self.compact else "Boomboxes.gltf"
         asset = NodePath(gltf.load_model(str(model_dir() / arquivo)))
         self.boxes = []
         self.destinations = []
         self.bounds = []
+        self.emissores_graves = []
         limites_x = []
         self.scales = []
         self.effects = []
+        self._cones_por_caixa: list[list[tuple[NodePath, Point3, Vec3]]] = []
         self.launch_origin = Point3(0.23, -0.12, 0.94)
         self._stage_world_anchor: Point3 | None = None
         self._stage_screen_anchor: tuple[float, float] | None = None
@@ -67,8 +97,24 @@ class MusicSpeaker:
             low, high = box.getTightBounds(self.root)
             self.boxes.append(box)
             self.scales.append(box.getSx())
+            cones: list[tuple[NodePath, Point3, Vec3]] = []
+            vistos_cones: set[int] = set()
+            for padrao in ("**/Cone*", "**/Calota*"):
+                for no_cone in box.findAllMatches(padrao):
+                    if no_cone.getKey() in vistos_cones:
+                        continue
+                    vistos_cones.add(no_cone.getKey())
+                    cones.append((no_cone, Point3(no_cone.getPos()), Vec3(no_cone.getScale())))
+            self._cones_por_caixa.append(cones)
             box_low, box_high = box.getTightBounds(box)
             self.bounds.append((box_low, box_high))
+            calota = box.find("**/Calota_" + name + "_0")
+            if calota.isEmpty():
+                # O rádio compacto tem a frente integrada em uma malha única.
+                calota = box.attachNewNode("centro-alto-falante")
+                calota.setPos((box_low.x + box_high.x) * 0.5, box_high.y,
+                              box_low.z + (box_high.z - box_low.z) * 0.52)
+            self.emissores_graves.append(calota)
             effects_anchor = box.attachNewNode("speaker-effects")
             effects_anchor.setPos(0, box_high.y, box_low.z)
             effects_anchor.setScale((box_high.z - box_low.z) / 1.75)
@@ -101,7 +147,14 @@ class MusicSpeaker:
         self.ejecting = False
         self.throw_index = -1
         self._landing_sound_played = False
+        self._album_colors: tuple[tuple[float, float, float], ...] = ()
         self.root.hide()
+
+    def set_album_colors(
+        self, colors: tuple[tuple[float, float, float], ...] | list[tuple[float, float, float]] | None
+    ) -> None:
+        """Atualiza o sotaque cromático vindo da capa do álbum em reprodução."""
+        self._album_colors = tuple(colors or ())
 
     @staticmethod
     def _normalizar_imagem_caixa(img: PNMImage) -> None:
@@ -137,7 +190,7 @@ class MusicSpeaker:
     def _realcar_textura_caixa(tex) -> None:
         """Restaura leitura e contraste cromático da jukebox evitando bloco escuro ou lavado."""
         img = PNMImage()
-        if tex.store(img):
+        if not tex.getName().startswith("pixel-") and tex.store(img):
             MusicSpeaker._normalizar_imagem_caixa(img)
             tex.load(img)
         tex.setMinfilter(Texture.FTNearest)
@@ -254,11 +307,15 @@ class MusicSpeaker:
         else:
             pos.z = max(pos.z, self.floor_z - self._extensao_eixo(box, low, high, Vec3(0, 0, 1)))
         pos.y = max(pos.y + arc * 0.36, 0.24 - self._extensao_eixo(box, low, high, Vec3(0, 1, 0)))
+        if not dancing and self.visibility < 0.99:
+            fade_scale = max(0.02, self.visibility)
+            cur_s = box.getScale()
+            box.setScale(cur_s * fade_scale)
+            pos.z = self.floor_z - low.z * float(box.getSz())
         box.setPos(pos)
         if u >= 1 and index == 0 and not self.compact:
             borda = box.getQuat().xform(Vec3(0, high.y * box.getSy() + 0.12, 0))
             self.seat.set(pos.x + borda.x, pos.y + borda.y, pos.z + high.z * box.getSz())
-        box.setColorScale(1, 1, 1, self.visibility)
         self.effects[index].update(elapsed - VOO_CAIXA_S)
 
     def _tocar_som_pouso(self) -> None:
@@ -333,6 +390,22 @@ class MusicSpeaker:
         box.setScale(lateral, lateral, altura)
         pos.x += 0.036 * sin(phase * 9 + index) * acento
         pos.z = self.floor_z - low.z * altura
+        for no_cone, pos_base, esc_base in self._cones_por_caixa[index]:
+            # No referencial local da caixa, +Y aponta para a câmera após setH(180).
+            impulso = 0.042 * acento
+            no_cone.setPos(pos_base.x, pos_base.y + impulso, pos_base.z)
+            no_cone.setScale(esc_base * (1.0 + 0.055 * acento))
+            if self._album_colors:
+                cr, cg, cb = self._album_colors[index % len(self._album_colors)]
+                ganho = 0.28 + 0.52 * max(0.0, min(1.0, strength))
+                no_cone.setColorScale(
+                    1.0 + (cr * 1.45 - 1.0) * ganho,
+                    1.0 + (cg * 1.45 - 1.0) * ganho,
+                    1.0 + (cb * 1.45 - 1.0) * ganho,
+                    1.0,
+                )
+            else:
+                no_cone.clearColorScale()
 
     @property
     def jump_progress(self):

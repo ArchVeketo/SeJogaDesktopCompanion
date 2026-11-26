@@ -26,10 +26,20 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
+    QWidget,
 )
 
+from sejoga.catalogos_ui import (
+    ABERTURAS_CONFIG_UI,
+    ENCERRAMENTOS_CONFIG_UI,
+    ESTILOS_DANCA_UI,
+    FILTROS_VISUAIS_UI,
+    PALETAS_VFX_UI,
+)
 from sejoga.configuracao import Settings, default_config_path, save_settings
 from sejoga.desktop import desktop_const as const_desktop
 from sejoga.desktop import inicializacao_automatica
@@ -42,6 +52,13 @@ class SettingsDialog(QDialog):
     # Emitido quando o handoff ao launcher nativo acontece: o companion deve fechar
     # para não ficar renderizando atrás da barra de progresso (fluxo fecha->barra->reabre).
     atualizacao_iniciada = Signal()
+
+    @staticmethod
+    def _popular_combo(combo: QComboBox, itens, selecionado) -> None:
+        for key, label in itens:
+            combo.addItem(label, key)
+        idx = combo.findData(selecionado)
+        combo.setCurrentIndex(idx if idx >= 0 else 0)
 
     def __init__(self, settings: Settings):  # noqa: PLR0915  # TODO convenção: fatiar exige validar na GPU/desktop real (layout Qt, física ou áudio); lote próprio
         """Monta o diálogo de configurações com os valores atuais."""
@@ -74,26 +91,20 @@ class SettingsDialog(QDialog):
         self.outline_input.setChecked(settings.window.outline_enabled)
 
         self.visual_filter_input = QComboBox()
-        for key, label in (
-            ("padrao", "Padrão (3D limpo)"),
-            ("pixel", "Pixel (~1.5px · estilo GIF)"),
-            ("rascunho", "Rascunho (Spider-Punk 8 FPS)"),
-        ):
-            self.visual_filter_input.addItem(label, key)
-        idx_vf = self.visual_filter_input.findData(settings.window.visual_filter)
-        self.visual_filter_input.setCurrentIndex(idx_vf if idx_vf >= 0 else 0)
+        self._popular_combo(
+            self.visual_filter_input,
+            FILTROS_VISUAIS_UI,
+            settings.window.visual_filter,
+        )
 
-        self.vfx_enabled_input = QCheckBox("Ativar efeitos street-punk (emoções e quedas)")
+        self.vfx_enabled_input = QCheckBox("Ativar efeitos visuais (emoções, quedas e eletricidade)")
         self.vfx_enabled_input.setChecked(settings.window.vfx_enabled)
         self.vfx_palette_input = QComboBox()
-        for key, label in (
-            ("pb_escuro", "P&B Nanquim (tinta preta + halo branco)"),
-            ("pb_claro", "P&B Giz Branco (tinta branca + contorno)"),
-            ("colorido", "Colorido Street Swag"),
-        ):
-            self.vfx_palette_input.addItem(label, key)
-        idx_vp = self.vfx_palette_input.findData(settings.window.vfx_palette)
-        self.vfx_palette_input.setCurrentIndex(idx_vp if idx_vp >= 0 else 0)
+        self._popular_combo(
+            self.vfx_palette_input,
+            PALETAS_VFX_UI,
+            settings.window.vfx_palette,
+        )
         self.vfx_scale_input = QDoubleSpinBox()
         self.vfx_scale_input.setRange(0.5, 1.6)
         self.vfx_scale_input.setSingleStep(0.1)
@@ -135,30 +146,42 @@ class SettingsDialog(QDialog):
         self.idle_input = QCheckBox("Variar as animações quando estiver parado")
         self.idle_input.setChecked(settings.behavior.idle_animation)
 
+        from sejoga.catalogos_ui import PERSONALIDADES_IDLE_UI
+
         self.personality_input = QComboBox()
-        for key, label in (
-            ("auto", "Padrão"),
-            ("calm", "Tranquila"),
-            ("curious", "Curiosa"),
-            ("playful", "Brincalhona"),
-            ("shy", "Tímida"),
-            ("confident", "Confiante"),
-            ("street", "Street groove · Bomb Rush"),
-            ("fighter", "Guarda · Lethal League"),
-            ("rhythm", "Ritmada · Hi-Fi Rush"),
-            ("stylish", "Estilosa · Persona 5"),
-        ):
+        for key, label in PERSONALIDADES_IDLE_UI:
             self.personality_input.addItem(label, key)
-        self.personality_input.setCurrentIndex(
-            self.personality_input.findData(settings.behavior.idle_personality)
-        )
+        idx_pers = self.personality_input.findData(settings.behavior.idle_personality)
+        self.personality_input.setCurrentIndex(idx_pers if idx_pers >= 0 else 0)
         self.personality_input.setEnabled(self.idle_input.isChecked())
         self.idle_input.toggled.connect(self.personality_input.setEnabled)
 
+        self.wander_input = QCheckBox("Caminhar espontaneamente pela tela")
+        self.wander_input.setChecked(settings.behavior.wander)
         self.react_click_input = QCheckBox("Reagir ao cursor e aos cliques")
         self.react_click_input.setChecked(settings.behavior.react_to_click)
         self.react_drag_input = QCheckBox("Permitir arrastar o mascote")
         self.react_drag_input.setChecked(settings.behavior.react_to_drag)
+        self.react_attention_input = QCheckBox("Virar o olhar para cursor e janelas ativas")
+        self.react_attention_input.setChecked(settings.behavior.react_to_attention)
+        self.sleep_idle_input = QSpinBox()
+        self.sleep_idle_input.setRange(0, 3600)
+        self.sleep_idle_input.setSingleStep(15)
+        self.sleep_idle_input.setSuffix(" s")
+        self.sleep_idle_input.setSpecialValueText("Nunca")
+        self.sleep_idle_input.setValue(settings.behavior.sleep_after_idle_seconds)
+
+        self.audio_enabled_input = QCheckBox("Ativar efeitos sonoros do companion")
+        self.audio_enabled_input.setChecked(settings.audio.enabled)
+        self.master_volume_input = QDoubleSpinBox()
+        self.master_volume_input.setRange(
+            const_desktop.FRACAO_MINIMA, const_desktop.FRACAO_MAXIMA
+        )
+        self.master_volume_input.setSingleStep(const_desktop.FRACAO_PASSO)
+        self.master_volume_input.setDecimals(2)
+        self.master_volume_input.setValue(settings.audio.master_volume)
+        self.master_volume_input.setEnabled(self.audio_enabled_input.isChecked())
+        self.audio_enabled_input.toggled.connect(self.master_volume_input.setEnabled)
 
         self.z_order_input = QComboBox()
         self.z_order_input.addItem("Sempre no topo", "topmost")
@@ -169,7 +192,8 @@ class SettingsDialog(QDialog):
             if settings.window.mode == "desktop"
             else ("topmost" if settings.window.always_on_top else "normal")
         )
-        self.z_order_input.setCurrentIndex(self.z_order_input.findData(z_order))
+        idx_z = self.z_order_input.findData(z_order)
+        self.z_order_input.setCurrentIndex(idx_z if idx_z >= 0 else 0)
 
         self.music_input = QComboBox()
         self.music_input.addItem("Automático (áudio + mídia)", "auto")
@@ -192,60 +216,39 @@ class SettingsDialog(QDialog):
         )
         self.dance_chance_input.setSingleStep(const_desktop.FRACAO_PASSO)
         self.dance_chance_input.setValue(settings.music.dance_chance)
-        from sejoga.configuracao import ESTILOS_DANCA_UI
-
         self.dance_style_input = QComboBox()
-        for key, label in (("auto", "Automático pelo áudio"), *ESTILOS_DANCA_UI):
-            self.dance_style_input.addItem(label, key)
-        idx_dance = self.dance_style_input.findData(settings.music.dance_style)
-        self.dance_style_input.setCurrentIndex(idx_dance if idx_dance >= 0 else 0)
+        self._popular_combo(
+            self.dance_style_input,
+            (("auto", "Automático pelo áudio"), *ESTILOS_DANCA_UI),
+            settings.music.dance_style,
+        )
         self.speaker_style_input = QComboBox()
-        self.speaker_style_input.addItem("Palco com três caixas", "palco")
-        self.speaker_style_input.addItem("Rádio vermelho compacto", "radio")
-        self.speaker_style_input.setCurrentIndex(
-            self.speaker_style_input.findData(settings.music.speaker_style)
+        self._popular_combo(
+            self.speaker_style_input,
+            (("palco", "Palco com três caixas"), ("radio", "Rádio vermelho compacto")),
+            settings.music.speaker_style,
         )
 
         self.intro_animation_input = QComboBox()
-        for key, label in (
-            ("padrao", "Instantânea (padrão)"),
-            ("fade_in", "Fade in (dissolver)"),
-            ("virtual_insanity_in", "Virtual Insanity (deslizando)"),
-            ("run_from_depth", "Correndo do fundo"),
-            ("kagebunshin_in", "Entrada ninja (Kage Bunshin)"),
-            ("sandevistan_in", "Sandevistan (lateral)"),
-            ("aleatoria", "Aleatória ao abrir"),
-        ):
-            self.intro_animation_input.addItem(label, key)
-        idx_intro = self.intro_animation_input.findData(settings.window.intro_animation)
-        self.intro_animation_input.setCurrentIndex(idx_intro if idx_intro >= 0 else 0)
+        self._popular_combo(
+            self.intro_animation_input,
+            ABERTURAS_CONFIG_UI,
+            settings.window.intro_animation,
+        )
 
         self.exit_animation_input = QComboBox()
-        for key, label in (
-            ("classic", "Clássica (arremesso)"),
-            ("sonic_classic", "Sonic Classic (pulo e queda)"),
-            ("fnf_blue_balls", "FNF Blue Balls"),
-            ("lego_disassemble", "Desmontar LEGO"),
-            ("thanos_snap", "Desintegrar (Thanos)"),
-            ("peace_fade_out", "Fade out Peace Sign"),
-            ("virtual_insanity_out", "Virtual Insanity (deslizando)"),
-            ("cyberpsicopata_out", "Cyberpsicopata (glitch)"),
-            ("aleatoria", "Aleatória ao encerrar"),
-        ):
-            self.exit_animation_input.addItem(label, key)
-        idx_exit = self.exit_animation_input.findData(settings.window.exit_animation)
-        self.exit_animation_input.setCurrentIndex(idx_exit if idx_exit >= 0 else 0)
+        self._popular_combo(
+            self.exit_animation_input,
+            ENCERRAMENTOS_CONFIG_UI,
+            settings.window.exit_animation,
+        )
 
         # Canal de atualização (persistido em settings.update.channel).
         self.channel_input = QComboBox()
-        for key, label in (
-            ("release", "Estável (release)"),
-            ("prerelease", "Pré-release"),
-            ("nightly", "Nightly"),
-        ):
-            self.channel_input.addItem(label, key)
-        self.channel_input.setCurrentIndex(
-            self.channel_input.findData(settings.update.channel)
+        self._popular_combo(
+            self.channel_input,
+            (("release", "Estável (release)"), ("prerelease", "Pré-release"), ("nightly", "Nightly")),
+            settings.update.channel,
         )
 
         # Botão "Buscar atualizações" + rótulo de status (busca roda em thread).
@@ -254,8 +257,7 @@ class SettingsDialog(QDialog):
 
         # (1) Iniciar com o Windows: estado inicial lido do atalho real na Startup.
         self.autostart_input = QCheckBox("Iniciar com o Windows")
-        with contextlib.suppress(Exception):
-            self.autostart_input.setChecked(inicializacao_automatica.esta_ativo())
+        self._configurar_autostart_checkbox()
 
         # (7) FPS alvo do mascote (aplicado ao vivo pelo OverlayApp).
         self.fps_input = QSpinBox()
@@ -310,54 +312,21 @@ class SettingsDialog(QDialog):
             for name in settings.hotkeys.model_dump()
         }
 
-        form = QFormLayout()
-        form.addRow("Tamanho da janela", self.size_input)
-        form.addRow("Escala do mascote", self.scale_input)
-        form.addRow("Filtro visual", self.visual_filter_input)
-        form.addRow(self.vfx_enabled_input)
-        form.addRow("Paleta dos efeitos", self.vfx_palette_input)
-        form.addRow("Tamanho dos efeitos", self.vfx_scale_input)
-        form.addRow(self.outline_input)
-        form.addRow("Cor do contorno", self.outline_color_button)
-        form.addRow("Espessura do contorno", self.outline_width_input)
-        form.addRow("Respiração do contorno", self.outline_breath_input)
-        form.addRow("Cor do color key (requer reinício)", self.colorkey_color_button)
-        form.addRow(self.physics_input)
-        form.addRow(self.idle_input)
-        form.addRow("Personalidade", self.personality_input)
-        form.addRow(self.react_click_input)
-        form.addRow(self.react_drag_input)
-        form.addRow("Posição da janela", self.z_order_input)
-        form.addRow("Reação à música", self.music_input)
-        form.addRow(self.beat_input)
-        form.addRow("Sensibilidade da batida", self.sensitivity_input)
-        form.addRow("Frequência de dança (0–1)", self.dance_chance_input)  # noqa: RUF001  # intencional: travessao de intervalo (en dash) no rotulo exibido
-        form.addRow("Estilo de dança", self.dance_style_input)
-        form.addRow("Caixa de som", self.speaker_style_input)
-        form.addRow("FPS alvo", self.fps_input)
-        form.addRow("Monitor preferido", self.monitor_input)
-        form.addRow("Animação de abertura", self.intro_animation_input)
-        form.addRow("Animação de encerramento", self.exit_animation_input)
-        form.addRow(self.autostart_input)
-        form.addRow(self.diagnostic_input)
-        form.addRow("Canal de atualização", self.channel_input)
-        form.addRow("Atualizações", self.check_update_button)
-        form.addRow("Nível de log", log_row)
-        form.addRow("Pastas", pastas_row)
-        form.addRow("Perfil", self.profile_path_label)
-        form.addRow("", self.open_profile_button)
-        for name, label in (
-            ("toggle_overlay", "Mostrar/ocultar"),
-            ("open_settings", "Abrir configurações"),
-            ("summon", "Chamar mascote"),
-            ("toggle_debug", "HUD de diagnóstico"),
-            ("capture_frame", "Capturar frame"),
-            ("toggle_frame_recording", "Gravar frames"),
-        ):
-            form.addRow(f"Atalho: {label}", self.hotkey_inputs[name])
+        def _criar_aba(form_aba: QFormLayout, aviso: QLabel | None = None) -> QScrollArea:
+            pagina = QWidget()
+            box = QVBoxLayout(pagina)
+            box.addLayout(form_aba)
+            if aviso is not None:
+                box.addWidget(aviso)
+            box.addStretch(1)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+            scroll.setWidget(pagina)
+            return scroll
 
         self.restart_notice = QLabel(
-            "Tamanho da janela e física são aplicados ao reiniciar o companion."
+            "Tamanho da janela, física, monitor e color key são aplicados ao reiniciar o companion."
         )
         self.restart_notice.setWordWrap(True)
         self.loopback_notice = QLabel(
@@ -369,6 +338,77 @@ class SettingsDialog(QDialog):
         )
         self.hotkey_notice.setWordWrap(True)
 
+        # Aba 1 — Visual & Efeitos
+        form_visual = QFormLayout()
+        form_visual.addRow("Tamanho da janela", self.size_input)
+        form_visual.addRow("Escala do mascote", self.scale_input)
+        form_visual.addRow("FPS alvo", self.fps_input)
+        form_visual.addRow("Posição da janela", self.z_order_input)
+        form_visual.addRow("Monitor preferido", self.monitor_input)
+        form_visual.addRow("Filtro visual", self.visual_filter_input)
+        form_visual.addRow(self.vfx_enabled_input)
+        form_visual.addRow("Ilustração extra dos efeitos", self.vfx_palette_input)
+        form_visual.addRow("Tamanho dos efeitos", self.vfx_scale_input)
+        form_visual.addRow(self.outline_input)
+        form_visual.addRow("Cor do contorno", self.outline_color_button)
+        form_visual.addRow("Espessura do contorno", self.outline_width_input)
+        form_visual.addRow("Respiração do contorno", self.outline_breath_input)
+
+        # Aba 2 — Comportamento & Animações
+        form_comport = QFormLayout()
+        form_comport.addRow(self.physics_input)
+        form_comport.addRow(self.idle_input)
+        form_comport.addRow("Personalidade", self.personality_input)
+        form_comport.addRow(self.wander_input)
+        form_comport.addRow(self.react_click_input)
+        form_comport.addRow(self.react_drag_input)
+        form_comport.addRow(self.react_attention_input)
+        form_comport.addRow("Dormir após inatividade", self.sleep_idle_input)
+        form_comport.addRow("Animação de abertura", self.intro_animation_input)
+        form_comport.addRow("Animação de encerramento", self.exit_animation_input)
+
+        # Aba 3 — Música & Dança
+        form_musica = QFormLayout()
+        form_musica.addRow("Reação à música", self.music_input)
+        form_musica.addRow(self.beat_input)
+        form_musica.addRow("Sensibilidade da batida", self.sensitivity_input)
+        form_musica.addRow("Frequência de dança (0–1)", self.dance_chance_input)  # noqa: RUF001
+        form_musica.addRow("Estilo de dança", self.dance_style_input)
+        form_musica.addRow("Caixa de som", self.speaker_style_input)
+        form_musica.addRow(self.audio_enabled_input)
+        form_musica.addRow("Volume dos efeitos (0–1)", self.master_volume_input)  # noqa: RUF001
+
+        # Aba 4 — Atalhos
+        form_atalhos = QFormLayout()
+        for name, label in (
+            ("toggle_overlay", "Mostrar/ocultar"),
+            ("open_settings", "Abrir configurações"),
+            ("summon", "Chamar mascote"),
+            ("toggle_debug", "HUD de diagnóstico"),
+            ("capture_frame", "Capturar frame"),
+            ("toggle_frame_recording", "Gravar frames"),
+        ):
+            form_atalhos.addRow(f"Atalho: {label}", self.hotkey_inputs[name])
+
+        # Aba 5 — Sistema & Diagnóstico
+        form_sistema = QFormLayout()
+        form_sistema.addRow(self.autostart_input)
+        form_sistema.addRow("Canal de atualização", self.channel_input)
+        form_sistema.addRow("Atualizações", self.check_update_button)
+        form_sistema.addRow("Cor do color key (reinício)", self.colorkey_color_button)
+        form_sistema.addRow(self.diagnostic_input)
+        form_sistema.addRow("Nível de log", log_row)
+        form_sistema.addRow("Pastas", pastas_row)
+        form_sistema.addRow("Perfil", self.profile_path_label)
+        form_sistema.addRow("", self.open_profile_button)
+
+        self.tabs = QTabWidget()
+        self.tabs.addTab(_criar_aba(form_visual, self.restart_notice), "Visual & Efeitos")
+        self.tabs.addTab(_criar_aba(form_comport), "Comportamento")
+        self.tabs.addTab(_criar_aba(form_musica, self.loopback_notice), "Música & Dança")
+        self.tabs.addTab(_criar_aba(form_atalhos, self.hotkey_notice), "Atalhos")
+        self.tabs.addTab(_criar_aba(form_sistema), "Sistema")
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save
             | QDialogButtonBox.StandardButton.Cancel
@@ -377,16 +417,21 @@ class SettingsDialog(QDialog):
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
-        layout.addLayout(form)
-        layout.addWidget(self.restart_notice)
-        layout.addWidget(self.loopback_notice)
-        layout.addWidget(self.hotkey_notice)
+        layout.addWidget(self.tabs, 1)
         layout.addWidget(buttons)
+        self.resize(max(const_desktop.DIALOGO_LARGURA_MINIMA + 80, 500), 540)
+
+    @staticmethod
+    def _texto_contraste(cor_hex: str) -> str:
+        c = QColor(cor_hex)
+        luma = 0.299 * c.redF() + 0.587 * c.greenF() + 0.114 * c.blueF()
+        return "#141414" if luma > 0.55 else "#F5F5F5"
 
     def _show_outline_color(self) -> None:
         self.outline_color_button.setText(self._outline_color)
+        fg = self._texto_contraste(self._outline_color)
         self.outline_color_button.setStyleSheet(
-            f"background-color: {self._outline_color}; color: #202020;"
+            f"background-color: {self._outline_color}; color: {fg};"
         )
 
     def _choose_outline_color(self) -> None:
@@ -399,8 +444,9 @@ class SettingsDialog(QDialog):
 
     def _show_colorkey_color(self) -> None:
         self.colorkey_color_button.setText(self._colorkey_color)
+        fg = self._texto_contraste(self._colorkey_color)
         self.colorkey_color_button.setStyleSheet(
-            f"background-color: {self._colorkey_color}; color: #202020;"
+            f"background-color: {self._colorkey_color}; color: {fg};"
         )
 
     def _choose_colorkey_color(self) -> None:
@@ -466,17 +512,23 @@ class SettingsDialog(QDialog):
         updated.physics.enabled = self.physics_input.isChecked()
         updated.behavior.idle_animation = self.idle_input.isChecked()
         updated.behavior.idle_personality = self.personality_input.currentData()
+        updated.behavior.wander = self.wander_input.isChecked()
         updated.behavior.react_to_click = self.react_click_input.isChecked()
         updated.behavior.react_to_drag = self.react_drag_input.isChecked()
+        updated.behavior.react_to_attention = self.react_attention_input.isChecked()
+        updated.behavior.sleep_after_idle_seconds = self.sleep_idle_input.value()
         z_order = self.z_order_input.currentData()
         updated.window.mode = "desktop" if z_order == "desktop" else "overlay"
         updated.window.always_on_top = z_order == "topmost"
         updated.music.source = self.music_input.currentData()
+        updated.music.enabled = updated.music.source != "off"
         updated.music.react_to_beat = self.beat_input.isChecked()
         updated.music.sensitivity = self.sensitivity_input.value()
         updated.music.dance_chance = self.dance_chance_input.value()
         updated.music.dance_style = self.dance_style_input.currentData()
         updated.music.speaker_style = self.speaker_style_input.currentData()
+        updated.audio.enabled = self.audio_enabled_input.isChecked()
+        updated.audio.master_volume = self.master_volume_input.value()
         updated.update.channel = self.channel_input.currentData()
         updated.window.fps = self.fps_input.value()
         updated.window.preferred_monitor = self.monitor_input.currentData()
@@ -522,6 +574,15 @@ class SettingsDialog(QDialog):
         self.settings_applied.emit(updated)
         self.accept()
 
+    def _configurar_autostart_checkbox(self) -> None:
+        with contextlib.suppress(Exception):
+            self.autostart_input.setChecked(inicializacao_automatica.esta_ativo())
+        if inicializacao_automatica.installed_launcher() is None:
+            self.autostart_input.setEnabled(False)
+            self.autostart_input.setToolTip(
+                "Disponível apenas na versão instalada do SeJoga Companion."
+            )
+
     def _buscar_atualizacoes(self) -> None:
         from sejoga.distribuicao.dialogo_atualizacao import UpdateDialog
 
@@ -535,6 +596,8 @@ class SettingsDialog(QDialog):
         else:
             self._update_dialog.atualizar_config(settings)
         self._update_dialog.show()
+        self._update_dialog.raise_()
+        self._update_dialog.activateWindow()
         self._update_dialog._action()
 
 

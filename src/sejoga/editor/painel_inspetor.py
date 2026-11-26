@@ -42,6 +42,7 @@ ROTULOS_JUNTAS: dict[str, str] = {
     "antena-esquerda": "Antena esquerda",
     "body": "Corpo (raiz)",
     "cintura": "Cintura",
+    "pelvis": "Pelve",
     "abdomen": "Abdômen",
     "peitoral": "Peitoral",
     "door": "Porta",

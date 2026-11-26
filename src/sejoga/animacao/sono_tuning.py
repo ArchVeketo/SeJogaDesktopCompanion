@@ -49,15 +49,15 @@ SONO_TRANSICAO_S = 2.6
 # --------------------------------------------------------------------------- #
 # Modos de Sono: "em_pe", "sentado", "deitado"
 # --------------------------------------------------------------------------- #
-# 1. Dormir sentado: pernas dobradas à frente, corpo ligeiramente curvado,
-# braços apoiados no colo / coxas.
-SONO_SENTADO_COXA_GRAUS = 68.0
-SONO_SENTADO_CANELA_GRAUS = -72.0
-SONO_SENTADO_CORPO_X = 8.0
-SONO_SENTADO_CABECA_X = -18.0
-SONO_SENTADO_CABECA_Z = -5.0
-SONO_SENTADO_BRACO_Z = -30.0
-SONO_SENTADO_ANTEBRACO_Z = 38.0
+# 1. Dormir sentado no chão: pernas flexionadas e abertas em V confortável, tronco curvado
+# relaxadamente para frente (-X), cabeça caída no cochilo e braços pousados sobre o colo/coxas.
+SONO_SENTADO_COXA_GRAUS = -82.0
+SONO_SENTADO_CANELA_GRAUS = 26.0
+SONO_SENTADO_CORPO_X = -5.0
+SONO_SENTADO_CABECA_X = -14.0
+SONO_SENTADO_CABECA_Z = -7.0
+SONO_SENTADO_BRACO_Z = 6.0
+SONO_SENTADO_ANTEBRACO_Z = 34.0
 
 # 2. Dormir deitado: corpo tombado no chão/barra (roll ~82°), pernas
 # relaxadas com leve flexão aconchegante, braços dobrados junto ao peito.

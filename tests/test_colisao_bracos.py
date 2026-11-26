@@ -56,13 +56,14 @@ def test_t_pose_do_asset_nao_conta_como_colisao(modelo):
     assert cb.penetracao_do_lado(modelo, "right", {}) <= cb.FOLGA_PENETRACAO_U
 
 
-def test_rotacao_do_ombro_move_so_a_capsula_da_peca(modelo):
+def test_rotacao_da_manga_nao_desconecta_cadeia_do_braco(modelo):
     repouso = cb.capsulas_do_braco(modelo, "right", {})
-    pose = {"shoulder": Rotation3(0, 0, radians(30))}
-    giradas = cb.capsulas_do_braco(modelo, "right", pose)
+    giradas_manga = cb.capsulas_do_braco(modelo, "right", {"shoulder": Rotation3(0, 0, radians(30))})
+    assert giradas_manga == repouso
 
-    assert giradas[0].b != repouso[0].b
-    assert giradas[1:] == repouso[1:]
+    giradas_braco = cb.capsulas_do_braco(modelo, "right", {"right-arm": Rotation3(0, 0, radians(-30))})
+    assert giradas_braco[0].b == pytest.approx(giradas_braco[1].a)
+    assert giradas_braco != repouso
 
 
 def test_caixas_inferiores_seguem_quadril_independente_do_peitoral(modelo):

@@ -26,7 +26,7 @@ from panda3d.core import (
     Vec3,
 )
 
-from sejoga.animacao import dedos_tuning as tuning_dedos
+from sejoga.animacao import gestos_dedos as tuning_dedos
 from sejoga.nucleo import malha_corte as mc
 
 TAG_EIXO = "eixo-dobra"
@@ -187,13 +187,20 @@ def _fatiar_malha(  # noqa: PLR0915
         superficie = list(segmento.superficie or segmento.triangulos)
         no = GeomNode(NOME_MALHA.format(mesh=mesh) + f"-seg{k}")
         no.addGeom(_montar_geom(modelo, superficie, segmento.pivo), estado)
-        pivo.attachNewNode(no)
+        seg_np = pivo.attachNewNode(no)
+        # Escala telescópica microscópica por falange (apenas no GeomNode, nunca no pivô)
+        # elimina z-fighting coplanar nas faces laterais quando o dedo dobra forte.
+        escala_seg = 1.0 - 0.008 * k
+        if k > 0:
+            seg_np.setScale(escala_seg)
         # Tampas internas dos cortes ficam num nó separado para serem removidas
         # do contorno (evita pontas rosas extrudadas ao dobrar os dedos).
         if segmento.tampas:
             no_tampa = GeomNode(NOME_MALHA.format(mesh=mesh) + f"-seg{k}-tampa")
             no_tampa.addGeom(_montar_geom(modelo, list(segmento.tampas), segmento.pivo), estado)
-            pivo.attachNewNode(no_tampa)
+            tampa_np = pivo.attachNewNode(no_tampa)
+            if k > 0:
+                tampa_np.setScale(escala_seg)
         anterior, pivo_anterior = pivo, segmento.pivo
 
     malha.removeNode()
@@ -262,8 +269,16 @@ def alinhar_pulso_polegar(hand: NodePath, model_np: NodePath, thumb_local_dir: V
 
 
 def fatiar_dedos(model_np: NodePath) -> None:
-    """Fatia os 5 dedos de cada mão ao longo do eixo longitudinal próprio de cada bloco."""
+    """Fatia os 5 dedos de cada mão ao longo do eixo longitudinal real da mão.
+
+    Os 4 dedos principais (indicador..mindinho) compartilham a referência longitudinal
+    do dedo médio (o mais longo e alinhado ao eixo da mão), impedindo que blocos
+    curtos/grossos como o mindinho tenham PCA vertical (erro de 48°) ou barrel-roll
+    em cima dos dedos vizinhos. O polegar mantém seu próprio eixo oblíquo.
+    """
     for meshes in (tuning_dedos.MESH_DEDOS_DIREITA, tuning_dedos.MESH_DEDOS_ESQUERDA):
+        # Dedo médio (índice 2) é o mais comprido e define o eixo raiz→ponta dos 4 dedos.
+        ref_dedos = _direcao_longitudinal_malha(model_np, meshes[2])
         ordem = [*meshes[INDICE_REFERENCIA_EIXO:], meshes[INDICE_POLEGAR]]
 
         for mesh in ordem:
@@ -277,6 +292,6 @@ def fatiar_dedos(model_np: NodePath) -> None:
                 model_np,
                 mesh,
                 fracoes,
-                referencia_longitudinal=None,
+                referencia_longitudinal=None if polegar else ref_dedos,
                 pronacao_graus=tuning_dedos.PRONACAO_POLEGAR_GRAUS if polegar else 0.0,
             )

@@ -23,8 +23,8 @@ from sejoga.tentaculos.sistema_tentaculos import (
 )
 
 ESCALA = 0.004
-QUADROS_MEDICAO = 270  # 4,5 s, dentro dos 4,8 s do estado curioso
-QUADROS_ASSENTAR = 90  # descarta o crescimento inicial
+QUADROS_MEDICAO = 240  # dentro dos 3,9 s do estado curioso
+QUADROS_ASSENTAR = 120  # descarta o crescimento inicial e abertura da porta
 QUADROS_ANTES_DE_RECOLHER = 120  # 2 s, menos que os 4,8 s do estado curioso
 QUADROS_BURST = 30  # 0,5 s, menos que os 0,95 s do espirro
 PASSO = 1 / 60

@@ -10,6 +10,22 @@ from sejoga.render.sprites_efeitos import atlas_gosma, cartao_pixel, quadro_gosm
 from sejoga.tentaculos.sistema_tentaculos import Tentacle, TentacleState, raio_tentaculo
 
 
+# Tensão (s), gravidade relativa, alongamento e frequência de atualização visual.
+_QUEDA = {
+    "padrao": (.20, 1., 1., 0),
+    "pixel": (.16, 1.45, .48, 12),
+    "rascunho": (.24, 1.22, 1.42, 8),
+    "hifi_comic": (.14, 1.62, .83, 0),
+    "cyberfunk": (.12, 1.35, 1.80, 0),
+    "anime": (.27, 1.72, 2.22, 12),
+    "blockbench": (.17, 1.42, .74, 12),
+    "lowpoly_block": (.13, 1.90, .64, 15),
+    "holograma": (.18, .38, .72, 16),
+    "gameboy": (.29, .90, .55, 6),
+    "manga_papel": (.22, 1.30, 2.55, 9),
+}
+
+
 @dataclass
 class Gota:
     """Uma gota individual de gosma presa ou em queda no espaço do modelo."""
@@ -20,6 +36,7 @@ class Gota:
     age: float = 0.0
     source: Tentacle | None = None
     index: int = 0
+    pos_livre: Vec3 | None = None
 
 
 class TentacleDrips:
@@ -32,12 +49,36 @@ class TentacleDrips:
         self.remaining = 0.6
         self.drops = []
         self.atlas = atlas_gosma()
+        self._queda = _QUEDA["padrao"]
+        self._cor_estilo: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+
+    def aplicar_estilo(self, filtro: str, colorkey_hex: str = "#FF00FF") -> None:
+        """Ajusta tensão, queda, exposição dos quadros e cor ao filtro ativo."""
+        from sejoga.render.chroma_tuning import seguro_contra_chroma_255
+        from sejoga.tentaculos.sistema_tentaculos import ESTILOS_TENTACULO
+
+        filtro_norm = "anime" if filtro == "anime_impact" else filtro
+        self._queda = _QUEDA.get(filtro_norm, _QUEDA["padrao"])
+        estilo = ESTILOS_TENTACULO.get(filtro_norm, ESTILOS_TENTACULO["padrao"])
+        r, g, b, a = estilo["drips"]
+        rs, gs, bs = seguro_contra_chroma_255(
+            int(round(max(0.0, min(1.0, r)) * 255.0)),
+            int(round(max(0.0, min(1.0, g)) * 255.0)),
+            int(round(max(0.0, min(1.0, b)) * 255.0)),
+            colorkey_hex,
+        )
+        self._cor_estilo = (rs / 255.0, gs / 255.0, bs / 255.0, float(a))
+        for drop in self.drops:
+            if not drop.node.isEmpty():
+                cr, cg, cb, ca = self._cor_estilo
+                drop.node.setColorScale(cr, cg, cb, min(1.0, ca))
 
     def _gota(self, pos, size):
         node = cartao_pixel(self.parent, "pink-slime-drop", self.atlas)
         node.setBillboardPointEye()
         node.setPos(pos)
         node.setScale(size)
+        node.setColorScale(*self._cor_estilo)
         quadro_gosma(node, 2, 0)
         return node
 
@@ -86,8 +127,7 @@ class TentacleDrips:
             )
         )
 
-    @staticmethod
-    def _avancar_gota_presa(drop: Gota) -> bool:
+    def _avancar_gota_presa(self, drop: Gota) -> bool:
         """Atualiza uma gota ainda presa ao tentáculo; retorna False se removida."""
         limb = drop.source
         span = limb.reveal * (len(limb.segments) - 1)
@@ -96,7 +136,7 @@ class TentacleDrips:
             return False
         segment = limb.segments[drop.index]
         radius = raio_tentaculo(drop.index / span) * limb.girth_scale * 0.65
-        stretch = min(1.0, drop.age / 0.20)
+        stretch = min(1.0, drop.age / self._queda[0])
         length = drop.size * (0.8 + stretch * 1.15)
         drop.node.setPos(segment.pos - Vec3(0, 0, radius + length * 0.36))
         drop.node.setScale(drop.size, drop.size, length)
@@ -107,8 +147,7 @@ class TentacleDrips:
             drop.velocity = segment.vel * 0.35 + Vec3(0, 0, -0.08)
         return True
 
-    @staticmethod
-    def _avancar_gota_livre(drop: Gota, dt: float) -> bool:
+    def _avancar_gota_livre(self, drop: Gota, dt: float) -> bool:
         """Atualiza uma gota em queda livre; retorna False quando expira."""
         gotas = tentaculos_ativos().get("gotas", {})
         ttl = max(0.05, float(gotas.get("ttl_queda_s", 0.85)))
@@ -116,12 +155,25 @@ class TentacleDrips:
         if drop.age >= ttl:
             drop.node.removeNode()
             return False
-        drop.velocity.z += grav * dt
-        drop.node.setPos(drop.node.getPos() + drop.velocity * dt)
-        drop.node.setScale(drop.size, drop.size, drop.size * (1 + drop.age))
+        if drop.pos_livre is None:
+            drop.pos_livre = Vec3(drop.node.getPos())
+        _, peso, alongamento, fps = self._queda
+        drop.velocity.z += grav * peso * dt
+        drop.pos_livre += drop.velocity * dt
+        if fps and int(drop.age * fps) == int(max(0., drop.age - dt) * fps):
+            return True
+        drop.node.setPos(drop.pos_livre)
+        drop.node.setScale(drop.size, drop.size, drop.size * (1 + drop.age * alongamento))
         quadro_gosma(drop.node, 2, 1 if drop.age < 0.18 else 2)
-        drop.node.setColorScale(1, 1, 1, min(1, (ttl - drop.age) / 0.25))
+        cr, cg, cb, _ = self._cor_estilo
+        drop.node.setColorScale(cr, cg, cb, min(1, (ttl - drop.age) / 0.25))
         return True
+
+    def limpar(self):
+        """Remove gotas suspensas e em queda quando os efeitos são desligados."""
+        for drop in self.drops:
+            drop.node.removeNode()
+        self.drops.clear()
 
     def update(self, dt, tentacles):
         """Avança as gotas e solta novas a partir dos tentáculos."""

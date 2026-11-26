@@ -10,8 +10,12 @@ from sejoga.animacao import braco_tuning as bt
 from sejoga.animacao import colisao_bracos as cb
 from sejoga.animacao import danca_tuning as tune
 from sejoga.animacao.braco_hpr import braco_hpr_graus
-from sejoga.animacao.danca_frases_tuning import FRASES
-from sejoga.animacao.poses_danca import PassoDanca, PoseDanca, amostrar_passo
+from sejoga.animacao.danca_frases_tuning import (
+    FRASES,
+    PassoDanca,
+    PoseDanca,
+    amostrar_passo,
+)
 from sejoga.nucleo.esqueleto import Rotation3
 from sejoga.nucleo.modelo import load_model
 from sejoga.nucleo.recursos import resolve_model

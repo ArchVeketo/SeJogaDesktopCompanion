@@ -9,11 +9,115 @@ Python puro, sem engine.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 
 from sejoga.animacao import animation as _anim_padrao
+from sejoga.animacao import danca_tuning as tune
+from sejoga.animacao.braco_hpr import braco_hpr_graus
 from sejoga.animacao.dados_autorais import danca_ativa
-from sejoga.animacao.poses_danca import PassoDanca, PoseDanca, Trio
+from sejoga.animacao.interpolacao import amostrar_pista
+
+Trio = tuple[float, float, float]
+
+#: Grupos de cada braço: (ombro, cotovelo).
+GRUPOS_BRACO = {"right": ("right-arm", "ant-arm"), "left": ("left-arm", "ant-arm2")}
+_TODOS_GRUPOS_BRACO = frozenset(g for par in GRUPOS_BRACO.values() for g in par)
+_ZERO: Trio = (0.0, 0.0, 0.0)
+#: Grupos escalados pelo ganho (energia); mãos e dedos entram como declarados.
+GRUPOS_COM_GANHO = frozenset({"head", "body"})
+
+
+@dataclass(frozen=True)
+class PoseDanca:
+    """Uma pose-chave: deltas de cabeça/tronco e alvos de mão de cada braço."""
+
+    corpo: dict[str, Trio] = field(default_factory=dict)
+    braco_dir: str = "idle"
+    braco_esq: str = "idle"
+
+
+@dataclass(frozen=True)
+class PassoDanca:
+    """Um passo de uma batida com as quatro poses, na ordem de ``U_POSES``."""
+
+    poses: tuple[PoseDanca, PoseDanca, PoseDanca, PoseDanca]
+
+
+def _trio_do_grupo(pose: PoseDanca, grupo: str) -> Trio:
+    for lado, par in GRUPOS_BRACO.items():
+        if grupo in par:
+            nome = pose.braco_dir if lado == "right" else pose.braco_esq
+            return braco_hpr_graus(lado, nome)[grupo]
+    return pose.corpo.get(grupo, _ZERO)
+
+
+def _grupos_das_poses(poses: list[PoseDanca]) -> set[str]:
+    grupos = set(_TODOS_GRUPOS_BRACO)
+    for pose in poses:
+        grupos.update(pose.corpo)
+    return grupos
+
+
+def _catmull_trio(p0: Trio, p1: Trio, p2: Trio, p3: Trio, u: float) -> Trio:
+    """Spline Catmull-Rom contínua por eixo para fluxo fluido entre sub-poses da batida."""
+    u2 = u * u
+    u3 = u2 * u
+    return (
+        0.5 * ((2.0 * p1[0]) + (-p0[0] + p2[0]) * u + (2.0 * p0[0] - 5.0 * p1[0] + 4.0 * p2[0] - p3[0]) * u2 + (-p0[0] + 3.0 * p1[0] - 3.0 * p2[0] + p3[0]) * u3),
+        0.5 * ((2.0 * p1[1]) + (-p0[1] + p2[1]) * u + (2.0 * p0[1] - 5.0 * p1[1] + 4.0 * p2[1] - p3[1]) * u2 + (-p0[1] + 3.0 * p1[1] - 3.0 * p2[1] + p3[1]) * u3),
+        0.5 * ((2.0 * p1[2]) + (-p0[2] + p2[2]) * u + (2.0 * p0[2] - 5.0 * p1[2] + 4.0 * p2[2] - p3[2]) * u2 + (-p0[2] + 3.0 * p1[2] - 3.0 * p2[2] + p3[2]) * u3),
+    )
+
+
+def _amostrar_faixa_danca(faixa: tuple[tuple[float, Trio], ...], u: float) -> Trio:
+    """Mistura fluxo Catmull-Rom com acento quíntico no onset sem 4 micro-paradas por batida."""
+    if u <= faixa[0][0]:
+        return faixa[0][1]
+    if u >= faixa[-1][0]:
+        return faixa[-1][1]
+    n = len(faixa)
+    for i in range(n - 1):
+        t0, v1 = faixa[i]
+        t1, v2 = faixa[i + 1]
+        if u <= t1:
+            dur = t1 - t0
+            frac = (u - t0) / dur if dur > 1e-9 else 1.0
+            if i == 0:
+                # Preserva impacto nítido do onset (pose 0 -> pose 1)
+                return amostrar_pista(((0.0, v1), (1.0, v2)), frac)
+            v0 = faixa[max(0, i - 1)][1]
+            v3 = faixa[min(n - 1, i + 2)][1]
+            # Mistura suave 70% Catmull-Rom + 30% quíntico: elimina paradas mortas mantendo acento
+            cr = _catmull_trio(v0, v1, v2, v3, frac)
+            qt = amostrar_pista(((0.0, v1), (1.0, v2)), frac)
+            return (
+                cr[0] * 0.70 + qt[0] * 0.30,
+                cr[1] * 0.70 + qt[1] * 0.30,
+                cr[2] * 0.70 + qt[2] * 0.30,
+            )
+    return faixa[-1][1]
+
+
+def amostrar_passo(
+    passo: PassoDanca,
+    u: float,
+    proximo: PassoDanca | None = None,
+    ganho: float = 1.0,
+) -> dict[str, Trio]:
+    """Pose (graus) do ``passo`` na fração ``u`` (0..1) da batida."""
+    destino = (proximo or passo).poses[0]
+    u_poses = tune.parametros_danca().get("u_poses", tune.U_POSES)
+    chaves = [*zip(u_poses, passo.poses, strict=True), (1.0, destino)]
+    saida: dict[str, Trio] = {}
+    for grupo in _grupos_das_poses([pose for _, pose in chaves]):
+        faixa = tuple((quando, _trio_do_grupo(pose, grupo)) for quando, pose in chaves)
+        trio = _amostrar_faixa_danca(faixa, u)
+        saida[grupo] = (
+            (trio[0] * ganho, trio[1] * ganho, trio[2] * ganho)
+            if grupo in GRUPOS_COM_GANHO
+            else trio
+        )
+    return saida
 
 Quatro = tuple[Trio, Trio, Trio, Trio]
 NomesBraco = str | tuple[str, str, str, str]
@@ -68,10 +172,16 @@ def _passo(
     ae_q = ant_esq if ant_esq is not None else tuple(
         (x * 0.55, y * 0.35, -z * 0.55) for x, y, z in _atrasar_quatro(cabeca, 1.0)
     )
-    h_r = hand if hand is not None else _ZERO4
-    h_l = hand2 if hand2 is not None else _ZERO4
-    f_r = fingers if fingers is not None else _ZERO4
-    f_l = fingers2 if fingers2 is not None else _ZERO4
+    h_r = hand if hand is not None else _atrasar_quatro(tronco, 0.85)
+    h_l = hand2 if hand2 is not None else tuple(
+        (x * 0.85, -y * 0.85, -z * 0.85) for x, y, z in _atrasar_quatro(tronco, 1.0)
+    )
+    f_r = fingers if fingers is not None else tuple(
+        (0.0, 0.0, x * 0.65 - z * 0.45) for x, _y, z in _atrasar_quatro(tronco, 1.0)
+    )
+    f_l = fingers2 if fingers2 is not None else tuple(
+        (0.0, 0.0, -x * 0.65 - z * 0.45) for x, _y, z in _atrasar_quatro(tronco, 1.0)
+    )
     poses = tuple(
         PoseDanca(
             {
@@ -107,72 +217,72 @@ def _fixo(trio: Trio) -> Quatro:
 HEADBOB_TRONCO_TRAS = 2.0
 _HB_TRONCO: Trio = (HEADBOB_TRONCO_TRAS, 0.0, 0.0)
 
-#: Head bob: 4 batidas. Groove sentado em arco de figura-8 estilo FNF/ZZZ com
-#: peito, quadris, punhos rítmicos e alternância solta na mão livre (sem congelar).
+#: Head bob: 4 batidas. Groove sentado em arco figura-8 estilo FNF com
+#: acento para baixo + rebote alegre para cima, mãos apoiadas na caixa e no colo.
 HEAD_BOB: tuple[PassoDanca, ...] = (
     _passo(
-        ((-14.0, 6.0, 14.0), (-6.0, 8.0, 16.0), (-2.0, 5.0, 11.0), (2.0, 2.0, 3.0)),
-        ((-3.5, 4.0, 4.5), (-1.5, 4.5, 4.0), (1.0, 2.0, 2.5), (3.0, 0.0, 1.0)),
-        braco_dir=("colo", "dance", "colo", "colo"),
-        braco_esq=("apoio_caixa", "apoio_caixa", "street_attitude", "apoio_caixa"),
-        hand=((-8.0, 14.0, -14.0), (-14.0, 22.0, -18.0), (-4.0, 10.0, -8.0), (4.0, 0.0, 6.0)),
-        hand2=((4.0, -10.0, 10.0), (6.0, -12.0, 12.0), (-8.0, -16.0, 16.0), (2.0, -6.0, 6.0)),
-        fingers=((0.0, 0.0, -12.0), (0.0, 0.0, -18.0), (0.0, 0.0, 10.0), (0.0, 0.0, 6.0)),
-        fingers2=((0.0, 0.0, 10.0), (0.0, 0.0, 12.0), (0.0, 0.0, -14.0), (0.0, 0.0, 6.0)),
+        ((-14.0, 6.0, 13.0), (-6.0, 7.0, 12.0), (1.0, 4.0, 6.0), (6.5, 1.5, 2.0)),
+        ((-4.0, 4.0, 4.5), (-1.5, 4.0, 3.5), (1.5, 2.0, 2.0), (4.0, 0.0, 1.0)),
+        braco_dir=("colo", "contrapeso", "colo", "colo"),
+        braco_esq="apoio_caixa",
+        hand=((-6.0, 12.0, -12.0), (-12.0, 20.0, -16.0), (-4.0, 10.0, -8.0), (4.0, 0.0, 6.0)),
+        hand2=((4.0, -8.0, 8.0), (6.0, -10.0, 10.0), (4.0, -8.0, 8.0), (2.0, -6.0, 6.0)),
+        fingers=((0.0, 0.0, -10.0), (0.0, 0.0, -16.0), (0.0, 0.0, 8.0), (0.0, 0.0, 6.0)),
+        fingers2=((0.0, 0.0, 8.0), (0.0, 0.0, 10.0), (0.0, 0.0, 8.0), (0.0, 0.0, 6.0)),
     ),
     _passo(
-        ((-7.0, 2.0, 4.0), (-2.0, 0.0, 0.0), (1.0, -2.0, -3.0), (3.0, -4.0, -6.0)),
-        ((2.5, 2.0, 1.5), (0.0, 0.0, 0.0), (-1.5, -2.0, -1.5), (1.5, -3.0, -2.5)),
+        ((-10.0, 2.0, 6.0), (-3.0, 0.0, 2.0), (2.0, -2.0, -3.0), (6.5, -4.0, -6.0)),
+        ((-2.0, 2.0, 2.0), (0.5, 0.0, 0.0), (2.0, -2.0, -1.5), (3.5, -3.0, -2.5)),
         braco_dir=("colo", "contrapeso", "colo", "colo"),
         braco_esq="apoio_caixa",
         hand=((6.0, -8.0, 8.0), (-10.0, 18.0, -16.0), (-2.0, 6.0, -6.0), (4.0, -6.0, 6.0)),
         hand2=((2.0, -6.0, 6.0), (5.0, -10.0, 10.0), (2.0, -6.0, 6.0), (0.0, -4.0, 4.0)),
-        fingers=((0.0, 0.0, 8.0), (0.0, 0.0, -16.0), (0.0, 0.0, 8.0), (0.0, 0.0, 4.0)),
+        fingers=((0.0, 0.0, 8.0), (0.0, 0.0, -14.0), (0.0, 0.0, 8.0), (0.0, 0.0, 4.0)),
         fingers2=((0.0, 0.0, 8.0), (0.0, 0.0, 10.0), (0.0, 0.0, 6.0), (0.0, 0.0, 4.0)),
     ),
     _passo(
-        ((-14.0, -6.0, -14.0), (-6.0, -8.0, -16.0), (-2.0, -5.0, -11.0), (2.0, -2.0, -3.0)),
-        ((-3.5, -4.0, -4.5), (-1.5, -4.5, -4.0), (1.0, -2.0, -2.5), (3.0, 0.0, -1.0)),
-        braco_dir=("colo", "graffiti_arco", "colo", "colo"),
-        braco_esq=("apoio_caixa", "apoio_caixa", "street_attitude", "apoio_caixa"),
-        hand=((-8.0, 16.0, -14.0), (-14.0, 24.0, -18.0), (-4.0, 10.0, -8.0), (4.0, 0.0, 6.0)),
-        hand2=((4.0, -10.0, 10.0), (6.0, -12.0, 12.0), (-8.0, -16.0, 16.0), (2.0, -6.0, 6.0)),
-        fingers=((0.0, 0.0, -12.0), (0.0, 0.0, -18.0), (0.0, 0.0, 10.0), (0.0, 0.0, 6.0)),
-        fingers2=((0.0, 0.0, 10.0), (0.0, 0.0, 12.0), (0.0, 0.0, -14.0), (0.0, 0.0, 6.0)),
+        ((-14.0, -6.0, -13.0), (-6.0, -7.0, -12.0), (1.0, -4.0, -6.0), (6.5, -1.5, -2.0)),
+        ((-4.0, -4.0, -4.5), (-1.5, -4.0, -3.5), (1.5, -2.0, -2.0), (4.0, 0.0, -1.0)),
+        braco_dir="apoio_caixa",
+        braco_esq=("colo", "contrapeso", "colo", "colo"),
+        hand=((4.0, 8.0, -8.0), (6.0, 10.0, -10.0), (4.0, 8.0, -8.0), (2.0, 6.0, -6.0)),
+        hand2=((-6.0, -12.0, 12.0), (-12.0, -20.0, 16.0), (-4.0, -10.0, 8.0), (4.0, 0.0, -6.0)),
+        fingers=((0.0, 0.0, 8.0), (0.0, 0.0, 10.0), (0.0, 0.0, 8.0), (0.0, 0.0, 6.0)),
+        fingers2=((0.0, 0.0, -10.0), (0.0, 0.0, -16.0), (0.0, 0.0, 8.0), (0.0, 0.0, 6.0)),
     ),
     _passo(
-        ((-7.0, -2.0, -4.0), (-2.0, 0.0, 0.0), (1.0, 2.0, 3.0), (3.0, 4.0, 6.0)),
-        ((2.5, -2.0, -1.5), (0.0, 0.0, 0.0), (-1.5, 2.0, 1.5), (1.5, 3.0, 2.5)),
-        braco_dir=("colo", "contrapeso", "colo", "colo"),
-        braco_esq="apoio_caixa",
-        hand=((6.0, -8.0, 8.0), (-10.0, 18.0, -16.0), (-2.0, 6.0, -6.0), (4.0, 6.0, -6.0)),
-        hand2=((2.0, -6.0, 6.0), (5.0, -10.0, 10.0), (2.0, -6.0, 6.0), (0.0, 4.0, -4.0)),
-        fingers=((0.0, 0.0, 8.0), (0.0, 0.0, -16.0), (0.0, 0.0, 8.0), (0.0, 0.0, 4.0)),
-        fingers2=((0.0, 0.0, 8.0), (0.0, 0.0, 10.0), (0.0, 0.0, 6.0), (0.0, 0.0, 4.0)),
+        ((-10.0, -2.0, -6.0), (-3.0, 0.0, -2.0), (2.0, 2.0, 3.0), (6.5, 4.0, 6.0)),
+        ((-2.0, -2.0, -2.0), (0.5, 0.0, 0.0), (2.0, 2.0, 1.5), (3.5, 3.0, 2.5)),
+        braco_dir="apoio_caixa",
+        braco_esq=("colo", "contrapeso", "colo", "colo"),
+        hand=((2.0, 6.0, -6.0), (5.0, 10.0, -10.0), (2.0, 6.0, -6.0), (0.0, 4.0, -4.0)),
+        hand2=((6.0, 8.0, -8.0), (-10.0, -18.0, 16.0), (-2.0, -6.0, 6.0), (4.0, 6.0, -6.0)),
+        fingers=((0.0, 0.0, 8.0), (0.0, 0.0, 10.0), (0.0, 0.0, 6.0), (0.0, 0.0, 4.0)),
+        fingers2=((0.0, 0.0, 8.0), (0.0, 0.0, -14.0), (0.0, 0.0, 8.0), (0.0, 0.0, 4.0)),
     ),
 )
 
 #: Torção do punho direito no rock (graus): mantém palma do chifre legível no onset.
 _ROCK_PUNHO = {"hand": (0.0, 0.0, 0.0)}
 
-#: Rock: 2 batidas. Headbang com chicote de coluna, mão direita no chifre alto e
-#: mão esquerda marcando o grave em punho firme sem travar no repouso.
+#: Rock: 2 batidas. Headbang com chicote largo de coluna (+10° -> -24°), mão direita no chifre
+#: alto longe do fone e mão esquerda marcando o grave em power-chord ativo.
 ROCK: tuple[PassoDanca, ...] = (
     _passo(
-        ((-26.0, -4.0, 5.0), (-14.0, 4.0, 3.0), (-5.0, 2.0, 1.0), (4.0, -2.0, -2.0)),
-        ((-9.0, 3.0, 2.5), (-4.0, 2.0, 1.5), (-1.0, 0.0, 0.5), (3.5, -2.0, -1.5)),
+        ((-24.0, -4.0, 6.0), (-11.0, 4.0, 3.0), (1.0, 2.0, 1.0), (10.0, -2.0, -2.0)),
+        ((-9.5, 3.0, 3.0), (-3.5, 2.0, 1.5), (1.5, 0.0, 0.5), (6.5, -2.0, -2.0)),
         braco_dir="chifre",
-        braco_esq=("idle", "street_attitude", "street_attitude", "contrapeso"),
+        braco_esq=("idle", "street_attitude", "cyber_baixo", "street_solto"),
         extras=_ROCK_PUNHO,
         hand2=((6.0, -8.0, 8.0), (-10.0, -18.0, 16.0), (-6.0, -14.0, 12.0), (2.0, -6.0, 6.0)),
         fingers=((0.0, 0.0, -12.0), (0.0, 0.0, -16.0), (0.0, 0.0, -14.0), (0.0, 0.0, -10.0)),
         fingers2=((0.0, 0.0, -18.0), (0.0, 0.0, -26.0), (0.0, 0.0, -24.0), (0.0, 0.0, -16.0)),
     ),
     _passo(
-        ((-20.0, 5.0, -5.0), (-10.0, -3.0, -3.0), (-3.0, -1.0, -1.0), (4.0, 2.0, 2.0)),
-        ((-6.5, -3.0, -2.5), (-3.0, -2.0, -1.5), (0.0, 0.0, -0.5), (3.5, 2.0, 1.5)),
+        ((-22.0, 5.0, -6.0), (-9.0, -3.0, -3.0), (2.0, -1.0, -1.0), (10.0, 2.0, 2.0)),
+        ((-8.0, -3.0, -3.0), (-2.5, -2.0, -1.5), (2.0, 0.0, -0.5), (6.5, 2.0, 2.0)),
         braco_dir="chifre",
-        braco_esq=("contrapeso", "cyber_baixo", "cyber_baixo", "contrapeso"),
+        braco_esq=("contrapeso", "cyber_baixo", "street_attitude", "idle"),
         extras=_ROCK_PUNHO,
         hand2=((6.0, -8.0, 8.0), (-12.0, -20.0, 18.0), (-8.0, -14.0, 14.0), (2.0, -6.0, 6.0)),
         fingers=((0.0, 0.0, -12.0), (0.0, 0.0, -16.0), (0.0, 0.0, -14.0), (0.0, 0.0, -10.0)),
@@ -180,100 +290,100 @@ ROCK: tuple[PassoDanca, ...] = (
     ),
 )
 
-#: Hip hop: 8 batidas. Isolação ZZZ de quadril/peito, estalos de punho e leitura
-#: forte de abertura/fecho das luvas no contra-tempo.
+#: Hip hop: 8 batidas. Groove boom-bap com cabeçada forte (-15° -> +6.5°),
+#: braços soltos/alternados no beat e isolação firme de cintura e peitoral.
 HIP_HOP: tuple[PassoDanca, ...] = (
     _passo(
-        ((-12.0, 3.0, 4.0), (-5.0, 4.0, 3.0), (-2.0, 1.0, 0.0), (3.5, -2.0, -1.5)),
-        ((-7.0, -3.0, 7.0), (-3.0, -2.0, 5.5), (0.0, 0.0, 3.5), (2.5, 2.0, 2.0)),
-        braco_dir=("idle", "idle", "street_solto", "idle"),
-        braco_esq=("idle", "idle", "contrapeso", "contrapeso"),
-        cintura=((5.0, 6.0, -5.0), (3.0, 5.0, -4.0), (0.0, 2.0, -2.0), (-2.0, -2.0, 2.0)),
-        peitoral=((-6.0, -6.0, 5.0), (-3.0, -5.0, 4.0), (0.0, -2.0, 2.0), (3.0, 3.0, -2.0)),
+        ((-15.0, 4.0, 6.0), (-6.0, 4.5, 4.0), (0.0, 1.0, 1.0), (6.5, -2.0, -1.5)),
+        ((-7.5, -3.5, 7.5), (-3.0, -2.0, 5.5), (1.0, 0.0, 3.0), (4.5, 2.0, 2.0)),
+        braco_dir=("street_solto", "dance", "street_solto", "idle"),
+        braco_esq=("idle", "street_attitude", "contrapeso", "contrapeso"),
+        cintura=((5.5, 6.5, -5.5), (3.0, 5.0, -4.0), (0.0, 2.0, -2.0), (-2.5, -2.0, 2.0)),
+        peitoral=((-6.5, -6.5, 5.5), (-3.0, -5.0, 4.0), (0.0, -2.0, 2.0), (3.5, 3.0, -2.0)),
         hand=((6.0, 8.0, -8.0), (-8.0, 16.0, -14.0), (-12.0, 20.0, -16.0), (4.0, -8.0, 8.0)),
         hand2=((6.0, -8.0, 8.0), (-8.0, -16.0, 14.0), (-14.0, -22.0, 18.0), (4.0, 8.0, -8.0)),
         fingers=((0.0, 0.0, 14.0), (0.0, 0.0, 18.0), (0.0, 0.0, -16.0), (0.0, 0.0, 10.0)),
         fingers2=((0.0, 0.0, -14.0), (0.0, 0.0, -18.0), (0.0, 0.0, 16.0), (0.0, 0.0, -10.0)),
     ),
     _passo(
-        ((-7.0, 4.0, 3.0), (-3.0, 3.0, 2.0), (-1.0, 1.0, 0.0), (3.0, 0.0, 0.0)),
-        ((-4.0, -2.0, 5.5), (-1.5, -1.5, 4.5), (0.0, 0.0, 3.0), (1.0, 1.0, 2.0)),
-        braco_dir="idle",
-        braco_esq="contrapeso",
-        cintura=((4.0, 5.0, -4.0), (2.0, 4.0, -3.0), (0.0, 2.0, -2.0), (-1.0, 0.0, 0.0)),
-        peitoral=((-5.0, -5.0, 4.0), (-2.0, -3.5, 3.0), (0.0, -1.5, 1.5), (2.0, 1.0, -1.0)),
+        ((-12.0, 4.5, 4.0), (-4.0, 3.0, 2.5), (1.5, 1.0, 0.0), (6.0, 0.0, 0.0)),
+        ((-4.5, -2.0, 5.5), (-1.5, -1.5, 4.5), (1.0, 0.0, 3.0), (3.5, 1.0, 2.0)),
+        braco_dir=("idle", "street_attitude", "graffiti_arco", "street_solto"),
+        braco_esq=("contrapeso", "street_solto", "contrapeso", "street_attitude"),
+        cintura=((4.5, 5.0, -4.0), (2.0, 4.0, -3.0), (0.0, 2.0, -2.0), (-2.0, 0.0, 0.0)),
+        peitoral=((-5.5, -5.0, 4.0), (-2.0, -3.5, 3.0), (0.0, -1.5, 1.5), (3.0, 1.0, -1.0)),
         hand=((-6.0, 14.0, -12.0), (-10.0, 18.0, -16.0), (-4.0, 8.0, -8.0), (4.0, -6.0, 6.0)),
         hand2=((-12.0, -22.0, 18.0), (-8.0, -16.0, 14.0), (-4.0, -10.0, 10.0), (4.0, 6.0, -6.0)),
         fingers=((0.0, 0.0, -14.0), (0.0, 0.0, 14.0), (0.0, 0.0, -10.0), (0.0, 0.0, 8.0)),
         fingers2=((0.0, 0.0, 18.0), (0.0, 0.0, 12.0), (0.0, 0.0, -14.0), (0.0, 0.0, -8.0)),
     ),
     _passo(
-        ((-9.0, 0.0, 1.0), (-4.0, 0.0, 0.0), (-1.0, -2.0, -1.0), (3.0, -4.0, -2.0)),
-        ((-5.5, -1.0, 2.5), (-2.0, 0.0, 1.5), (0.5, 1.5, 0.0), (2.0, 2.5, -1.0)),
-        braco_dir=("idle", "street_solto", "idle", "idle"),
-        braco_esq=("contrapeso", "contrapeso", "idle", "idle"),
-        cintura=((3.0, 3.0, -2.0), (1.0, 1.0, -1.0), (-1.0, -1.5, 1.0), (-2.0, -3.0, 2.0)),
-        peitoral=((-4.0, -3.0, 2.0), (-1.5, -1.0, 1.0), (1.0, 2.0, -1.0), (2.5, 3.0, -2.0)),
+        ((-13.0, 0.0, 2.0), (-5.0, 0.0, 0.5), (1.0, -2.0, -1.0), (5.5, -4.0, -2.0)),
+        ((-6.0, -1.0, 2.5), (-2.0, 0.0, 1.5), (1.5, 1.5, 0.0), (4.0, 2.5, -1.0)),
+        braco_dir=("street_solto", "dance", "street_attitude", "idle"),
+        braco_esq=("contrapeso", "graffiti_arco", "street_solto", "idle"),
+        cintura=((3.5, 3.0, -2.0), (1.0, 1.0, -1.0), (-1.0, -1.5, 1.0), (-2.5, -3.0, 2.0)),
+        peitoral=((-4.5, -3.0, 2.0), (-1.5, -1.0, 1.0), (1.0, 2.0, -1.0), (3.0, 3.0, -2.0)),
         hand=((-8.0, 14.0, -12.0), (-12.0, 20.0, -16.0), (-4.0, 10.0, -8.0), (2.0, 0.0, 4.0)),
         hand2=((-8.0, -16.0, 14.0), (-6.0, -12.0, 10.0), (4.0, 8.0, -8.0), (2.0, 4.0, -4.0)),
         fingers=((0.0, 0.0, -12.0), (0.0, 0.0, 16.0), (0.0, 0.0, -10.0), (0.0, 0.0, 6.0)),
         fingers2=((0.0, 0.0, 14.0), (0.0, 0.0, -12.0), (0.0, 0.0, -8.0), (0.0, 0.0, 6.0)),
     ),
     _passo(
-        ((-4.0, -2.0, 0.0), (-1.5, 0.0, 0.0), (0.5, 2.0, -1.0), (3.5, 4.0, -2.0)),
-        ((-2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (1.5, 2.0, -1.5), (3.0, 3.5, -3.0)),
-        braco_dir="idle",
-        braco_esq="idle",
-        cintura=((2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (-2.0, -2.0, 2.0), (-3.5, -4.0, 3.5)),
-        peitoral=((-2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (2.0, 2.5, -2.0), (3.5, 4.0, -3.0)),
+        ((-9.0, -2.0, 0.0), (-3.0, 0.0, 0.0), (2.0, 2.0, -1.0), (6.0, 4.0, -2.0)),
+        ((-3.5, 0.0, 0.0), (-0.5, 0.0, 0.0), (2.0, 2.0, -1.5), (4.5, 3.5, -3.0)),
+        braco_dir=("street_solto", "dance", "street_solto", "street_solto"),
+        braco_esq=("idle", "street_attitude", "idle", "idle"),
+        cintura=((2.5, 0.0, 0.0), (0.0, 0.0, 0.0), (-2.0, -2.0, 2.0), (-3.5, -4.0, 3.5)),
+        peitoral=((-2.5, 0.0, 0.0), (0.0, 0.0, 0.0), (2.0, 2.5, -2.0), (3.5, 4.0, -3.0)),
         hand=((-6.0, 12.0, -10.0), (0.0, 0.0, 0.0), (6.0, -10.0, 10.0), (8.0, -12.0, 12.0)),
         hand2=((-6.0, -12.0, 10.0), (0.0, 0.0, 0.0), (6.0, 10.0, -10.0), (8.0, 12.0, -12.0)),
         fingers=((0.0, 0.0, -10.0), (0.0, 0.0, 4.0), (0.0, 0.0, 14.0), (0.0, 0.0, 18.0)),
         fingers2=((0.0, 0.0, 10.0), (0.0, 0.0, -4.0), (0.0, 0.0, -14.0), (0.0, 0.0, -18.0)),
     ),
     _passo(
-        ((-12.0, -3.0, -4.0), (-5.0, -4.0, -3.0), (-2.0, -1.0, 0.0), (3.5, 2.0, 1.5)),
-        ((-7.0, 3.0, -7.0), (-3.0, 2.0, -5.5), (0.0, 0.0, -3.5), (2.5, -2.0, -2.0)),
-        braco_dir=("idle", "idle", "contrapeso", "contrapeso"),
-        braco_esq=("idle", "idle", "street_solto", "idle"),
-        cintura=((5.0, -6.0, 5.0), (3.0, -5.0, 4.0), (0.0, -2.0, 2.0), (-2.0, 2.0, -2.0)),
-        peitoral=((-6.0, 6.0, -5.0), (-3.0, 5.0, -4.0), (0.0, 2.0, -2.0), (3.0, -3.0, 2.0)),
+        ((-15.0, -4.0, -6.0), (-6.0, -4.5, -4.0), (0.0, -1.0, -1.0), (6.5, 2.0, 1.5)),
+        ((-7.5, 3.5, -7.5), (-3.0, 2.0, -5.5), (1.0, 0.0, -3.0), (4.5, -2.0, -2.0)),
+        braco_dir=("idle", "street_attitude", "contrapeso", "contrapeso"),
+        braco_esq=("street_solto", "dance", "street_solto", "idle"),
+        cintura=((5.5, -6.5, 5.5), (3.0, -5.0, 4.0), (0.0, -2.0, 2.0), (-2.5, 2.0, -2.0)),
+        peitoral=((-6.5, 6.5, -5.5), (-3.0, 5.0, -4.0), (0.0, 2.0, -2.0), (3.5, -3.0, 2.0)),
         hand=((6.0, 8.0, -8.0), (-8.0, 16.0, -14.0), (-14.0, 22.0, -18.0), (4.0, -8.0, 8.0)),
         hand2=((6.0, -8.0, 8.0), (-8.0, -16.0, 14.0), (-12.0, -20.0, 16.0), (4.0, 8.0, -8.0)),
         fingers=((0.0, 0.0, 14.0), (0.0, 0.0, 18.0), (0.0, 0.0, -16.0), (0.0, 0.0, 10.0)),
         fingers2=((0.0, 0.0, -14.0), (0.0, 0.0, -18.0), (0.0, 0.0, 16.0), (0.0, 0.0, -10.0)),
     ),
     _passo(
-        ((-10.0, 9.0, -3.0), (-4.0, 7.0, -2.0), (-1.5, 4.0, 0.0), (3.0, 1.0, 0.0)),
-        ((-5.0, 2.0, -5.5), (-1.5, 1.5, -4.5), (0.0, 0.0, -3.0), (1.5, -1.0, -2.0)),
-        braco_dir="contrapeso",
-        braco_esq="idle",
-        cintura=((4.0, -5.0, 4.0), (2.0, -4.0, 3.0), (0.0, -2.0, 2.0), (-1.0, 0.0, 0.0)),
-        peitoral=((-5.0, 5.0, -4.0), (-2.0, 3.5, -3.0), (0.0, 1.5, -1.5), (2.0, -1.0, 1.0)),
+        ((-12.0, 9.0, -4.0), (-4.0, 7.0, -2.5), (1.5, 4.0, 0.0), (6.0, 1.0, 0.0)),
+        ((-5.5, 2.0, -5.5), (-1.5, 1.5, -4.5), (1.0, 0.0, -3.0), (3.5, -1.0, -2.0)),
+        braco_dir=("contrapeso", "street_solto", "contrapeso", "street_attitude"),
+        braco_esq=("idle", "street_attitude", "graffiti_arco", "street_solto"),
+        cintura=((4.5, -5.0, 4.0), (2.0, -4.0, 3.0), (0.0, -2.0, 2.0), (-2.0, 0.0, 0.0)),
+        peitoral=((-5.5, 5.0, -4.0), (-2.0, 3.5, -3.0), (0.0, 1.5, -1.5), (3.0, -1.0, 1.0)),
         hand=((-12.0, 22.0, -18.0), (-8.0, 16.0, -14.0), (-4.0, 10.0, -10.0), (4.0, -6.0, 6.0)),
         hand2=((-6.0, -14.0, 12.0), (-10.0, -18.0, 16.0), (-4.0, -8.0, 8.0), (4.0, 6.0, -6.0)),
         fingers=((0.0, 0.0, -18.0), (0.0, 0.0, -12.0), (0.0, 0.0, 14.0), (0.0, 0.0, 8.0)),
         fingers2=((0.0, 0.0, 14.0), (0.0, 0.0, -14.0), (0.0, 0.0, 10.0), (0.0, 0.0, -8.0)),
     ),
     _passo(
-        ((-9.0, 0.0, -1.0), (-4.0, 0.0, 0.0), (-1.0, 2.0, 1.0), (3.0, 4.0, 2.0)),
-        ((-5.5, 1.0, -2.5), (-2.0, 0.0, -1.5), (0.5, -1.5, 0.0), (2.0, -2.5, 1.0)),
-        braco_dir=("contrapeso", "contrapeso", "idle", "idle"),
-        braco_esq=("idle", "street_solto", "idle", "idle"),
-        cintura=((3.0, -3.0, 2.0), (1.0, -1.0, 1.0), (-1.0, 1.5, -1.0), (-2.0, 3.0, -2.0)),
-        peitoral=((-4.0, 3.0, -2.0), (-1.5, 1.0, -1.0), (1.0, -2.0, 1.0), (2.5, -3.0, 2.0)),
+        ((-13.0, 0.0, -2.0), (-5.0, 0.0, -0.5), (1.0, 2.0, 1.0), (5.5, 4.0, 2.0)),
+        ((-6.0, 1.0, -2.5), (-2.0, 0.0, -1.5), (1.5, -1.5, 0.0), (4.0, -2.5, 1.0)),
+        braco_dir=("contrapeso", "graffiti_arco", "street_solto", "idle"),
+        braco_esq=("street_solto", "dance", "street_attitude", "idle"),
+        cintura=((3.5, -3.0, 2.0), (1.0, -1.0, 1.0), (-1.0, 1.5, -1.0), (-2.5, 3.0, -2.0)),
+        peitoral=((-4.5, 3.0, -2.0), (-1.5, 1.0, -1.0), (1.0, -2.0, 1.0), (3.0, -3.0, 2.0)),
         hand=((-8.0, 16.0, -14.0), (-6.0, 12.0, -10.0), (4.0, -8.0, 8.0), (2.0, -4.0, 4.0)),
         hand2=((-8.0, -14.0, 12.0), (-12.0, -20.0, 16.0), (-4.0, -10.0, 8.0), (2.0, 0.0, -4.0)),
         fingers=((0.0, 0.0, -14.0), (0.0, 0.0, 12.0), (0.0, 0.0, 8.0), (0.0, 0.0, -6.0)),
         fingers2=((0.0, 0.0, 12.0), (0.0, 0.0, -16.0), (0.0, 0.0, 10.0), (0.0, 0.0, -6.0)),
     ),
     _passo(
-        ((-4.0, 2.0, 0.0), (-1.5, 0.0, 0.0), (0.5, -2.0, 1.0), (3.5, -4.0, 2.0)),
-        ((-2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (1.5, -2.0, 1.5), (3.0, -3.5, 3.0)),
-        braco_dir="idle",
-        braco_esq="idle",
-        cintura=((2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (-2.0, 2.0, -2.0), (-3.5, 4.0, -3.5)),
-        peitoral=((-2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (2.0, -2.5, 2.0), (3.5, -4.0, 3.0)),
+        ((-9.0, 2.0, 0.0), (-3.0, 0.0, 0.0), (2.0, -2.0, 1.0), (6.0, -4.0, 2.0)),
+        ((-3.5, 0.0, 0.0), (-0.5, 0.0, 0.0), (2.0, -2.0, 1.5), (4.5, -3.5, 3.0)),
+        braco_dir=("idle", "street_attitude", "idle", "street_solto"),
+        braco_esq=("street_solto", "dance", "street_solto", "idle"),
+        cintura=((2.5, 0.0, 0.0), (0.0, 0.0, 0.0), (-2.0, 2.0, -2.0), (-3.5, 4.0, -3.5)),
+        peitoral=((-2.5, 0.0, 0.0), (0.0, 0.0, 0.0), (2.0, -2.5, 2.0), (3.5, -4.0, 3.0)),
         hand=((-6.0, 12.0, -10.0), (0.0, 0.0, 0.0), (6.0, -10.0, 10.0), (8.0, -12.0, 12.0)),
         hand2=((-6.0, -12.0, 10.0), (0.0, 0.0, 0.0), (6.0, 10.0, -10.0), (8.0, 12.0, -12.0)),
         fingers=((0.0, 0.0, -10.0), (0.0, 0.0, 4.0), (0.0, 0.0, 14.0), (0.0, 0.0, 18.0)),
@@ -792,5 +902,5 @@ def frase_do_estilo(estilo: str) -> tuple[PassoDanca, ...]:
         return FRASES[estilo]
     frase_dict = danca.get("frases", {}).get(estilo)
     if not isinstance(frase_dict, dict):
-        return FRASES[estilo]
+        return FRASES.get(estilo, FRASES["street_groove"])
     return tuple(_passo_de_dict(p) for p in frase_dict.get("passos", ()))

@@ -1,10 +1,12 @@
 """Coreografia de poses autorais sincronizada com a música."""
 
+import random
 from math import cos, exp, floor, pi, radians, sin, tau
 from time import monotonic
 
 from sejoga.animacao import danca_tuning as tune
 from sejoga.animacao.danca_clipes import (
+    _slerp_quat,
     amostrar_clipe_emote,
     amostrar_dedos_emote,
     amostrar_deslocamento_emote,
@@ -12,12 +14,25 @@ from sejoga.animacao.danca_clipes import (
     amostrar_raiz_emote,
     carregar_clipe_emote,
 )
-from sejoga.animacao.danca_frases_tuning import frase_do_estilo
+from sejoga.animacao.danca_frases_tuning import amostrar_passo, frase_do_estilo
 from sejoga.animacao.interpolacao import suavizar_quintico
-from sejoga.animacao.poses_danca import amostrar_passo
 from sejoga.nucleo.esqueleto import Rotation3
 
-# Bandas musicais v2.0 para modo "auto": desbloqueia o catálogo inteiro por BPM/energia/grave.
+# Bandas musicais v2.0 para modo "auto": distribui todos os 29 emotes + procedurais por BPM/energia/grave.
+_ESTILOS_PROCEDURAIS: frozenset[str] = frozenset(
+    {
+        "head_bob",
+        "street_groove",
+        "walkman_shuffle",
+        "graffiti_dance",
+        "hip_hop",
+        "funk_glide",
+        "cyber_bounce",
+        "rock",
+        "cyber_skank",
+    }
+)
+
 _BANDAS_AUTO_V2: dict[str, tuple[str, ...]] = {
     "chill_groove": (
         "head_bob",
@@ -25,8 +40,12 @@ _BANDAS_AUTO_V2: dict[str, tuple[str, ...]] = {
         "walkman_shuffle",
         "graffiti_dance",
         "passinho",
-        "griddy",
         "jabba_switchway",
+        "aloa",
+        "bbd",
+        "macaroons",
+        "january_bop",
+        "speed_dial",
     ),
     "funk_pop": (
         "hip_hop",
@@ -40,6 +59,12 @@ _BANDAS_AUTO_V2: dict[str, tuple[str, ...]] = {
         "popular",
         "miku",
         "lets_begin",
+        "criss_cross",
+        "dancing_twerk",
+        "go_mufasa",
+        "jiggle",
+        "master_of_mystery",
+        "she_bugging",
     ),
     "high_energy": (
         "rock",
@@ -48,8 +73,10 @@ _BANDAS_AUTO_V2: dict[str, tuple[str, ...]] = {
         "breakdance_uprock",
         "cyclone_headbang",
         "flair",
-        "speed_dial",
         "breakdance_1990",
+        "celebration_dance",
+        "breakdance_freeze",
+        "griddy",
     ),
 }
 
@@ -83,6 +110,17 @@ class DanceMotion:
         self._indice_mixamo = 0
         self._dt_passo = 0.0
         self._pose_suavizada: dict[str, Rotation3] = {}
+        self._rng = random.Random()
+        self._filas_bandas: dict[str, list[str]] = {}
+        self._resetar_transicao_estilo()
+
+    def _resetar_transicao_estilo(self) -> None:
+        self._transicao_estilo_restante = 0.0
+        self._dz_anterior_emote = 0.0
+        self._giro_anterior_emote = 0.0
+        self._deslocamento_anterior_emote = (0.0, 0.0)
+        self._quat_anterior_emote: tuple[float, float, float, float] | None = None
+        self._head_anterior_emote = Rotation3()
 
     def _sincronizar_fase(
         self,
@@ -110,6 +148,26 @@ class DanceMotion:
             self.phase -= error * tune.CORRECAO_FASE
         self.phrase_phase = (self.phase / (tune.COMPASSO_FASE * 2.0)) % 1.0
 
+    def _proximo_da_banda(self, banda: str, atual: str) -> str:
+        fila = self._filas_bandas.get(banda, [])
+        if not fila:
+            pool = _BANDAS_AUTO_V2[banda]
+            proc = [e for e in pool if e in _ESTILOS_PROCEDURAIS]
+            emotes = [e for e in pool if e not in _ESTILOS_PROCEDURAIS]
+            self._rng.shuffle(proc)
+            self._rng.shuffle(emotes)
+            intercalado: list[str] = []
+            while proc or emotes:
+                if emotes:
+                    intercalado.append(emotes.pop())
+                if proc:
+                    intercalado.append(proc.pop())
+            if len(intercalado) > 1 and intercalado[-1] == atual:
+                intercalado[0], intercalado[-1] = intercalado[-1], intercalado[0]
+            fila = intercalado
+            self._filas_bandas[banda] = fila
+        return fila.pop()
+
     def _selecionar_estilo_danca(self, bar_boundary: bool) -> str:
         """Escolhe o estilo compatível com BPM/energia/grave e rotaciona nas viradas de compasso."""
         if self.override != "auto":
@@ -128,22 +186,31 @@ class DanceMotion:
             return self.style
         if self.dwell > 14.0 and bar_boundary:
             self._indice_mixamo = (self._indice_mixamo + 1) % len(pool)
-            return pool[self._indice_mixamo]
+            return self._proximo_da_banda(banda, self.style)
         if self.style not in pool:
-            return pool[self._indice_mixamo % len(pool)]
+            return self._proximo_da_banda(banda, self.style)
         return self.style
+
+    def _iniciar_troca_estilo(self, desired: str) -> None:
+        self._pose_anterior = dict(self.pose)
+        self._dz_anterior_emote = self.dz_pelvis_emote
+        self._giro_anterior_emote = self.giro_corpo_emote
+        self._deslocamento_anterior_emote = self.deslocamento_emote
+        self._quat_anterior_emote = self.raiz_quat_emote
+        self._transicao_estilo_restante = 0.34
+        self.style, self.dwell = desired, 0.0
+        self.style_beats = 0.0
+        self.tempo_clipe = 0.0
 
     def _atualizar_estilo_e_acento(self, dt: float, bpm: float | None, bar_boundary: bool) -> None:
         """Atualiza o estilo escolhido, relógio de emote, força e acento rítmico."""
+        self._transicao_estilo_restante = max(0.0, self._transicao_estilo_restante - max(0.0, dt))
         params = tune.parametros_danca()
         desired = self._selecionar_estilo_danca(bar_boundary)
         if desired != self.style and (
             self.override != "auto" or (self.dwell > params["dwell_minimo"] and bar_boundary)
         ):
-            self._pose_anterior = self.pose
-            self.style, self.dwell = desired, 0.0
-            self.style_beats = 0.0
-            self.tempo_clipe = 0.0
+            self._iniciar_troca_estilo(desired)
         clipe_ativo = carregar_clipe_emote(self.style) if self.style != "head_bob" else None
         bpm_real = bpm is not None and bpm > 0.0
         if clipe_ativo is not None and clipe_ativo.bpm_nativo > 0.0 and bpm_real:
@@ -230,7 +297,7 @@ class DanceMotion:
         bx, by, bz = pose.get("body", (0.0, 0.0, 0.0))
         hx, hy, hz = pose.get("head", (0.0, 0.0, 0.0))
         if self.style == "head_bob":
-            hx -= 6.0 * pulso**4 * energia_ef
+            hx += (-3.5 * (pulso**3) + 2.8 * (1.0 - pulso)) * energia_ef
             rig.set_rotation("head", x=hx, y=hy, z=hz)
 
         # 1. Cadeia da coluna com defasagem progressiva (cintura -> abdomen -> peitoral)
@@ -288,8 +355,8 @@ class DanceMotion:
     def _aplicar_ombros_zzz(self, rig, energia_ef: float) -> None:
         """Soma atraso hierárquico sutil aos ombros sem sobrescrever o estilo."""
         p_ombro = self.phase - 0.92
-        dp = (0.5 + 0.5 * cos(p_ombro) - 0.5) * 2.4 * energia_ef
-        dw = sin(p_ombro * 0.5) * 2.2 * energia_ef
+        dp = radians((0.5 + 0.5 * cos(p_ombro) - 0.5) * 2.4 * energia_ef)
+        dw = radians(sin(p_ombro * 0.5) * 2.2 * energia_ef)
         for lado, sinal in (("shoulder", -1.0), ("shoulder2", 1.0)):
             atual = rig.current.get(lado, rig.rest[lado])
             rig.current[lado] = Rotation3(atual.x + dp, atual.y, atual.z + sinal * dw)
@@ -318,7 +385,7 @@ class DanceMotion:
 
     @classmethod
     def _groove_head_bob(cls, rig, pose, pulso, onda, meia_onda):
-        # 3. Groove adicional nos braços, cotovelos, ombros, punhos e dedos por estilo
+        # 3. Groove rítmico sentado no speaker (apoio natural + ombros/punhos soltos).
         rx, ry, rz = pose.get("right-arm", (0.0, 0.0, 0.0))
         lx, ly, lz = pose.get("left-arm", (0.0, 0.0, 0.0))
         arx, ary, arz = pose.get("ant-arm", (0.0, 0.0, 0.0))
@@ -326,94 +393,94 @@ class DanceMotion:
 
         rig.set_rotation(
             "right-arm",
-            x=rx + onda * 2.5,
-            y=ry + meia_onda * 3.0,
-            z=rz - pulso * 3.5,
-        )
-        rig.set_rotation(
-            "left-arm",
-            x=lx - onda * 2.0,
-            y=ly + meia_onda * 2.5,
-            z=lz + pulso * 3.0,
-        )
-        rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + pulso * 4.0)
-        rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - pulso * 4.0)
-        rig.set_rotation("shoulder", x=pulso * 2.0, y=0.0, z=-pulso * 2.5)
-        rig.set_rotation("shoulder2", x=pulso * 2.0, y=0.0, z=pulso * 2.5)
-        cls._somar_punhos_dedos(
-            rig, pose, -onda * 6.0, meia_onda * 3.5, onda * 5.0,
-            onda * 4.5, meia_onda * 2.5, -onda * 4.0,
-            3.0 + pulso * 4.0, -3.0 - pulso * 2.5,
-        )
-
-    @classmethod
-    def _groove_rock(cls, rig, pose, pulso, onda, meia_onda):
-        # 3. Groove adicional nos braços, cotovelos, ombros, punhos e dedos por estilo
-        rx, ry, rz = pose.get("right-arm", (0.0, 0.0, 0.0))
-        lx, ly, lz = pose.get("left-arm", (0.0, 0.0, 0.0))
-        arx, ary, arz = pose.get("ant-arm", (0.0, 0.0, 0.0))
-        alx, aly, alz = pose.get("ant-arm2", (0.0, 0.0, 0.0))
-
-        rig.set_rotation(
-            "right-arm",
-            x=rx + onda * 4.0,
-            y=ry + meia_onda * 11.0,
-            z=rz - pulso * 7.5,
-        )
-        rig.set_rotation(
-            "left-arm",
-            x=lx - onda * 4.5,
-            y=ly - meia_onda * 10.0,
-            z=lz + pulso * 6.5,
-        )
-        rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + pulso * 15.0)
-        rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - (1.0 - pulso) * 15.0)
-        rig.set_rotation("shoulder", x=pulso * 3.0, y=0.0, z=-pulso * 4.0)
-        rig.set_rotation("shoulder2", x=pulso * 2.5, y=0.0, z=pulso * 3.0)
-        cls._somar_punhos_dedos(
-            rig, pose, onda * 9.0, meia_onda * 4.5, -pulso * 7.0,
-            -onda * 10.0, meia_onda * 4.0, pulso * 7.0,
-            onda * 4.0, -pulso * 5.0,
-        )
-
-    @classmethod
-    def _groove_hip_hop(cls, rig, pose, pulso, onda, meia_onda):
-        # 3. Groove adicional nos braços, cotovelos, ombros, punhos e dedos por estilo
-        rx, ry, rz = pose.get("right-arm", (0.0, 0.0, 0.0))
-        lx, ly, lz = pose.get("left-arm", (0.0, 0.0, 0.0))
-        arx, ary, arz = pose.get("ant-arm", (0.0, 0.0, 0.0))
-        alx, aly, alz = pose.get("ant-arm2", (0.0, 0.0, 0.0))
-
-        rig.set_rotation(
-            "right-arm",
-            x=rx + onda * 4.0,
-            y=ry + meia_onda * 13.0,
+            x=rx + onda * 3.8,
+            y=ry + meia_onda * 4.5,
             z=rz - pulso * 5.0,
         )
         rig.set_rotation(
             "left-arm",
-            x=lx - onda * 4.0,
-            y=ly + meia_onda * 13.0,
-            z=lz + pulso * 5.0,
+            x=lx - onda * 3.2,
+            y=ly + meia_onda * 4.0,
+            z=lz + pulso * 4.5,
+        )
+        rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + pulso * 6.0)
+        rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - pulso * 6.0)
+        rig.set_rotation("shoulder", x=pulso * 3.2, y=0.0, z=-pulso * 3.8)
+        rig.set_rotation("shoulder2", x=pulso * 3.2, y=0.0, z=pulso * 3.8)
+        cls._somar_punhos_dedos(
+            rig, pose, -onda * 8.0, meia_onda * 4.5, onda * 6.5,
+            onda * 6.5, meia_onda * 3.5, -onda * 5.5,
+            4.5 + pulso * 5.5, -4.5 - pulso * 4.0,
+        )
+
+    @classmethod
+    def _groove_rock(cls, rig, pose, pulso, onda, meia_onda):
+        # 3. Groove pesado do rock com chifre alto e braço esquerdo no power-chord.
+        rx, ry, rz = pose.get("right-arm", (0.0, 0.0, 0.0))
+        lx, ly, lz = pose.get("left-arm", (0.0, 0.0, 0.0))
+        arx, ary, arz = pose.get("ant-arm", (0.0, 0.0, 0.0))
+        alx, aly, alz = pose.get("ant-arm2", (0.0, 0.0, 0.0))
+
+        rig.set_rotation(
+            "right-arm",
+            x=rx + onda * 5.0,
+            y=ry + meia_onda * 8.0,
+            z=rz - pulso * 6.5,
+        )
+        rig.set_rotation(
+            "left-arm",
+            x=lx - onda * 6.0,
+            y=ly - meia_onda * 12.0,
+            z=lz + pulso * 9.0,
         )
         rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + pulso * 12.0)
-        rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - (1 - pulso) * 12.0)
+        rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - (1.0 - pulso) * 18.0)
+        rig.set_rotation("shoulder", x=pulso * 4.0, y=0.0, z=-pulso * 4.5)
+        rig.set_rotation("shoulder2", x=pulso * 3.5, y=0.0, z=pulso * 4.0)
+        cls._somar_punhos_dedos(
+            rig, pose, onda * 11.0, meia_onda * 5.0, -pulso * 8.0,
+            -onda * 12.0, meia_onda * 5.0, pulso * 9.0,
+            onda * 5.0, -pulso * 6.5,
+        )
+
+    @classmethod
+    def _groove_hip_hop(cls, rig, pose, pulso, onda, meia_onda):
+        # 3. Groove boom-bap no hip hop com balanço amplo de ombros e punhos.
+        rx, ry, rz = pose.get("right-arm", (0.0, 0.0, 0.0))
+        lx, ly, lz = pose.get("left-arm", (0.0, 0.0, 0.0))
+        arx, ary, arz = pose.get("ant-arm", (0.0, 0.0, 0.0))
+        alx, aly, alz = pose.get("ant-arm2", (0.0, 0.0, 0.0))
+
+        rig.set_rotation(
+            "right-arm",
+            x=rx + onda * 5.5,
+            y=ry + meia_onda * 14.0,
+            z=rz - pulso * 6.5,
+        )
+        rig.set_rotation(
+            "left-arm",
+            x=lx - onda * 5.5,
+            y=ly + meia_onda * 14.0,
+            z=lz + pulso * 6.5,
+        )
+        rig.set_rotation("ant-arm", x=arx, y=ary, z=arz + pulso * 14.0)
+        rig.set_rotation("ant-arm2", x=alx, y=aly, z=alz - (1 - pulso) * 14.0)
         rig.set_rotation(
             "shoulder",
-            x=onda * 2.5,
+            x=onda * 3.5,
             y=0.0,
-            z=-pulso * 3.0 + meia_onda * 2.0,
+            z=-pulso * 4.0 + meia_onda * 2.5,
         )
         rig.set_rotation(
             "shoulder2",
-            x=-onda * 2.5,
+            x=-onda * 3.5,
             y=0.0,
-            z=pulso * 3.0 + meia_onda * 2.0,
+            z=pulso * 4.0 + meia_onda * 2.5,
         )
         cls._somar_punhos_dedos(
-            rig, pose, -onda * 10.0, meia_onda * 5.0, pulso * 7.0,
-            onda * 10.0, meia_onda * 5.0, -pulso * 7.0,
-            onda * 4.5, -onda * 4.5,
+            rig, pose, -onda * 12.0, meia_onda * 6.0, pulso * 8.0,
+            onda * 12.0, meia_onda * 6.0, -pulso * 8.0,
+            onda * 5.5, -onda * 5.5,
         )
 
     def _groove_breakdance(self, rig, pose, pulso, onda, meia_onda):
@@ -598,11 +665,17 @@ class DanceMotion:
         onda_f = sin(p1)
         pulso_a = 0.5 + 0.5 * cos(p2)
         onda_a = sin(p2)
-        rig.set_rotation("fones", x=onda_f * 3.4 * ganho, z=sin(p1 * 0.5) * 2.4 * ganho)
-        rig.set_rotation("fone-direito", x=pulso_f * 6.0 * ganho, z=onda_f * 5.2 * ganho)
-        rig.set_rotation("fone-esquerdo", x=pulso_f * 6.0 * ganho, z=-onda_f * 5.2 * ganho)
-        rig.set_rotation("antena-direita", x=pulso_a * 14.5 * ganho, z=onda_a * 16.5 * ganho)
-        rig.set_rotation("antena-esquerda", x=-pulso_a * 12.5 * ganho, z=-onda_a * 16.5 * ganho)
+        # Reação secundária real à velocidade da cabeça do próprio emote (Princípio 5)
+        head_atual = rig.current.get("head", Rotation3())
+        dt_h = max(1.0 / 120.0, self._dt_passo) if self._dt_passo > 0.0 else 1.0 / 60.0
+        dhx = max(-10.0, min(10.0, -(head_atual.x - self._head_anterior_emote.x) / dt_h * 1.4))
+        dhz = max(-10.0, min(10.0, -(head_atual.z - self._head_anterior_emote.z) / dt_h * 1.4))
+        self._head_anterior_emote = head_atual
+        rig.set_rotation("fones", x=onda_f * 3.4 * ganho + dhx * 0.45, z=sin(p1 - 0.60) * 2.4 * ganho + dhz * 0.45)
+        rig.set_rotation("fone-direito", x=pulso_f * 6.0 * ganho + dhx * 0.35, z=onda_f * 5.2 * ganho + dhz * 0.35)
+        rig.set_rotation("fone-esquerdo", x=pulso_f * 6.0 * ganho + dhx * 0.35, z=-onda_f * 5.2 * ganho + dhz * 0.35)
+        rig.set_rotation("antena-direita", x=pulso_a * 14.5 * ganho + dhx * 0.85, z=onda_a * 16.5 * ganho + dhz * 0.85)
+        rig.set_rotation("antena-esquerda", x=-pulso_a * 12.5 * ganho + dhx * 0.85, z=-onda_a * 16.5 * ganho + dhz * 0.85)
 
         # Acento aditivo no peito/cabeça sincronizado com self.acento e self.bass:
         # faz cada emote reagir de verdade ao grave e aos drops da música ao vivo!
@@ -615,7 +688,7 @@ class DanceMotion:
                 p = rig.current["peitoral"]
                 rig.current["peitoral"] = Rotation3(p.x + radians(2.8 * punch), p.y, p.z)
 
-        # Micro-pulso rítmico da portinha nos graves fortes (2°–6°)
+        # Micro-pulso rítmico da portinha nos graves fortes (2°-6°)
         porta_drop = max(0.0, (self.bass - 0.45) * 11.0 * min(1.0, self.acento))
         rig.set_rotation("door", y=min(7.0, porta_drop))
 
@@ -623,29 +696,33 @@ class DanceMotion:
         params = tune.parametros_danca()
         return params["ganho_passo_base"] + self.energy * params["ganho_passo_energia"]
 
-    def _montar_alvo(self, rig):
-        """Monta a pose do passo e o movimento secundário da batida."""
-        clipe = carregar_clipe_emote(self.style) if self.style != "head_bob" else None
-        if clipe is not None:
-            pose_clipe = amostrar_clipe_emote(clipe, self.tempo_clipe)
-            self.dz_pelvis_emote, self.giro_corpo_emote = amostrar_raiz_emote(
-                clipe, self.tempo_clipe
-            )
-            self.raiz_quat_emote = amostrar_orientacao_raiz_emote(
-                clipe, self.tempo_clipe
-            )
-            self.deslocamento_emote = amostrar_deslocamento_emote(clipe, self.tempo_clipe)
-            self.dedos_clipe = amostrar_dedos_emote(clipe, self.tempo_clipe)
-            for grupo, rot in pose_clipe.items():
-                if grupo in rig.rest and grupo != "door":
-                    rig.current[grupo] = rot
-            self._aplicar_acessorios_zzz_emote(rig)
-            return rig.pose()
+    def _zerar_estado_emote(self) -> None:
         self.dz_pelvis_emote = 0.0
         self.giro_corpo_emote = 0.0
         self.raiz_quat_emote = None
         self.deslocamento_emote = (0.0, 0.0)
         self.dedos_clipe = None
+
+    def _montar_alvo_clipe(self, rig, clipe):
+        pose_clipe = amostrar_clipe_emote(clipe, self.tempo_clipe)
+        self.dz_pelvis_emote, self.giro_corpo_emote = amostrar_raiz_emote(
+            clipe, self.tempo_clipe
+        )
+        self.raiz_quat_emote = amostrar_orientacao_raiz_emote(clipe, self.tempo_clipe)
+        self.deslocamento_emote = amostrar_deslocamento_emote(clipe, self.tempo_clipe)
+        self.dedos_clipe = amostrar_dedos_emote(clipe, self.tempo_clipe)
+        for grupo, rot in pose_clipe.items():
+            if grupo in rig.rest and grupo != "door":
+                rig.current[grupo] = rot
+        self._aplicar_acessorios_zzz_emote(rig)
+        return rig.pose()
+
+    def _montar_alvo(self, rig):
+        """Monta a pose do passo e o movimento secundário da batida."""
+        clipe = carregar_clipe_emote(self.style) if self.style != "head_bob" else None
+        if clipe is not None:
+            return self._montar_alvo_clipe(rig, clipe)
+        self._zerar_estado_emote()
         passos = frase_do_estilo(self.style)
         indice, u = self._posicao_na_frase(passos)
         pose = amostrar_passo(
@@ -671,17 +748,45 @@ class DanceMotion:
         """Aplica a pose de dança atual no rig."""
         rig.current = self.contribuicao(rig)
 
+    def resetar_suavizacao(self) -> None:
+        """Limpa cache de suavização e pose anterior ao sair do estado de dança."""
+        self._pose_suavizada.clear()
+        self._pose_anterior = {}
+
+    def _suavizar_raiz_transicao(self) -> None:
+        if self._transicao_estilo_restante <= 0.0:
+            return
+        u = suavizar_quintico(1.0 - max(0.0, min(1.0, self._transicao_estilo_restante / 0.34)))
+        self.dz_pelvis_emote = (
+            self._dz_anterior_emote + (self.dz_pelvis_emote - self._dz_anterior_emote) * u
+        )
+        diff_giro = ((self.giro_corpo_emote - self._giro_anterior_emote + 180.0) % 360.0) - 180.0
+        self.giro_corpo_emote = ((self._giro_anterior_emote + diff_giro * u + 180.0) % 360.0) - 180.0
+        dx0, dy0 = self._deslocamento_anterior_emote
+        dx1, dy1 = self.deslocamento_emote
+        self.deslocamento_emote = (dx0 + (dx1 - dx0) * u, dy0 + (dy1 - dy0) * u)
+        # SLERP da orientação 3D na troca de estilo (elimina estalo ao entrar/sair de breakdance/flair)
+        if self._quat_anterior_emote is not None or self.raiz_quat_emote is not None:
+            q0 = self._quat_anterior_emote or (1.0, 0.0, 0.0, 0.0)
+            q1 = self.raiz_quat_emote or (1.0, 0.0, 0.0, 0.0)
+            self.raiz_quat_emote = _slerp_quat(q0, q1, u)
+
     def contribuicao(self, rig):
         """Amostra a coreografia e interpola a entrada de um novo estilo."""
         alvo = self._montar_alvo(rig)
-        if self._pose_anterior and self.style_beats < 1.0:
-            peso = suavizar_quintico(self.style_beats)
+        self._suavizar_raiz_transicao()
+        if self._pose_anterior and (self.style_beats < 1.0 or self._transicao_estilo_restante > 0.0):
+            u_tempo = 1.0 - max(0.0, min(1.0, self._transicao_estilo_restante / 0.34))
+            peso = suavizar_quintico(max(self.style_beats, u_tempo) if self._transicao_estilo_restante > 0.0 else self.style_beats)
             for grupo, rotacao in alvo.items():
                 origem = self._pose_anterior.get(grupo, rotacao)
+                dx = ((rotacao.x - origem.x + pi) % tau) - pi
+                dy = ((rotacao.y - origem.y + pi) % tau) - pi
+                dz = ((rotacao.z - origem.z + pi) % tau) - pi
                 alvo[grupo] = Rotation3(
-                    origem.x + (rotacao.x - origem.x) * peso,
-                    origem.y + (rotacao.y - origem.y) * peso,
-                    origem.z + (rotacao.z - origem.z) * peso,
+                    origem.x + dx * peso,
+                    origem.y + dy * peso,
+                    origem.z + dz * peso,
                 )
         mistura = max(0.0, min(1.0, float(tune.parametros_danca().get("mistura_base", 1.0))))
         if mistura < 1.0 - 1e-6:
@@ -719,35 +824,31 @@ class DanceMotion:
 
     @property
     def lean_amount(self):
-        """Devolve a inclinação do corpo pedida pelo passo atual."""
+        """Devolve a inclinação do corpo pedida pelo passo atual (curva quíntica)."""
         if self.style == "head_bob":
-            value = max(0, min(1, self.style_beats / tune.LEAN_HEADBOB_BATIDAS))
-            return value * value * (3 - 2 * value)
+            return suavizar_quintico(self.style_beats / tune.LEAN_HEADBOB_BATIDAS)
         beat = self.style_beats % tune.FRASE_BATIDAS
         value = max(
-            0, min(1, beat - tune.LEAN_JANELA_INICIO, tune.LEAN_JANELA_FIM - beat)
+            0.0, min(1.0, beat - tune.LEAN_JANELA_INICIO, tune.LEAN_JANELA_FIM - beat)
         )
-        return value * value * (3 - 2 * value)
+        return suavizar_quintico(value)
 
     @property
     def floor_amount(self):
-        """Devolve o quanto o passo atual leva o corpo ao chão."""
+        """Devolve o quanto o passo atual leva o corpo ao chão (curva quíntica)."""
         beat = self.style_beats % tune.FRASE_BATIDAS
         value = max(
-            0,
+            0.0,
             min(
-                1,
+                1.0,
                 (beat - tune.FLOOR_INICIO) / tune.FLOOR_SUBIDA,
                 (tune.FLOOR_FIM - beat) / tune.FLOOR_DESCIDA,
             ),
         )
-        return value * value * (3 - 2 * value)
+        return suavizar_quintico(value)
 
     @property
     def floor_spin(self):
-        """Devolve o giro no chão do passo atual."""
+        """Devolve o giro no chão do passo atual com ataque e chegada suaves."""
         beat = self.style_beats % tune.FRASE_BATIDAS
-        return (
-            max(0, min(1, (beat - tune.SPIN_INICIO) / tune.SPIN_SUBIDA))
-            * tune.SPIN_GRAUS
-        )
+        return suavizar_quintico((beat - tune.SPIN_INICIO) / tune.SPIN_SUBIDA) * tune.SPIN_GRAUS

@@ -42,7 +42,7 @@ def test_corredor_fica_na_boca_quando_a_folha_gira():
     door.setH(95)
 
     assert diretor._corredor_porta_aberta() == (boca, fora)
-    assert tuple(head.getRelativePoint(raiz, boca)) == pytest.approx((0, 0.15625, 0.1225), abs=1e-7)
+    assert tuple(head.getRelativePoint(raiz, boca)) == pytest.approx((0, 0.1465, 0.1812), abs=1e-7)
     assert head.getRelativePoint(raiz, fora).y > 0.3
 
 

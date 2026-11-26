@@ -6,7 +6,7 @@ import math
 import time
 from itertools import pairwise
 
-from sejoga.animacao import fio_tuning as tuning
+from sejoga.animacao import fio_corda as tuning
 from sejoga.animacao.fio_corda import (
     ORDEM_HASTE,
     FioFone,

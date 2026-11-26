@@ -251,17 +251,17 @@ def idle_arco_composto(
         amplitude_pitch=2.8,
         amplitude_yaw=3.8,
         amplitude_roll=2.2,
-        fase=math.pi / 4.0,
+        fase=-math.pi / 4.0,
     )
 
-    # Fones e antenas: arraste secundário leve acima da cabeça
-    fones_pitch = arco_braço(t, frequencia=frequencia_base * 1.5, amplitude=1.4, fase=math.pi / 2.2)
-    ant_r = arco_braço(t, frequencia=frequencia_base * 2.0, amplitude=3.8, fase=math.pi / 1.8)
-    ant_l = arco_braço(t, frequencia=frequencia_base * 2.0, amplitude=3.8, fase=math.pi / 1.8 + 0.55)
+    # Fones e antenas: arraste secundário atrasado acima da cabeça
+    fones_pitch = arco_braço(t, frequencia=frequencia_base * 1.5, amplitude=1.4, fase=-math.pi / 2.2)
+    ant_r = arco_braço(t, frequencia=frequencia_base * 2.0, amplitude=3.8, fase=-math.pi / 1.8)
+    ant_l = arco_braço(t, frequencia=frequencia_base * 2.0, amplitude=3.8, fase=-math.pi / 1.8 - 0.55)
 
     # Clavículas + braços em arcos assimétricos
-    ombro_r = arco_braço(t, frequencia=frequencia_base, amplitude=1.6, fase=0.20)
-    ombro_l = arco_braço(t, frequencia=frequencia_base, amplitude=1.4, fase=0.20 + math.pi / 2.0)
+    ombro_r = arco_braço(t, frequencia=frequencia_base, amplitude=1.6, fase=-0.20)
+    ombro_l = arco_braço(t, frequencia=frequencia_base, amplitude=1.4, fase=-0.20 - math.pi / 2.0)
     braço_dir, braço_esq = arco_braço_par(
         t,
         frequencia=frequencia_base,
@@ -270,37 +270,37 @@ def idle_arco_composto(
         defasagem=math.pi / 2.0,
     )
 
-    # Cotovelos e punhos: follow-through progressivo até a mão grande
+    # Cotovelos e punhos: follow-through progressivo (atraso negativo!) até a mão grande
     cotovelo_dir = arco_braço(
         t,
         frequencia=frequencia_base * 1.25,
         amplitude=4.0,
-        fase=math.pi / 3.0,
+        fase=-math.pi / 3.0,
     )
     cotovelo_esq = arco_braço(
         t,
         frequencia=frequencia_base * 1.25,
         amplitude=3.6,
-        fase=math.pi / 3.0 + math.pi / 2.0,
+        fase=-math.pi / 3.0 - math.pi / 2.0,
     )
     punho_dir = arco_braço(
         t,
         frequencia=frequencia_base * 1.5,
         amplitude=3.8,
-        fase=math.pi / 2.0,
+        fase=-math.pi / 2.0,
     )
     punho_esq = arco_braço(
         t,
         frequencia=frequencia_base * 1.5,
         amplitude=3.5,
-        fase=math.pi / 2.0 + math.pi / 2.0,
+        fase=-math.pi / 2.0 - math.pi / 2.0,
     )
-    dedo_dir = arco_braço(t, frequencia=frequencia_base * 1.5, amplitude=3.2, fase=2.0 * math.pi / 3.0)
+    dedo_dir = arco_braço(t, frequencia=frequencia_base * 1.5, amplitude=3.2, fase=-2.0 * math.pi / 3.0)
     dedo_esq = arco_braço(
         t,
         frequencia=frequencia_base * 1.5,
         amplitude=3.0,
-        fase=2.0 * math.pi / 3.0 + math.pi / 2.0,
+        fase=-2.0 * math.pi / 3.0 - math.pi / 2.0,
     )
 
     return {

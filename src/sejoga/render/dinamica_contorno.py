@@ -78,11 +78,12 @@ def cor_contorno_viva(
     choque: bool = False,
     carinho: bool = False,
     impacto: float = 0.0,
+    album_rgb: tuple[float, float, float] | None = None,
 ) -> tuple[float, float, float]:
     """Tinta viva Cyber-Ink (v2.0): modula sutilmente a cor do contorno conforme o momento.
 
-    Sempre parte da cor configurada pelo usuário (``base_rgb``) e evita a zona
-    de colorkey magenta (mantém verde seguro quando R e B sobem juntos).
+    Sempre parte da cor configurada pelo usuário (``base_rgb``), aceita sotaque da
+    capa do álbum em execução e evita a zona de colorkey magenta.
     """
     r, g, b = base_rgb
     alvo = base_rgb
@@ -96,6 +97,9 @@ def cor_contorno_viva(
     elif carinho or estado in ("pet", "celebrate"):
         alvo = (1.0, 0.84, 0.34)  # brilho dourado caloroso
         peso = 0.55 if estado == "celebrate" else 0.42
+    elif album_rgb is not None and (estado == "dance" or bass > 0.12):
+        alvo = album_rgb
+        peso = min(0.65, 0.24 + max(0.0, bass) * 0.48)
     elif estado == "dance" and bass > 0.22:
         alvo = (0.28, 0.94, 0.92)  # pulso neon no grave
         peso = min(0.62, (bass - 0.20) * 0.78)

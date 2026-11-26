@@ -103,8 +103,6 @@ def _parse_quat_raiz(
     brutos: list[list[float]],
     n_fallback: int,
 ) -> tuple[tuple[float, float, float, float], ...]:
-    import math
-
     if not any(isinstance(r, list) and len(r) >= 6 for r in brutos):
         return ()
     lista: list[tuple[float, float, float, float]] = []
@@ -171,7 +169,7 @@ def _carregar_clipe_em(pasta_sub: str, estilo: str) -> ClipeEmote | None:
         r_loop = _parse_raiz(dados.get("raiz", []), len(q_loop))
         rq_loop = _parse_quat_raiz(dados.get("raiz", []), len(q_loop))
         d_loop = _parse_dedos(dados.get("dedos", []), len(q_loop))
-        velocidade = max(0.35, min(2.2, float(dados.get("velocidade", 1.0))))
+        velocidade = max(0.35, min(3.2, float(dados.get("velocidade", 1.0))))
         bpm_nativo = max(55.0, min(200.0, float(dados.get("bpm_nativo", 108.0))))
 
         return ClipeEmote(
@@ -197,15 +195,20 @@ def _carregar_clipe_em(pasta_sub: str, estilo: str) -> ClipeEmote | None:
         return None
 
 
-def carregar_clipe_emote(estilo: str) -> ClipeEmote | None:
-    """Carrega o clipe de loop de ``assets/animation/loops/<estilo>.json`` se existir."""
-    clipe = _carregar_clipe_em("loops", estilo)
-    if clipe is None:
-        return None
-    override = danca_ativa().get("clipes", {}).get(estilo)
-    if not isinstance(override, dict):
+_CACHE_OVERRIDE: dict[tuple[int, str, tuple[tuple[str, object], ...]], ClipeEmote] = {}
+
+
+def _aplicar_override_clipe(clipe: ClipeEmote, nome: str) -> ClipeEmote:
+    override = danca_ativa().get("clipes", {}).get(nome)
+    if not isinstance(override, dict) or not override:
         return clipe
-    return replace(
+    chave = (id(clipe), nome, tuple(sorted(override.items())))
+    cached = _CACHE_OVERRIDE.get(chave)
+    if cached is not None:
+        return cached
+    if len(_CACHE_OVERRIDE) > 256:
+        _CACHE_OVERRIDE.clear()
+    res = replace(
         clipe,
         velocidade=float(override.get("velocidade", clipe.velocidade)),
         bpm_nativo=float(override.get("bpm", clipe.bpm_nativo)),
@@ -218,139 +221,458 @@ def carregar_clipe_emote(estilo: str) -> ClipeEmote | None:
         ),
         peso_mistura=max(0.0, min(1.0, float(override.get("peso_mistura", 1.0)))),
     )
+    _CACHE_OVERRIDE[chave] = res
+    return res
 
 
-def _suavizar_clipe_acao(
-    quadros: tuple[dict[str, Rotation3], ...],
+def _suavizar_raiz_clipe(
+    raiz: tuple[tuple[float, float], ...],
     *,
     em_loop: bool,
-) -> tuple[dict[str, Rotation3], ...]:
-    """Suaviza flips de gimbal em punhos e eventuais degraus na emenda do loop."""
-    n = len(quadros)
+) -> tuple[tuple[float, float], ...]:
+    """Filtra picos bruscos de giro (> 30°/quadro) e degraus de emenda em ``raiz``."""
+    n = len(raiz)
     if n < 5:
-        return quadros
-    buf = [dict(q) for q in quadros]
-    zero = Rotation3()
+        return raiz
+    buf = list(raiz)
+    indices: set[int] = set()
+    fim = n if em_loop else n - 1
+    for i in range(fim):
+        g0 = buf[i][1]
+        g1 = buf[(i + 1) % n][1]
+        diff = abs(((g1 - g0 + 180.0) % 360.0) - 180.0)
+        if diff > 30.0:
+            for off in (-1, 0, 1, 2):
+                idx = i + off
+                if em_loop:
+                    indices.add(idx % n)
+                elif 1 <= idx <= n - 2:
+                    indices.add(idx)
+    if em_loop:
+        seam = abs(((buf[0][1] - buf[-1][1] + 180.0) % 360.0) - 180.0)
+        if seam > 6.0:
+            indices.update({(n - 2) % n, n - 1, 0, 1})
+    if not indices:
+        return raiz
+    for _ in range(4):
+        prox = list(buf)
+        for idx in indices:
+            dz_a, ga = buf[(idx - 1) % n]
+            dz_c, gc = buf[idx]
+            dz_b, gb = buf[(idx + 1) % n]
+            da = ((ga - gc + 180.0) % 360.0) - 180.0
+            db = ((gb - gc + 180.0) % 360.0) - 180.0
+            g_novo = ((gc + (da + db) * 0.25 + 180.0) % 360.0) - 180.0
+            dz_novo = dz_c + ((dz_a - dz_c) + (dz_b - dz_c)) * 0.25
+            prox[idx] = (dz_novo, g_novo)
+        buf = prox
+    return tuple(buf)
 
-    def _picos(grupo: str, limiar: float) -> set[int]:
+
+def _suavizar_quat_clipe(
+    quats: tuple[tuple[float, float, float, float], ...],
+    *,
+    em_loop: bool,
+) -> tuple[tuple[float, float, float, float], ...]:
+    """Filtra saltos angulares > 30°/quadro em ``quat_raiz`` preservando inversões 3D."""
+    n = len(quats)
+    if n < 5:
+        return quats
+    buf = list(quats)
+    indices: set[int] = set()
+    fim = n if em_loop else n - 1
+    cos_lim = math.cos(math.radians(15.0))  # dot < cos(15°) => ângulo 3D > 30°
+    for i in range(fim):
+        q0, q1 = buf[i], buf[(i + 1) % n]
+        dot = abs(q0[0] * q1[0] + q0[1] * q1[1] + q0[2] * q1[2] + q0[3] * q1[3])
+        if dot < cos_lim:
+            for off in (-1, 0, 1, 2):
+                idx = i + off
+                if em_loop:
+                    indices.add(idx % n)
+                elif 1 <= idx <= n - 2:
+                    indices.add(idx)
+    if not indices:
+        return quats
+    for _ in range(4):
+        prox = list(buf)
+        for idx in indices:
+            medio = _slerp_quat(buf[(idx - 1) % n], buf[(idx + 1) % n], 0.5)
+            prox[idx] = _slerp_quat(buf[idx], medio, 0.5)
+        buf = prox
+    return tuple(buf)
+
+
+def _costurar_intro_no_loop(
+    q_intro: tuple[dict[str, Rotation3], ...],
+    p_intro: tuple[dict[str, float], ...],
+    q_loop0: dict[str, Rotation3],
+    p_loop0: dict[str, float],
+) -> tuple[tuple[dict[str, Rotation3], ...], tuple[dict[str, float], ...]]:
+    """Suaviza os últimos 3 quadros da intro quando há degrau relevante na emenda intro→loop."""
+    n_in = len(q_intro)
+    if n_in < 4:
+        return q_intro, p_intro
+    q_buf = [dict(q) for q in q_intro]
+    p_buf = [dict(p) for p in p_intro]
+    alterou_q = False
+    if _distancia_ang_poses(q_buf[-1], q_loop0) > 0.14:
+        alterou_q = True
+        zero = Rotation3()
+        for k, peso in ((n_in - 3, 0.15), (n_in - 2, 0.38), (n_in - 1, 0.70)):
+            for grupo, r_alvo in q_loop0.items():
+                r_cur = q_buf[k].get(grupo, zero)
+                dx = ((r_alvo.x - r_cur.x + math.pi) % math.tau) - math.pi
+                dy = ((r_alvo.y - r_cur.y + math.pi) % math.tau) - math.pi
+                dz = ((r_alvo.z - r_cur.z + math.pi) % math.tau) - math.pi
+                q_buf[k][grupo] = Rotation3(
+                    r_cur.x + dx * peso,
+                    r_cur.y + dy * peso,
+                    r_cur.z + dz * peso,
+                )
+    alterou_p = False
+    if len(p_buf) == n_in and p_loop0:
+        max_dp = max((abs(p_loop0[c] - p_buf[-1].get(c, 0.0)) for c in p_loop0), default=0.0)
+        if max_dp > 10.0:
+            alterou_p = True
+            for k, peso in ((n_in - 3, 0.15), (n_in - 2, 0.38), (n_in - 1, 0.70)):
+                for canal, v_alvo in p_loop0.items():
+                    v_cur = p_buf[k].get(canal, 0.0)
+                    p_buf[k][canal] = v_cur + (v_alvo - v_cur) * peso
+    return (tuple(q_buf) if alterou_q else q_intro), (tuple(p_buf) if alterou_p else p_intro)
+
+
+def _carregar_clipe_em_base(pasta_sub: str, estilo: str) -> ClipeEmote | None:
+    clipe = _carregar_clipe_em(pasta_sub, estilo)
+    if clipe is None:
+        return None
+    clipe = _deduplicar_fim_loop(clipe)
+    quadros, pernas = _suavizar_clipe(
+        clipe.quadros,
+        clipe.quadros_pernas,
+        em_loop=clipe.em_loop,
+    )
+    q_intro, p_intro = _suavizar_clipe(
+        clipe.quadros_intro,
+        clipe.quadros_pernas_intro,
+        em_loop=False,
+    )
+    if q_intro and quadros:
+        q_intro, p_intro = _costurar_intro_no_loop(q_intro, p_intro, quadros[0], pernas[0])
+    raiz = _suavizar_raiz_clipe(clipe.raiz, em_loop=clipe.em_loop)
+    quat_raiz = _suavizar_quat_clipe(clipe.quat_raiz, em_loop=clipe.em_loop)
+    return replace(
+        clipe,
+        quadros_intro=q_intro,
+        quadros_pernas_intro=p_intro,
+        quadros=quadros,
+        quadros_pernas=pernas,
+        raiz=raiz,
+        quat_raiz=quat_raiz,
+    )
+
+
+@lru_cache(maxsize=64)
+def _carregar_clipe_loop_suave(estilo: str) -> ClipeEmote | None:
+    return _carregar_clipe_em_base("loops", estilo)
+
+
+def carregar_clipe_emote(estilo: str) -> ClipeEmote | None:
+    """Carrega o clipe de loop de ``assets/animation/loops/<estilo>.json`` se existir."""
+    clipe = _carregar_clipe_loop_suave(estilo)
+    if clipe is None:
+        return None
+    return _aplicar_override_clipe(clipe, estilo)
+
+
+def _distancia_ang_poses(a: dict[str, Rotation3], b: dict[str, Rotation3]) -> float:
+    pior = 0.0
+    for grupo, ra in a.items():
+        rb = b.get(grupo)
+        if rb is None:
+            continue
+        pior = max(
+            pior,
+            abs(((rb.x - ra.x + math.pi) % math.tau) - math.pi),
+            abs(((rb.y - ra.y + math.pi) % math.tau) - math.pi),
+            abs(((rb.z - ra.z + math.pi) % math.tau) - math.pi),
+        )
+    return pior
+
+
+def _deduplicar_fim_loop(clipe: ClipeEmote) -> ClipeEmote:
+    """Remove o quadro final duplicado de clips cíclicos quando coincide com o quadro 0."""
+    n = len(clipe.quadros)
+    if not clipe.em_loop or n < 4:
+        return clipe
+    if _distancia_ang_poses(clipe.quadros[0], clipe.quadros[-1]) >= 0.04:
+        return clipe
+    p0 = clipe.quadros_pernas[0] if clipe.quadros_pernas else {}
+    p1 = clipe.quadros_pernas[-1] if clipe.quadros_pernas else {}
+    diff_pernas = max(
+        (abs(p1.get(k, 0.0) - p0.get(k, 0.0)) for k in (set(p0) | set(p1))),
+        default=0.0,
+    )
+    if diff_pernas >= 1.5:
+        return clipe
+    if len(clipe.raiz) == n:
+        dz0, g0 = clipe.raiz[0]
+        dz1, g1 = clipe.raiz[-1]
+        if abs(dz1 - dz0) >= 0.01 or abs(((g1 - g0 + 180.0) % 360.0) - 180.0) >= 1.0:
+            return clipe
+    return replace(
+        clipe,
+        quadros=clipe.quadros[:-1],
+        quadros_pernas=clipe.quadros_pernas[:-1] if len(clipe.quadros_pernas) == n else clipe.quadros_pernas,
+        raiz=clipe.raiz[:-1] if len(clipe.raiz) == n else clipe.raiz,
+        quat_raiz=clipe.quat_raiz[:-1] if len(clipe.quat_raiz) == n else clipe.quat_raiz,
+        deslocamento=clipe.deslocamento[:-1] if len(clipe.deslocamento) == n else clipe.deslocamento,
+        dedos=clipe.dedos[:-1] if len(clipe.dedos) == n else clipe.dedos,
+    )
+
+
+def _suavizar_pernas_clipe(
+    pernas: tuple[dict[str, float], ...],
+    *,
+    em_loop: bool,
+) -> tuple[dict[str, float], ...]:
+    n = len(pernas)
+    if n < 5:
+        return pernas
+    buf = [dict(p) for p in pernas]
+    chaves = set().union(*(p.keys() for p in buf))
+    alterou = False
+    for canal in chaves:
         indices: set[int] = set()
-        fim = n if em_loop else n - 1
-        for i in range(fim):
-            j = (i + 1) % n
-            ra = buf[i].get(grupo, zero)
-            rb = buf[j].get(grupo, zero)
-            d = max(
+        inicio_i = 0 if em_loop else 1
+        fim_i = n if em_loop else n - 1
+        for i in range(inicio_i, fim_i):
+            ant = buf[(i - 1) % n].get(canal, 0.0)
+            cur = buf[i].get(canal, 0.0)
+            seg = buf[(i + 1) % n].get(canal, 0.0)
+            d_in = cur - ant
+            d_out = seg - cur
+            # Remove picos isolados com reversão brusca (> 22°) ou saltos monotônicos > 30°/quadro.
+            if abs(d_in) > 22.0 and abs(d_out) > 22.0 and d_in * d_out < 0.0:
+                indices.add(i)
+            elif abs(d_in) > 30.0 or abs(d_out) > 30.0:
+                indices.add(i)
+        if not indices:
+            continue
+        alterou = True
+        medias = {i: (buf[(i - 1) % n].get(canal, 0.0) + buf[(i + 1) % n].get(canal, 0.0)) * 0.5 for i in indices}
+        for i, v in medias.items():
+            if canal in buf[i]:
+                buf[i][canal] = v
+    return tuple(buf) if alterou else pernas
+
+
+def _coletar_indices_picos_grupo(
+    buf: list[dict[str, Rotation3]],
+    grupo: str,
+    limiar: float,
+    em_loop: bool,
+) -> set[int]:
+    n = len(buf)
+    zero = Rotation3()
+    indices: set[int] = set()
+    fim = n if em_loop else n - 1
+    for i in range(fim):
+        ra = buf[i].get(grupo, zero)
+        rb = buf[(i + 1) % n].get(grupo, zero)
+        d = max(
+            abs(((rb.x - ra.x + math.pi) % math.tau) - math.pi),
+            abs(((rb.y - ra.y + math.pi) % math.tau) - math.pi),
+            abs(((rb.z - ra.z + math.pi) % math.tau) - math.pi),
+        )
+        if d <= limiar:
+            continue
+        for off in (-2, -1, 0, 1, 2):
+            idx = i + off
+            if em_loop:
+                indices.add(idx % n)
+            elif 1 <= idx <= n - 2:
+                indices.add(idx)
+    return indices
+
+
+def _suavizar_indices_grupo(
+    buf: list[dict[str, Rotation3]],
+    grupo: str,
+    indices: set[int],
+    passagens: int,
+) -> None:
+    if not indices:
+        return
+    n = len(buf)
+    zero = Rotation3()
+    for _ in range(passagens):
+        proximo = [q.get(grupo, zero) for q in buf]
+        for idx in indices:
+            ant = buf[(idx - 1) % n].get(grupo, zero)
+            cur = buf[idx].get(grupo, zero)
+            seg = buf[(idx + 1) % n].get(grupo, zero)
+            dx = ((((ant.x - cur.x + math.pi) % math.tau) - math.pi)
+                  + (((seg.x - cur.x + math.pi) % math.tau) - math.pi)) * 0.25
+            dy = ((((ant.y - cur.y + math.pi) % math.tau) - math.pi)
+                  + (((seg.y - cur.y + math.pi) % math.tau) - math.pi)) * 0.25
+            dz = ((((ant.z - cur.z + math.pi) % math.tau) - math.pi)
+                  + (((seg.z - cur.z + math.pi) % math.tau) - math.pi)) * 0.25
+            proximo[idx] = Rotation3(cur.x + dx, cur.y + dy, cur.z + dz)
+        for idx in indices:
+            if grupo in buf[idx]:
+                buf[idx][grupo] = proximo[idx]
+
+
+def _suavizar_emenda_loop_clipe(
+    buf: list[dict[str, Rotation3]], todos: set[str]
+) -> None:
+    n = len(buf)
+    zero = Rotation3()
+    emenda_idx = {idx % n for idx in (-3, -2, -1, 0, 1, 2)}
+    for grupo in todos:
+        max_borda = 0.0
+        for ia, ib in ((-2, -1), (-1, 0), (0, 1)):
+            ra = buf[ia % n].get(grupo, zero)
+            rb = buf[ib % n].get(grupo, zero)
+            d_borda = max(
                 abs(((rb.x - ra.x + math.pi) % math.tau) - math.pi),
                 abs(((rb.y - ra.y + math.pi) % math.tau) - math.pi),
                 abs(((rb.z - ra.z + math.pi) % math.tau) - math.pi),
             )
-            if d > limiar:
-                for off in (-2, -1, 0, 1, 2):
-                    idx = i + off
-                    if em_loop:
-                        indices.add(idx % n)
-                    elif 1 <= idx <= n - 2:
-                        indices.add(idx)
-        return indices
+            max_borda = max(max_borda, d_borda)
+        if max_borda > 0.28:
+            _suavizar_indices_grupo(buf, grupo, emenda_idx, 5)
 
-    def _suavizar_indices(grupo: str, indices: set[int], passagens: int) -> None:
-        if not indices:
-            return
-        for _ in range(passagens):
-            proximo = [q.get(grupo, zero) for q in buf]
-            for idx in indices:
-                ant = buf[(idx - 1) % n].get(grupo, zero)
-                cur = buf[idx].get(grupo, zero)
-                seg = buf[(idx + 1) % n].get(grupo, zero)
-                # Média local usando menor arco a partir do quadro atual
-                dx = ((((ant.x - cur.x + math.pi) % math.tau) - math.pi)
-                      + (((seg.x - cur.x + math.pi) % math.tau) - math.pi)) * 0.25
-                dy = ((((ant.y - cur.y + math.pi) % math.tau) - math.pi)
-                      + (((seg.y - cur.y + math.pi) % math.tau) - math.pi)) * 0.25
-                dz = ((((ant.z - cur.z + math.pi) % math.tau) - math.pi)
-                      + (((seg.z - cur.z + math.pi) % math.tau) - math.pi)) * 0.25
-                proximo[idx] = Rotation3(cur.x + dx, cur.y + dy, cur.z + dz)
-            for idx in indices:
-                if grupo in buf[idx]:
-                    buf[idx][grupo] = proximo[idx]
 
-    # Filtra flips bruscos de punho (±0.95 rad gimbal flip no Mixamo arm_stretching)
+def _suavizar_clipe(
+    quadros: tuple[dict[str, Rotation3], ...],
+    quadros_pernas: tuple[dict[str, float], ...],
+    *,
+    em_loop: bool,
+) -> tuple[tuple[dict[str, Rotation3], ...], tuple[dict[str, float], ...]]:
+    """Suaviza flips de gimbal, picos súbitos de membros/pernas e degraus de emenda."""
+    pernas_suaves = _suavizar_pernas_clipe(quadros_pernas, em_loop=em_loop)
+    if len(quadros) < 5:
+        return quadros, pernas_suaves
+    buf = [dict(q) for q in quadros]
+    todos = set().union(*(q.keys() for q in buf))
     for grupo in ("hand", "hand2"):
-        _suavizar_indices(grupo, _picos(grupo, 0.24), 12)
-
-    # Em clipes cíclicos curtos (ex.: run_mixamo), suaviza eventual quina perto da emenda.
+        picos = _coletar_indices_picos_grupo(buf, grupo, 0.24, em_loop)
+        _suavizar_indices_grupo(buf, grupo, picos, 12)
+    for grupo in todos - {"hand", "hand2"}:
+        picos = _coletar_indices_picos_grupo(buf, grupo, 0.38, em_loop)
+        _suavizar_indices_grupo(buf, grupo, picos, 6)
     if em_loop:
-        todos = set().union(*(q.keys() for q in buf))
-        for grupo in todos:
-            pares = ((-2, -1), (-1, 0), (0, 1))
-            max_borda = 0.0
-            for ia, ib in pares:
-                ra = buf[ia % n].get(grupo, zero)
-                rb = buf[ib % n].get(grupo, zero)
-                d_borda = max(
-                    abs(((rb.x - ra.x + math.pi) % math.tau) - math.pi),
-                    abs(((rb.y - ra.y + math.pi) % math.tau) - math.pi),
-                    abs(((rb.z - ra.z + math.pi) % math.tau) - math.pi),
-                )
-                max_borda = max(max_borda, d_borda)
-            if max_borda > 0.28:
-                emenda_idx = {idx % n for idx in (-3, -2, -1, 0, 1, 2)}
-                _suavizar_indices(grupo, emenda_idx, 5)
+        _suavizar_emenda_loop_clipe(buf, todos)
+    return tuple(buf), pernas_suaves
 
-    return tuple(buf)
+
+@lru_cache(maxsize=64)
+def _carregar_clipe_acao_suave(nome: str) -> ClipeEmote | None:
+    return _carregar_clipe_em_base("acoes", nome)
 
 
 def carregar_clipe_acao(nome: str) -> ClipeEmote | None:
     """Carrega um clipe de ação/locomoção em ``assets/animation/acoes/<nome>.json``."""
-    clipe = _carregar_clipe_em("acoes", nome)
+    clipe = _carregar_clipe_acao_suave(nome)
     if clipe is None:
         return None
-    suav = _suavizar_clipe_acao(clipe.quadros, em_loop=clipe.em_loop)
-    if suav is clipe.quadros:
-        return clipe
-    return replace(clipe, quadros=suav)
+    return _aplicar_override_clipe(clipe, nome)
 
 
-def _lerp_ang(a: float, b: float, u: float) -> float:
-    """Interpola ângulos em radianos pelo menor arco."""
-    return a + (((b - a + math.pi) % math.tau) - math.pi) * u
+def _unwrap_em_torno(ref: float, alvo: float, periodo: float) -> float:
+    meio = periodo * 0.5
+    return ref + (((alvo - ref + meio) % periodo) - meio)
 
 
-def _interpolar_pose(
-    a: dict[str, Rotation3], b: dict[str, Rotation3], u: float
+def _catmull_rom_escalar(p0: float, p1: float, p2: float, p3: float, u: float) -> float:
+    u2 = u * u
+    u3 = u2 * u
+    return 0.5 * (
+        (2.0 * p1)
+        + (-p0 + p2) * u
+        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * u2
+        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * u3
+    )
+
+
+def _catmull_rom_ang(
+    p0: float, p1: float, p2: float, p3: float, u: float, periodo: float = math.tau
+) -> float:
+    a0 = _unwrap_em_torno(p1, p0, periodo)
+    a2 = _unwrap_em_torno(p1, p2, periodo)
+    a3 = _unwrap_em_torno(a2, p3, periodo)
+    return _catmull_rom_escalar(a0, p1, a2, a3, u)
+
+
+def _quatro_indices(n: int, idx0: int, idx1: int, em_loop: bool) -> tuple[int, int, int, int]:
+    if n <= 1:
+        return (0, 0, 0, 0)
+    if em_loop:
+        return ((idx0 - 1) % n, idx0, idx1, (idx1 + 1) % n)
+    return (max(0, idx0 - 1), idx0, idx1, min(n - 1, idx1 + 1))
+
+
+def _interpolar_pose_catmull(
+    seq: tuple[dict[str, Rotation3], ...],
+    i_ant: int,
+    i0: int,
+    i1: int,
+    i_prox: int,
+    u: float,
 ) -> dict[str, Rotation3]:
-    chaves = set(a.keys()) | set(b.keys())
+    p_ant, pa, pb, p_prox = seq[i_ant], seq[i0], seq[i1], seq[i_prox]
+    chaves = set(pa.keys()) | set(pb.keys())
     zero = Rotation3()
     saida: dict[str, Rotation3] = {}
     for k in chaves:
-        ra = a.get(k, zero)
-        rb = b.get(k, zero)
+        r0 = p_ant.get(k, pa.get(k, zero))
+        r1 = pa.get(k, zero)
+        r2 = pb.get(k, zero)
+        r3 = p_prox.get(k, pb.get(k, zero))
         saida[k] = Rotation3(
-            _lerp_ang(ra.x, rb.x, u),
-            _lerp_ang(ra.y, rb.y, u),
-            _lerp_ang(ra.z, rb.z, u),
+            _catmull_rom_ang(r0.x, r1.x, r2.x, r3.x, u),
+            _catmull_rom_ang(r0.y, r1.y, r2.y, r3.y, u),
+            _catmull_rom_ang(r0.z, r1.z, r2.z, r3.z, u),
         )
     return saida
 
 
-def _interpolar_pernas(
-    a: dict[str, float], b: dict[str, float], u: float
+def _interpolar_pernas_catmull(
+    seq: tuple[dict[str, float], ...],
+    i_ant: int,
+    i0: int,
+    i1: int,
+    i_prox: int,
+    u: float,
 ) -> dict[str, float]:
-    chaves = set(a.keys()) | set(b.keys())
+    p_ant, pa, pb, p_prox = seq[i_ant], seq[i0], seq[i1], seq[i_prox]
+    chaves = set(pa.keys()) | set(pb.keys())
     return {
-        k: a.get(k, 0.0) + (b.get(k, 0.0) - a.get(k, 0.0)) * u
+        k: _catmull_rom_escalar(
+            p_ant.get(k, pa.get(k, 0.0)),
+            pa.get(k, 0.0),
+            pb.get(k, 0.0),
+            p_prox.get(k, pb.get(k, 0.0)),
+            u,
+        )
         for k in chaves
     }
 
 
 def _tempo_com_recorte(tempo_segundos: float, clipe: ClipeEmote) -> float:
     inicio = max(0.0, clipe.inicio_s)
+    t_bruto = max(0.0, tempo_segundos)
+    dur_intro = len(clipe.quadros_intro) / max(1.0, clipe.fps)
     if clipe.fim_s is not None and clipe.fim_s > inicio:
-        trecho = clipe.fim_s - inicio
-        return inicio + (
-            (tempo_segundos % trecho) if clipe.em_loop else min(trecho, max(0.0, tempo_segundos))
-        )
-    return max(0.0, tempo_segundos) + inicio
+        if dur_intro > 0.0 and t_bruto < dur_intro:
+            return min(clipe.fim_s, inicio + t_bruto)
+        loop_inicio = max(inicio, dur_intro)
+        trecho = max(1e-6, clipe.fim_s - loop_inicio)
+        t_pos = max(0.0, t_bruto - dur_intro)
+        return loop_inicio + ((t_pos % trecho) if clipe.em_loop else min(trecho, t_pos))
+    return t_bruto + inicio
 
 
 def _indice_e_fracao(
@@ -379,15 +701,11 @@ def _indice_e_fracao(
                 idx0 + 1,
                 frac,
             )
-        # Transição do último quadro da intro para o quadro 0 do loop
-        return (
-            (*clipe.quadros_intro, clipe.quadros[0]),
-            (*clipe.quadros_pernas_intro, clipe.quadros_pernas[0]),
-            (*clipe.raiz_intro, clipe.raiz[0]),
-            idx0,
-            idx0 + 1,
-            frac,
-        )
+        # Transição contínua do último quadro da intro para o loop (inclui quadros[1] como tangente p3)
+        q_ext = (*clipe.quadros_intro, clipe.quadros[0], clipe.quadros[1 % len(clipe.quadros)])
+        p_ext = (*clipe.quadros_pernas_intro, clipe.quadros_pernas[0], clipe.quadros_pernas[1 % len(clipe.quadros_pernas)])
+        r_ext = (*clipe.raiz_intro, clipe.raiz[0], clipe.raiz[1 % len(clipe.raiz)])
+        return (q_ext, p_ext, r_ext, idx0, idx0 + 1, frac)
 
     n_loop = len(clipe.quadros)
     if not clipe.em_loop:
@@ -435,12 +753,23 @@ def _ajustar_celebration_dance(pose: dict[str, Rotation3]) -> None:
             )
 
 
+def _indices_catmull(
+    q_seq: tuple[dict[str, Rotation3], ...],
+    clipe: ClipeEmote,
+    i0: int,
+    i1: int,
+) -> tuple[int, int, int, int]:
+    em_loop = q_seq is clipe.quadros and clipe.em_loop
+    return _quatro_indices(len(q_seq), i0, i1, em_loop)
+
+
 def amostrar_clipe_emote(
     clipe: ClipeEmote, tempo_segundos: float
 ) -> dict[str, Rotation3]:
     """Amostra a pose do rig interpolada no tempo ``tempo_segundos`` (intro + loop)."""
     q_seq, _p_seq, _r_seq, i0, i1, frac = _indice_e_fracao(tempo_segundos, clipe)
-    pose = _interpolar_pose(q_seq[i0], q_seq[i1], frac)
+    ia, ib, ic, id_ = _indices_catmull(q_seq, clipe, i0, i1)
+    pose = _interpolar_pose_catmull(q_seq, ia, ib, ic, id_, frac)
     if clipe.estilo == "celebration_dance":
         _ajustar_celebration_dance(pose)
     if clipe.peso_mistura < 1.0 - 1e-6:
@@ -456,8 +785,9 @@ def amostrar_pernas_emote(
     clipe: ClipeEmote, tempo_segundos: float
 ) -> dict[str, float]:
     """Amostra canais de pernas interpolados no tempo ``tempo_segundos`` (intro + loop)."""
-    _q_seq, p_seq, _r_seq, i0, i1, frac = _indice_e_fracao(tempo_segundos, clipe)
-    return _interpolar_pernas(p_seq[i0], p_seq[i1], frac)
+    q_seq, p_seq, _r_seq, i0, i1, frac = _indice_e_fracao(tempo_segundos, clipe)
+    ia, ib, ic, id_ = _indices_catmull(q_seq, clipe, i0, i1)
+    return _interpolar_pernas_catmull(p_seq, ia, ib, ic, id_, frac)
 
 
 def _slerp_quat(
@@ -465,8 +795,6 @@ def _slerp_quat(
     q1: tuple[float, float, float, float],
     t: float,
 ) -> tuple[float, float, float, float]:
-    import math
-
     w0, x0, y0, z0 = q0
     w1, x1, y1, z1 = q1
     dot = w0 * w1 + x0 * x1 + y0 * y1 + z0 * z1
@@ -499,14 +827,15 @@ def amostrar_raiz_emote(
     clipe: ClipeEmote, tempo_segundos: float
 ) -> tuple[float, float]:
     """Amostra ``(dz_pelvis, giro_corpo_graus)`` no tempo ``tempo_segundos``."""
-    _q_seq, _p_seq, r_seq, i0, i1, frac = _indice_e_fracao(tempo_segundos, clipe)
-    dz0, g0 = r_seq[i0]
-    dz1, g1 = r_seq[i1]
-    giro = g0 + (((g1 - g0 + 180.0) % 360.0) - 180.0) * frac
-    return (
-        dz0 + (dz1 - dz0) * frac,
-        ((giro + 180.0) % 360.0) - 180.0,
+    q_seq, _p_seq, r_seq, i0, i1, frac = _indice_e_fracao(tempo_segundos, clipe)
+    ia, ib, ic, id_ = _quatro_indices(
+        len(r_seq), i0, i1, q_seq is clipe.quadros and clipe.em_loop
     )
+    dz = _catmull_rom_escalar(r_seq[ia][0], r_seq[ib][0], r_seq[ic][0], r_seq[id_][0], frac)
+    giro = _catmull_rom_ang(
+        r_seq[ia][1], r_seq[ib][1], r_seq[ic][1], r_seq[id_][1], frac, periodo=360.0
+    )
+    return (dz, ((giro + 180.0) % 360.0) - 180.0)
 
 
 def amostrar_deslocamento_emote(clipe: ClipeEmote, tempo_segundos: float) -> tuple[float, float]:
@@ -514,13 +843,16 @@ def amostrar_deslocamento_emote(clipe: ClipeEmote, tempo_segundos: float) -> tup
     if not clipe.deslocamento:
         return (0.0, 0.0)
     quadros, _, _, i, j, u = _indice_e_fracao(tempo_segundos, clipe)
-    if quadros is clipe.quadros:
-        pontos = clipe.deslocamento
-    else:
-        pontos = (*clipe.deslocamento_intro, clipe.deslocamento[0])
-    ax, ay = pontos[i]
-    bx, by = pontos[j]
-    return (ax + (bx - ax) * u, ay + (by - ay) * u)
+    em_loop = quadros is clipe.quadros and clipe.em_loop
+    pontos = (
+        clipe.deslocamento
+        if quadros is clipe.quadros
+        else (*clipe.deslocamento_intro, clipe.deslocamento[0])
+    )
+    ia, ib, ic, id_ = _quatro_indices(len(pontos), i, j, em_loop)
+    x = _catmull_rom_escalar(pontos[ia][0], pontos[ib][0], pontos[ic][0], pontos[id_][0], u)
+    y = _catmull_rom_escalar(pontos[ia][1], pontos[ib][1], pontos[ic][1], pontos[id_][1], u)
+    return (x, y)
 
 
 def amostrar_orientacao_raiz_emote(
@@ -564,7 +896,7 @@ def amostrar_dedos_emote(
     tempo_segundos: float,
 ) -> tuple[tuple[float, float, float, float, float], tuple[float, float, float, float, float]] | None:
     """Amostra flexões individuais dos 5 dedos ``(direita, esquerda)`` em ``[0, 1]``."""
-    _q_seq, _p_seq, _r_seq, idx0, idx1, frac = _indice_e_fracao(tempo_segundos, clipe)
+    q_seq, _p_seq, _r_seq, idx0, idx1, frac = _indice_e_fracao(tempo_segundos, clipe)
     n_intro = len(clipe.quadros_intro)
     na_intro = (
         n_intro > 0
@@ -573,24 +905,42 @@ def amostrar_dedos_emote(
     if na_intro:
         if idx0 >= len(clipe.dedos_intro):
             return None
-        r0, l0 = clipe.dedos_intro[idx0]
-        if idx1 < len(clipe.dedos_intro):
-            r1, l1 = clipe.dedos_intro[idx1]
-        elif clipe.dedos:
-            r1, l1 = clipe.dedos[0]
-        else:
-            r1, l1 = r0, l0
+        seq = (
+            (*clipe.dedos_intro, clipe.dedos[0])
+            if clipe.dedos
+            else clipe.dedos_intro
+        )
+        em_loop = False
     else:
         if not clipe.dedos:
             return None
-        r0, l0 = clipe.dedos[min(idx0, len(clipe.dedos) - 1)]
-        r1, l1 = clipe.dedos[min(idx1, len(clipe.dedos) - 1)]
+        seq = clipe.dedos
+        em_loop = q_seq is clipe.quadros and clipe.em_loop
+    ia, ib, ic, id_ = _quatro_indices(
+        len(seq), min(idx0, len(seq) - 1), min(idx1, len(seq) - 1), em_loop
+    )
     r_vals = tuple(
-        max(0.0, min(1.0, r0[i] + (r1[i] - r0[i]) * frac))
+        max(
+            0.0,
+            min(
+                1.0,
+                _catmull_rom_escalar(
+                    seq[ia][0][i], seq[ib][0][i], seq[ic][0][i], seq[id_][0][i], frac
+                ),
+            ),
+        )
         for i in range(5)
     )
     l_vals = tuple(
-        max(0.0, min(1.0, l0[i] + (l1[i] - l0[i]) * frac))
+        max(
+            0.0,
+            min(
+                1.0,
+                _catmull_rom_escalar(
+                    seq[ia][1][i], seq[ib][1][i], seq[ic][1][i], seq[id_][1][i], frac
+                ),
+            ),
+        )
         for i in range(5)
     )
     return (r_vals, l_vals)  # type: ignore[return-value]
@@ -602,9 +952,8 @@ _PARES_ESPELHO: tuple[tuple[str, str], ...] = (
     ("ant-arm", "ant-arm2"),
     ("hand", "hand2"),
     ("fingers", "fingers2"),
+    ("fone-direito", "fone-esquerdo"),
     ("antena-direita", "antena-esquerda"),
-    ("olho-direito", "olho-esquerdo"),
-    ("sobrancelha-direita", "sobrancelha-esquerda"),
 )
 _MAPA_ESPELHO_GRUPOS: dict[str, str] = {
     a: b for p in _PARES_ESPELHO for a, b in (p, (p[1], p[0]))

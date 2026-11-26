@@ -194,6 +194,9 @@ class PoseResolver:
         model: Model | None = None,
         state_time: float | None = None,
         peso_colisao: float = 1.0,
+        aplicar_colisao: bool = True,
+        leg_pose: object | None = None,
+        caixas_isentas_por_lado: dict[str, set[str]] | None = None,
     ) -> dict[str, Rotation3]:
         """Resolve a pose por inertialização quíntica, clamps anatômicos e colisão."""
         if state_time is not None:
@@ -208,18 +211,51 @@ class PoseResolver:
             pose = dict(pose_alvo)
         self._state_time += dt
 
+        if aplicar_colisao:
+            if model is not None:
+                if self._resolvedor_bracos is None or self._resolvedor_bracos.model is not model:
+                    self._resolvedor_bracos = ResolvedorBracos(model)
+                pose = self._resolvedor_bracos.resolver(
+                    pose,
+                    peso=peso_colisao,
+                    dt=dt,
+                    leg_pose=leg_pose,
+                    caixas_isentas_por_lado=caixas_isentas_por_lado,
+                )
+            elif self._resolvedor_bracos is not None:
+                self._resolvedor_bracos.relaxar_suave(dt)
         pose = self._aplicar_clamps(pose)
-        if model is not None:
-            if self._resolvedor_bracos is None or self._resolvedor_bracos.model is not model:
-                self._resolvedor_bracos = ResolvedorBracos(model)
-            pose = self._aplicar_clamps(
-                self._resolvedor_bracos.resolver(pose, peso=peso_colisao)
-            )
-        elif self._resolvedor_bracos is not None:
-            self._resolvedor_bracos.zerar()
 
         self._atualizar_velocidades(dt, pose, pose_alvo)
         return pose
+
+    def resolver_colisao_bracos(
+        self,
+        pose: dict[str, Rotation3],
+        *,
+        model: Model | None,
+        dt: float,
+        peso_colisao: float = 1.0,
+        leg_pose: object | None = None,
+        caixas_isentas_por_lado: dict[str, set[str]] | None = None,
+    ) -> dict[str, Rotation3]:
+        """Executa passe único de colisão pós-camadas secundárias + clamps finais."""
+        if model is None:
+            if self._resolvedor_bracos is not None:
+                self._resolvedor_bracos.relaxar_suave(dt)
+            return dict(pose)
+        if self._resolvedor_bracos is None or self._resolvedor_bracos.model is not model:
+            self._resolvedor_bracos = ResolvedorBracos(model)
+        corrigida = self._resolvedor_bracos.resolver(
+            pose,
+            peso=peso_colisao,
+            dt=dt,
+            leg_pose=leg_pose,
+            caixas_isentas_por_lado=caixas_isentas_por_lado,
+        )
+        corrigida = self._aplicar_clamps(corrigida)
+        self._ultima_pose = dict(corrigida)
+        return corrigida
 
     def _aplicar_clamps(self, pose: dict[str, Rotation3]) -> dict[str, Rotation3]:
         """Limites rígidos anatômicos. Aplicados UMA vez, no final.

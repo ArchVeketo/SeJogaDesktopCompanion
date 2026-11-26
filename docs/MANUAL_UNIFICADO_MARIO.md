@@ -245,10 +245,19 @@ Inventário reconciliado pelo inspetor de ativos (`tools/inspecionar_modelo.py`,
   desktop onde foram colocados, mesmo se Mário sair do lugar.
 - Emotes com trilha horizontal usam o deslocamento da pelve extraído junto
   das poses. O deslocamento atua sobre o corpo durante o clipe.
-- Composto por três caixas de som de alta definição Blockbench:
-  - `BoomboxGRANDE.bbmodel`: Caixa central imponente (altura equivalente a 2x o mascote) com cones dinâmicos, seletores e decal autoral.
-  - `BoomboxSIde1.bbmodel`: Duas caixas laterais anguladas com iluminação sincronizada.
+- O palco tem uma caixa central com dois falantes e dois satélites angulados. A carcaça usa grafite escuro, bordas pintadas e cones facetados que pulsam no grave. No rádio compacto, o visor âmbar e os controles de esmalte vermelho continuam legíveis de perto.
+
 - Apoio físico no tampo da caixa central (`ALVO_APOIO_CAIXA`) com o mascote sentado, balançando as pernas penduradas no ritmo (*Girlfriend / FNF*).
+
+## 3.5 Direção de arte de modelos, props e VFX
+
+A silhueta tem prioridade no tamanho do companion. Modele carcaças, cones, alças e articulações com faces planas suficientes para que o objeto seja reconhecível de frente e em três quartos. Reserve geometria para o que muda a silhueta, a oclusão ou a animação. Pinte em UV as emendas, as reentrâncias, o desgaste e os pequenos reflexos.
+
+**Pintura e exportação.** Use a textura do Mário como escala visual para o tamanho dos pixels. Trabalhe com grupos contíguos de texels e uma rampa curta de sombra, cor local e luz por material. Borracha, metal e esmalte precisam continuar distinguíveis na luz ambiente. Os acabamentos editáveis em `assets/textures/acabamentos/` medem 32 × 32. Defina as UVs em repouso para a pintura acompanhar as partes animadas. Exporte cada primitiva com UV, textura de cor e sampler glTF com `minFilter` e `magFilter` iguais a `9728` (NEAREST). Preserve o alpha desenhado, os pivôs, os nomes e os eixos locais do rig. O teste de modelos verifica os samplers e as UVs de todo GLB e glTF em `assets/model/`, inclusive nas próximas adições.
+
+**Movimento dos efeitos.** No padrão, o traço grosso de tinta torce em profundidade e a retícula acompanha a superfície. A sola lança respingos, o cone abre um arco no grave e a lateral atingida orienta o traço. Dê ao gesto um ataque rápido, um alongamento legível e uma cauda curta. No filtro **Blockbench**, construa volumes a partir de cubos, com faces diferenciadas, lascas que tombam e fumaça que abre por estágios. Cada novo filtro deve ter forma e movimento identificáveis também em escala de cinza.
+
+**Revisão visual.** Veja o prop de frente, em três quartos e no tamanho da janela junto do Mário. Confira os pés no quadro do contato, a oclusão dos efeitos pelo rig, a textura durante a deformação e a troca de filtro com partículas vivas. Para o palco, observe também uma batida de frente e em três quartos. Use a janela com perfil isolado e o executável distribuído para conferir a transparência do desktop.
 
 ---
 

@@ -137,6 +137,8 @@ def main():  # noqa: C901, PLR0915  # TODO convenção: ferramenta de captura/GP
             "Panda reset always-on-top"
         )
         assert app.renderer._outline_nodes
+        filtro_orig = settings.window.visual_filter
+        app.renderer.set_visual_filter("street")
         for _ in range(2):
             app.graphicsEngine.renderFrame()
         outline_default = bytes(app.win.getScreenshot().getRamImageAs("RGB"))
@@ -155,6 +157,7 @@ def main():  # noqa: C901, PLR0915  # TODO convenção: ferramenta de captura/GP
         assert bytes(app.win.getScreenshot().getRamImageAs("RGB")) != outline_green
         settings.window.outline_enabled = True
         settings.window.outline_color = "#FF65CC"
+        app.renderer.set_visual_filter(filtro_orig)
         app.renderer.set_outline_settings(settings.window)
         points = [
             (x, y)
@@ -179,13 +182,27 @@ def main():  # noqa: C901, PLR0915  # TODO convenção: ferramenta de captura/GP
         assert not win32gui.GetWindowLong(app.hwnd, -20) & WS_EX_TRANSPARENT
         for button, state in (
             ("left", AnimationState.POKE),
-            ("right", AnimationState.PET),
             ("middle", AnimationState.CLICK),
         ):
             poll(point, (button,))
             poll(point)
             app.animation_controller.update(0.05)
             assert app.animation_controller.state == state, (point, button, app.animation_controller.state)
+
+        app._native_mouse_button("right", True)
+        poll(point, ("right",))
+        assert "right" not in app._native_buttons
+        assert "right" not in app.mouse_interaction._owned
+        poll(point)
+
+        # Carinho real: passar o mouse em vai-e-vem suave sobre o mascote.
+        tempos_rub = [100.0 + i * 0.06 for i in range(10)]
+        with patch("sejoga.animacao.interacao_mouse.time.monotonic", side_effect=tempos_rub * 2):
+            for i in range(10):
+                rx = point[0] + (16 if i % 2 == 0 else -16)
+                poll((rx, point[1]))
+        app.animation_controller.update(0.05)
+        assert app.animation_controller.state == AnimationState.PET
 
         before = app._mascot_screen
         poll(point, ("left",))

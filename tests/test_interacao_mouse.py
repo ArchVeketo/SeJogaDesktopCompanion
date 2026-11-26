@@ -64,11 +64,17 @@ def test_disabled_drag_does_not_turn_long_gesture_into_click():
 
 def test_reaction_buttons_and_click_setting():
     mouse = MouseInteraction()
-    for button, reaction in (("right", "pet"), ("middle", "click")):
-        kinds(mouse, buttons=(button,), hit=True)
-        assert kinds(mouse, hit=True) == [reaction]
-        kinds(mouse, buttons=(button,), hit=True)
-        assert kinds(mouse, hit=True, allow_click=False) == []
+    kinds(mouse, buttons=("middle",), hit=True)
+    assert kinds(mouse, hit=True) == ["click"]
+    kinds(mouse, buttons=("middle",), hit=True)
+    assert kinds(mouse, hit=True, allow_click=False) == []
+    # Carinho por esfregar o cursor suavemente no mascote
+    t = 10.0
+    events = []
+    for x in (100, 120, 140, 120, 100, 120, 140):
+        t += 0.05
+        events.extend(kinds(mouse, (x, 100), hit=True, now=t))
+    assert "pet" in events
 
 
 def test_starting_app_with_button_held_does_not_own_it():

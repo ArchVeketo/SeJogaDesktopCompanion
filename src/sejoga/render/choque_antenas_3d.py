@@ -22,11 +22,115 @@ _ESFERA_LOCAL_FALLBACK = (
     Vec3(0.109925, -0.068164, 0.148931),
     Vec3(-0.109925, -0.068164, 0.148931),
 )
-_COR_NUCLEO_OURO = (1.0, 0.97, 0.50, 1.0)
-_COR_RAIO_CIANO = (0.24, 0.92, 1.0, 1.0)
-# Alpha >= 0.58 para sobreviver ao recorte de cobertura (>= 0.50) do colorkey WGL.
-_COR_COROA_EXT = (0.22, 0.86, 1.0, 0.60)
-_COR_COROA_INT = (1.0, 0.90, 0.28, 0.76)
+_COR_NUCLEO_OURO = (1.0, 0.98, 0.85, 1.0)
+_COR_RAIO_CIANO = (0.16, 0.96, 1.0, 1.0)
+# Opaco/alto alpha para 100% chroma-safe (zero halo magenta no LWA_COLORKEY).
+_COR_COROA_EXT = (0.18, 0.94, 1.0, 0.92)
+_COR_COROA_INT = (1.0, 0.96, 0.35, 0.98)
+
+_ESTILOS_CHOQUE: dict[str, dict[str, tuple[float, float, float, float]]] = {
+    "padrao": {
+        "raio": _COR_RAIO_CIANO,
+        "nucleo": _COR_NUCLEO_OURO,
+        "ouro_int": (1.8, 1.72, 0.70, 1.0),
+        "ouro_ext": (1.6, 1.45, 0.25, 0.92),
+        "alt_int": (0.90, 1.90, 2.0, 1.0),
+        "alt_ext": (0.20, 1.55, 1.95, 0.92),
+    },
+    "pixel": {
+        "raio": (0.18, 0.98, 0.82, 1.0),
+        "nucleo": (1.0, 0.96, 0.38, 1.0),
+        "ouro_int": (1.7, 1.7, 0.45, 1.0),
+        "ouro_ext": (1.4, 1.2, 0.20, 0.94),
+        "alt_int": (0.35, 1.85, 1.55, 1.0),
+        "alt_ext": (0.15, 1.40, 1.20, 0.94),
+    },
+    "rascunho": {
+        "raio": (0.96, 0.24, 0.28, 1.0),
+        "nucleo": (0.98, 0.96, 0.90, 1.0),
+        "ouro_int": (1.8, 1.75, 1.65, 1.0),
+        "ouro_ext": (1.45, 0.28, 0.32, 0.94),
+        "alt_int": (1.6, 1.75, 1.9, 1.0),
+        "alt_ext": (0.22, 0.75, 1.55, 0.94),
+    },
+    "hifi_comic": {
+        "raio": (0.12, 0.90, 1.0, 1.0),
+        "nucleo": (1.0, 0.88, 0.22, 1.0),
+        "ouro_int": (1.85, 1.55, 0.35, 1.0),
+        "ouro_ext": (1.65, 1.10, 0.15, 0.94),
+        "alt_int": (0.35, 1.75, 2.0, 1.0),
+        "alt_ext": (0.10, 1.25, 1.85, 0.94),
+    },
+    "cyberfunk": {
+        "raio": (0.18, 0.98, 0.94, 1.0),
+        "nucleo": (0.85, 0.42, 1.0, 1.0),
+        "ouro_int": (1.45, 0.65, 2.0, 1.0),
+        "ouro_ext": (1.05, 0.25, 1.75, 0.94),
+        "alt_int": (0.30, 1.95, 1.85, 1.0),
+        "alt_ext": (0.14, 1.65, 1.60, 0.94),
+    },
+    "anime": {
+        "raio": (0.28, 0.90, 1.0, 1.0),
+        "nucleo": (1.0, 0.98, 0.90, 1.0),
+        "ouro_int": (1.85, 1.78, 1.32, 1.0),
+        "ouro_ext": (0.45, 0.88, 1.75, 0.94),
+        "alt_int": (0.95, 1.85, 2.0, 1.0),
+        "alt_ext": (0.28, 1.35, 1.95, 0.94),
+    },
+    "lowpoly_block": {
+        "raio": (0.14, 0.94, 0.74, 1.0),
+        "nucleo": (1.0, 0.72, 0.18, 1.0),
+        "ouro_int": (1.80, 1.30, 0.30, 1.0),
+        "ouro_ext": (1.45, 0.85, 0.12, 0.94),
+        "alt_int": (0.25, 1.75, 1.45, 1.0),
+        "alt_ext": (0.12, 1.35, 1.15, 0.94),
+    },
+    "holograma": {
+        "raio": (0.16, 0.96, 1.0, 1.0),
+        "nucleo": (0.88, 1.0, 1.0, 1.0),
+        "ouro_int": (0.85, 1.95, 2.0, 1.0),
+        "ouro_ext": (0.18, 1.45, 1.95, 0.94),
+        "alt_int": (0.55, 1.85, 2.0, 1.0),
+        "alt_ext": (0.10, 1.25, 1.85, 0.94),
+    },
+    "gameboy": {
+        "raio": (0.61, 0.74, 0.06, 1.0),
+        "nucleo": (0.61, 0.74, 0.06, 1.0),
+        "ouro_int": (1.15, 1.40, 0.12, 1.0),
+        "ouro_ext": (0.72, 0.94, 0.12, 0.94),
+        "alt_int": (0.42, 0.78, 0.28, 1.0),
+        "alt_ext": (0.24, 0.48, 0.22, 0.94),
+    },
+    "manga_papel": {
+        "raio": (0.96, 0.95, 0.91, 1.0),
+        "nucleo": (0.98, 0.98, 0.96, 1.0),
+        "ouro_int": (1.80, 1.78, 1.72, 1.0),
+        "ouro_ext": (0.22, 0.22, 0.25, 0.94),
+        "alt_int": (1.55, 1.55, 1.50, 1.0),
+        "alt_ext": (0.12, 0.12, 0.16, 0.94),
+    },
+}
+
+
+def _proteger_cor_chroma(
+    rgba: tuple[float, float, float, float], colorkey_hex: str
+) -> tuple[float, float, float, float]:
+    from sejoga.render.chroma_tuning import seguro_contra_chroma_255
+
+    r, g, b, a = rgba
+    ganho = max(1.0, r, g, b)
+    rs, gs, bs = seguro_contra_chroma_255(
+        int(round(max(0.0, min(1.0, r / ganho)) * 255.0)),
+        int(round(max(0.0, min(1.0, g / ganho)) * 255.0)),
+        int(round(max(0.0, min(1.0, b / ganho)) * 255.0)),
+        colorkey_hex,
+    )
+    return (
+        (rs / 255.0) * ganho,
+        (gs / 255.0) * ganho,
+        (bs / 255.0) * ganho,
+        float(a),
+    )
 
 
 def _centro_esfera_antena(ant_np: NodePath, eh_direita: bool) -> Point3:
@@ -135,10 +239,12 @@ def _emitir_segmento_duplo(
     r1: float,
     rn0: float,
     rn1: float,
+    cor_ext: tuple[float, float, float, float] = _COR_RAIO_CIANO,
+    cor_nucleo: tuple[float, float, float, float] = _COR_NUCLEO_OURO,
 ) -> int:
-    """Emite camada externa ciano e núcleo dourado sobre o mesmo segmento 3D."""
-    idx = _emitir_segmento_fita3d(v_wr, n_wr, c_wr, tris, idx, p0, p1, r0, r1, _COR_RAIO_CIANO)
-    return _emitir_segmento_fita3d(v_wr, n_wr, c_wr, tris, idx, p0, p1, rn0, rn1, _COR_NUCLEO_OURO)
+    """Emite camada externa e núcleo brilhante sobre o mesmo segmento 3D."""
+    idx = _emitir_segmento_fita3d(v_wr, n_wr, c_wr, tris, idx, p0, p1, r0, r1, cor_ext)
+    return _emitir_segmento_fita3d(v_wr, n_wr, c_wr, tris, idx, p0, p1, rn0, rn1, cor_nucleo)
 
 
 def _emitir_raios_radiais(
@@ -225,14 +331,41 @@ def _criar_gaiola_raios(nome: str, semente: int) -> NodePath:
     return NodePath(gnode)
 
 
+# Cadência da descarga, duração relativa da ponte, largura e altura da coroa.
+_DESCARGAS = {
+    "padrao": (12., 1., 1., 1.),
+    "pixel": (9., .75, 1.1, .80),
+    "rascunho": (8., .58, 1.28, .84),
+    "hifi_comic": (14., 1.25, .80, 1.45),
+    "cyberfunk": (18., .68, 1.65, .59),
+    "anime": (12., .44, .70, 1.65),
+    "blockbench": (11., .82, .92, 1.10),
+    "lowpoly_block": (10., 1.12, .92, 1.23),
+    "holograma": (16., 1.50, 1.48, .70),
+    "gameboy": (6., 1.7, .86, .86),
+    "manga_papel": (9., .52, .59, 1.8),
+}
+
+
 class ChoqueAntenas3D:
     """Choque elétrico 3D ancorado diretamente nas duas esferas douradas."""
 
     def __init__(self, head_np: NodePath, ant_direita: NodePath, ant_esquerda: NodePath) -> None:
         """Anexa os pivôs de choque às antenas e prepara a ponte 3D entre elas."""
+        self._descarga = _DESCARGAS["padrao"]
         self._head = head_np
         self._relogio = 0.0
         self._ganho_visivel = 0.0
+        self._ponte_timer = 0.0
+        self._ponte_ativa = False
+        self._ponte_semente = 0
+        self._ponte_rng = random.Random(1337)
+        self._cor_raio = _COR_RAIO_CIANO
+        self._cor_nucleo = _COR_NUCLEO_OURO
+        self._cor_ouro_int = (1.8, 1.72, 0.70, 1.0)
+        self._cor_ouro_ext = (1.6, 1.45, 0.25, 0.92)
+        self._cor_alt_int = (0.90, 1.90, 2.0, 1.0)
+        self._cor_alt_ext = (0.20, 1.55, 1.95, 0.92)
         self._pivos: list[tuple[NodePath, NodePath, NodePath, list[NodePath]]] = []
         for idx, (ant_np, eh_dir) in enumerate(((ant_direita, True), (ant_esquerda, False))):
             if ant_np is not None and not ant_np.isEmpty():
@@ -240,6 +373,24 @@ class ChoqueAntenas3D:
         self._arco_vdata = GeomVertexData("choque-arco-ponte", GeomVertexFormat.getV3n3c4(), Geom.UHDynamic)
         self._arco_tris = GeomTriangles(Geom.UHDynamic)
         self._arco_np = self._criar_arco_ponte_np(head_np, self._arco_vdata, self._arco_tris)
+
+    def aplicar_estilo(
+        self,
+        filtro: str = "padrao",
+        vfx_palette: str = "pb_escuro",
+        colorkey_hex: str = "#FF00FF",
+    ) -> None:
+        """Ajusta a silhueta das coroas, a cadência do arco e a tinta da descarga."""
+        del vfx_palette
+        filtro_norm = "anime" if filtro == "anime_impact" else filtro
+        self._descarga = _DESCARGAS.get(filtro_norm, _DESCARGAS["padrao"])
+        paleta = _ESTILOS_CHOQUE.get(filtro_norm, _ESTILOS_CHOQUE["padrao"])
+        self._cor_raio = _proteger_cor_chroma(paleta["raio"], colorkey_hex)
+        self._cor_nucleo = _proteger_cor_chroma(paleta["nucleo"], colorkey_hex)
+        self._cor_ouro_int = _proteger_cor_chroma(paleta["ouro_int"], colorkey_hex)
+        self._cor_ouro_ext = _proteger_cor_chroma(paleta["ouro_ext"], colorkey_hex)
+        self._cor_alt_int = _proteger_cor_chroma(paleta["alt_int"], colorkey_hex)
+        self._cor_alt_ext = _proteger_cor_chroma(paleta["alt_ext"], colorkey_hex)
 
     @staticmethod
     def _criar_pivo_antena(
@@ -255,8 +406,19 @@ class ChoqueAntenas3D:
 
         coroa_int = _criar_casco_coroa(f"choque-coroa-int-{suf}", 0.029, _COR_COROA_INT)
         coroa_ext = _criar_casco_coroa(f"choque-coroa-ext-{suf}", 0.039, _COR_COROA_EXT)
+        from panda3d.core import ColorBlendAttrib
+
+        blend_chroma = ColorBlendAttrib.make(
+            ColorBlendAttrib.MAdd,
+            ColorBlendAttrib.OIncomingAlpha,
+            ColorBlendAttrib.OOneMinusIncomingAlpha,
+            ColorBlendAttrib.MAdd,
+            ColorBlendAttrib.OOne,
+            ColorBlendAttrib.OOneMinusIncomingAlpha,
+        )
         for cas in (coroa_int, coroa_ext):
             cas.setTransparency(1)
+            cas.setAttrib(blend_chroma, 10)
             cas.setDepthWrite(False)
             cas.reparentTo(pivo)
 
@@ -288,37 +450,78 @@ class ChoqueAntenas3D:
         return arco_np
 
     def _atualizar_ponte(self, p0: Vec3, p1: Vec3, passo_quadro: int, ganho: float) -> None:
+        """Constrói relâmpago quebrado por deslocamento recursivo em arco frontal-superior."""
+        chave_ponte = (
+            passo_quadro,
+            self._ponte_semente,
+            ganho >= 0.65,
+            round(float(p0.x), 4),
+            round(float(p0.y), 4),
+            round(float(p0.z), 4),
+            round(float(p1.x), 4),
+            round(float(p1.y), 4),
+            round(float(p1.z), 4),
+            self._cor_raio,
+            self._cor_nucleo,
+        )
+        if chave_ponte == getattr(self, "_ponte_cache_chave", None):
+            return
+        self._ponte_cache_chave = chave_ponte
         self._arco_vdata.uncleanSetNumRows(0)
         self._arco_tris.clearVertices()
         v_wr = GeomVertexWriter(self._arco_vdata, "vertex")
         n_wr = GeomVertexWriter(self._arco_vdata, "normal")
         c_wr = GeomVertexWriter(self._arco_vdata, "color")
-        rng = random.Random(901 + passo_quadro * 37)
+        rng = random.Random(901 + self._ponte_semente * 97 + passo_quadro * 19)
+        cor_ext = self._cor_raio
+        cor_nuc = self._cor_nucleo
         idx = 0
-        ramos = ((0, 0.085, 0.0046), (1, 0.145, 0.0028), (2, 0.045, 0.0022))
-        for ramo, elev, raio_f in ramos:
-            if ramo == 2 and ganho < 0.45:
-                continue
-            meio = (p0 + p1) * 0.5 + Vec3(
-                rng.uniform(-0.028, 0.028),
-                -0.02 - 0.015 * ramo,
-                elev + rng.uniform(-0.022, 0.036),
-            )
-            n_passos = 7
-            pontos = []
-            for s in range(n_passos + 1):
-                t = s / n_passos
-                omt = 1.0 - t
-                pt = p0 * (omt * omt) + meio * (2.0 * omt * t) + p1 * (t * t)
-                if 0 < s < n_passos:
-                    pt += Vec3(
-                        rng.uniform(-0.018, 0.018),
-                        rng.uniform(-0.020, 0.020),
-                        rng.uniform(-0.022, 0.024),
+
+        def subdividir_raio(
+            a: Vec3, b: Vec3, elev_z: float, front_y: float, jitter_max: float
+        ) -> list[Vec3]:
+            pts = [a, b]
+            amp = jitter_max
+            for nivel in range(3):
+                novos = [pts[0]]
+                for k in range(len(pts) - 1):
+                    pa, pb = pts[k], pts[k + 1]
+                    meio = (pa + pb) * 0.5
+                    eixo = pb - pa
+                    if eixo.lengthSquared() > 1e-8:
+                        u_perp, v_perp = _perp_dupla(eixo.normalized())
+                    else:
+                        u_perp, v_perp = Vec3(0, 1, 0), Vec3(0, 0, 1)
+                    if nivel == 0:
+                        # Arco pronunciado para CIMA (+Z) e para FRENTE (+Y em head).
+                        meio += Vec3(
+                            rng.uniform(-0.025, 0.025),
+                            front_y,
+                            elev_z,
+                        )
+                    meio += (
+                        u_perp * rng.uniform(-amp, amp)
+                        + v_perp * rng.uniform(-amp, amp)
                     )
-                pontos.append(pt)
-            r_ext = raio_f * (0.72 + 0.48 * ganho)
-            for s in range(n_passos):
+                    novos.append(meio)
+                    novos.append(pb)
+                pts = novos
+                amp *= 0.54
+            return pts
+
+        ramos = ((0.20 + rng.uniform(-0.03, 0.05), 0.072 + rng.uniform(-0.010, 0.018), 0.055, 0.0050),)
+        if ganho >= 0.65:
+            ramos = ramos + (
+                (0.14 + rng.uniform(-0.03, 0.04), 0.054 + rng.uniform(-0.008, 0.014), 0.042, 0.0030),
+            )
+        for elev_z, front_y, j_max, raio_base in ramos:
+            pontos = subdividir_raio(p0, p1, elev_z, front_y, j_max)
+            n_seg = len(pontos) - 1
+            for s in range(n_seg):
+                t0 = (s + 0.2) / n_seg
+                t1 = (s + 0.8) / n_seg
+                r0 = raio_base * (0.45 + 0.85 * math.sin(math.pi * min(1.0, t0))) * (0.65 + 0.45 * ganho)
+                r1 = raio_base * (0.45 + 0.85 * math.sin(math.pi * min(1.0, t1))) * (0.65 + 0.45 * ganho)
                 idx = _emitir_segmento_duplo(
                     v_wr,
                     n_wr,
@@ -327,29 +530,64 @@ class ChoqueAntenas3D:
                     idx,
                     pontos[s],
                     pontos[s + 1],
-                    r_ext,
-                    r_ext,
-                    r_ext * 0.48,
-                    r_ext * 0.48,
+                    r0,
+                    r1,
+                    r0 * 0.48,
+                    r1 * 0.48,
+                    cor_ext=cor_ext,
+                    cor_nucleo=cor_nuc,
                 )
-            # Ramificação elétrica lateral saindo do arco principal no pico da carga.
-            if ramo == 0 and ganho >= 0.42:
-                tronco = pontos[3]
-                ponta_fork = tronco + Vec3(
-                    rng.uniform(-0.045, 0.045),
-                    rng.uniform(-0.025, 0.010),
-                    rng.uniform(0.035, 0.068),
+            # 1–2 ramificações laterais soltas nos vértices centrais do raio.
+            for idx_no in (2, 5):
+                if idx_no == 5 and ganho < 0.55:
+                    continue
+                tronco = pontos[idx_no]
+                meio_f = tronco + Vec3(
+                    rng.uniform(-0.042, 0.042),
+                    rng.uniform(0.012, 0.036),
+                    rng.uniform(0.025, 0.058),
                 )
-                meio_fork = (tronco + ponta_fork) * 0.5 + Vec3(
-                    rng.uniform(-0.014, 0.014), 0.0, rng.uniform(-0.010, 0.016)
+                ponta_f = meio_f + Vec3(
+                    rng.uniform(-0.035, 0.035),
+                    rng.uniform(0.006, 0.028),
+                    rng.uniform(0.015, 0.042),
                 )
-                for a_f, b_f, r_f in ((tronco, meio_fork, r_ext * 0.65), (meio_fork, ponta_fork, r_ext * 0.36)):
-                    idx = _emitir_segmento_duplo(
-                        v_wr, n_wr, c_wr, self._arco_tris, idx, a_f, b_f, r_f, r_f * 0.72, r_f * 0.45, r_f * 0.30
-                    )
+                r_f = raio_base * 0.62
+                idx = _emitir_segmento_duplo(
+                    v_wr,
+                    n_wr,
+                    c_wr,
+                    self._arco_tris,
+                    idx,
+                    tronco,
+                    meio_f,
+                    r_f,
+                    r_f * 0.65,
+                    r_f * 0.46,
+                    r_f * 0.30,
+                    cor_ext=cor_ext,
+                    cor_nucleo=cor_nuc,
+                )
+                idx = _emitir_segmento_duplo(
+                    v_wr,
+                    n_wr,
+                    c_wr,
+                    self._arco_tris,
+                    idx,
+                    meio_f,
+                    ponta_f,
+                    r_f * 0.65,
+                    r_f * 0.25,
+                    r_f * 0.30,
+                    r_f * 0.14,
+                    cor_ext=cor_ext,
+                    cor_nucleo=cor_nuc,
+                )
+        self._arco_tris.closePrimitive()
+        self._arco_np.node().markInternalBoundsStale()
 
-    @staticmethod
     def _atualizar_pivo(
+        self,
         idx: int,
         pivo: NodePath,
         coroa_int: NodePath,
@@ -364,33 +602,48 @@ class ChoqueAntenas3D:
         escala_base = (0.96 + 0.44 * intensidade) * pulso
         coroa_int.setScale(0.92 + 0.44 * pulso)
         coroa_ext.setScale(escala_base * 1.06)
-        # Mistura rotação contínua suave com estalo elétrico nas gaiolas individuais.
         coroa_int.setHpr(relogio * 460.0 + idx * 45.0, relogio * 260.0, relogio * 195.0)
         coroa_ext.setHpr(-relogio * 310.0, relogio * 330.0, idx * 60.0)
-        shimmer = 0.88 + 0.30 * math.sin(relogio * 44.0 + idx * 1.4)
-        coroa_int.setColorScale(1.0, 0.94 + 0.06 * shimmer, 0.48 + 0.44 * intensidade, 0.95 * min(1.0, intensidade * 1.40))
-        coroa_ext.setColorScale(0.60 + 0.40 * shimmer, 0.96, 1.0, 0.90 * min(1.0, intensidade * 1.32))
+        eh_ouro = (passo + idx) % 2 == 0
+        if eh_ouro:
+            coroa_int.setColorScale(*self._cor_ouro_int)
+            coroa_ext.setColorScale(*self._cor_ouro_ext)
+        else:
+            coroa_int.setColorScale(*self._cor_alt_int)
+            coroa_ext.setColorScale(*self._cor_alt_ext)
         ativa = (passo + idx) % len(gaiolas)
         for g_i, g in enumerate(gaiolas):
             if g_i == ativa:
                 g.show()
                 g.setHpr(
-                    (passo * 89 + idx * 67 + relogio * 110.0) % 360,
+                    (passo * 89 + idx * 67) % 360,
                     ((passo * 47) % 120) - 60,
                     ((passo * 73) % 160) - 80,
                 )
-                g.setScale(escala_base * 1.08)
-                g.setColorScale(1.0, 1.0, 1.0, min(1.0, 0.45 + 0.78 * intensidade))
+                g.setScale(escala_base * (1.14 if eh_ouro else 1.04))
+                if eh_ouro:
+                    g.setColorScale(*self._cor_ouro_int[:3], 1.0)
+                else:
+                    g.setColorScale(*self._cor_alt_int[:3], 1.0)
             else:
                 g.hide()
 
-    def atualizar(self, dt: float, aviso_antena: float, choque_argolas: bool) -> None:
-        """Atualiza animação de choque elétrico individual nas duas bobinas do fone."""
+    def atualizar(
+        self,
+        dt: float,
+        aviso_antena: float,
+        choque_argolas: bool,
+        *,
+        permitir_ponte: bool | None = None,
+    ) -> None:
+        """Atualiza animação de choque elétrico com ponte voltaica intermitente em rajadas."""
         dt_c = max(0.0, dt)
+        if permitir_ponte is None:
+            permitir_ponte = bool(choque_argolas or aviso_antena > 0.16)
         alvo_ativo = aviso_antena > 0.0 or choque_argolas
         if alvo_ativo:
-            alvo_intens = min(1.0, max(0.55 if choque_argolas else 0.0, aviso_antena / 0.35))
-            passo_sub = dt_c / 0.035 if dt_c > 0.0 else 1.0
+            alvo_intens = min(1.0, max(0.65 if choque_argolas else 0.0, aviso_antena / 0.32))
+            passo_sub = dt_c / 0.032 if dt_c > 0.0 else 1.0
             self._ganho_visivel += min(passo_sub, max(0.0, alvo_intens - self._ganho_visivel))
         else:
             passo_des = dt_c / 0.18 if dt_c > 0.0 else 1.0
@@ -399,27 +652,44 @@ class ChoqueAntenas3D:
             self.ocultar()
             return
         self._relogio += dt_c
-        passo = int(self._relogio * 26.0)
-        # Pequeno overshoot elástico no início do disparo elétrico.
-        pop_onset = 1.0 + 0.16 * math.sin(min(1.0, self._ganho_visivel / 0.55) * math.pi)
+        fps, duracao_arco, largura, altura = self._descarga
+        passo = int(self._relogio * fps)
+        pop_onset = 1.0 + 0.18 * math.sin(min(1.0, self._ganho_visivel / 0.55) * math.pi)
         intensidade = self._ganho_visivel
-        pulso = (0.86 + 0.30 * abs(math.sin(self._relogio * 38.0))) * pop_onset
+        pulso = (0.90 + 0.28 * abs(math.sin(passo * 1.7))) * pop_onset
         for idx, (pivo, coroa_int, coroa_ext, gaiolas) in enumerate(self._pivos):
+            pivo.setScale(largura, 1., altura)
             self._atualizar_pivo(
                 idx, pivo, coroa_int, coroa_ext, gaiolas, passo, intensidade, pulso, self._relogio
             )
-        # v2.0: ativa a ponte voltaica 3D entre as duas antenas no pico de carga/choque!
-        if intensidade >= 0.42 and len(self._pivos) >= 2:
-            p0 = Vec3(self._pivos[0][0].getPos(self._head))
-            p1 = Vec3(self._pivos[1][0].getPos(self._head))
-            self._atualizar_ponte(p0, p1, passo, intensidade)
-            self._arco_np.show()
+        # Máquina de rajadas intermitentes para a ponte entre antenas (0.06-0.11s ON / 0.22-0.42s OFF).
+        if intensidade >= 0.40 and permitir_ponte and len(self._pivos) >= 2:
+            self._ponte_timer -= dt_c
+            if self._ponte_timer <= 0.0:
+                self._ponte_ativa = not self._ponte_ativa
+                if self._ponte_ativa:
+                    self._ponte_semente += 1
+                    self._ponte_timer = self._ponte_rng.uniform(0.06, 0.11) * duracao_arco
+                else:
+                    self._ponte_timer = self._ponte_rng.uniform(0.22, 0.42)
+            if self._ponte_ativa:
+                p0 = Vec3(self._pivos[0][0].getPos(self._head))
+                p1 = Vec3(self._pivos[1][0].getPos(self._head))
+                self._atualizar_ponte(p0, p1, passo, intensidade)
+                self._arco_np.show()
+            else:
+                self._arco_np.hide()
         else:
+            self._ponte_ativa = False
+            self._ponte_timer = 0.0
             self._arco_np.hide()
 
     def ocultar(self) -> None:
         """Oculta as coroas, gaiolas de raios e a ponte elétrica entre antenas."""
         self._ganho_visivel = 0.0
+        self._ponte_ativa = False
+        self._ponte_timer = 0.0
+        self._ponte_cache_chave = None
         for pivo, *_ in self._pivos:
             pivo.hide()
         self._arco_np.hide()

@@ -1,5 +1,7 @@
 """Articula as pernas e botas do GLTF com pivôs encadeados."""
 
+import math
+
 from panda3d.core import Mat4, Vec3
 
 from sejoga.animacao.interpolacao import suavizar_quintico
@@ -36,36 +38,39 @@ def _transformacao_bota(
     foot_squash: float,
     ang_ankle_yaw: float = 0.0,
 ) -> Mat4:
-    """Articula tornozelo em 3 eixos (pitch com rolagem calcanhar/ponta, roll, yaw) + squash volumétrico."""
-    ang_p = max(-42.0, min(42.0, ang_ankle))
+    """Articula tornozelo em 3 eixos (pitch com rolagem calcanhar/ponta, roll, yaw) + squash volumétrico sem cisalhamento."""
+    ang_p = max(-45.0, min(45.0, ang_ankle))
     ang_r = max(-24.0, min(24.0, ang_ankle_roll))
     ang_y = max(-28.0, min(28.0, ang_ankle_yaw))
     sq = max(-0.24, min(0.36, foot_squash))
     if abs(ang_p) < 0.05 and abs(ang_r) < 0.05 and abs(ang_y) < 0.05 and abs(sq) < 0.005:
         return mat_canela_total
     p_sola = Vec3(p_tornozelo.x, p_tornozelo.y, sola_z)
-    sz = 1.0 - 0.34 * sq
-    sxy = 1.0 / (sz**0.5)
-    escala = (
-        Mat4.translateMat(-p_sola)
-        * Mat4.scaleMat(sxy, sxy, sz)
-        * Mat4.translateMat(p_sola)
-    )
     # Rolagem calcanhar/ponta: pivô recua levemente no heel-strike e avança no toe-off,
     # mantendo o colarinho da bota encaixado na calça.
     desloc_y = -0.022 * max(-1.0, min(1.0, ang_p / 28.0))
-    p_eixo = Vec3(p_tornozelo.x, p_tornozelo.y + 0.015 + desloc_y, p_tornozelo.z + 0.055)
+    p_eixo = Vec3(p_tornozelo.x, p_tornozelo.y + 0.015 + desloc_y, p_tornozelo.z + 0.028)
     a_atual = mat_canela_total.xformPoint(p_eixo)
     eixo_x = mat_canela_total.xformVec(_EIXO_X)
     eixo_y = mat_canela_total.xformVec(_EIXO_Y)
     eixo_z = mat_canela_total.xformVec(_EIXO_Z)
-    return (
-        escala
-        * mat_canela_total
+    mat_rot = (
+        mat_canela_total
         * _rotacao_em_torno(a_atual, ang_y, eixo_z)
         * _rotacao_em_torno(a_atual, ang_r, eixo_y)
         * _rotacao_em_torno(a_atual, ang_p, eixo_x)
     )
+    if abs(sq) < 0.005:
+        return mat_rot
+    sz = 1.0 - 0.34 * sq
+    sxy = 1.0 / (sz**0.5)
+    s_atual = mat_rot.xformPoint(p_sola)
+    escala = (
+        Mat4.translateMat(-s_atual)
+        * Mat4.scaleMat(sxy, sxy, sz)
+        * Mat4.translateMat(s_atual)
+    )
+    return mat_rot * escala
 
 
 class LowerBody:
@@ -106,7 +111,32 @@ class LowerBody:
         movimento_quadril = self._quadril_repouso_inverso * self._quadril.getMat(r.model_np)
         controller = getattr(r.showbase, "animation_controller", None)
         estado = controller.state.value if controller and controller.state else ""
-        marcha = grounded and estado in ("walk", "run")
+        em_passo_extra = bool(
+            controller
+            and (
+                getattr(controller, "em_passo_profundidade", False)
+                or (
+                    getattr(controller, "pacote_olhar_tela", None) is not None
+                    and controller.pacote_olhar_tela.ativo
+                )
+            )
+        )
+        marcha = grounded and (estado in ("walk", "run") or em_passo_extra)
+        em_acao_canais = bool(
+            controller
+            and (
+                getattr(controller, "_canais_pernas_acao", None)
+                or getattr(controller, "acao_clipe_ativa", None)
+                or (
+                    getattr(controller, "cena_idle_amostra", None) is not None
+                    and controller.cena_idle_amostra.pernas_graus is not None
+                )
+            )
+        )
+        ambos_no_ar = (
+            getattr(pose, "left_lift", 0.0) > 0.012
+            and getattr(pose, "right_lift", 0.0) > 0.012
+        )
         speaker = getattr(r, "music_speaker", None)
         entrada = 1.0
         if (
@@ -128,7 +158,7 @@ class LowerBody:
             ang_roll = getattr(pose, lado + "_roll", 0.0) * entrada
             lift = getattr(pose, lado + "_lift")
 
-            if marcha and lift > 1e-5:
+            if grounded and not ambos_no_ar and lift > 1e-5 and marcha and not em_acao_canais:
                 # Amortecimento apenas durante a elevação do passo para manter a perna de apoio firme.
                 ang_quadril, ang_joelho = apoiar_passada(
                     ang_quadril,
@@ -199,10 +229,18 @@ class LowerBody:
                 sola = r._rig_nodes[bota].getTightBounds(r.model_np)[0].z
                 apoios.append((lift, dados["sola"] - sola))
 
-        self.ground_offset = (
-            min(apoios, default=(0, 0))[1]
-            if marcha
-            else max((apoio for _, apoio in apoios), default=0.0)
-        )
+        maior_apoio = max((apoio for _, apoio in apoios), default=0.0)
+        if ambos_no_ar and estado in ("celebrate", "surprise"):
+            # Em saltos no lugar, permite que ambos os pés recolham acima do piso sem puxar o corpo.
+            alvo_offset = max(0.0, maior_apoio)
+        else:
+            # dados["sola"] - min(sola_L, sola_R): ancora sempre pelo pé mais baixo no chão!
+            alvo_offset = maior_apoio
+        if dt > 0.0 and (not grounded or alvo_offset < self.ground_offset):
+            # Subida no ar/descida é suavizada; apenas elevação anti-afundamento em solo é imediata.
+            alpha_g = 1.0 - math.exp(-28.0 * min(dt, 0.08))
+            self.ground_offset += (alvo_offset - self.ground_offset) * alpha_g
+        else:
+            self.ground_offset = alvo_offset
         if getattr(self, "pernas_tecido", None) is not None:
             self.pernas_tecido.apply(self.renderer, pose, dt)

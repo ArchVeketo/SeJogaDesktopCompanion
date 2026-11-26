@@ -12,7 +12,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import cos, sin, tau
 
+from sejoga.animacao.animation import IDLE_CLIPS
 from sejoga.animacao.dados_autorais import idle_clips_ativos, respiracao_ativa
+from sejoga.animacao.idles_autorais import (
+    DURACAO_LOOP,
+    IDLES_AUTORAIS_CANONICOS,
+    amostrar_idle_autoral,
+)
 from sejoga.animacao.interpolacao import amostrar_pista
 from sejoga.animacao.pose_repouso import REPOUSO
 
@@ -28,13 +34,11 @@ class IdleClip:
     tracks: dict[str, tuple[tuple[float, tuple[float, float, float]], ...]]
 
 
-# Compatibilidade das ferramentas públicas, sem uma segunda cópia das pistas.
-from sejoga.animacao.animation import IDLE_CLIPS
-
 CLIPS = {name: IdleClip(cfg["duration"], cfg["tracks"]) for name, cfg in IDLE_CLIPS.items()}
 AJUSTE_BASE = {name: cfg["ajuste_base"] for name, cfg in IDLE_CLIPS.items()}
 RESPIRACAO_GANHO_PEITO = 1.6
 RESPIRACAO_GANHO_OMBRO = 0.5
+RESPIRACAO_GANHO_ANTEBRACO = 0.35
 RESPIRACAO_GANHO_CABECA = 0.4
 RHYTHM_BRACO_DIR = 10
 RHYTHM_BRACO_ESQ = 9
@@ -50,8 +54,9 @@ def camada_respiracao(
     amplitude: float = 1.0,
     *,
     estilo: str | None = None,
+    respiracao_cascata: tuple[float, float, float] | tuple[float, float, float, float] | None = None,
 ) -> dict[str, tuple[float, float, float]]:
-    """Camada aditiva de respiração em graus por parte do corpo."""
+    """Camada aditiva de respiração em cascata temporal por parte do corpo."""
     resp = respiracao_ativa()
     partes = resp.get("contribuicao_partes", {})
     pesos = (
@@ -59,18 +64,65 @@ def camada_respiracao(
         if estilo
         else {}
     )
-    escala = respiracao * amplitude
-    peito = escala * float(partes.get("peito", RESPIRACAO_GANHO_PEITO)) * float(pesos.get("peito", 1.0))
-    ombro = escala * float(partes.get("ombro", RESPIRACAO_GANHO_OMBRO)) * float(pesos.get("ombro", 1.0))
-    cabeca = escala * float(partes.get("cabeca", RESPIRACAO_GANHO_CABECA)) * float(pesos.get("cabeca", 1.0))
+    if respiracao_cascata is not None:
+        if len(respiracao_cascata) >= 4:
+            respiracao = respiracao_cascata[0]
+            r_cabeca, r_bracos, r_antebracos = (
+                respiracao_cascata[1],
+                respiracao_cascata[2],
+                respiracao_cascata[3],
+            )
+        else:
+            r_cabeca, r_bracos, r_antebracos = respiracao_cascata
+    else:
+        r_cabeca = respiracao
+        r_bracos = respiracao
+        r_antebracos = respiracao
+    escala_peito = respiracao * amplitude
+    escala_cabeca = r_cabeca * amplitude
+    escala_bracos = r_bracos * amplitude
+    escala_antebraco = r_antebracos * amplitude
+    peito = (
+        escala_peito
+        * float(partes.get("peito", RESPIRACAO_GANHO_PEITO))
+        * float(pesos.get("peito", 1.0))
+    )
+    ombro = (
+        escala_bracos
+        * float(partes.get("ombro", RESPIRACAO_GANHO_OMBRO))
+        * float(pesos.get("ombro", 1.0))
+    )
+    antebraco = (
+        escala_antebraco
+        * float(partes.get("antebraco", RESPIRACAO_GANHO_ANTEBRACO))
+        * float(pesos.get("antebraco", 1.0))
+    )
+    cabeca = (
+        escala_cabeca
+        * float(partes.get("cabeca", RESPIRACAO_GANHO_CABECA))
+        * float(pesos.get("cabeca", 1.0))
+    )
     resultado: dict[str, tuple[float, float, float]] = {
         "body": (peito, 0.0, 0.0),
+        "peitoral": (peito * 0.45, 0.0, 0.0),
+        "shoulder": (-ombro * 0.35, 0.0, -ombro * 0.45),
+        "shoulder2": (-ombro * 0.35, 0.0, ombro * 0.45),
         "right-arm": (ombro, 0.0, 0.0),
         "left-arm": (ombro, 0.0, 0.0),
+        "ant-arm": (antebraco, 0.0, antebraco * 0.4),
+        "ant-arm2": (antebraco, 0.0, -antebraco * 0.4),
         "head": (cabeca, 0.0, 0.0),
     }
-    abdomen = escala * float(partes.get("abdomen", 0.0)) * float(pesos.get("abdomen", 1.0))
-    cintura = escala * float(partes.get("cintura", 0.0)) * float(pesos.get("cintura", 1.0))
+    abdomen = (
+        escala_peito
+        * float(partes.get("abdomen", 0.0))
+        * float(pesos.get("abdomen", 1.0))
+    )
+    cintura = (
+        escala_peito
+        * float(partes.get("cintura", 0.0))
+        * float(pesos.get("cintura", 1.0))
+    )
     if abdomen:
         resultado["abdomen"] = (abdomen, 0.0, 0.0)
     if cintura:
@@ -139,6 +191,8 @@ def deslocamento_idle_ativo(
     variante: str | None = None,
 ) -> tuple[float, float, float]:
     """Deslocamento autoral do corpo (px, py, pz) para o idle ativo."""
+    if style in IDLES_AUTORAIS_CANONICOS:
+        return (0.0, 0.0, 0.0)
     cfg = _resolver_cfg_idle(style, variante)
     bruto = cfg.get("deslocamento_corpo", (0.0, 0.0, 0.0))
     if isinstance(bruto, (tuple, list)) and len(bruto) == 3:
@@ -155,6 +209,15 @@ def sample_idle(
     variante: str | None = None,
 ) -> dict[str, tuple[float, float, float]]:
     """Amostra o idle da personalidade no tempo ``time``, com arcos ZZZ e respiração."""
+    pose_autoral = amostrar_idle_autoral(style, time % DURACAO_LOOP)
+    if pose_autoral is not None:
+        pose = dict(pose_autoral)
+        if respiracao:
+            for group, (ex, ey, ez) in camada_respiracao(
+                respiracao, amplitude_respiracao, estilo=style
+            ).items():
+                _somar(pose, group, ex, ey, ez)
+        return pose
     cfg = _resolver_cfg_idle(style, variante)
     dur = max(1e-6, float(cfg.get("duration", 10.0)))  # type: ignore[arg-type]
     local = time % dur if cfg.get("loop", True) else max(0.0, min(dur, time))

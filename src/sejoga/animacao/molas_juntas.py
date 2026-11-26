@@ -22,8 +22,9 @@ from sejoga.nucleo.esqueleto import Rotation3
 CADEIA_DIREITA = ("right-arm", "ant-arm", "hand", "fingers")
 CADEIA_ESQUERDA = ("left-arm", "ant-arm2", "hand2", "fingers2")
 CADEIA_FONE_DIREITO = ("fones", "fone-direito", "antena-direita")
-CADEIA_FONE_ESQUERDO = ("fones", "fone-esquerdo", "antena-esquerda")
+CADEIA_FONE_ESQUERDO = ("fone-esquerdo", "antena-esquerda")
 CADEIA_COLUNA = ("cintura", "abdomen", "peitoral")
+CADEIA_CABECA = ("body", "head")
 
 
 class JointSpring:

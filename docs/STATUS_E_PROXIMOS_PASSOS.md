@@ -1,6 +1,209 @@
 # SeJogaDesktopCompanion — Status atual e próximos passos
 
-**Atualizado:** 2026-11-18 (versão `2.0.0` na branch `versao-2.0`; clone exato da main local preservado em `backup/main-v1-local`)
+**Atualizado:** 2026-11-26 (versão `2.0.0` na branch `versao-2.0`; clone exato da main local preservado em `backup/main-v1-local`)
+
+## Refinamento v2.2 — Loading 3D, VFX Street Punk, 5 Filtros Reativos, Transições e Direção de Animações (26/11/2026)
+
+- **Fase 1 — Tela de Loading 3D com líquido realista e ciclo da brand (`src/sejoga/desktop/carregamento.py`, `tests/test_abertura_encerramento.py`):**
+  - Substituído o preenchimento plano por camada 3D vazada em vidro (`_preparar_camadas_3d`: extrusão 9-slice, sombra projetada, cavidade fumê com bevel interno, borda chanfrada e reflexos especulares diagonais).
+  - Física de líquido em 60 FPS com inércia/slosh (`_vel_nivel`, `_slosh_fase`), menisco duplo 3D, ondas de 3 harmônicos, cáusticas internas, espuma cremosa na crista e 38 bolhas subindo e estourando.
+  - Ciclo sequencial automático entre as 5 cores oficiais da marca (`BRAND_PALETTES`: `lima`, `rosa`, `roxo`, `ciano`, `azul`) persistido em `loading-color.txt` no diretório do perfil (tolerante a `OSError`).
+  - Prova visual: `.local/refino-v22/loading_preview.png`.
+- **Fase 2 — VFX Street Punk/Graffiti + 5 Micro-VFX Narrativos + 5 Filtros Reativos (`tools/gerar_vfx_street_punk.py`, `src/sejoga/render/vfx/*.py`, `src/sejoga/render/efeitos_street.py`, `src/sejoga/render/resolucao_croma.py`, `src/sejoga/render/renderizador.py`):**
+  - Novo gerador reprodutível `tools/gerar_vfx_street_punk.py` criando os 3 atlas chroma-safe quantizados: `assets/textures/vfx_street/street_molduras.png` (6 molduras 512×512 abertas no centro para emoldurar sem cobrir o rosto: `SMASH!/DROP!`, `ZAP!/BZZT`, `FAST>/ZOOM!`, `HOLD!/?!`, `VIBE!/YEAH!`, `BANG!/KRAK!`), `street_stickers.png` (16 stickers rasgados, carinhas `x_x`, coroas e estilhaços) e `street_extras.png` (8 células de micro-VFX e tags).
+  - `src/sejoga/render/vfx/street.py` reescrito com tremor artesanal em 10 FPS nas molduras, escalas maiores envolvendo a silhueta, tags/carinhas punk nos impactos/dança e assinatura de flash **Raio-X** (`EsqueletoFnf`) nos impactos fortes e choques.
+  - 5 micro-VFX narrativos (`suor`, `suspiro`, `tristeza`, `estalo_fone`, `espirro`) implementados nos 5 estilos canônicos (`blockbench`, `street`, `anime`, `spiderverse`, `holograma`) e conectados a âncoras anatômicas (incluindo nova âncora `porta`), cenas e humores em `efeitos_street.py`.
+  - Uniform reativo `u_filter_fx` `(speed, impact, drama, airborne)` adicionado ao pós-tonemap em `resolucao_croma.py` e alimentado em `renderizador.py`: `street` com contorno riscado `+20%`, grão spray e punch de impacto; `spiderverse` com cadência stepped 12/24 FPS no rig (sem travar arraste/janela) e misprint CMYK dinâmico; `anime` com contraste/hachura dramática JoJo; `holograma` com tear CRT e split de fósforo reativos; `blockbench` preservando texels nítidos.
+  - Provas visuais GPU: `.local/refino-v22/street_punk_strip.png` e `.local/refino-v22/filtros_5_reativos.png`.
+- **Fase 3 — VFX Estilo-Cientes para 7 Aberturas e 10 Encerramentos (`src/sejoga/render/vfx/transicoes.py`, `renderizador.py`, `janela.py`):**
+  - Novo `GerenciadorVfxTransicao` chroma-safe (cartões Bayer 4×4 + anéis 3D) adaptado às 5 paletas canônicas cobrindo todas as 7 aberturas (`hero_drop_in`, `kagebunshin_in`, `sandevistan_in`, `goku_teleport_in`, `run_from_depth`, `virtual_insanity_in`, `fade_in`) e todos os 10 encerramentos (`classic`, `sonic_classic` com argolas douradas, `fnf_blue_balls`, `lego_disassemble`, `thanos_snap` com 40 flocos ao vento, `peace_fade_out`, `virtual_insanity_out`, `cyberpsicopata_out`, `goku_teleport_out`, `portal_pull_out` com vórtice dimensional giratório).
+  - `_paleta_transicao_estilo()` atualizada para os 5 estilos canônicos; `GerenciadorVfxTransicao` ancorado no mesmo espaço do rig (`efeitos_street.root`).
+  - Prova visual GPU: `.local/refino-v22/transicoes_vfx_strip.png`.
+- **Fase 4 — Refatoração do Sistema de Animação e Re-direção (`interpolacao.py`, `diretor_cenas.py`, `cenas_idle.py`, `idles_autorais.py`, `cenas_novas.py`, `cenas_interativas.py`, `poses_base.py`, `controlador_animacao.py`):**
+  - `interpolacao.py` evoluído com spline C1 contínua `catmull` (preservação de monotonicidade em holds) + curvas `snap_out`, `anticipate` e `overshoot` via `amostrar_pista_continua`.
+  - Novo módulo puro `src/sejoga/animacao/diretor_cenas.py` (`RoteiroCena`, `PoseChave`, `EventoVfxCena`, `pose_braco_ik`, `amostrar_roteiro`, `metadados_cena`, `eventos_vfx_cena`) com cascata real de sobreposição temporal (tronco → cabeça → ombros → antebraços → mãos → antenas) e micro-vida assimétrica em holds; 5 roteiros autorais declarativos registrados (`espirro`, `suspiro_pesado`, `espreguicar`, `polir_gabinete`, `ajustar_fones`).
+  - Todas as 15 cenas clássicas (`cenas_idle.py`), 9 cenas narrativas/interativas (`cenas_novas.py`, `cenas_interativas.py`), 6 idles canônicos (`idles_autorais.py`) e reações (`poses_base.py`) migrados para fluxo contínuo C1, ataques snappy/overshoot e cascata temporal real.
+  - Reduzido conflito de amortecedores em `controlador_animacao.py` durante cenas dirigidas (`HandMotion` pausado quando `trava_maos`, `alvo_tatil` reduzido a `0.15` em cenas / `0.32` em idle, `delta_sec` em `0.12` nas juntas autorais e transições mais responsivas nas reações).
+  - Prova visual GPU: `.local/refino-v22/animacoes_comparativo.png`.
+- **Validação verificada (26/11/2026):**
+  - Fronteiras puras (`git grep -n -E "panda3d|PySide6|win32" src/sejoga/nucleo src/sejoga/configuracao.py src/sejoga/catalogos_ui.py src/sejoga/animacao`): **`0` violações**.
+  - `python -m ruff check` nos 17 módulos criados/refatorados: **`All checks passed!`**.
+  - `python -m pytest -q` (perfil isolado `SEJOGA_CONFIG_PATH`): **`1.259 passed`** (`0` falhas).
+  - **Build e smoke do executável (`.\build.ps1` → `dist\SeJogaCompanion\SeJogaCompanion.exe`, log em `.local/refino-v22/build.log`):** `BUILD_EXIT=0`, bundle `257,2 MB`, `0` `icu*.dll`, `0` `*.blend`, novos atlas `street_molduras.png`/`street_stickers.png`/`street_extras.png` empacotados; execução real do `.exe` em perfil isolado: `OVERLAY_COUNT=1`, `ERR_DIALOGS=0`, `LAYER=(0xD600D6, 0, LWA_COLORKEY)`, `LOADING_COLOR=0` persistido, fechamento via `WM_CLOSE` com `EXIT_RC=0` e `HAS_ERR=False` em `companion.log`.
+  - `python tools/smoke_mouse.py` (e `--physics`): ajustado para alternar para `"street"` durante a checagem de contorno (já que `"blockbench"` oculta o contorno por design); validou HWND topmost, `WS_EX_LAYERED`, color key `RGB(214, 0, 214)` no framebuffer, troca de cor/toggle do contorno e picking 3D, porém bloqueado no `WindowFromPoint` / `ImageGrab.grab` porque a sessão interativa do Windows está bloqueada (`GetForegroundWindow() == 0`, `OSError: screen grab failed`). Reexecutar com a área de trabalho desbloqueada quando disponível.
+
+## Evolução para Animações v2.0 + Baseline Comportamental (24/11/2026)
+
+- **Etapa 1 — Baseline e reconstrução da suíte de testes (`tests/test_baseline_animacoes.py`, `docs/BASELINE_TESTES_ANIMACAO.md`):**
+  - Cobertura comportamental completa de todos os 35 `AnimationState`s, 22 ramos de `delta_conexao`, 29 `loops/*.json` + 12 `acoes/*.json`, 15 `CENAS_IDLE` em 30 Hz, 7 entradas + 10 saídas em 60 Hz, `LegMotion`, `gestos_dedos`, módulos puros (`squash_stretch`, `antenas_expressivas`, `arcos_autorais`, `ritmo_humano`, `interpolacao`) e interseções críticas de estado; desacoplamento de contagens fixas em `tests/test_danca_clipes.py`.
+- **Etapa 2 — Evolução para Animações v2.0 (`src/sejoga/animacao/`):**
+  - **Eliminação de snaps C0/C1 e hiperextensão:** costura quíntica contínua no salto em `t=0.11 s` (`estados_delta.delta_jump`, `movimento_pernas.py`, `squash_stretch.py`), `blue_balls` em `t=0.28 s`, `teimosia/bote` em `bt=0.36 s`, clamp anatômico `left_knee/right_knee >= 0°` em `_limitar_aducao_pernas`, respiração ativa durante `AnimationState.SIT`, curva de expiração com pausa natural (`respiracao.py`) e expansão para `peitoral`/`shoulder*` (`clipes_ocioso.py`), todas as 7 entradas (`animacao_entrada.py`) e 10 saídas (`animacao_saida.py`) sem saltos C0 e com preservação de volume no `goku_teleport`.
+  - **Reações, gestos manuais, teimosia, cenas idle e `PacoteOlharTela`:** antecipação/follow-through e contrapeso em `poke`/`wave`/`stretch`/`defesa`/`pet`/`wake`/`click`/`sneeze`/`virtual_insanity`/`blue_balls`/`goku_teleport`; os 8 gestos manuais de mão (`_aplicar_mao_gesto`) agora têm entrada/saída quíntica, overshoot, micro-groove e enquadramento de tronco/cabeça/antenas; compensação automática de tornozelo nas 14 cenas idle de 6 canais, curvas quínticas em `cenas_idle.py`, costura de `fone_com_problema`, argolas suaves e faixas secundárias completas (`abdomen`, `shoulder*`, `hand*`, `fones`) em `conferir_estilo`, `espreguicar_pesado` e `olhar_curioso_chao`; cascata de coluna e `curiosidade` C2 em `PacoteOlharTela`.
+  - **Conexões, dança e clipes JSON:** novas interseções e cadeia completa em `delta_conexao`, fluxo Catmull-Rom + punhos/dedos vivos em `danca_frases_tuning.py`, SLERP 3D de `raiz_quat_emote` + velocidade de cabeça nos acessórios em `movimento_danca.py`, suavização completa de `intro`, `raiz`, `quat_raiz`, saltos monotônicos de pernas e emenda `intro -> loop` contínua em `danca_clipes.py`.
+- **Etapa 3 — Código limpo, desempenho e validação final:**
+  - Cache de override em `danca_clipes._aplicar_override_clipe`, remoção de imports em hot-loop (`controlador_animacao.py`, `movimento_pernas.py`, `danca_clipes.py`), remoção de strings mortas e magic numbers, correção de flake determinístico em `tests/test_auditoria_refinos.py`.
+  - **Validação verificada:** `python -m pytest` (perfil isolado `SEJOGA_CONFIG_PATH`): **`1201 passed`** (`0` falhas, `0` skips); fronteiras puras (`git grep`): `0` violações; prova visual GPU em 6 painéis (`v8_gpu_proof.png`, chroma `(214, 0, 214)`); `.\build.ps1` (`256,4 MB`, `0` `icu*.dll`, `0` `*.blend`); smoke real Win32 em `dist\SeJogaCompanion\SeJogaCompanion.exe` (`OVERLAY_COUNT=1`, `ERR_DIALOGS=0`, `EXIT_RC=0`, `HAS_ERR=False`); instalador `dist/installer/SeJogaCompanion-Setup-windows-x64.exe` recompilado.
+
+## Street e Blockbench no renderer 2.0
+
+O seletor tem onze filtros. O padrão usa tinta volumétrica, retícula presa à superfície e respingos com inércia. O Blockbench preserva os texels pintados e usa fumaça facetada, lascas e sequências de faíscas em degraus. Ambos recebem os nove eventos de contato, deslocamento, ritmo e expressão do personagem.
+
+O palco ganhou acabamento nos cones e relevos. O rádio compacto tem seis materiais pintados, incluindo a escala do sintonizador. O tentáculo exportado e a pele deformável usam o mesmo acabamento em pixels. A seção 3.5 do manual define a preparação e a revisão dos próximos assets. Os resultados do ciclo anterior abaixo descrevem os dez filtros disponíveis antes desta revisão.
+
+Verificação da versão de trabalho 2.0.0 sobre `a13d642`: 1.201 testes passaram. O validador glTF retornou zero erros e zero avisos no palco, no rádio e no tentáculo. Os dois smokes de mouse passaram no Windows, com e sem física. A Queda Heroica foi capturada na janela nos dois filtros e o grave foi observado durante a dança no renderer. O executável empacotado abriu com Blockbench, mostrou o palco e encerrou normalmente. A prévia do pouso e as vistas dos props ficam em `.local/street-blockbench/`.
+
+## VFX por filtro (24/11/2026)
+
+- Pouso, colisão lateral, grave do palco, choque, rastro, carinho, sono, calor e susto usam o desenho animado do filtro ativo. No padrão, as solas levantam rolos de poeira e grãos, o grave solta duas frentes de pressão e o carinho sobe em dois pulsos.
+- Pixel Art usa células em arcos balísticos. Quadrinho imprime uma estrela com retícula, Hi-Fi ergue barras de equalizador, Cyberfunk percorre trilhas com cotovelos e Anime combina um clarão curto com um corte curvo. Retro PS1 gira facetas, Holograma varre uma moldura, Game Boy retém a célula anterior e Mangá abre um leque de traços de nanquim.
+- Os presets manuais salvos acrescentam ilustrações aos acentos. A opção padrão usa somente os efeitos do filtro. A troca ao vivo limpa as instâncias anteriores e preserva a preferência de escala.
+- Na GPU, as máscaras de ocupação de cada evento foram comparadas entre os dez filtros ao longo de 12 quadros, com o pós-processamento desligado. Cada um dos nove eventos passou nas 45 comparações entre pares de filtros. A janela Windows passou por todos os filtros com o pós-processamento ativo. Comparações em `.local/vfx-filtros/graves.gif` e `.local/vfx-filtros/pouso.gif`.
+
+## Consolidação v2.0 — Música vs Vídeo, Animações, UI, Colisões, Higiene e Empacotamento (23/11/2026)
+
+- **Reconhecimento de música sem confundir vídeo/voz (`src/sejoga/musica/`):**
+  - Novo classificador SMTC `classificador_midia.py` (metadados de música/álbum vs vídeo/podcast/lives/speech) combinado com análise DSP (`analisador_ritmo.py`: tempograma com penalização de lacunas de fala e razão banda vocal vs subgrave) e fusão multi-sessão com debounce de 1,0 s em `escuta_musica.py`.
+- **Animações, conexões e agência viva (`src/sejoga/animacao/`):**
+  - Interpolação C1 Catmull-Rom, deduplicação de loops, filtro anti-pico universal (`danca_clipes.py`), ajuste de `arm_stretching` (`2.45x`), sincronização de fase em `walk`/`run`, menos sustos falsos (`foco_atencao.py`), transições em `estados_delta.py` e crossfades rápidos sem perder pernas sentadas no estado `SIT`.
+  - Distribuição embaralhada dos 29 emotes + procedurais em `_BANDAS_AUTO_V2` (`movimento_danca.py`), tédio probabilístico e sorteio ponderado na `Agencia` (`agencia.py`) e velocidades variadas de caminhada autônoma.
+- **Menus de contexto e controles unificados (`catalogos_ui.py`, `menu_bandeja.py`, `janela.py`, `interface.py`, `integracao_desktop.py`):**
+  - Catálogos únicos em `catalogos_ui.py`, remoção de tags de desenvolvimento, limpeza do menu da janela/bandeja e menu de sistema Win32, além de correções de interação (`_preparar_acao_manual` zerando `_music_grace`, proteção de clique/atalhos, diálogo de atualização).
+- **Colisões, desempenho e correções visuais (`colisao_bracos.py`, `movimento_pernas.py`, `fio_corda.py`, `fio_fone_malha.py`, `renderizador.py`, `resolucao_croma.py`, `sistema_tentaculos.py`, `janela.py`):**
+  - Passe único de `ResolvedorBracos` pós-`HandMotion`/`LagChain`, proteção de `topo_cabeca` e `coxa_*`, `_limitar_aducao_pernas` no `SIT`, colisão final após restrições do fio e exclusão de `antena-*` nas caixas dos fones.
+  - Otimizações de hot path (caches de pose/skinning/malhas VFX 3D/tentáculos 20 Hz/sombra/argolas/`hit_test`/Win32 foreground) e correções visuais (espessura de contorno proporcional à profundidade, sincronia Cyber-Ink nos tentáculos, `setDepthWrite(False)` em cartões Bayer, amostragem `edge_texel * u_pixel_size` em Pixel Art/Game Boy).
+- **Higiene e empacotamento (`build.ps1`, `tools/construir_atualizacao.py`, `tools/build-installer.ps1`):**
+  - Remoção de 7 módulos mortos e consolidação segura de 9 micromódulos mantendo as fronteiras puras (`0` imports de Panda3D/Qt/Win32 em `nucleo/`, `configuracao.py`, `catalogos_ui.py`, `animacao/`).
+  - `__version__ = "2.0.0"`, stage limpo no `build.ps1` (`256,4 MB`, `0` `icu*.dll`, `0` `.blend` no bundle mantendo os `.blend` no git) e compilação do instalador `dist/installer/SeJogaCompanion-Setup-windows-x64.exe` via Inno Setup 6.
+- **Validação observada nesta entrega:**
+  - `python -m pytest` (perfil isolado `SEJOGA_CONFIG_PATH`): **`1084 passed in 85.51s`** (`0` falhas, `0` skips).
+  - Isolamento de camadas (`git grep`): `0` violações; prova visual GPU (`v7_gpu_proof.png`): `IDLE`, profundidade `"longe"`, `SIT` e `DANCE` com filtro `pixel`; smoke Win32 em `dist\SeJogaCompanion\SeJogaCompanion.exe` (`OVERLAY_COUNT=1`, `ERR_DIALOGS=0`, `WM_CLOSE` -> `EXIT_RC=0`, `companion.log` sem erros).
+
+## Versão 2.0 — contato, tentáculos e efeitos em movimento (23/11/2026)
+
+- O palco de dança usa os três gabinetes e as texturas do modelo original do Blockbench. A referência visual guiou a paleta grafite, os cones ameixa e as calotas mais escuras. Os dois falantes centrais têm cantos arredondados e os quatro laterais são ovais. As membranas pulsam no grave. O palco foi conferido durante a dança na janela Windows, e o glTF passou no validador da Khronos. A comparação visual está em `.local/estudo-palco/palco-grafite.gif`.
+- **Teleporte.** A ação, a entrada e a saída usam a mesma pose. A rotina que orienta sinais para a câmera também girava o punho direito nessa pose de contato. A torção adicional chegou a 187° na captura. A apresentação à câmera agora é explícita por gesto. A pose governa a orientação das duas mãos, com indicador e médio junto à têmpora e guarda à esquerda. O teste de regressão passa de um sinal exibido ao observador ao teleporte e confere os punhos, o contorno e o sentido da palma no modelo real. Capturas frontais e em três quartos em `.local/teleporte/`.
+- As solas lançam fragmentos ao pousar com força. O ataque do grave desloca duas frentes de ar a partir da calota de uma caixa visível. O sobressalto parte dos fones, o calor sobe pela lateral do gabinete e o suspiro acompanha o visor. Os sete temas variam o material e o movimento dos efeitos.
+- A pose final passa por uma verificação da mão contra o gabinete depois das sobreposições de gesto e transição. No catálogo de 112 tomadas da janela Windows, a primeira passagem registrou 2.166 poses acima da tolerância de 0,01 unidade antes da correção e nove depois. Esses nove casos pertenciam a quatro danças. Uma segunda passagem por breakdance, breakdance_uprock, griddy e january_bop após o ajuste de recuo terminou com zero ocorrências. A medida usa a cápsula da mão e a caixa orientada do gabinete.
+- A espiada com duas pontas ocupa os dois lados da abertura em alturas distintas. A curva final mantém a tangente do corpo durante a dobra da ponta. A espessura se mantém por mais tempo enquanto o tentáculo emerge. Há imagens frontais e em três quartos da espiada e do espirro.
+- Cyberfunk concentra o neon no lado iluminado das arestas. Holograma preserva as sombras do visor entre as linhas de varredura. Os dez filtros passaram pela captura do framebuffer em perfil isolado.
+- O executável Windows abriu com Corrida da Profundidade e Holograma e encerrou pela Fenda Dimensional com código 0. Os smokes de janela com e sem física passaram. O pacote portátil e as capturas desta rodada estão em `.local/criatura-v2/`.
+
+## Revisão anterior de VFX temáticos e caixas de palco — 23/11/2026
+
+- Pouso, acento de dança e carinho usam novas coreografias nas sete paletas. O pulso fica no piso e as figuras da batida saem ao lado do fone, atrás do plano do rosto. Os segmentos dos anéis alternam as duas cores e têm faces nas extremidades.
+- `Boomboxes.gltf` foi regenerado com gabinetes grafite, faixas âmbar, painel central com barras luminosas e indicadores laterais. A hierarquia mantém as três caixas, o tampo de apoio e os nós de cone e calota usados pela animação de graves.
+- Cyberfunk tem contorno e saturação mais contidos, e a faixa animada do Holograma preserva melhor as altas luzes. As capturas estão em `.local/hero-drop/vfx-palco.png`, `.local/hero-drop/filtros-palco.png` e `.local/hero-drop/palco-vfx/dance_speaker_palco.png`.
+- Validação da branch `versao-2.0`: 1.101 testes passaram, assim como os smokes com e sem física. O bundle `2.0.0` contém o glTF regenerado e as coreografias novas. A execução com Cyberfunk encerrou em janela real com código 0.
+
+## Revisão de animações, filtros e efeitos — 23/11/2026
+
+- Sete aberturas e dez encerramentos receberam ajustes de encenação, timing e transições. Corrida da Profundidade e Sandevistan preservam posição, escala e rotação na entrada da freada. Respiração, absorção do pouso, aceno e fones dos emotes receberam ajustes nas camadas compartilhadas.
+- Pixel Art, Retro PS1 e Game Boy usam o dithering na grade do filtro. Quadrinho, Cyberfunk, Anime e Mangá receberam ajustes nas linhas e retículas. O glitch do Holograma atua no interior da silhueta. A proteção de chroma após o pós-processamento usa o color key final. A corrida deixou de disparar também o efeito de deslize em alta velocidade.
+- A suíte completa passou com **1.101 testes**. Capturas do framebuffer verificaram os dez filtros, a estabilidade da silhueta no Holograma e as sete paletas de VFX em pouso, dança e carinho. Sentar e pular foram exercitados com física na janela.
+- Bundle Windows `2.0.0` recompilado na branch `versao-2.0`. Corrida da Profundidade com Holograma e encerramento por Fenda Dimensional executados em perfil isolado, com color key `0xd600d6` e saída 0.
+- A janela rendeu 112 tomadas do catálogo. As pranchas, os comparativos e os filtros estão em `.local/hero-drop/catalogo-visual.zip`. Os smokes com e sem física passaram. O smoke adicional de mouse nativo passou do duplo clique e registrou desvio de 17,5 px no arraste, acima do limite de 12 px.
+
+## Acabamento da Queda Heroica — 23/11/2026
+
+- A entrada procedural `hero_drop_in` acelera até o chão, comprime o corpo, rebate a porta na dobradiça existente e recupera a pose com um olhar de soslaio. O contato dispara um anel 3D curto junto aos pés quando os VFX estão ativos.
+- Comparação em movimento capturada do framebuffer da janela Windows em `.local/hero-drop/comparacao.gif`. Suíte completa e smokes de mouse com e sem física passaram. O bundle foi recompilado na branch `versao-2.0` e executou a abertura com color key `0xd600d6` e saída normal.
+- O smoke adicional `smoke_corpo_nativo.py` parou na expectativa de duplo clique com a abertura padrão. A validação nativa completa de clique e arraste segue pendente.
+
+## Refino Estrutural de Animações, Transições, Sombra Bayer, Locomoção, `SIT` e `JUMP` — 23/11/2026
+
+- **Sombra de contato pós-tonemap e ancoragem no piso (`src/sejoga/render/renderizador.py`, `src/sejoga/render/resolucao_croma.py`, `src/sejoga/render/janela.py`):**
+  - Shader dedicado `_shader_sombra_contato()` em `renderizador.py` com elipse Bayer 4×4 e `u_shadow_alpha`, emitindo linear escuro (`vec3(0.010, 0.009, 0.016)`) isolado dos contornos neon/ciano de `cyberfunk` e `holograma` em `resolucao_croma.py`.
+  - Propriedade reativa `Panda3DRenderer.pixels_per_unit` sincronizada em `resize()`, escala e profundidade; preservação de `_intro_orig_anchor_pos` para sombra aérea em intros (`_alcance_aereo_sombra` até `max(340.0, radius * 10.0)` com `0.42 + 0.58 * fator_ar`), eliminação do afundamento no piso em `_posicionar_sono("deitado")` e `breakdance` (`moved >= ground - 1e-3`), alongamento/estreitamento contínuo por giro e proteção contra recorte na base da janela.
+- **Transições contínuas, dedos e `arm_stretching` (`src/sejoga/animacao/`, `src/sejoga/render/gestos_dedos.py`, `assets/animation/acoes/arm_stretching.json`):**
+  - Decaimento contínuo para `_sono_deitado_peso`, `_sono_sentado_peso`, `_breakdance_chao_peso`, `_dz_extra_atual`, `_squash_atual`, `_last_tilt_z` (`_atualizar_tilt_aereo` em `janela.py`), recuo suave de braços (`ResolvedorBracos.relaxar_suave(dt)`), torção suave de punho ao sair de gestos e slerp bidirecional de `raiz_quat_ativa` (`_aplicar_saida_quat_raiz`).
+  - Reativação do blend por fase em `teimosia_pose.py` sem disputa com pernas, re-gatilho suave no mesmo estímulo em `_ativar_reacao_humor`, micro-twitches esparsos nos dedos em REM durante o sono e ajuste de velocidade natural em `arm_stretching.json` (`2.78`).
+- **Idle vivo, atenção e respiração em cascata (`respiracao.py`, `clipes_ocioso.py`, `antenas_expressivas.py`, `foco_atencao.py`, `cenas_idle.py`, `agencia.py`):**
+  - `amostrar_respiracao_cascata()` (defasagem `0.0 / 0.15 / 0.28 / 0.40 s`) conectada a `camada_respiracao()` (compatível com tuplas de 3 e 4 elementos) e às delta poses (`delta_idle`/`delta_hover`), estendendo respiração e micro-suspiro da porta aos antebraços e antenas com cadência irracional.
+  - Decaimento de novidade do cursor parado em `GateAtencao` abaixo de `PRIORIDADE_AMBIENTE` (`5.0`) e `PRIORIDADE_BORDA` (`10.0`), ampliação do arco no humor `CALM` (`0.58`), `Humor.DESCONFIADO`, pistas de dedos/pernas completas nas 15 `CENAS_IDLE` e remoção de `cover_to_stand` sobrescrevendo poses finais.
+- **Locomoção, arraste estilingue, `AnimationState.SIT` e `AnimationState.JUMP` (`selecao_estado.py`, `controlador_animacao.py`, `estados_delta.py`, `movimento_pernas.py`, `desktop/fisica.py`, `menu_bandeja.py`):**
+  - Acoplamento de passada em `walk_standard` / `run_mixamo` com casamento de fase entre ciclos e limite `rate <= 1.75` para evitar salto angular > 16°/quadro (`test_walk_para_run_transiciona_suavemente`); sincronização de `EstadoProfundidade.velocidade_caminhada` e antecipação de pouso em `FALL` por `height_above_floor_px`.
+  - Novos estados `AnimationState.SIT` (`sentar`/`levantar`, repouso autônomo, `delta_sit`, pernas sentadas) e `AnimationState.JUMP` (`pular` com antecipação de `0.09 s`, `consumir_impulso_pulo`, `ScreenSpacePhysics.jump`, `get_shelf_above`, `delta_jump` e transição automática ao passar o ápice), além de ações `"Pular"` e `"Sentar / Levantar"` na bandeja e suporte estilingue em `end_drag`.
+- **Validação observada nesta entrega:**
+  - `python -m pytest` (perfil isolado `SEJOGA_CONFIG_PATH`): **`1099 passed in 73.05s`** (`0` falhas, `0` skips), incluindo **`25 passed`** em `tests/test_auditoria_refinos.py` e **`306 passed`** nos testes direcionados de animação/locomoção/física.
+  - `python -m ruff check`: `All checks passed!` nos arquivos de animação e testes das Frentes A–E e `0` avisos novos nos arquivos de render/overlay; isolamento de camadas (`nucleo/`, `configuracao.py`, `animacao/`): `0` ocorrências de `panda3d`, `PySide6` ou `win32`.
+  - Prova visual real em GPU offscreen (`render_refino_v6_provas.py` -> `refino_v6_sombras_poses.png`, `use_chroma_resolve=True`, 9 painéis: Idle frontal/perfil 90°, `hero_drop_in` aéreo com sombra Bayer visível, `SLEEP("deitado")`, `SIT`, `breakdance`, `JUMP`, `cyberfunk` e `holograma` com sombra limpa sem halo neon/ciano).
+  - Build Windows `.\build.ps1`: exit code `0`, `0` DLLs `icu*.dll` em `dist/SeJogaCompanion/`. Smoke test Win32 isolado de `dist\SeJogaCompanion\SeJogaCompanion.exe`: `ERR_DIALOGS=0`, `OVERLAY_COUNT=1` (`EX=0x80c0008`, `LAYERED=True`, `NOACTIVATE=True`, `TRANSPARENT=False`), encerramento por `WM_CLOSE` com `EXIT_RC=0` e `companion.log` sem erros/tracebacks.
+  - **Pendente para validação interativa em sessão Windows desbloqueada:** `python tools/smoke_mouse.py` e `python tools/smoke_mouse.py --physics`.
+
+## Motor Multi-Estilo de VFX 3D e Cinéticos (Sem Stickers Genéricos) — 22/11/2026
+
+- **Construtores procedurais 3D e 7 coreografias distintas (`src/sejoga/render/vfx_geometria_3d.py`, `src/sejoga/render/vfx_coreografias.py`, `src/sejoga/render/efeitos_street.py`):**
+  - Substituição dos cartões 2D uniformes por malhas 3D opacas (`GeomVertexData` `V3n3c4`, sombreamento cel em 2 bandas + contorno opaco e guarda anti-magenta `cor_vfx_3d`) com planos de profundidade (`_FX_BACK_Y = 1.95`, `_FX_CHAO_Y = 0.0`, `_FX_FRONT_Y = -2.25`) e `depthTest`/`depthWrite` ativos para nunca cobrir o rosto do Mário e girar em órbita real ao redor da cabeça.
+  - **`spider_verse` (Aranhaverso):** ondas zigue-zague de Sentido-Aranha, estilhaços/glitches CMYK a `10 FPS` (`yutapon_degrau`), anéis HQ e cartões tipográficos híbridos (`POP!`/`BOP!`).
+  - **`hifi_rush` (Hi-Fi Beat):** 100% 3D cel-shaded com anéis horizontais de batida sob os pés, colunas 3D de equalizador pulsantes (`barra_eq`), chevrons `>` e faíscas losangulares (`faisca_losango_3d`).
+  - **`anime_sakuga` (Anime Sakuga):** Cubos Yutapon 3D em arco a `12 FPS`, pilares verticais de aura Ki atrás do corpo (`chama`), cortes crescentes e cruz de brilho de 4 pontas (`cruz_anime`).
+  - **`colorido` (Street Cyberfunk):** setas wildstyle 3D, nuvens de spray aerossol, anéis irregulares de tinta e gotas 3D alongadas pela velocidade (`esticar_vel`).
+  - **`lowpoly_3d` (Retro 3D Low-Poly):** colcheias musicais 3D extrudadas (`nota_3d`), cristais facetados, raios 3D e anéis octogonais segmentados.
+  - **`pb_escuro` (Sumi-e Mangá):** pinceladas Enso abertas, feixes radiais *Shūchūsen* (`14` agulhas com halo branco), pilares sombrios de aura e gotas de nanquim em arco.
+  - **`pb_claro` (Origami & Rabisco):** aviões de papel 3D planando (`aviao_papel` / `planador_papel`), folhas/estrelas de origami em queda suave, espirais de arame e anéis rabiscados.
+  - Rótulos atualizados em `PALETAS_VFX_UI` (`src/sejoga/render/menu_bandeja.py`).
+- **Validação observada nesta entrega:**
+  - `python -m pytest` (com `SEJOGA_CONFIG_PATH` isolado): **`1089 passed`** em `74.93s` (0 falhas, 0 skips), cobrindo `test_vfx_sete_estilos_coreografias_3d_distintas_e_seguras_chroma` em `tests/test_auditoria_refinos.py`.
+  - `ruff check`: `All checks passed!` em `vfx_geometria_3d.py`, `vfx_coreografias.py`, `efeitos_street.py`, `menu_bandeja.py` e `tests/test_auditoria_refinos.py`; isolamento de camadas (`git grep`): `0` violações.
+  - Prova visual real em GPU offscreen (`vfx_v5_live_7estilos.png`): `7` estilos × `3` ações (`21` cenas) inspecionados visualmente com rosto 100% visível e `chroma_bg` limpo (`173293..205229` px em `480x480`).
+  - Build `.\build.ps1`: exit code `0`, gerando `dist/SeJogaCompanion/SeJogaCompanion.exe`; smoke do `.exe` isolado validou `ERR_DIALOGS=0`, `OVERLAY_COUNT=1` (`WinGraphicsWindow0`, `LAYERED=True`, `NOACTIVATE=True`, `TRANSPARENT=False`), `WM_CLOSE` com `EXIT_RC=0` e `companion.log` sem tracebacks, erros de DLL ou erro 1400.
+
+## Refino Criativo v2.0 (10 Filtros Transformadores, VFX Originais + 3D e Danças Padrão) — 22/11/2026
+
+- **Filtros visuais transformadores (`10` opções em `WindowSettings.visual_filter` / `FILTROS_VISUAIS_UI`):**
+  - `pixel` reescrito como pixel art 16-bit SNES (`vh / 240.0`) com quantização neutro-segura (`sat_px - vec3(l_px)`), eliminando ruído esverdeado nos tênis brancos.
+  - `anime_impact` substituído por `anime` (cel-shading claro em 3 bandas + contorno fino), com migração automática de configuração legada via `_normalizar_visual_filter_legado` (`src/sejoga/configuracao.py`).
+  - `cyberfunk` evoluído para cel-shading em 3 bandas com rim neon; adicionados `holograma` (scanlines, glitches e Fresnel), `gameboy` (4 tons DMG com Bayer 4x4 e sub-grade LCD) e `manga_papel` (P&B com retícula 45° e hachuras mantendo `chroma_post` transparente no fundo) em `src/sejoga/render/resolucao_croma.py`, propagados para `renderizador.py`, `janela.py`, `choque_antenas_3d.py`, `sistema_tentaculos.py`, `gotas_tentaculos.py`, `menu_bandeja.py` e `interface.py`.
+- **VFX originais por estilo e malhas 3D (`src/sejoga/render/estilos_vfx.py`, `src/sejoga/render/efeitos_street.py`, `src/sejoga/render/renderizador.py`):**
+  - Reformulação completa dos `7` presets × `12` assets (novo ativo `"assinatura"`) com silhuetas distintas e tipografia vetorial HQ/Katakana (`spider_verse`, `hifi_rush`, `anime_sakuga`, `colorido`, `lowpoly_3d`, `pb_escuro`, `pb_claro`).
+  - Malhas 3D facetadas giratórias reais via `construir_malha_vfx_3d` no estilo `lowpoly_3d`, novos gatilhos em `efeitos_street.py`, correção de disparo `acento_danca > 0.36` em `renderizador.py` e alinhamento de assinatura em `GerenciadorEfeitosCena.atualizar` (`src/sejoga/render/efeitos_cena.py`).
+- **Danças padrão (`head_bob`, `hip_hop`, `rock`):**
+  - Ajustados `FORCA_HEAD_BOB = 0.52` (`src/sejoga/animacao/danca_tuning.py`), pesos/cadência (`src/sejoga/animacao/controlador_animacao.py`), frases, grooves e pernas (`danca_frases_tuning.py`, `movimento_danca.py`, `movimento_pernas.py`) com rebote completo de `head.x` (`< -10°` e `> +2°`) e `ALVO_CHIFRE = AlvoBraco(alvo=(0.200, 0.149, 0.127))` (`src/sejoga/animacao/alvos_bracos.py`) dentro do alcance do IK e com folga FK mão-fone `>= 0.14`.
+- **Validação observada nesta entrega:**
+  - `python -m pytest` (com `SEJOGA_CONFIG_PATH` isolado): **`1088 passed`** em `81.67s` (0 falhas, 0 skips), cobrindo os 3 novos testes em `tests/test_auditoria_refinos.py`.
+  - `ruff check`: `All checks passed!` em `alvos_bracos.py`, `estilos_vfx.py`, `efeitos_street.py`, `configuracao.py`, `menu_bandeja.py`, `danca_tuning.py` e `tests/test_auditoria_refinos.py` (`efeitos_cena.py`, `choque_antenas_3d.py` e `gotas_tentaculos.py` mantêm avisos pré-existentes fora das linhas editadas); isolamento de camadas (`git grep`): `0` violações.
+  - GPU offscreen inspecionado visualmente (`vfx_v4_criativo.png`, `filtros_v4_sheet.png`, `vfx_lowpoly3d_cena.png`, `dancas_padrao_v4.png`).
+  - Build `.\build.ps1`: exit code `0`, gerando `dist/SeJogaCompanion/SeJogaCompanion.exe`; smoke do `.exe` em perfil temporário confirmou `ERR_DIALOGS=0`, `OVERLAY_COUNT=1` (`WinGraphicsWindow0`, `LAYERED=True`, `NOACTIVATE=True`, `TRANSPARENT=False`), `WM_CLOSE` com `EXIT_RC=0` e `companion.log` sem tracebacks, erros de DLL ou erro 1400.
+  - **Pendente para validação humana em sessão desbloqueada:** `python tools/smoke_mouse.py` (com e sem `--physics`), não executável de forma interativa com a sessão Windows bloqueada.
+
+## Entrega Visual & Rig v2.0 (VFX por Estilo, Tentáculos Low-Poly, Celebrate YEAH e FNF Stage Speakers) — 22/11/2026
+
+- **7 estilos reais de VFX (`src/sejoga/render/estilos_vfx.py`, `src/sejoga/render/efeitos_street.py`):**
+  - Substituição das variações simples de cor/xadrez por texturas RGBA `256x256` em 4 quadros geradas por estilo (`spider_verse` com CMYK offset + pontos Ben-Day + zig-zag Spidey-Sense, `hifi_rush` pop-cel + barras de EQ, `anime_sakuga`, `colorido`, `lowpoly_3d`, `pb_escuro` screentone mangá e `pb_claro` giz), com `shader_sprite_bayer` e rótulos atualizados em `menu_bandeja.py` e `interface.py`.
+- **Tentáculos low-poly originais Blockbench (`src/sejoga/tentaculos/sistema_tentaculos.py`):**
+  - Restauração da malha facetada de 6 lados (`roughness=0.76`), 5 ventosas hexagonais salientes orientadas por `-curva` em transporte paralelo viradas para o espectador, `outline_vdata` separado (80 vértices) e paleta clássica roxo/rosa `"padrao"`, preservando o funil frontal de saída.
+- **Comemoração `celebrate` ("YEAH!!") refeita (`poses_base.py`, `gestos_dedos.py`, `movimento_pernas.py`, `movimento_corpo.py`, `squash_stretch.py`, `controlador_animacao.py`):**
+  - Punhos fechados (`PEGADAS["celebrate"] = 1.0`), entrada snappy de `0.18s` no `controlador_animacao.py`, salto em V aberto com folga FK validada (`MIN_CLEARANCE: 0.163` na mão direita e `0.2609` na esquerda em `t=0.0..2.0`) e bursts `# 7B` ancorados em `cabeca_topo` fora dos punhos.
+- **Stage Speakers estilo Friday Night Funkin' (`tools/gerar_boomboxes_palco.py`, `assets/model/Boomboxes.gltf`):**
+  - Substituição do visual boombox/alças/EQ pelos 3 stage speakers estilo FNF (central com subwoofer gigante + tweeters duplos + cantoneiras PA e laterais 2 vias inclinados): `20 nós, 17 malhas, 35724 vértices`.
+- **Validação após as últimas edições (`versao-2.0`):**
+  - `python -m ruff check tests/test_auditoria_refinos.py src/sejoga/render/estilos_vfx.py src/sejoga/animacao/gestos_dedos.py src/sejoga/render/menu_bandeja.py tools/gerar_boomboxes_palco.py`: `All checks passed!`.
+  - Isolamento de camadas (`nucleo/`, `configuracao.py`, `animacao/`): `0` imports de `panda3d`, `PySide6` ou `win32`.
+  - `python -m pytest` (perfil isolado `SEJOGA_CONFIG_PATH`): `1085 passed in 75.02s`.
+  - `.\build.ps1` + validação do `dist\SeJogaCompanion\SeJogaCompanion.exe`: `ERR_DIALOGS=0`, `OVERLAY_COUNT=1` (`WinGraphicsWindow0` com `WS_EX_LAYERED`, `WS_EX_NOACTIVATE`, sem `WS_EX_TRANSPARENT` global), `EXIT_RC=0` via `WM_CLOSE` e `companion.log` sem tracebacks/DLL/erro 1400 (aviso apenas de tray sem Shell nesta sessão bloqueada).
+  - **Pendência interativa:** validar manualmente na janela ativa desbloqueada (`python tools/smoke_mouse.py --physics`) após desbloquear a sessão Windows.
+
+## Revisão Completa v2.0 (Tentáculos, Animação, Win32/UI, Editor e Contexto Musical) — 22/11/2026
+
+- **Tentáculos 3D (`renderizador.py`, `sistema_tentaculos.py`):**
+  - Sincronizada a abertura da `door` imediatamente antes de `_update_tentacle_contacts()` e `reprojetar_portas()`, eliminando a caixa de colisão fechada que esmagava os tentáculos dentro do armário.
+  - Refinado o funil frontal progressivo, espalhamento radial em `curious` e `frenzy`, ventosas orientadas para a câmera, material PBR acetinado e preservação do contorno por estilo visual.
+- **Fluidez 3D, Cabo Verlet e Eliminação de Interferências (`animacao/*`, `render/rig_flexivel.py`, `render/corpo_inferior.py`, `render/fio_fone_malha.py`):**
+  - Removidas brigas entre `delta_expressao_viva`, `delta_secundario`, `PoseResolver` (crossfade duplo zerado em `teimosia_pose.py`), colisão de braços em cenas de contato/`celebrate`/`blue_balls`/`goku_teleport` e `LowerBody.apoiar_passada` durante clipes Mixamo/chutes.
+  - Sincronizados o pico do espirro (`sneeze` em `t=3.68s`) entre braços, pernas e squash/stretch; suavizado o humor nas antenas/postura; normalizado `colisao_bracos.py` por `dt`; fio do fone Verlet com `frente_modelo` injetada e vínculos re-resolvidos pós-colisão.
+- **Estabilidade Win32, UI, Física, Música e Editor (`janela.py`, `interface.py`, `fisica.py`, `resolucao_croma.py`, `escuta_musica.py`, `efeitos_sonoros.py`, `analisador_ritmo.py`, `editor/*`):**
+  - Eliminado o travamento de botão direito (`_native_buttons`/`_owned`) após abertura do menu Qt, expostos novos estilos de abertura/encerramento e personalidades (`brc_stance`, `vibing`, `audio.*`, `wander`, `react_to_attention`, `sleep_after_idle_seconds`) na UI e bandeja, corrigida persistência de `start_position` e áudio do teleporte respeitando volume/warmup.
+  - Restaurada gravidade em `end_drag(cancel=True)` quando havia gravidade ativa, guardas `NaN`/`MAX_VELOCITY` em `ScreenSpacePhysics`, remoção completa das formas em `cleanup()`, threshold completo do dissolve do Goku nas bordas (`mix(-0.08, 1.18, ...)`), sombra oculta quando o modelo está oculto e escalada em coordenadas de mundo.
+  - Escuta SMTC compara sessão por `source_app_user_model_id` e extrai paleta da capa do álbum (`extrair_paleta_album` -> `album_colors` -> `MusicSpeaker` + **Living Cyber-Ink**), gravação atômica de WAV em `efeitos_sonoros.py`, e editor migrado para `efeitos_street` com suporte completo a `pelvis` e reações/clipes de ação.
+- **Fechamento de Roadmap e Empacotamento:**
+  - Conectado `cor_contorno_viva` em `_update_outline_breath`, adicionados VFX de comemoração em `efeitos_street.py`, conectado `MetaTipo.OLHAR_PONTO` ao `GateAtencao`, gatilho orgânico de espirro por poeira em repouso prolongado, removida alocação morta de `GerenciadorEfeitosCena` no renderer e verificação de caminhos dinâmicos portáveis em `build.ps1`.
+- **Validação Final e Bundle Windows (22/11/2026):**
+  - `python -m pytest` (com `SEJOGA_CONFIG_PATH` isolado): `1082 passed in 82.03s` (`0` falhas), após corrigir flake de ritmo em `test_troca_fone_com_problema_para_outra_cena_sem_salto` e validar `test_mouse_buttons_sem_hwnd_inicializado_nao_falha`.
+  - A validação do executável gerado por `.\build.ps1` capturou um `AttributeError` real no startup de `SeJogaCompanion.exe` (`OverlayApp.__init__` chamava `_mouse_buttons()` antes de `self.hwnd` existir). Corrigida a inicialização/guardas de `hwnd` e `_liberar_captura` em `src/sejoga/render/janela.py`.
+  - Rebuild concluído com `.\build.ps1` (exit code `0`, `dist\SeJogaCompanion\SeJogaCompanion.exe`): processo iniciou com `WinGraphicsWindow0` (`WS_EX_LAYERED`, `WS_EX_NOACTIVATE`, sem `WS_EX_TRANSPARENT` global), gravou `logs/companion.log` sem tracebacks nem erro 1400 e encerrou com exit code `0` após `WM_CLOSE`.
+  - `tools/smoke_mouse.py` rodado com sessão Windows bloqueada (`GetForegroundWindow() == 0`) falhou em `tools/smoke_mouse.py:173` (`WindowFromPoint(corner) != app.hwnd`); pendente reexecução de `smoke_mouse.py` (e `--physics`) em sessão desbloqueada.
+
+---
 
 ## Versão 2.0 — Criatura Viva, Rig Completo, Danças Cyberfunk e VFX 2.0 — 18/11/2026
 

@@ -24,10 +24,8 @@ _atualizador = importlib.import_module("sejoga.distribuicao.atualizador")
 
 
 ASSETS_CAIXAS_DE_SOM = {
-    "_internal/assets/assets/boomboxgrande/BoomboxGRANDE.bbmodel",
-    "_internal/assets/assets/BoomboxSIde1.bbmodel",
-    "_internal/assets/assets/boomboxgrande/texture.png",
-    "_internal/assets/assets/texture.png",
+    "_internal/assets/model/Boomboxes.gltf",
+    "_internal/assets/model/radio-compacto.glb",
 }
 
 

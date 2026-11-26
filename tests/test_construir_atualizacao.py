@@ -26,10 +26,8 @@ def test_package_contains_runtime_metadata_and_never_developer_profiles(tmp_path
     (bundle / "_internal/source.blend").write_bytes(b"art-source")
     (bundle / "_internal/source.bbmodel").write_bytes(b"art-source")
     assets = (
-        "_internal/assets/assets/BoomboxSIde1.bbmodel",
-        "_internal/assets/assets/boomboxgrande/BoomboxGRANDE.bbmodel",
-        "_internal/assets/assets/boomboxgrande/texture.png",
-        "_internal/assets/assets/texture.png",
+        "_internal/assets/model/Boomboxes.gltf",
+        "_internal/assets/model/radio-compacto.glb",
     )
     for nome in assets:
         asset = bundle / nome

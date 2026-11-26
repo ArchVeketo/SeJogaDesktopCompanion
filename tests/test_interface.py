@@ -42,7 +42,7 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
     dialog.beat_input.setChecked(False)
     dialog.dance_style_input.setCurrentIndex(dialog.dance_style_input.findData("rock"))
     dialog.personality_input.setCurrentIndex(
-        dialog.personality_input.findData("fighter")
+        dialog.personality_input.findData("boxeador_pronto")
     )
     dialog._save()
     assert dialog.result() == QDialog.DialogCode.Accepted
@@ -52,10 +52,10 @@ def test_save_dialog_uses_fallback_and_emits_saved_settings(tmp_path, monkeypatc
     assert configuracao.load_settings(fallback).window.colorkey_color == "#00FF00"
     assert configuracao.load_settings(fallback).window.outline_width == 4.5
     assert configuracao.load_settings(fallback).window.outline_breath == 0.7
-    assert configuracao.load_settings(fallback).behavior.idle_personality == "fighter"
+    assert configuracao.load_settings(fallback).behavior.idle_personality == "boxeador_pronto"
     reopened = SettingsDialog(configuracao.load_settings(fallback))
     assert reopened.colorkey_color_button.text() == "#00FF00"
-    assert reopened.personality_input.currentData() == "fighter"
+    assert reopened.personality_input.currentData() == "boxeador_pronto"
     assert reopened.outline_breath_input.value() == 0.7
     assert reopened.sensitivity_input.value() == 0.8
     assert reopened.dance_chance_input.value() == 0.65
@@ -160,4 +160,20 @@ def test_seletores_abertura_e_encerramento_persistem(tmp_path, monkeypatch):
     assert reopened.intro_animation_input.currentData() == "virtual_insanity_in"
     assert reopened.exit_animation_input.currentData() == "lego_disassemble"
     reopened.close()
+    dialog.close()
+
+
+def test_autostart_desabilitado_sem_launcher_instalado(monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    from sejoga import configuracao
+    from sejoga.desktop import inicializacao_automatica
+    from sejoga.desktop.interface import SettingsDialog
+
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    monkeypatch.setattr(inicializacao_automatica, "esta_ativo", lambda: False)
+    monkeypatch.setattr(inicializacao_automatica, "installed_launcher", lambda: None)
+    dialog = SettingsDialog(configuracao.Settings())
+    assert dialog.autostart_input.isEnabled() is False
+    assert "instalada" in dialog.autostart_input.toolTip().lower()
     dialog.close()

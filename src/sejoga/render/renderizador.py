@@ -12,6 +12,7 @@ import logging
 import math
 import random
 import time
+from functools import cache
 from typing import Any
 
 # Panda3D GLTF loader registers support for .gltf and .glb files.
@@ -23,6 +24,7 @@ from panda3d.core import (
     NodePath,
     Point3,
     Quat,
+    Shader,
     TransformState,
     Vec3,
 )
@@ -33,7 +35,6 @@ from sejoga.animacao.controlador_animacao import AnimationState
 from sejoga.animacao.danca_clipes import carregar_clipe_emote
 from sejoga.animacao.interpolacao import suavizar_quintico
 from sejoga.animacao.squash_stretch import squash_stretch_composto
-from sejoga.musica.caixa_som import BATIDAS_ARREMESSO_S
 from sejoga.nucleo.cinematica import BASE_ADICIONAL_GRAUS
 from sejoga.nucleo.esqueleto import ALL_GROUPS, Rig
 from sejoga.nucleo.modelo import load_model
@@ -67,6 +68,44 @@ MAX_LUZES_PBR = 8
 # Alpha mínimo da textura para o fragmento do contorno não ser descartado:
 # abaixo disso a borda "vaza" por faces transparentes do modelo.
 CONTORNO_ALPHA_DISCARD = 0.05
+
+
+@cache
+def _shader_sombra_contato() -> Shader:
+    """Shader Bayer 4x4 em screen-space para sombra de contato nítida em qualquer escala."""
+    vert = """#version 130
+uniform mat4 p3d_ModelViewProjectionMatrix;
+in vec4 p3d_Vertex;
+out vec2 v_local;
+void main() {
+    v_local = p3d_Vertex.xz * 2.0;
+    gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
+}
+"""
+    frag = """#version 130
+uniform float u_shadow_alpha;
+in vec2 v_local;
+out vec4 fragColor;
+float _sj_sombra_bayer(vec2 p) {
+    vec2 m = floor(mod(p, 4.0));
+    int i = int(m.x) + int(m.y) * 4;
+    const float tbl[16] = float[16](
+        0.0/16.0,  8.0/16.0,  2.0/16.0, 10.0/16.0,
+       12.0/16.0,  4.0/16.0, 14.0/16.0,  6.0/16.0,
+        3.0/16.0, 11.0/16.0,  1.0/16.0,  9.0/16.0,
+       15.0/16.0,  7.0/16.0, 13.0/16.0,  5.0/16.0
+    );
+    return tbl[i];
+}
+void main() {
+    float r2 = dot(v_local, v_local);
+    float radial = 1.0 - smoothstep(0.34, 1.0, r2);
+    float alpha = clamp(radial * clamp(u_shadow_alpha, 0.0, 1.0), 0.0, 1.0);
+    if (r2 > 1.0 || alpha <= _sj_sombra_bayer(gl_FragCoord.xy) + 0.015) discard;
+    fragColor = vec4(0.010, 0.009, 0.016, 1.0);
+}
+"""
+    return Shader.make(Shader.SL_GLSL, vert, frag)
 
 
 _NINJA_SMOKE_OFFSETS = (
@@ -113,6 +152,7 @@ _LEGO_SCATTER_PARTS = (
     "peitoral",
     "abdomen",
     "cintura",
+    "pelvis",
 )
 
 
@@ -156,7 +196,13 @@ class Panda3DRenderer:
         # para evitar hasattr por frame em apply_body_motion.
         self._suspension_pivot = None
         self._squash_pivot = None
+        self._squash_atual = (1.0, 1.0, 1.0)
+        self._pick_node_name = "body"
         self._shadow_np = None
+        self._floor_screen_y: float | None = None
+        self._height_above_floor_px: float = 0.0
+        self._ambient_light = None
+        self._dir_light = None
         self._physics_velocity = (0.0, 0.0)
         self._is_grounded = True
         from sejoga.animacao.movimento_corpo import GiroCorpo, Spring
@@ -195,11 +241,19 @@ class Panda3DRenderer:
         self._brilho_halo_atual: float = 0.0
         self._deslocamento_danca = Vec3(0)
         self._choque_antenas_3d = None
-        self.efeitos_cena = None
         self.efeitos_street = None
+        self._album_colors: tuple[tuple[float, float, float], ...] = ()
+        self._last_music_bass: float | None = None
         self._visual_filter = "padrao"
         self._vfx_enabled = True
         self._filter_clock = 0.0
+        self._sv_step_acc = 0.0
+        self._sv_allow_pose_step = True
+        self._street_xray_ativo = False
+        self._vfx_transicoes = None
+        self._transicao_intro_estilo = ""
+        self._transicao_intro_prog: float | None = None
+        self._transicao_saida_prog: float | None = None
         self._paineis_armario: tuple = ()
         self._raiz_tilt_rad = 0.0
         self._lego_snapshot: list = []
@@ -209,13 +263,24 @@ class Panda3DRenderer:
         self._exit_orig_anchor_parent = None
         self._exit_orig_anchor_tf = None
         self._intro_orig_anchor_pos = None
+        self._sono_deitado_peso = 0.0
+        self._sono_sentado_peso = 0.0
+        self._breakdance_chao_peso = 0.0
+        self._ultimo_breakdance_pose: tuple[float, float] = (0.0, 0.0)
+        self._ultimo_quat_raiz: Any = None
+        self._peso_saida_quat = 0.0
+        self._dz_extra_atual = 0.0
+        self._squash_ref_z: float | None = None
+        self._anim_air_px_suave = 0.0
         self._intro_orig_foot_local_z: float | None = None
 
         self._setup_scene()
         self._load_model()
         from sejoga.render.corpo_inferior import LowerBody
+        from sejoga.render.prop_cuspido import PropCuspidoCena
 
         self.lower_body = LowerBody(self)
+        self.prop_cuspido = PropCuspidoCena(self)
         self._setup_picking()
 
     def _setup_picking(self) -> None:
@@ -264,8 +329,11 @@ class Panda3DRenderer:
             )
             picked = self._pick_queue.getEntry(0).getIntoNodePath()
             self._pick_part = "body"
+            self._pick_node_name = "body"
             while not picked.isEmpty() and picked != self.model_np:
                 name = picked.getName()
+                if self._pick_node_name == "body" and name in self._rig_nodes:
+                    self._pick_node_name = name
                 if "tentacle" in name.lower():
                     self._pick_part = "tentacle"
                     break
@@ -306,11 +374,13 @@ class Panda3DRenderer:
 
         ambient = AmbientLight("ambient")
         ambient.setColor((0.4, 0.4, 0.4, 1))
+        self._ambient_light = ambient
         ambient_np = self.showbase.render.attachNewNode(ambient)
         self.showbase.render.setLight(ambient_np)
 
         dirlight = DirectionalLight("dirlight")
         dirlight.setColor((0.8, 0.8, 0.8, 1))
+        self._dir_light = dirlight
         dirlight_np = self.showbase.render.attachNewNode(dirlight)
         dirlight_np.setHpr(-45, -45, 0)
         dirlight.getLens().setFilmSize(24, 24)
@@ -499,7 +569,6 @@ class Panda3DRenderer:
         pontos = []
         while not leitor.isAtEnd():
             pontos.append(head.getRelativePoint(gabinete, leitor.getData3()))
-        fundo_y = min(p.y for p in pontos)
         frente_y = max(p.y for p in pontos)
         centro_cabeca = Vec3(0, 0, 0.17)
 
@@ -561,6 +630,84 @@ class Panda3DRenderer:
         fundo.setDepthOffset(1)
         fundo.setColorScale(0.20, 0.12, 0.42, 1.0)
         fundo.setCollideMask(0)
+
+    def _revestir_interior_porta(self, modelo: NodePath) -> None:
+        """Fecha o verso da porta do armário com textura própria interna.
+
+        A malha ``Porta`` do glTF só tem a face frontal e as 4 bordas laterais
+        (com ``doubleSided=True``), o que fazia o interior exibir a textura da
+        frente espelhada quando a porta abria. Este quad opaco no plano traseiro
+        (normal -Y) oclui o verso sem alterar a frente nem o contorno.
+        """
+        from panda3d.core import (
+            Filename,
+            Geom,
+            GeomNode,
+            GeomTriangles,
+            GeomVertexData,
+            GeomVertexFormat,
+            GeomVertexWriter,
+            SamplerState,
+        )
+
+        from sejoga.nucleo.recursos import assets_dir
+
+        porta = modelo.find("**/door/Porta/+GeomNode")
+        if porta.isEmpty():
+            porta = modelo.find("**/door/**/+GeomNode")
+        if porta.isEmpty():
+            return
+        head = modelo.find("**/head")
+        if head.isEmpty():
+            return
+        # Cantos exatos do verso da folha da porta no espaço de ``head`` -> local de ``porta``.
+        cantos_head = (
+            Point3(-0.1216, 0.1160, 0.0313),
+            Point3(0.1221, 0.1160, 0.0313),
+            Point3(0.1221, 0.1160, 0.3242),
+            Point3(-0.1216, 0.1160, 0.3242),
+        )
+        uvs = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
+        normal_local = porta.getRelativeVector(head, Vec3(0.0, -1.0, 0.0))
+        if normal_local.lengthSquared() > 1e-8:
+            normal_local.normalize()
+
+        vdata = GeomVertexData("interior-porta", GeomVertexFormat.getV3n3t2(), Geom.UHStatic)
+        vdata.setNumRows(4)
+        wv = GeomVertexWriter(vdata, "vertex")
+        wn = GeomVertexWriter(vdata, "normal")
+        wt = GeomVertexWriter(vdata, "texcoord")
+        for pt_h, (u, v) in zip(cantos_head, uvs, strict=True):
+            pt_local = porta.getRelativePoint(head, pt_h)
+            wv.addData3f(pt_local)
+            wn.addData3f(normal_local)
+            wt.addData2f(u, v)
+
+        tris = GeomTriangles(Geom.UHStatic)
+        # Winding CCW visto pelo lado -Y (interior da porta aberta)
+        tris.addVertices(0, 1, 2)
+        tris.addVertices(0, 2, 3)
+        tris.closePrimitive()
+
+        geom = Geom(vdata)
+        geom.addPrimitive(tris)
+        gnode = GeomNode("interior-porta-armario")
+        gnode.addGeom(geom)
+        interior = porta.attachNewNode(gnode)
+        interior.setTwoSided(False, 1)
+        interior.setCollideMask(0)
+
+        tex_path = assets_dir() / "textures" / "porta_interior.png"
+        if tex_path.exists():
+            tex = self.showbase.loader.loadTexture(Filename.fromOsSpecific(str(tex_path)))
+            if tex is not None:
+                tex.setMagfilter(SamplerState.FTNearest)
+                tex.setMinfilter(SamplerState.FTNearest)
+                tex.setWrapU(SamplerState.WMClamp)
+                tex.setWrapV(SamplerState.WMClamp)
+                interior.setTexture(tex, 1)
+        else:
+            interior.setColorScale(0.18, 0.14, 0.34, 1.0)
 
     @staticmethod
     def _tile_bounds_px(
@@ -703,13 +850,21 @@ class Panda3DRenderer:
         cand: NodePath, raiz_np: NodePath | None = None
     ) -> None:
         """Elimina sangramento de tile vizinho nos quads das argolas e ajusta alfa."""
-        from panda3d.core import AlphaTestAttrib, TransparencyAttrib
+        from panda3d.core import AlphaTestAttrib, ColorBlendAttrib, TransparencyAttrib
 
         if cand is None or cand.isEmpty():
             return
         ref_np = raiz_np if (raiz_np is not None and not raiz_np.isEmpty()) else cand.getParent()
         alpha_attr = AlphaTestAttrib.make(AlphaTestAttrib.MGreater, 0.5)
         trans_attr = TransparencyAttrib.make(TransparencyAttrib.MAlpha)
+        blend_attr = ColorBlendAttrib.make(
+            ColorBlendAttrib.MAdd,
+            ColorBlendAttrib.OIncomingAlpha,
+            ColorBlendAttrib.OOneMinusIncomingAlpha,
+            ColorBlendAttrib.MAdd,
+            ColorBlendAttrib.OOne,
+            ColorBlendAttrib.OOneMinusIncomingAlpha,
+        )
 
         vistos: set[int] = set()
         for np in [cand, *cand.findAllMatches("**/+GeomNode")]:
@@ -726,6 +881,7 @@ class Panda3DRenderer:
 
         cand.setAttrib(alpha_attr, 1)
         cand.setAttrib(trans_attr, 1)
+        cand.setAttrib(blend_attr, 10)
 
     def _registrar_argolas_antenas(self, head_r_ant, head_l_ant, out_r_ant, out_l_ant) -> None:
         self._argolas_antena = []
@@ -759,22 +915,17 @@ class Panda3DRenderer:
 
     def _configurar_antenas_e_adornos(self, head_node) -> None:
         from sejoga.render.choque_antenas_3d import ChoqueAntenas3D
-        from sejoga.render.efeitos_cena import GerenciadorEfeitosCena
         from sejoga.render.efeitos_street import GerenciadorEfeitosStreet
 
-        self.efeitos_cena = GerenciadorEfeitosCena(
-            self.model_anchor,
-            head_node=head_node,
-            model_node=self.model_np,
-        )
         win_cfg = self.showbase.settings.window
         self.efeitos_street = GerenciadorEfeitosStreet(
             self.model_anchor,
             head_node=head_node,
             model_node=self.model_np,
-            paleta=getattr(win_cfg, "vfx_palette", "pb_escuro"),
+            paleta=getattr(win_cfg, "vfx_palette", "auto"),
             escala_global=float(getattr(win_cfg, "vfx_scale", 1.0)),
             habilitado=bool(getattr(win_cfg, "vfx_enabled", True)),
+            colorkey_hex=str(getattr(win_cfg, "colorkey_color", "#FF00FF")),
         )
         self._vfx_enabled = bool(getattr(win_cfg, "vfx_enabled", True))
         self._argolas_fx = []
@@ -850,6 +1001,7 @@ class Panda3DRenderer:
         self.model_np = model_np
         self._setup_outline()
         self._escurecer_fundo_interno(model_np)
+        self._revestir_interior_porta(model_np)
         self._setup_shadow()
         self.set_visual_scale(self.showbase.settings.window.scale)
 
@@ -858,19 +1010,23 @@ class Panda3DRenderer:
 
         self.flexible_rig = FlexibleRig(self)
 
-        unit_scale = float(self._view_height / self.height / self.model_np.getScale().x)
+        # Normaliza ``unit_scale`` pela altura de referência (480px) para que os
+        # tentáculos tenham exatamente o mesmo alcance em janelas de 480, 900 ou 1200px!
+        unit_scale = float(self._view_height / 480.0 / self._fit_scale)
         head_node = self._rig_nodes["head"]
+        # Âncoras centralizadas no meio do vão e avançadas para frente (y=0.07..0.095)
+        # evitando que os tentáculos nasçam colados na lateral ou presos no fundo do armário.
         spawn_points = [
-            self.model_np.getRelativePoint(head_node, Vec3(0.03, 0.045, 0.13)),
-            self.model_np.getRelativePoint(head_node, Vec3(0.05, 0.050, 0.17)),
-            self.model_np.getRelativePoint(head_node, Vec3(-0.01, 0.055, 0.14)),
-            self.model_np.getRelativePoint(head_node, Vec3(0.035, 0.040, 0.09)),
-            self.model_np.getRelativePoint(head_node, Vec3(0.01, 0.060, 0.12)),
-            self.model_np.getRelativePoint(head_node, Vec3(0.02, 0.035, 0.14)),
-            self.model_np.getRelativePoint(head_node, Vec3(-0.02, 0.035, 0.09)),
-            self.model_np.getRelativePoint(head_node, Vec3(0.06, 0.045, 0.14)),
-            self.model_np.getRelativePoint(head_node, Vec3(0.04, 0.055, 0.19)),
-            self.model_np.getRelativePoint(head_node, Vec3(-0.02, 0.050, 0.07)),
+            self.model_np.getRelativePoint(head_node, Vec3(0.005, 0.085, 0.145)),
+            self.model_np.getRelativePoint(head_node, Vec3(-0.015, 0.088, 0.175)),
+            self.model_np.getRelativePoint(head_node, Vec3(0.020, 0.082, 0.120)),
+            self.model_np.getRelativePoint(head_node, Vec3(-0.020, 0.084, 0.105)),
+            self.model_np.getRelativePoint(head_node, Vec3(0.000, 0.092, 0.195)),
+            self.model_np.getRelativePoint(head_node, Vec3(0.022, 0.078, 0.165)),
+            self.model_np.getRelativePoint(head_node, Vec3(-0.008, 0.080, 0.130)),
+            self.model_np.getRelativePoint(head_node, Vec3(0.015, 0.075, 0.190)),
+            self.model_np.getRelativePoint(head_node, Vec3(-0.022, 0.076, 0.150)),
+            self.model_np.getRelativePoint(head_node, Vec3(0.008, 0.086, 0.098)),
         ]
         self.tentacle_pool = TentaclePool(
             self.rig,
@@ -954,6 +1110,8 @@ class Panda3DRenderer:
         if self.outline_np:
             self.outline_np.setScale(self.model_np.getScale())
             self.outline_np.setPos(self.model_np.getPos())
+            if getattr(self, "_outline_enabled", False) and hasattr(self, "_outline_width_px"):
+                self._atualizar_espessura_contorno(resetar=False)
 
     def aplicar_profundidade_visual(
         self, escala_profundidade: float, subida_fracao: float
@@ -993,22 +1151,61 @@ class Panda3DRenderer:
         return tex
 
     def _setup_shadow(self) -> None:
-        """Cria sombra de contato estilizada no chão, compatível com color key."""
-        from panda3d.core import AlphaTestAttrib, CardMaker, TransparencyAttrib
+        """Cria sombra de contato estilizada no plano do chão, independente dos pés."""
+        from panda3d.core import CardMaker, TransparencyAttrib
 
         card = CardMaker("mascot-shadow-card")
         card.setFrame(-0.5, 0.5, -0.5, 0.5)
-        shadow = self.model_anchor.attachNewNode(card.generate())
-        shadow.setP(-82.0)
-        shadow.setTexture(self._criar_textura_sombra())
+        shadow = self.showbase.render.attachNewNode(card.generate())
+        shadow.setHpr(0.0, -82.0, 0.0)
         shadow.setTwoSided(True)
         shadow.setLightOff(1)
-        shadow.setShaderOff(1)
-        shadow.setTransparency(TransparencyAttrib.MAlpha)
-        shadow.setAttrib(AlphaTestAttrib.make(AlphaTestAttrib.MGreater, 0.5))
+        shadow.setShader(_shader_sombra_contato(), 1000)
+        shadow.setShaderInput("u_shadow_alpha", 1.0)
+        shadow.setDepthWrite(False)
+        shadow.setTransparency(TransparencyAttrib.MNone)
         shadow.setCollideMask(0)
         shadow.setBin("background", 10)
         self._shadow_np = shadow
+
+    @staticmethod
+    def _suavizar_normais_contorno(outline_np: NodePath) -> None:
+        """Solda normais por posição nas malhas do contorno para eliminar frestas de cubo."""
+        from panda3d.core import GeomVertexReader, GeomVertexWriter
+
+        for np in outline_np.findAllMatches("**/+GeomNode"):
+            gn = np.node()
+            for gi in range(gn.getNumGeoms()):
+                geom = gn.modifyGeom(gi)
+                vdata = geom.modifyVertexData()
+                if not vdata.hasColumn("vertex") or not vdata.hasColumn("normal"):
+                    continue
+                vr = GeomVertexReader(vdata, "vertex")
+                nr = GeomVertexReader(vdata, "normal")
+                chaves: list[tuple[float, float, float]] = []
+                unicas: dict[tuple[float, float, float], dict[tuple[float, float, float], Vec3]] = {}
+                while not vr.isAtEnd():
+                    pos = vr.getData3()
+                    norm = Vec3(nr.getData3())
+                    if norm.lengthSquared() > 1e-10:
+                        norm.normalize()
+                    chave = (round(float(pos.x), 4), round(float(pos.y), 4), round(float(pos.z), 4))
+                    chaves.append(chave)
+                    n_key = (round(float(norm.x), 3), round(float(norm.y), 3), round(float(norm.z), 3))
+                    unicas.setdefault(chave, {})[n_key] = norm
+                medias: dict[tuple[float, float, float], Vec3] = {}
+                for chave, bucket in unicas.items():
+                    soma = Vec3(0.0, 0.0, 0.0)
+                    for vec in bucket.values():
+                        soma += vec
+                    if soma.lengthSquared() > 1e-10:
+                        soma.normalize()
+                    else:
+                        soma = Vec3(0.0, -1.0, 0.0)
+                    medias[chave] = soma
+                nw = GeomVertexWriter(vdata, "normal")
+                for chave in chaves:
+                    nw.setData3(medias[chave])
 
     def _setup_outline(self) -> None:
         # Invariante: chamado dentro de _load_model() apos definir model_np.
@@ -1021,7 +1218,6 @@ in vec3 p3d_Normal;
 in vec2 p3d_MultiTexCoord0;
 out vec2 outline_uv;
 uniform mat4 p3d_ModelViewProjectionMatrix;
-uniform mat4 p3d_ModelViewMatrix;
 uniform mat3 p3d_NormalMatrix;
 // Espessura efetiva do frame (respiração). Cai para outline_thickness quando
 // o render não atualiza o runtime, preservando o comportamento estático.
@@ -1036,12 +1232,10 @@ void main() {
     outline_uv = p3d_MultiTexCoord0;
     float thickness = outline_thickness_runtime > 0.0
         ? outline_thickness_runtime : outline_thickness;
-    // Linha "desenhada": faces de perfil (normal perpendicular ao olhar) ganham
-    // um pouco mais de espessura que as frontais, dando vida à silhueta low poly
-    // em vez de uma borda uniforme dura. Variação limitada para não deformar.
+    // Linha "desenhada": faces de perfil (normal perpendicular ao olhar ortográfico)
+    // ganham um pouco mais de espessura que as frontais.
     vec3 view_normal = normalize(p3d_NormalMatrix * p3d_Normal);
-    vec3 view_pos = (p3d_ModelViewMatrix * p3d_Vertex).xyz;
-    float facing = abs(dot(view_normal, normalize(-view_pos)));
+    float facing = abs(dot(view_normal, vec3(0.0, 0.0, 1.0)));
     float orientacao = mix(1.15, 0.9, clamp(facing, 0.0, 1.0));
     vec3 normal_n = normalize(p3d_Normal);
     vec3 offset = normal_n * thickness * orientacao;
@@ -1094,6 +1288,7 @@ void main() {{
             prim_d.addVertices(6, 10, 21)
             prim_d.addVertices(6, 21, 18)
             out_door.hide()
+        self._suavizar_normais_contorno(self.outline_np)
         self.outline_np.setShader(Shader.make(Shader.SL_GLSL, vertex, fragment), 1000)
         self.outline_np.setAttrib(
             CullFaceAttrib.make(CullFaceAttrib.MCullCounterClockwise), 1000
@@ -1106,61 +1301,100 @@ void main() {{
         self.outline_np.setShaderInput("u_sketch_time", 0.0)
 
     def set_outline_settings(self, settings) -> None:
-        """Aplica as configurações do contorno respeitando o filtro visual ativo."""
+        """Aplica as configurações do contorno respeitando a escolha do usuário."""
         if not self.outline_np:
             return
-        filtro = getattr(self, "_visual_filter", "padrao")
-        # No filtro Pixel (~1.5px), oculta o contorno fino para ficar limpo como o turntable.gif.
-        # No filtro Rascunho (Spider-Punk), força o contorno fervendo em nanquim escuro!
-        habilitar = (
-            False
-            if filtro == "pixel"
-            else (True if filtro == "rascunho" else bool(settings.outline_enabled))
-        )
+        filtro = getattr(self, "_visual_filter", "blockbench")
+        habilitar = bool(getattr(settings, "outline_enabled", True)) and filtro != "blockbench"
         self._outline_enabled = habilitar
         self.outline_np.setShaderInput("outline_enabled", self._outline_enabled)
         self.outline_np.setShaderInput(
-            "u_sketch_mode", 1.0 if filtro == "rascunho" else 0.0
+            "u_sketch_mode", 1.0 if filtro in ("spiderverse", "rascunho", "street") else 0.0
         )
         if not habilitar:
-            # Disable both the duplicate model and all child shells. The shader
-            # guard also suppresses stale per-mesh copies after live settings changes.
+            # Desliga contorno no modelo e nos tentáculos: borda 100% invisível.
             self.outline_np.hide()
             self.outline_np.stash()
+            if self.tentacle_pool:
+                for tentacle in self.tentacle_pool.tentacles:
+                    if tentacle.outline_mesh_node:
+                        tentacle.outline_mesh_node.hide()
             return
         self.outline_np.unstash()
         self.outline_np.show()
-        if filtro == "rascunho":
-            self._outline_color_rgba = (0.06, 0.06, 0.08, 1.0)
-        else:
-            color = settings.outline_color.lstrip("#")
-            rgb = tuple(int(color[index : index + 2], 16) / 255 for index in (0, 2, 4))
-            self._outline_color_rgba = (*rgb, 1.0)
+        color = settings.outline_color.lstrip("#")
+        # Converte sRGB -> linear (pow 2.2) antes do FBO HDR do SimplePBR para
+        # evitar cores lavadas/acinzentadas após o tonemap Filmic.
+        rgb = tuple(
+            (int(color[index : index + 2], 16) / 255.0) ** 2.2
+            for index in (0, 2, 4)
+        )
+        self._outline_color_rgba = (*rgb, 1.0)
         self.outline_np.setShaderInput("outline_color", self._outline_color_rgba)
         if self.tentacle_pool:
-            for tentacle in self.tentacle_pool.tentacles:
-                if tentacle.outline_mesh_node:
-                    tentacle.outline_mesh_node.setShaderInput(
-                        "outline_color", (0.14, 0.02, 0.07, 1.0), 1
-                    )
-        # Model units per displayed pixel; the border follows each part's normals.
-        visible_height = self.height * self.FRAME_FILL * settings.scale
-        largura = max(2.8, settings.outline_width) if filtro == "rascunho" else settings.outline_width
-        thickness = largura * self._model_dimensions.z / visible_height
-        self.outline_np.setShaderInput("outline_thickness", thickness)
-        # Guarda a base e (re)inicia a respiração no estado de repouso.
-        self._outline_base_thickness = thickness
+            colorkey_hex = str(getattr(settings, "colorkey_color", "#FF00FF"))
+            self.tentacle_pool.aplicar_estilo(
+                filtro,
+                True,
+                self._outline_color_rgba,
+                colorkey_hex,
+            )
+        # Espessura invariante ao resize 2x/3x do canvas e escala de profundidade.
+        self._outline_width_px = float(getattr(settings, "outline_width", 2.5))
         self._outline_breath = float(getattr(settings, "outline_breath", 0.0))
-        self._outline_respiracao.reset(thickness)
-        self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
+        self._atualizar_espessura_contorno(resetar=True)
+
+    def _atualizar_espessura_contorno(self, *, resetar: bool = False) -> None:
+        if not self.outline_np or not self.model_np:
+            return
+        largura = float(getattr(self, "_outline_width_px", 2.5))
+        if getattr(self, "_visual_filter", "blockbench") == "street":
+            largura *= 1.20
+        model_scale = max(1e-4, float(self.model_np.getScale().z))
+        units_per_px = float(self._view_height) / max(1.0, float(self.height))
+        thickness = largura * units_per_px / model_scale
+        self.outline_np.setShaderInput("outline_thickness", thickness)
+        self._outline_base_thickness = thickness
+        if resetar or self._outline_breath <= 0.0:
+            self._outline_respiracao.reset(thickness)
+            self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
+            self._last_outline_thickness_sent = thickness
 
     def set_visual_filter(self, filter_name: str) -> None:
-        """Alterna o filtro visual ao vivo: ``padrao``, ``pixel`` (~1.5px) ou ``rascunho``."""
-        escolhido = filter_name if filter_name in ("padrao", "pixel", "rascunho") else "padrao"
+        """Alterna o filtro visual ao vivo entre os 5 estilos canônicos."""
+        from sejoga.configuracao import normalizar_filtro_visual
+
+        codigos = {
+            "blockbench": 10.0,
+            "street": 3.0,
+            "anime": 5.0,
+            "spiderverse": 2.0,
+            "holograma": 7.0,
+        }
+        iluminacao = {
+            "blockbench": ((0.58, 0.56, 0.53, 1.0), (0.64, 0.67, 0.72, 1.0)),
+            "street": ((0.36, 0.37, 0.42, 1.0), (0.88, 0.86, 0.82, 1.0)),
+            "anime": ((0.48, 0.48, 0.52, 1.0), (0.86, 0.85, 0.84, 1.0)),
+            "spiderverse": ((0.46, 0.45, 0.44, 1.0), (0.84, 0.82, 0.78, 1.0)),
+            "holograma": ((0.44, 0.48, 0.54, 1.0), (0.84, 0.90, 0.96, 1.0)),
+        }
+        escolhido = normalizar_filtro_visual(filter_name)
         self._visual_filter = escolhido
-        codigo = {"padrao": 0.0, "pixel": 1.0, "rascunho": 2.0}[escolhido]
+        self._sv_step_acc = 0.0
+        self._sv_allow_pose_step = True
+        if getattr(self, "_street_xray_ativo", False):
+            self._limpar_xray_street()
+        efeitos = getattr(self, "efeitos_street", None)
+        if efeitos is not None:
+            efeitos.configurar(filtro=escolhido)
+        codigo = codigos[escolhido]
+        amb_col, dir_col = iluminacao[escolhido]
+        if self._ambient_light is not None:
+            self._ambient_light.setColor(amb_col)
+        if self._dir_light is not None:
+            self._dir_light.setColor(dir_col)
         if self._pbr_pipeline is not None:
-            from panda3d.core import SamplerState, Texture
+            from sejoga.render.resolucao_croma import configurar_textura_cena_nearest
 
             quad = self._pbr_pipeline._post_process_quad
             win = getattr(self.showbase, "win", None)
@@ -1168,31 +1402,47 @@ void main() {{
             vh = float(win.getYSize()) if win else float(self.height)
             quad.setShaderInput("u_viewport_size", (vw, vh))
             quad.setShaderInput("u_visual_filter", codigo)
-            quad.setShaderInput("u_pixel_size", 2.0)
-            scene_tex = quad.getShaderInput("tex").getTexture()
-            if scene_tex is not None:
-                filt = Texture.FTNearest if escolhido == "pixel" else Texture.FTLinear
-                scene_tex.setMinfilter(filt)
-                scene_tex.setMagfilter(filt)
-                sampler = SamplerState()
-                sampler.setMinfilter(filt)
-                sampler.setMagfilter(filt)
-                sampler.setWrapU(SamplerState.WMClamp)
-                sampler.setWrapV(SamplerState.WMClamp)
-                quad.setShaderInput("tex", scene_tex, sampler)
-        self.set_outline_settings(self.showbase.settings.window)
+            quad.setShaderInput("u_pixel_size", float(max(2.0, round(vh / 240.0))))
+            configurar_textura_cena_nearest(quad)
+        win_cfg = self.showbase.settings.window
+        colorkey_hex = str(getattr(win_cfg, "colorkey_color", "#FF00FF"))
+        if getattr(self, "tentacle_drips", None) is not None:
+            self.tentacle_drips.aplicar_estilo(escolhido, colorkey_hex)
+        if getattr(self, "_choque_antenas_3d", None) is not None:
+            self._choque_antenas_3d.aplicar_estilo(
+                escolhido,
+                str(getattr(win_cfg, "vfx_palette", "auto")),
+                colorkey_hex,
+            )
+        self.set_outline_settings(win_cfg)
 
     def set_vfx_settings(self, settings) -> None:
         """Atualiza estado, paleta e escala dos efeitos street-punk ao vivo."""
         self._vfx_enabled = bool(getattr(settings, "vfx_enabled", True))
+        if not self._vfx_enabled and getattr(self, "tentacle_drips", None) is not None:
+            self.tentacle_drips.limpar()
+        paleta = str(getattr(settings, "vfx_palette", "auto"))
+        colorkey_hex = str(getattr(settings, "colorkey_color", "#FF00FF"))
         if self.efeitos_street is not None:
             self.efeitos_street.configurar(
                 habilitado=self._vfx_enabled,
-                paleta=str(getattr(settings, "vfx_palette", "pb_escuro")),
+                paleta=paleta,
                 escala_global=float(getattr(settings, "vfx_scale", 1.0)),
+                colorkey_hex=colorkey_hex,
             )
-        if not self._vfx_enabled and self._choque_antenas_3d is not None:
-            self._choque_antenas_3d.ocultar()
+        if self._choque_antenas_3d is not None:
+            self._choque_antenas_3d.aplicar_estilo(
+                getattr(self, "_visual_filter", "padrao"),
+                paleta,
+                colorkey_hex,
+            )
+            if not self._vfx_enabled:
+                self._choque_antenas_3d.ocultar()
+
+    def disparar_pouso_entrada(self) -> None:
+        """Dispara o pulso de contato da Queda Heroica."""
+        if self.efeitos_street is not None and self._vfx_enabled:
+            self.efeitos_street.disparar_pouso_entrada()
 
     def disparar_impacto_chao(self, forca: float = 1.0) -> None:
         """Dispara impacto street-ink rente aos tênis no pouso/queda."""
@@ -1215,21 +1465,93 @@ void main() {{
         """Mantido por compatibilidade; o feedback visual de impacto agora vive nos efeitos street."""
         del forca
 
+    def set_album_colors(
+        self,
+        colors: tuple[tuple[float, float, float], ...] | list[tuple[float, float, float]] | None,
+    ) -> None:
+        """Recebe a paleta extraída da capa do álbum para o palco e Cyber-Ink."""
+        self._album_colors = tuple(colors or ())
+        speaker = getattr(self, "music_speaker", None)
+        if speaker is not None and hasattr(speaker, "set_album_colors"):
+            speaker.set_album_colors(self._album_colors)
+
     def _update_outline_breath(self, dt, motion) -> None:
-        """Modula apenas a espessura do contorno pela respiração do tórax, por frame."""
+        """Modula espessura pela respiração e cor do contorno via Cyber-Ink vivo."""
         if (
             not self.outline_np
             or not self._outline_enabled
             or self.outline_np.isHidden()
         ):
             return
-        if self._outline_base_thickness <= 0.0 or self._outline_breath <= 0.0:
-            return
-        compression = float(getattr(motion, "compression", 0.0))
-        thickness = self._outline_respiracao.update(
-            dt, self._outline_base_thickness, compression, self._outline_breath
+        if self._outline_base_thickness > 0.0 and self._outline_breath > 0.0:
+            compression = float(getattr(motion, "compression", 0.0))
+            thickness = self._outline_respiracao.update(
+                dt, self._outline_base_thickness, compression, self._outline_breath
+            )
+            ultimo_t = getattr(self, "_last_outline_thickness_sent", None)
+            if ultimo_t is None or abs(thickness - ultimo_t) > 1e-5:
+                self._last_outline_thickness_sent = thickness
+                self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
+
+        base_rgba = getattr(self, "_outline_color_rgba", (0.0, 0.0, 0.0, 1.0))
+        ctrl = getattr(self.showbase, "animation_controller", None)
+        estado = (
+            ctrl.state.value
+            if (ctrl is not None and getattr(ctrl, "state", None) is not None)
+            else "idle"
         )
-        self.outline_np.setShaderInput("outline_thickness_runtime", thickness)
+        dance_m = getattr(ctrl, "dance_motion", None)
+        bass_raw = getattr(self, "_last_music_bass", None)
+        if bass_raw is not None:
+            bass = float(bass_raw)
+        elif ctrl is not None and getattr(ctrl, "music_active", False):
+            bass = float(getattr(dance_m, "bass", 0.0) or 0.0)
+        else:
+            bass = 0.0
+        choque = bool(
+            self._choque_antenas_3d is not None
+            and getattr(self._choque_antenas_3d, "_ganho_visivel", 0.0) > 0.08
+        )
+        carinho = bool(
+            ctrl is not None
+            and (
+                getattr(ctrl, "_reaction", None) == AnimationState.PET
+                or estado in ("pet", "celebrate")
+            )
+        )
+        impacto = float(getattr(motion, "impact", 0.0) or 0.0)
+        album_cores = getattr(self, "_album_colors", ())
+        album_lin = (
+            tuple(max(0.0, min(1.0, float(c))) ** 2.2 for c in album_cores[0])
+            if album_cores
+            else None
+        )
+        rgb_viva = cor_contorno_viva(
+            base_rgba[:3],
+            estado,
+            bass=bass,
+            choque=choque,
+            carinho=carinho,
+            impacto=impacto,
+            album_rgb=album_lin,
+        )
+        nova_cor = (
+            float(rgb_viva[0]),
+            float(rgb_viva[1]),
+            float(rgb_viva[2]),
+            float(base_rgba[3]),
+        )
+        cor_ant = getattr(self, "_last_outline_color_sent", None)
+        if cor_ant is None or max(abs(a - b) for a, b in zip(nova_cor, cor_ant, strict=True)) > 1e-4:
+            self._last_outline_color_sent = nova_cor
+            self.outline_np.setShaderInput("outline_color", nova_cor)
+            if (
+                self.tentacle_pool is not None
+                and getattr(self, "_visual_filter", "padrao") == "padrao"
+            ):
+                for tentacle in self.tentacle_pool.tentacles:
+                    if tentacle.outline_mesh_node is not None and not tentacle.outline_mesh_node.isHidden():
+                        tentacle.outline_mesh_node.setShaderInput("outline_color", nova_cor)
 
     def _update_view_dimensions(self) -> None:
         lens = self.showbase.cam.node().getLens()
@@ -1319,15 +1641,28 @@ void main() {{
 
     def resize(self, width: int, height: int) -> None:
         """Redimensiona a área de renderização."""
-        self.width = width
-        self.height = height
+        self.width = max(1, int(width))
+        self.height = max(1, int(height))
         if getattr(self, "_pbr_pipeline", None) is not None:
-            self._pbr_pipeline._post_process_quad.setShaderInput(
-                "u_viewport_size", (float(max(1, width)), float(max(1, height)))
+            quad = self._pbr_pipeline._post_process_quad
+            quad.setShaderInput(
+                "u_viewport_size", (float(self.width), float(self.height))
             )
+            quad.setShaderInput("u_pixel_size", float(max(2.0, round(self.height / 240.0))))
         lens = self.showbase.cam.node().getLens()
         if hasattr(lens, "setAspectRatio"):
-            lens.setAspectRatio(width / height)
+            lens.setAspectRatio(self.width / self.height)
+        self._update_view_dimensions()
+
+    @property
+    def pixels_per_unit(self) -> float:
+        """Fator atual de pixels por unidade do modelo com escala e profundidade."""
+        view_h = max(1e-6, float(getattr(self, "_view_height", 1.0) or 1.0))
+        h_px = max(1.0, float(getattr(self, "height", 1) or 1))
+        fit = float(getattr(self, "_fit_scale", 1.0) or 1.0)
+        user = float(getattr(self, "_user_scale", 1.0) or 1.0)
+        prof = float(getattr(self, "_escala_profundidade", 1.0) or 1.0)
+        return max(20.0, (h_px / view_h) * fit * user * prof)
 
     def set_model_rotation(self, x: float = 0, y: float = 0, z: float = 0) -> None:
         """Define a rotação do modelo em graus."""
@@ -1355,6 +1690,11 @@ void main() {{
         """Aplica a pose do rig nos nós do modelo."""
         if not self.model_np:
             return
+        if (
+            getattr(self, "_visual_filter", "blockbench") == "spiderverse"
+            and not getattr(self, "_sv_allow_pose_step", True)
+        ):
+            return
         self._ultima_pose = pose_dict
         self._door_requested = 0.0
         for group in ALL_GROUPS:
@@ -1369,9 +1709,7 @@ void main() {{
                 x, y, z = rotation.x, rotation.y, rotation.z
             else:
                 x, y, z = rotation
-            # Clamps e anti-atravessamento vêm do PoseResolver: o renderer só
-            # aplica a pose. A base adicional (torção-base do cotovelo) é a mesma
-            # que a FK pura usa (cinematica.BASE_ADICIONAL_GRAUS).
+            # A torção-base do cotovelo é a mesma usada pela FK da correção.
             base_h, base_p, base_r = self._rig_base_hpr.get(group_name, (0.0, 0.0, 0.0))
             extra_h, extra_p, extra_r = BASE_ADICIONAL_GRAUS.get(
                 group_name, (0.0, 0.0, 0.0)
@@ -1393,12 +1731,95 @@ void main() {{
                 outline_node.setHpr(node.getHpr())
                 if group_name == "door":
                     outline_node.hide()
-        self._aplicar_squash_stretch()
-        self._atualizar_sombra_contato()
+        if getattr(self.showbase, "animation_controller", None) is None:
+            self._aplicar_squash_stretch()
+            if self._floor_screen_y is None:
+                self.atualizar_sombra_contato()
 
-    def _atualizar_sombra_contato(self) -> None:
-        """Posiciona e escala a sombra de contato no chão conforme apoio e pose."""
+    def set_ground_projection(
+        self, floor_screen_y: float | None, height_above_floor_px: float = 0.0
+    ) -> None:
+        """Registra a projeção do chão abaixo do mascote para desacoplar a sombra do pé."""
+        self._floor_screen_y = floor_screen_y
+        self._height_above_floor_px = max(0.0, float(height_above_floor_px))
+
+    def _pesos_pose_sombra(self, controller) -> tuple[float, float]:
+        """Retorna pesos suaves (deitado, sentado) para a projeção da sombra."""
+        peso_deitado = float(getattr(self, "_sono_deitado_peso", 0.0))
+        peso_sentado = float(getattr(self, "_sono_sentado_peso", 0.0))
+        if controller is not None:
+            st = getattr(controller, "state", None)
+            t_est = float(getattr(controller, "state_time", 0.0))
+            if st == AnimationState.SLEEP:
+                modo = getattr(controller, "modo_sono", "")
+                ent = suavizar_quintico(max(0.0, min(1.0, (t_est - 0.15) / 1.85)))
+                if modo == "deitado" and peso_deitado <= 0.0 and t_est > 0.2:
+                    peso_deitado = ent
+                elif modo == "sentado" and peso_sentado <= 0.0 and t_est > 0.2:
+                    peso_sentado = ent
+            elif st is not None and st.value == "sit" and peso_sentado <= 0.0:
+                peso_sentado = suavizar_quintico(max(0.0, min(1.0, t_est / 0.45)))
+        return max(0.0, min(1.0, peso_deitado)), max(0.0, min(1.0, peso_sentado))
+
+    def _alcance_aereo_sombra(
+        self,
+        controller,
+        dt: float,
+        units_z: float,
+        anchor_scale: Vec3,
+        peso_deitado: float,
+        peso_sentado: float,
+    ) -> float:
+        """Calcula o fator de encolhimento/opacidade aérea suavizado (0..1)."""
+        em_chao_deitado = (
+            float(getattr(self, "_breakdance_chao_peso", 0.0)) > 0.05
+            or peso_deitado > 0.05
+            or peso_sentado > 0.05
+        )
+        anim_air_raw = 0.0
+        if (
+            not em_chao_deitado
+            and self._height_above_floor_px <= 1.0
+            and self._suspension_pivot is not None
+        ):
+            susp_z = float(self._suspension_pivot.getZ())
+            solo_base = (
+                float(getattr(self.lower_body, "ground_offset", 0.0))
+                * float(self.model_np.getSz())
+            )
+            anim_air_raw = (
+                max(0.0, susp_z - max(0.0, solo_base))
+                * float(anchor_scale.z)
+                / max(1e-6, units_z)
+            )
+        alpha_air = 1.0 - math.exp(-18.0 * dt)
+        self._anim_air_px_suave += (anim_air_raw - self._anim_air_px_suave) * alpha_air
+        intro_air_px = 0.0
+        if (
+            self.model_anchor is not None
+            and getattr(self, "_intro_orig_anchor_pos", None) is not None
+        ):
+            foot_loc = float(
+                self._intro_orig_foot_local_z
+                if getattr(self, "_intro_orig_foot_local_z", None) is not None
+                else -0.52
+            )
+            foot_comp_z = foot_loc * (1.0 - float(anchor_scale.z))
+            intro_dz = (
+                float(self.model_anchor.getZ()) - foot_comp_z
+            ) - float(self._intro_orig_anchor_pos.z)
+            intro_air_px = max(0.0, intro_dz / max(1e-6, units_z))
+        altura_total_px = self._height_above_floor_px + self._anim_air_px_suave + intro_air_px
+        altura_max_px = max(340.0, float(self._model_radius_px) * 10.0)
+        h_norm = max(0.0, min(1.0, altura_total_px / altura_max_px))
+        return (1.0 - h_norm) ** 1.25
+
+    def atualizar_sombra_contato(self) -> None:
+        """Posiciona e escala a sombra projetada no plano do chão, independente dos pés."""
         if self._shadow_np is None or self.model_np is None:
+            return
+        if getattr(self, "exit_pivot", None) is not None or self.model_np.isHidden():
+            self._shadow_np.hide()
             return
         controller = getattr(self.showbase, "animation_controller", None)
         speaker = getattr(self, "music_speaker", None)
@@ -1409,47 +1830,114 @@ void main() {{
             and speaker.visibility > 0.1
             and not speaker.compact
             and controller.dance_motion.style != "breakdance"
-            and self._subida_palco.value > 0.12
+            and speaker.jump_progress > 0.18
+            and self._subida_palco.value > 0.15
         )
-        sleeping_lying = bool(
-            controller
-            and controller.state == AnimationState.SLEEP
-            and getattr(controller, "modo_sono", "") == "deitado"
+        intro_dissolve = (
+            float(self._last_post_effect[1])
+            if getattr(self, "_last_post_effect", None) is not None
+            else 0.0
         )
-        if dancing_stage or sleeping_lying:
+        if dancing_stage or intro_dissolve > 0.72:
+            self._last_shadow_sig = None
             self._shadow_np.hide()
             return
-        # v2.0: sombra encolhe suavemente no ar em vez de sumir num corte seco!
-        fator_ar = 1.0 if self._is_grounded else max(0.0, 1.0 - abs(self._physics_velocity[1]) / 1200.0) * 0.62
-        if fator_ar <= 0.08:
-            self._shadow_np.hide()
-            return
-        self._shadow_np.show()
-        scale = self.model_np.getSz()
-        left_foot = self._rig_nodes.get("left-feet")
-        right_foot = self._rig_nodes.get("right-feet")
-        b_left = left_foot.getTightBounds(self.model_anchor) if left_foot else None
-        b_right = right_foot.getTightBounds(self.model_anchor) if right_foot else None
-        if b_left and b_right:
-            z_sola = min(b_left[0].z, b_right[0].z)
-            x_centro = 0.5 * (
-                (b_left[0].x + b_left[1].x) * 0.5 + (b_right[0].x + b_right[1].x) * 0.5
-            )
-            largura_pes = max(b_left[1].x, b_right[1].x) - min(b_left[0].x, b_right[0].x)
-        else:
-            b_mod = self.model_np.getTightBounds(self.model_anchor)
-            z_sola = b_mod[0].z if b_mod else (self._model_min_z * scale)
-            x_centro = 0.0
-            largura_pes = float(self._model_dimensions.x) * scale * 0.55
 
-        # Acompanha squash lateral se ativo
-        sx = self._squash_pivot.getSx() if self._squash_pivot is not None else 1.0
-        sy = self._squash_pivot.getSy() if self._squash_pivot is not None else 1.0
-        base_w = max(0.42, largura_pes * 1.28) * sx * fator_ar
-        base_d = max(0.24, float(self._model_dimensions.y) * scale * 0.72) * sy * fator_ar
-        self._shadow_np.setPos(x_centro, -0.02, z_sola - 0.012)
-        # CardMaker gera o cartão em XZ; sob setP(-82), o eixo Z local controla a profundidade.
-        self._shadow_np.setScale(base_w, 1.0, base_d)
+        dt_raw = float(getattr(controller, "delta_time", 1.0 / 60.0)) if controller else 1.0 / 60.0
+        dt = max(1e-4, min(0.1, dt_raw if dt_raw > 0.0 else 1.0 / 60.0))
+        units_z = float(self._view_height) / max(1.0, float(self.height))
+        elevacao_z = (
+            self._subida_profundidade
+            * float(self._model_dimensions.z)
+            * self._fit_scale
+            * self._user_scale
+        )
+        anchor_scale = (
+            self.model_anchor.getScale(self.showbase.render)
+            if self.model_anchor is not None
+            else Vec3(1.0, 1.0, 1.0)
+        )
+        peso_deitado, peso_sentado = self._pesos_pose_sombra(controller)
+        fator_ar = self._alcance_aereo_sombra(
+            controller, dt, units_z, anchor_scale, peso_deitado, peso_sentado
+        )
+        if fator_ar <= 0.06:
+            self._last_shadow_sig = None
+            self._shadow_np.hide()
+            return
+        if self._shadow_np.isHidden():
+            self._shadow_np.show()
+            self._last_shadow_sig = None
+
+        cintura = self._rig_nodes.get("cintura") or self._rig_nodes.get("pelvis")
+        if cintura is not None and not cintura.isEmpty():
+            x_centro = float(cintura.getPos(self.showbase.render).x)
+        else:
+            x_centro = float(self.model_anchor.getX()) if self.model_anchor else 0.0
+        peso_plano = max(peso_deitado, float(getattr(self, "_breakdance_chao_peso", 0.0)))
+        if peso_plano > 0.05:
+            limites = self.model_np.getTightBounds(self.showbase.render)
+            if limites:
+                x_bounds = (float(limites[0].x) + float(limites[1].x)) * 0.5
+                x_centro = x_centro * (1.0 - peso_plano) + x_bounds * peso_plano
+
+        canvas_origin = getattr(self.showbase, "_canvas_origin", None)
+        if self._floor_screen_y is not None and canvas_origin is not None:
+            floor_y_local = float(self._floor_screen_y) - float(canvas_origin[1])
+            world_z_floor = (
+                float(self._view_target_z)
+                + (float(self.height) * 0.5 - floor_y_local) * units_z
+                + elevacao_z
+            )
+        else:
+            orig_anchor = getattr(self, "_intro_orig_anchor_pos", None)
+            anchor_z = (
+                float(orig_anchor.z)
+                if orig_anchor is not None
+                else (float(self.model_anchor.getZ()) if self.model_anchor else 0.0)
+            )
+            world_z_floor = anchor_z - float(self._model_radius_px) * units_z + elevacao_z
+
+        sx = float(self._squash_pivot.getSx()) if self._squash_pivot is not None else 1.0
+        sy = float(self._squash_pivot.getSy()) if self._squash_pivot is not None else 1.0
+        yaw_deg = float(self._giro_corpo.angulo) + float(self._dance_stage_yaw.value)
+        yaw_rad = math.radians(yaw_deg)
+        dim_x = float(self._model_dimensions.x)
+        dim_y = float(self._model_dimensions.y)
+        dim_z = float(self._model_dimensions.z)
+        dim_rot_x = math.hypot(dim_x * math.cos(yaw_rad), dim_y * math.sin(yaw_rad))
+        dim_rot_y = math.hypot(dim_y * math.cos(yaw_rad), dim_x * math.sin(yaw_rad))
+        dim_eff_x = dim_rot_x * (1.0 - peso_deitado) + max(dim_rot_x, dim_z * 0.92) * peso_deitado
+        escala_x = float(self.model_np.getSx()) * float(anchor_scale.x)
+        escala_y = float(self.model_np.getSy()) * min(1.25, float(anchor_scale.y))
+        fator_sent_w = 1.0 + 0.12 * peso_sentado
+        fator_sent_d = 1.0 + 0.34 * peso_sentado
+        # Encolhimento suave sem colapsar a elipse para <2px antes do dither Bayer dissipar.
+        fator_escala = 0.42 + 0.58 * fator_ar
+        base_w = max(0.24, dim_eff_x * escala_x * 0.78) * sx * fator_escala * fator_sent_w
+        base_d = (
+            max(0.18, dim_rot_y * max(0.05, escala_y) * 0.72) * sy * fator_escala * fator_sent_d
+        )
+        z_min_view = float(self._view_target_z) - 0.5 * float(self._view_height)
+        half_proj_z = 0.5 * base_d * abs(math.cos(math.radians(82.0))) + 3.0 * units_z
+        z_sombra = max(world_z_floor - 0.008, z_min_view + half_proj_z)
+        shadow_alpha = max(0.0, min(1.0, fator_ar * (1.0 - intro_dissolve * 0.95)))
+        sig_sombra = (
+            round(x_centro, 4),
+            round(z_sombra, 4),
+            round(base_w, 4),
+            round(base_d, 4),
+            round(shadow_alpha, 4),
+        )
+        if sig_sombra != getattr(self, "_last_shadow_sig", None):
+            self._last_shadow_sig = sig_sombra
+            self._shadow_np.setPos(x_centro, 0.04, z_sombra)
+            self._shadow_np.setHpr(0.0, -82.0, 0.0)
+            # CardMaker gera o cartão em XZ; sob setP(-82), o eixo Z local controla a profundidade.
+            self._shadow_np.setScale(base_w, 1.0, base_d)
+            self._shadow_np.setShaderInput("u_shadow_alpha", shadow_alpha)
+
+    _atualizar_sombra_contato = atualizar_sombra_contato
 
     def _parametros_squash_stretch(self, controller) -> dict[str, Any]:
         estado = controller.state.value if controller.state else "idle"
@@ -1461,6 +1949,22 @@ void main() {{
             if getattr(controller, "_reaction", None) is not None
             else 0.65
         )
+        sono_entrada = (
+            suavizar_quintico(max(0.0, min(1.0, controller.state_time / 2.2)))
+            if controller.state == AnimationState.SLEEP
+            else 1.0
+        )
+        leg_p = getattr(controller.leg_motion, "pose", None)
+        flexao_joelhos = (
+            0.5 * (float(leg_p.left_knee) + float(leg_p.right_knee))
+            if leg_p is not None
+            else 0.0
+        )
+        pose_rig = getattr(getattr(controller, "rig", None), "current", None) or {}
+        pitch_tronco = math.degrees(
+            float(getattr(pose_rig.get("body"), "x", 0.0))
+            + float(getattr(pose_rig.get("peitoral"), "x", 0.0))
+        )
         return {
             "estado": estado,
             "respiracao": getattr(controller, "respiracao_valor", 0.0) or 0.0,
@@ -1469,7 +1973,7 @@ void main() {{
             "impacto_tempo": (
                 controller.state_time if controller.state == AnimationState.LAND else 0.0
             ),
-            "impacto_duracao": 0.50,
+            "impacto_duracao": 0.35,
             "arraste_velocidade": (
                 getattr(controller.body_motion, "pointer_velocity", (0.0, 0.0))
                 if dragging
@@ -1478,49 +1982,113 @@ void main() {{
             "arraste_intensidade": (
                 getattr(controller, "drag_intensity", 0.0) if dragging else 0.0
             ),
+            "arraste_hanging": (
+                float(getattr(controller.body_motion.snapshot, "hanging", 0.0))
+                if dragging
+                else 0.0
+            ),
             "queda_velocidade": self._physics_velocity,
             "queda_tempo": (
                 controller.state_time if controller.state == AnimationState.FALL else 0.0
             ),
             "sono_modo": getattr(controller, "modo_sono", "em_pe"),
+            "sono_entrada": sono_entrada,
             "danca_fase_beat": ((dance.phase / math.tau) % 1.0) if dance else 0.0,
             "danca_intensidade": dance.strength if dance else 0.5,
             "danca_bass": dance.bass if dance else 0.0,
             "reacao_tempo": float(getattr(controller, "_reaction_time", 0.0)),
             "reacao_duracao": reacao_dur,
+            "flexao_joelhos_graus": flexao_joelhos,
+            "pitch_tronco_graus": pitch_tronco,
         }
 
-    def _aplicar_squash_stretch(self) -> None:
+    def _aplicar_squash_stretch(self, dt: float | None = None) -> None:
         """Aplica Squash & Stretch (princípio 1) no corpo inteiro, preservando volume."""
-        if self._squash_pivot is None:
+        if self._squash_pivot is None or self.model_np is None:
             return
         controller = getattr(self.showbase, "animation_controller", None)
         if controller is None:
             return
-        ss = squash_stretch_composto(**self._parametros_squash_stretch(controller))
+        alvo = squash_stretch_composto(**self._parametros_squash_stretch(controller))
+        dt_eff = (
+            float(dt)
+            if dt is not None
+            else float(getattr(controller, "delta_time", 1.0 / 60.0))
+        )
+        # Suavização exponencial elimina saltos/quicadas bruscas de 1 frame entre estados.
+        estado = controller.state.value if controller.state else "idle"
+        cena_ativa = bool(getattr(getattr(controller, "cena_idle_amostra", None), "ativa", False))
+        vel = (
+            22.0
+            if estado in ("land", "hit", "poke", "click", "surprise")
+            else (15.5 if cena_ativa else 11.5)
+        )
+        if dt_eff > 0.0:
+            alpha = 1.0 - math.exp(-vel * min(dt_eff, 0.08))
+            ax, ay, az = self._squash_atual
+            sx = ax + (alvo.x - ax) * alpha
+            sy = ay + (alvo.y - ay) * alpha
+            sz = az + (alvo.z - az) * alpha
+        else:
+            sx, sy, sz = alvo.x, alvo.y, alvo.z
+        self._squash_atual = (sx, sy, sz)
 
-        # Pivô nos pés quando apoiado para comprimir contra o chão sem flutuar
-        scale = self.model_np.getSz() if self.model_np else 1.0
-        pivot_z = (self._model_min_z * scale) if self._is_grounded else (0.44 * scale)
+        ref_alvo = float(self._model_min_z) if self._is_grounded else 0.48
+        if self._squash_ref_z is None or dt_eff <= 0.0:
+            self._squash_ref_z = ref_alvo
+        else:
+            alpha_ref = 1.0 - math.exp(-16.0 * min(dt_eff, 0.08))
+            self._squash_ref_z += (ref_alvo - self._squash_ref_z) * alpha_ref
+        pivot_z = float(
+            self._squash_pivot.getRelativePoint(
+                self.model_np, Point3(0, 0, self._squash_ref_z)
+            ).z
+        )
         mat = (
             Mat4.translateMat(0.0, 0.0, -pivot_z)
-            * Mat4.scaleMat(ss.x, ss.y, ss.z)
+            * Mat4.scaleMat(sx, sy, sz)
             * Mat4.translateMat(0.0, 0.0, pivot_z)
         )
         self._squash_pivot.setMat(mat)
 
-    def _posicionar_sono(self, modo):
+    def _posicionar_sono_sentado(self, entrada: float) -> None:
+        """Alinha quadril e calcanhares à linha exata do piso no modo sentado."""
+        floor = self.music_speaker.floor_z
+        pelvis = self._rig_nodes.get("pelvis")
+        b_pelvis = pelvis.getTightBounds(self.model_np) if pelvis is not None else None
+        z_apoio = float(b_pelvis[0].z) - 0.015 if b_pelvis else 0.34
+        for nome_pe in ("left-feet", "right-feet"):
+            no_pe = self._rig_nodes.get(nome_pe)
+            b_pe = (
+                no_pe.getTightBounds(self.model_np)
+                if no_pe is not None and not no_pe.isEmpty()
+                else None
+            )
+            if b_pe:
+                z_apoio = min(z_apoio, float(b_pe[0].z))
+        offset_sentado = floor - z_apoio
+        offset_atual = (
+            self.lower_body.ground_offset * (1.0 - entrada) + offset_sentado * entrada
+        )
+        self._suspension_pivot.setZ(offset_atual * self.model_np.getSz())
+
+    def _posicionar_sono(self, modo: str, peso: float | None = None) -> bool:
+        controller = getattr(self.showbase, "animation_controller", None)
+        if peso is None:
+            t_sono = float(getattr(controller, "state_time", 2.6)) if controller else 2.6
+            entrada = suavizar_quintico(max(0.0, min(1.0, (t_sono - 0.15) / 1.85)))
+        else:
+            entrada = max(0.0, min(1.0, float(peso)))
         if modo == "deitado":
             ground = self.model_np.getTightBounds(self.model_anchor)[0].z
-            self._suspension_pivot.setMat(self._giro_no_quadril(0, 0, 85.0))
+            self._suspension_pivot.setMat(self._giro_no_quadril(0, 0, 85.0 * entrada))
             moved = self.model_np.getTightBounds(self.model_anchor)[0].z
-            self._suspension_pivot.setZ(ground - moved)
+            self._suspension_pivot.setZ(
+                self._suspension_pivot.getZ() + (ground - moved)
+            )
             return True
         if modo == "sentado":
-            shorts = self._rig_nodes["legs"].getTightBounds(self.model_np)[0].z
-            floor = self.music_speaker.floor_z
-            offset = max(floor - shorts, self.lower_body.ground_offset)
-            self._suspension_pivot.setZ(offset * self.model_np.getSz())
+            self._posicionar_sono_sentado(entrada)
             return True
         return False
 
@@ -1610,45 +2178,81 @@ void main() {{
         idx_arg: int,
         modo_musical: bool = False,
         beat_phase: float = 0.0,
+        choque_ativo: bool = False,
+        _cache: dict | None = None,
     ) -> None:
         np, pos_orig, esc_orig, centro, eixo, eh_outline = item
+        chave_cache = (idx_arg, eh_outline)
         if eh_outline:
+            if _cache is not None and _cache.get(chave_cache) == ("hide",):
+                return
+            if _cache is not None:
+                _cache[chave_cache] = ("hide",)
             np.hide()
             return
-        if not argolas_ativas and not modo_musical:
-            # v2.0: levitação ambiente sutil nas argolas (sempre vivas, nunca congeladas!)
-            eh_sup = "sup" in np.getName() or abs(centro.z) > 0.086
+        eh_sup = "sup" in np.getName() or abs(centro.z) > 0.086
+        if not argolas_ativas and not modo_musical and not choque_ativo:
+            # Levitação ambiente viva + brilho emissivo sutil pulsante nas argolas!
             fase_amb = pulso_t * 2.1 + idx_arg * 1.15
             dz_amb = math.sin(fase_amb) * (0.006 if eh_sup else -0.005)
+            pulso_brilho = 0.5 + 0.5 * math.sin(pulso_t * 3.0 + idx_arg * 0.9)
+            sig = ("amb", round(dz_amb, 4), round(pulso_brilho, 3))
+            if _cache is not None and _cache.get(chave_cache) == sig:
+                return
+            if _cache is not None:
+                _cache[chave_cache] = sig
             np.show()
             np.setPos(pos_orig + eixo * dz_amb)
             np.setScale(esc_orig)
-            np.clearColorScale()
+            # Modo emissivo leve (setLightOff) faz as argolas brilharem de verdade!
+            np.setLightOff(1)
+            np.setColorScale(
+                1.18 + 0.28 * pulso_brilho,
+                1.08 + 0.24 * pulso_brilho,
+                0.78 + 0.20 * pulso_brilho,
+                1.0,
+            )
             return
-        eh_sup = "sup" in np.getName() or abs(centro.z) > 0.086
         if argolas_ativas:
             dz = amostra.deslocamento_argola_sup if eh_sup else amostra.deslocamento_argola_inf
             s = max(0.01, amostra.escala_argolas)
-            brilho = amostra.brilho_argolas
+            brilho = max(0.35, float(amostra.brilho_argolas))
+        elif choque_ativo:
+            fase_ch = pulso_t * 14.0 + idx_arg * 1.3
+            dz = math.sin(fase_ch) * (0.018 if eh_sup else -0.016)
+            s = 1.0 + 0.14 * abs(math.sin(fase_ch))
+            brilho = 1.0
         else:
-            # No modo música, move em direções opostas e só brilha nos picos da batida.
+            # No modo música, move em direções opostas e pulsa forte na batida.
             onda = math.sin(beat_phase)
             mag = (abs(onda) ** 0.75) * ((0.032 if eh_sup else -0.040) if onda >= 0.0 else (-0.014 if eh_sup else 0.014))
             dz = mag
             beat_peak = max(0.0, math.sin(beat_phase)) ** 4
             s = 1.0 + 0.14 * beat_peak
-            brilho = beat_peak * 0.95
+            brilho = 0.25 + beat_peak * 0.95
+        flash = bool(choque_ativo and (int(pulso_t * 12.0) + idx_arg) % 2 == 1)
+        sig = ("act", round(dz, 4), round(s, 4), round(brilho, 3), flash)
+        if _cache is not None and _cache.get(chave_cache) == sig:
+            return
+        if _cache is not None:
+            _cache[chave_cache] = sig
         np.setPos(centro + (pos_orig - centro) * s + eixo * dz)
         np.setScale(esc_orig * s)
         (np.hide if s < 0.05 else np.show)()
         if brilho > 0.05:
-            np.setColorScale(
-                1.0 + 1.15 * brilho,
-                1.0 + 0.94 * brilho,
-                1.0 + 0.14 * brilho,
-                1.0,
-            )
+            np.setLightOff(1)
+            if flash:
+                # Flash ciano elétrico estilo anime no pico do choque!
+                np.setColorScale(0.65, 1.85, 2.10, 1.0)
+            else:
+                np.setColorScale(
+                    1.25 + 0.95 * brilho,
+                    1.10 + 0.85 * brilho,
+                    0.45 + 0.55 * brilho,
+                    1.0,
+                )
         else:
+            np.clearLight()
             np.clearColorScale()
 
     @staticmethod
@@ -1713,7 +2317,7 @@ void main() {{
             amostra is not None and amostra.ativa and amostra.nome == "argolas_antena"
         )
         pulso_t = float(getattr(ctrl, "clock", 0.0))
-        dancing = bool(getattr(ctrl, "music_active", False))
+        dancing = bool(ctrl.state == AnimationState.DANCE)
         choque = bool(argolas_ativas and getattr(amostra, "choque_argolas", False))
         cena_musical = bool(
             amostra is not None
@@ -1722,6 +2326,13 @@ void main() {{
         )
         modo_musical = dancing or cena_musical
         beat_phase = float(getattr(ctrl.dance_motion, "phase", pulso_t * 4.5)) if dancing else pulso_t * 4.5
+        aviso_antena = float(getattr(self.tentacle_director, "aviso_antena_tempo", 0.0)) if self.tentacle_director else 0.0
+        estouro_fone = bool(amostra is not None and amostra.ativa and getattr(amostra, "estouro_fone", False))
+        choque_eletrico = bool(choque or aviso_antena > 0.02 or estouro_fone)
+        argola_cache = getattr(self, "_argola_cache", None)
+        if argola_cache is None:
+            argola_cache = {}
+            self._argola_cache = argola_cache
         for idx_arg, item in enumerate(getattr(self, "_argolas_antena", ())):
             self._atualizar_argola_fisica(
                 item,
@@ -1731,6 +2342,8 @@ void main() {{
                 idx_arg,
                 modo_musical=modo_musical,
                 beat_phase=beat_phase,
+                choque_ativo=choque_eletrico,
+                _cache=argola_cache,
             )
 
         brilho_desejado = (
@@ -1745,21 +2358,13 @@ void main() {{
         for registro in getattr(self, "_argolas_fx", ()):
             self._atualizar_item_halo_rgb(registro, argolas_ativas, amostra, pulso_t, choque, brilho_alvo)
 
-        # Atualiza relógio de shaders dos filtros visuais (hachura/wobble a 8 FPS no modo Rascunho).
+        # Atualiza relógio e reatividade dos shaders de estilo.
         self._filter_clock += max(0.0, min(0.05, float(dt)))
-        if self._pbr_pipeline is not None:
-            self._pbr_pipeline._post_process_quad.setShaderInput(
-                "u_filter_time", self._filter_clock
-            )
-        if self.outline_np is not None and self._visual_filter == "rascunho":
-            self.outline_np.setShaderInput("u_sketch_time", self._filter_clock)
+        filtro_atual = getattr(self, "_visual_filter", "blockbench")
+        self._atualizar_reatividade_filtro(dt, filtro_atual, ctrl, motion, grounded)
 
-        # Mantém efeitos 2D legados permanentemente silenciados.
-        efeitos_legado = getattr(self, "efeitos_cena", None)
-        if efeitos_legado is not None:
-            efeitos_legado.limpar()
-
-        # Efeitos Street-Punk desenhados à mão (ancorados anatomicamente ao rig).
+        params = None
+        # Efeitos Street-Punk / Presets desenhados à mão (ancorados anatomicamente ao rig).
         efeitos_street = getattr(self, "efeitos_street", None)
         if efeitos_street is not None:
             if self._vfx_enabled:
@@ -1767,32 +2372,110 @@ void main() {{
                 efeitos_street.atualizar(dt, params)
             else:
                 efeitos_street.limpar()
+        self._atualizar_xray_street(filtro_atual, efeitos_street)
 
         if self._choque_antenas_3d is not None:
-            if self._vfx_enabled and choque:
-                self._choque_antenas_3d.atualizar(dt, True, 1.0)
+            from sejoga.render.vfx import EMISSORES_POR_ESTILO
+
+            choque_migrado = "choque" in EMISSORES_POR_ESTILO.get(
+                getattr(self, "_visual_filter", "padrao"), {}
+            )
+            if self._vfx_enabled and not choque_migrado:
+                if params is None:
+                    params = self._coletar_parametros_efeitos(ctrl, motion, amostra, grounded)
+                aviso_val = float(params["aviso_antena"])
+                permitir_ponte = bool(
+                    params["choque_argolas"]
+                    or params["estouro_fone"]
+                    or aviso_val > 0.16
+                )
+                self._choque_antenas_3d.atualizar(
+                    dt,
+                    aviso_antena=aviso_val,
+                    choque_argolas=bool(
+                        params["choque_argolas"]
+                        or params["estouro_fone"]
+                    ),
+                    permitir_ponte=permitir_ponte,
+                )
             else:
                 self._choque_antenas_3d.ocultar()
+
+    def _atualizar_reatividade_filtro(
+        self, dt: float, filtro_atual: str, ctrl, motion, grounded: bool
+    ) -> None:
+        vel = getattr(ctrl, "_last_velocity", (0.0, 0.0)) if ctrl else (0.0, 0.0)
+        speed = min(1.0, math.hypot(float(vel[0]), float(vel[1])) / 900.0)
+        impact = min(1.0, float(getattr(motion, "impact", 0.0) or 0.0))
+        est_val = str(ctrl.state.value if (ctrl and hasattr(ctrl.state, "value")) else "")
+        reac = getattr(ctrl, "_reaction", None) if ctrl else None
+        drama = (
+            1.0
+            if est_val in ("angry", "surprise", "celebrate", "teimosia")
+            or reac in (AnimationState.SURPRISE, AnimationState.CELEBRATE, AnimationState.TEIMOSIA)
+            else (0.35 if est_val == "dance" else 0.0)
+        )
+        airborne = 0.0 if grounded else 1.0
+        if self._pbr_pipeline is not None:
+            quad = self._pbr_pipeline._post_process_quad
+            if filtro_atual in ("spiderverse", "street", "holograma", "anime"):
+                quad.setShaderInput("u_filter_time", self._filter_clock)
+            quad.setShaderInput("u_filter_fx", (speed, impact, drama, airborne))
+        if self.outline_np is not None and filtro_atual in ("spiderverse", "street"):
+            self.outline_np.setShaderInput("u_sketch_time", self._filter_clock)
+        if filtro_atual == "spiderverse":
+            intervalo = 1.0 / (24.0 if (speed > 0.45 or impact > 0.20) else 12.0)
+            self._sv_step_acc += max(0.0, float(dt))
+            if self._sv_step_acc >= intervalo:
+                self._sv_step_acc %= intervalo
+                self._sv_allow_pose_step = True
+            else:
+                self._sv_allow_pose_step = False
+        else:
+            self._sv_allow_pose_step = True
+
+    def _limpar_xray_street(self) -> None:
+        if self._fnf_skeleton is not None:
+            self._fnf_skeleton.atualizar(0.0, self.showbase.render)
+        if self.model_np is not None:
+            self.model_np.setShaderInput("u_fnf_shade", 0.006)
+        self._street_xray_ativo = False
+
+    def _atualizar_xray_street(self, filtro_atual: str, efeitos_street) -> None:
+        power = (
+            efeitos_street.xray_flash_intensidade()
+            if (filtro_atual == "street" and self._vfx_enabled and efeitos_street is not None)
+            else 0.0
+        )
+        if power > 0.01 and self.model_np is not None:
+            if self._fnf_skeleton is None:
+                from sejoga.render.esqueleto_fnf import EsqueletoFnf
+
+                self._fnf_skeleton = EsqueletoFnf(self.showbase.render, self._rig_nodes)
+            self._fnf_skeleton.atualizar(power, self.showbase.render)
+            self.model_np.setShaderInput("u_fnf_shade", 0.008 + 0.055 * power)
+            self._street_xray_ativo = True
+        elif getattr(self, "_street_xray_ativo", False):
+            self._limpar_xray_street()
 
     def _coletar_caixas_som_pos(self, estado: str) -> tuple[Vec3, ...]:
         speaker = getattr(self, "music_speaker", None)
         if estado != "dance" or speaker is None or speaker.root.isHidden():
             return ()
+        referencia = (
+            self.efeitos_street.root
+            if getattr(self, "efeitos_street", None) is not None
+            else self.model_anchor
+        )
+        if referencia is None:
+            return ()
         caixas_pos: list[Vec3] = []
-        for box, (low, high) in zip(speaker.boxes, speaker.bounds, strict=True):
+        for box, emissor in zip(speaker.boxes, speaker.emissores_graves, strict=True):
             if box.isHidden():
                 continue
-            mid_z = (low.z + high.z) * 0.55
-            offsets_x = (
-                (low.x, high.x)
-                if (high.x - low.x) > 1.0
-                else ((low.x + high.x) * 0.5,)
-            )
-            for ox in offsets_x:
-                p = self.efeitos_cena.root.getRelativePoint(box, Vec3(ox, low.y, mid_z))
-                p.y = -2.20
-                caixas_pos.append(p)
-        return tuple(caixas_pos)
+            p = emissor.getPos(referencia)
+            caixas_pos.append(Vec3(p.x, p.y - 0.12, p.z))
+        return tuple(sorted(caixas_pos, key=lambda p: p.x))
 
     def _coletar_parametros_efeitos(
         self, ctrl, motion, amostra, grounded: bool
@@ -1821,6 +2504,10 @@ void main() {{
             "susto": bool(
                 ctrl._reaction == AnimationState.SURPRISE
                 or getattr(motion, "surprise_jolt", 0.0) > 0.78
+                or (
+                    ctrl._reaction in (AnimationState.POKE, AnimationState.DOUBLE_CLICK)
+                    and getattr(ctrl, "_reaction_time", 1.0) < 0.22
+                )
             ),
             "raiva": bool(
                 (ctrl._reaction == AnimationState.TEIMOSIA or estado == "teimosia")
@@ -1840,13 +2527,17 @@ void main() {{
             "choque_argolas": bool(amostra and amostra.choque_argolas),
             "acento_danca": bool(
                 ctrl.state == AnimationState.DANCE
-                and getattr(ctrl.dance_motion, "strength", 0.0) > 1.15
+                and getattr(ctrl.dance_motion, "acento", 0.0) > 0.36
             ),
+            "dancando": bool(ctrl.state == AnimationState.DANCE),
+            "andando": bool(grounded and estado in ("walk", "run")),
+            "correndo": bool(grounded and estado == "run"),
             "forca_impacto": max(
                 1.45 if heavy_land else 0.9, float(getattr(motion, "impact", 0.0))
             ),
             "deslizando": bool(
-                estado == "virtual_insanity" or (grounded and abs(vel[0]) > 500.0)
+                estado == "virtual_insanity"
+                or (grounded and estado not in ("walk", "run") and abs(vel[0]) > 500.0)
             ),
             "comemorando": bool(ctrl._reaction == AnimationState.CELEBRATE or estado == "celebrate"),
             "som_fones": bool(
@@ -1863,7 +2554,28 @@ void main() {{
                 ctrl._reaction == AnimationState.PET or estado == "pet"
             ),
             "dragging": bool(getattr(self.showbase, "_drag_active", False)),
+            "humor": str(getattr(ctrl, "humor", "") or ""),
+            "cena_nome": str(amostra.nome) if (amostra is not None and amostra.ativa) else "",
+            "cena_tempo": float(getattr(ctrl, "_cena_idle_tempo", 0.0))
+            if (amostra is not None and amostra.ativa)
+            else 0.0,
         }
+
+    def projetar_ponto_grupo_cliente(
+        self, grupo: str, offset_local: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    ) -> tuple[float, float] | None:
+        """Projeta um ponto local de ``grupo`` para pixels ``(x, y)`` da área cliente."""
+        if not self.model_np:
+            return None
+        no = self._rig_nodes.get(grupo) if grupo != "__model__" else self.model_np
+        if no is None or no.isEmpty():
+            return None
+        wp = self.showbase.render.getRelativePoint(no, Point3(*offset_local))
+        vw = max(1e-4, float(self._view_width))
+        vh = max(1e-4, float(self._view_height))
+        cx = float(self.width) * (0.5 + float(wp.x) / vw)
+        cy = float(self.height) * (0.5 - (float(wp.z) - float(self._view_target_z)) / vh)
+        return (cx, cy)
 
     def ponto_local_no_grupo(self, grupo: str, ponto_modelo: Vec3) -> Vec3 | None:
         """Converte um ponto no espaço de ``model_np`` para o nó local do grupo dado."""
@@ -1884,6 +2596,7 @@ void main() {{
         drag_direction=None,
         drag_intensity=0.0,
         grab_anchor_local=None,
+        grab_node_name=None,
     ):
         """Rotate connected root parts around the hips/grip without editing the asset rig.
 
@@ -1896,10 +2609,28 @@ void main() {{
         frente. O parâmetro ``direcao_olhar`` segue existindo para chamadas que
         queiram, deliberadamente, acoplar giro ao olhar.
         """
-        dt = getattr(self.showbase.animation_controller, "delta_time", 1 / 60)
+        self._is_grounded = bool(grounded and not dragging)
+        controller = getattr(self.showbase, "animation_controller", None)
+        dt_raw = float(getattr(controller, "delta_time", 1.0 / 60.0))
+        dt = max(1e-4, min(0.1, dt_raw if dt_raw > 0.0 else 1.0 / 60.0))
+        atenuacao_flex = 1.0
+        if controller is not None:
+            st_atual = getattr(controller, "state", None)
+            if (
+                st_atual == AnimationState.GOKU_TELEPORT
+                or (st_atual == AnimationState.SLEEP and getattr(controller, "modo_sono", "") == "deitado")
+                or getattr(controller, "raiz_quat_ativa", None) is not None
+            ):
+                atenuacao_flex = 0.0
         self._atualizar_efeitos_e_argolas(dt, motion, grounded)
         self._update_outline_breath(dt, motion)
-        self.flexible_rig.update(dt, motion)
+        self.flexible_rig.update(
+            dt,
+            motion,
+            grounded=grounded,
+            dragging=dragging,
+            atenuacao=atenuacao_flex,
+        )
         if self._suspension_pivot is None:
             self._suspension_pivot = self.model_anchor.attachNewNode("suspension-pivot")
             self._squash_pivot = self._suspension_pivot.attachNewNode("squash-pivot")
@@ -1908,9 +2639,7 @@ void main() {{
             self._body_facing = self._squash_pivot.attachNewNode("body-facing")
             self.model_np.reparentTo(self._body_facing)
             self.outline_np.reparentTo(self._body_facing)
-        self._is_grounded = bool(grounded and not dragging)
         self._suspension_pivot.setMat(Mat4.identMat())
-        controller = getattr(self.showbase, "animation_controller", None)
         if (
             angulo_giro_pedido is None and controller
             and controller.state == AnimationState.SLEEP and controller.modo_sono == "sentado"
@@ -1948,6 +2677,14 @@ void main() {{
                 dz_extra += controller.cena_idle_amostra.deslocamento_z
             if (
                 controller
+                and controller.state == AnimationState.CELEBRATE
+                and not getattr(controller, "acao_clipe_ativa", None)
+            ):
+                u_cel = min(1.0, max(0.0, float(getattr(controller, "_reaction_time", 0.0)) / 2.0))
+                if 0.18 <= u_cel <= 0.64:
+                    dz_extra += 0.17 * math.sin(((u_cel - 0.18) / 0.46) * math.pi)
+            if (
+                controller
                 and controller.state == AnimationState.LAND
                 and getattr(controller, "_land_heavy", False)
                 and not getattr(controller, "acao_clipe_ativa", None)
@@ -1960,10 +2697,14 @@ void main() {{
                 else:
                     u_sent = max(0.0, 1.0 - (t_land - 0.95) / 0.45)
                 dz_extra -= 0.13 * u_sent
+            alpha_dz = 1.0 - math.exp(-22.0 * dt)
+            self._dz_extra_atual += (dz_extra - self._dz_extra_atual) * alpha_dz
             tilt_rad = float(getattr(self, "_raiz_tilt_rad", 0.0))
             peso_solo = max(0.0, 1.0 - min(1.0, tilt_rad / 0.60))
             base_solo = self.lower_body.ground_offset * peso_solo
-            self._suspension_pivot.setZ((base_solo + dz_extra) * scale)
+            self._suspension_pivot.setZ((base_solo + self._dz_extra_atual) * scale)
+        else:
+            self._dz_extra_atual += (0.0 - self._dz_extra_atual) * (1.0 - math.exp(-18.0 * dt))
         subir = (
             dancing
             and not dragging
@@ -1975,43 +2716,132 @@ void main() {{
         self._assento_palco.update(dt, float(subir and style == "head_bob"))
         if not dragging and self._subida_palco.value > 0.005 and not speaker.compact:
             self._posicionar_no_palco(speaker, subir)
-        if (
+
+        em_breakdance = bool(
             not dragging
+            and grounded
             and controller
             and controller.state == AnimationState.DANCE
             and controller.dance_motion.style == "breakdance"
             and not eh_emote_clipe
             and speaker.jump_progress >= 1.0
             and self._subida_palco.value < 0.01
-        ):
+        )
+        if em_breakdance:
             dance = controller.dance_motion
+            self._ultimo_breakdance_pose = (
+                float(dance.floor_spin),
+                float(_danca.FLOOR_ROLL_GRAUS * dance.floor_amount),
+            )
+            self._breakdance_chao_peso += (1.0 - self._breakdance_chao_peso) * (
+                1.0 - math.exp(-24.0 * dt)
+            )
+        else:
+            vel_break = 18.0 if (dragging or not grounded) else 9.0
+            self._breakdance_chao_peso += (0.0 - self._breakdance_chao_peso) * (
+                1.0 - math.exp(-vel_break * dt)
+            )
+            if self._breakdance_chao_peso < 0.005:
+                self._breakdance_chao_peso = 0.0
+
+        em_sono = bool(not dragging and controller and controller.state == AnimationState.SLEEP)
+        modo_sono = getattr(controller, "modo_sono", "") if controller else ""
+        t_sono = float(getattr(controller, "state_time", 0.0)) if controller else 0.0
+        ent_sono = suavizar_quintico(max(0.0, min(1.0, (t_sono - 0.15) / 1.85)))
+        em_sit = bool(
+            not dragging
+            and grounded
+            and controller
+            and getattr(controller, "state", None) is not None
+            and controller.state.value == "sit"
+        )
+        alvo_deitado = ent_sono if (em_sono and modo_sono == "deitado") else 0.0
+        alvo_sentado = (
+            ent_sono
+            if (em_sono and modo_sono == "sentado")
+            else (suavizar_quintico(max(0.0, min(1.0, t_sono / 0.45))) if em_sit else 0.0)
+        )
+        taxa_deitado = 24.0 if alvo_deitado > 0.0 else (16.0 if (dragging or not grounded) else 7.5)
+        taxa_sentado = 16.0 if (dragging or not grounded) else 8.5
+        self._sono_deitado_peso += (alvo_deitado - self._sono_deitado_peso) * (
+            1.0 - math.exp(-taxa_deitado * dt)
+        )
+        self._sono_sentado_peso += (alvo_sentado - self._sono_sentado_peso) * (
+            1.0 - math.exp(-taxa_sentado * dt)
+        )
+        if self._sono_deitado_peso < 0.003 and alvo_deitado == 0.0:
+            self._sono_deitado_peso = 0.0
+        if self._sono_sentado_peso < 0.003 and alvo_sentado == 0.0:
+            self._sono_sentado_peso = 0.0
+
+        if not dragging and grounded and self._breakdance_chao_peso > 0.005:
+            spin_bd, roll_bd = self._ultimo_breakdance_pose
             ground = self.model_np.getTightBounds(self.model_anchor)[0].z
             # shortcut: mão não fica fixa no cenário durante o giro; upgrade quando
             # houver contatos de cena (guia 7.1).
             self._suspension_pivot.setMat(
-                self._giro_no_quadril(
-                    dance.floor_spin, 0, _danca.FLOOR_ROLL_GRAUS * dance.floor_amount
-                )
+                self._giro_no_quadril(spin_bd, 0.0, roll_bd * self._breakdance_chao_peso)
             )
             moved = self.model_np.getTightBounds(self.model_anchor)[0].z
-            self._suspension_pivot.setZ(ground - moved)
+            self._suspension_pivot.setZ(
+                self._suspension_pivot.getZ() + (ground - moved)
+            )
+            self._aplicar_squash_stretch(dt)
+            if self._floor_screen_y is None:
+                self.atualizar_sombra_contato()
             return
         if (
             not dragging
-            and controller
-            and controller.state == AnimationState.SLEEP
-            and self._posicionar_sono(controller.modo_sono)
+            and grounded
+            and self._sono_deitado_peso > 0.005
+            and self._posicionar_sono("deitado", self._sono_deitado_peso)
         ):
+            self._aplicar_squash_stretch(dt)
+            if self._floor_screen_y is None:
+                self.atualizar_sombra_contato()
+            return
+        if (
+            not dragging
+            and grounded
+            and self._sono_sentado_peso > 0.005
+            and self._posicionar_sono("sentado", self._sono_sentado_peso)
+        ):
+            self._aplicar_squash_stretch(dt)
+            if self._floor_screen_y is None:
+                self.atualizar_sombra_contato()
             return
         if dragging and motion.hanging > _tune.PENDURADO_LIMIAR:
-            point = Vec3(grab_point) if grab_point is not None else Vec3(0, 0, 0.6)
-            pivot = self._suspension_pivot.getRelativePoint(self.model_np, point)
+            peso_susp = suavizar_quintico(
+                max(0.0, min(1.0, (motion.hanging - _tune.PENDURADO_LIMIAR) / 0.16))
+            )
+            point_orig = Vec3(grab_point) if grab_point is not None else Vec3(0, 0, 0.6)
+            pivot_orig = self._suspension_pivot.getRelativePoint(self.model_np, point_orig)
+            # Ao segurar por um braço, acompanha o ponto atual no nó articulado do braço
+            # para que a mão/braço fique ancorado ao mouse enquanto o tronco pende abaixo.
+            pivot_atual = pivot_orig
+            if grab_part in ("right-arm", "left-arm"):
+                no_nome = grab_node_name or grab_part
+                no_pega = self._rig_nodes.get(no_nome) or self._rig_nodes.get(grab_part)
+                if no_pega is not None and grab_anchor_local is not None:
+                    p_din = self._suspension_pivot.getRelativePoint(no_pega, Vec3(grab_anchor_local))
+                    peso_din = suavizar_quintico(min(1.0, max(0.0, motion.hanging)))
+                    pivot_atual = pivot_orig + (p_din - pivot_orig) * (peso_din * peso_susp)
             rotation = self._rotacao_no_quadro_de_autoria(
-                motion.yaw, motion.pitch, motion.roll
+                motion.yaw * peso_susp,
+                motion.pitch * peso_susp,
+                motion.roll * peso_susp,
             )
+            # Mantém o ponto atual da pega sobre ``pivot_orig`` (posição do mouse no clique)
+            # com leve afundamento gravitacional para transmitir peso físico real.
+            peso_queda_z = -0.045 * scale * min(1.0, max(0.0, motion.hanging)) * peso_susp
             self._suspension_pivot.setMat(
-                Mat4.translateMat(-pivot) * rotation * Mat4.translateMat(pivot)
+                Mat4.translateMat(-pivot_atual)
+                * rotation
+                * Mat4.translateMat(pivot_orig + Vec3(0.0, 0.0, peso_queda_z))
             )
+            self._aplicar_squash_stretch(dt)
+            if self._floor_screen_y is None:
+                self.atualizar_sombra_contato()
             return
         if not grounded and not dragging:
             pivot = self._suspension_pivot.getRelativePoint(
@@ -2023,6 +2853,10 @@ void main() {{
             self._suspension_pivot.setMat(
                 Mat4.translateMat(-pivot) * rotation * Mat4.translateMat(pivot)
             )
+            self._aplicar_squash_stretch(dt)
+            if self._floor_screen_y is None:
+                self.atualizar_sombra_contato()
+            return
         # Grounded reaction now uses the shared spine and neck joints rather
         # than independently transforming disconnected top-level body parts.
         # Ganhos e SINAIS do tronco vêm de body_motion_tuning (req 4): o tronco
@@ -2056,6 +2890,7 @@ void main() {{
             )
             neck.setP(max(-12.0, min(12.0, self.flexible_rig.neck_pitch.value)))
             neck.setR(max(-16.0, min(16.0, self.flexible_rig.neck.value)))
+        self._aplicar_squash_stretch(dt)
         if abs(self._dance_stage_yaw.value) > 0.01 and not dragging:
             pivot = self._suspension_pivot.getRelativePoint(
                 self.model_np, Point3(0, 0, 0.44)
@@ -2069,6 +2904,8 @@ void main() {{
                 * Mat4.translateMat(pivot)
                 * self._suspension_pivot.getMat()
             )
+        if self._floor_screen_y is None:
+            self.atualizar_sombra_contato()
 
     def _posicionar_no_palco(self, speaker, dancing):
         """Segue o arco até o tampo e alinha o apoio com a geometria."""
@@ -2142,11 +2979,19 @@ void main() {{
             else max(0.0, min(1.0, getattr(controller, "acao_clipe_tempo", 1.0) / 0.28))
         )
         if peso_quat < 1.0:
-            q_id = Quat.identQuat()
-            if q.dot(q_id) < 0.0:
+            q_prev = getattr(self, "_ultimo_quat_raiz", None)
+            peso_prev = float(getattr(self, "_peso_saida_quat", 0.0))
+            q_ref = (
+                Quat(q_prev)
+                if (q_prev is not None and peso_prev > 0.01)
+                else Quat.identQuat()
+            )
+            if q.dot(q_ref) < 0.0:
                 q = -q
-            q = q_id * (1.0 - peso_quat) + q * peso_quat
+            q = q_ref * (1.0 - peso_quat) + q * peso_quat
             q.normalize()
+        self._ultimo_quat_raiz = Quat(q)
+        self._peso_saida_quat = 1.0
         self._giro_corpo.update(
             dt, direcao_olhar=0.0, angulo_pedido=pedido, permitir_costas=True
         )
@@ -2159,6 +3004,38 @@ void main() {{
             Mat4.translateMat(-pivot) * rotacao * Mat4.translateMat(pivot)
         )
 
+    def _aplicar_saida_quat_raiz(self, dt: float, angulo: float, pivot: Point3, dragging: bool) -> bool:
+        """Slerp suave de saída ao encerrar clipe com rotação 3D de raiz."""
+        q_ant_raw = getattr(self, "_ultimo_quat_raiz", None)
+        peso_saida = float(getattr(self, "_peso_saida_quat", 0.0))
+        if q_ant_raw is None or peso_saida <= 0.005:
+            return False
+        taxa_saida = 1.0 / 0.14 if dragging else 1.0 / 0.28
+        peso_saida = max(0.0, peso_saida - dt * taxa_saida)
+        self._peso_saida_quat = peso_saida
+        u_q = suavizar_quintico(peso_saida)
+        q_base = (
+            TransformState.makeHpr(Vec3(angulo, 0.0, 0.0)).getQuat()
+            if abs(angulo) >= 0.01
+            else Quat.identQuat()
+        )
+        q_ant = Quat(q_ant_raw)
+        if q_ant.dot(q_base) < 0.0:
+            q_ant = -q_ant
+        q_mix = q_base * (1.0 - u_q) + q_ant * u_q
+        q_mix.normalize()
+        rotacao = Mat4()
+        q_mix.extractToMatrix(rotacao)
+        up_z = max(-1.0, min(1.0, rotacao.getRow3(2).z))
+        self._raiz_tilt_rad = math.acos(up_z)
+        self._body_facing.setMat(
+            Mat4.translateMat(-pivot) * rotacao * Mat4.translateMat(pivot)
+        )
+        if peso_saida <= 0.005:
+            self._ultimo_quat_raiz = None
+            self._raiz_tilt_rad = 0.0
+        return True
+
     def _aplicar_giro_corpo(self, dt, direcao_olhar, angulo_pedido, dragging):
         """Aplica o GIRO DE CORPO LIMITADO ao nó dedicado ``body_facing``.
 
@@ -2167,16 +3044,6 @@ void main() {{
         ``_dance_stage_yaw``), para o mascote virar de lado NO LUGAR, sem
         orbitar nem sair do envelope da janela dinâmica. Durante o arraste o
         giro relaxa para 0: o arraste já reorienta o corpo pelo pivô de grip.
-
-        NÃO reaplica color key, z-order ou SetLayeredWindowAttributes; é apenas
-        transformação no grafo de cena. O hit-test segue a pose (raycast contra
-        model_np), então a região clicável acompanha o giro, como esperado.
-
-        Semântica das fontes do giro: no uso normal ``direcao_olhar`` chega 0.0
-        (window não acopla mais o giro ao olhar no hover/idle), então o giro
-        vem SÓ de ``angulo_pedido`` (ganchos de animação/locomoção). A classe
-        ``GiroCorpo`` dá precedência a ``angulo_pedido`` sobre ``direcao_olhar``
-        quando ambos chegam; a mola/clamp/LIMITE_GRAUS permanecem inalterados.
         """
         if self._body_facing is None:
             return
@@ -2195,7 +3062,6 @@ void main() {{
         if quat_raiz is not None:
             self._aplicar_rotacao_raiz_clipe(dt, quat_raiz, pedido, controller)
             return
-        self._raiz_tilt_rad = 0.0
         permitir_costas = bool(
             not dragging and getattr(controller, "permitir_giro_costas", False)
         )
@@ -2205,12 +3071,15 @@ void main() {{
             angulo_pedido=pedido,
             permitir_costas=permitir_costas,
         )
+        pivot = self._body_facing.getRelativePoint(self.model_np, Point3(0, 0, 0.44))
+        if self._aplicar_saida_quat_raiz(dt, angulo, pivot, dragging):
+            return
+        self._ultimo_quat_raiz = None
+        self._peso_saida_quat = 0.0
+        self._raiz_tilt_rad = 0.0
         if abs(angulo) < 0.01:
             self._body_facing.setMat(Mat4.identMat())
             return
-        # Centro do corpo no referencial do body_facing: gira em torno dele para
-        # virar no lugar (sem deslocar os pés nem o centro visível).
-        pivot = self._body_facing.getRelativePoint(self.model_np, Point3(0, 0, 0.44))
         rotacao = TransformState.makeHpr(Vec3(angulo, 0, 0)).getMat()
         self._body_facing.setMat(
             Mat4.translateMat(-pivot) * rotacao * Mat4.translateMat(pivot)
@@ -2239,7 +3108,7 @@ void main() {{
             cabinet = cabinet.find("+GeomNode")
         if not cabinet.isEmpty():
             low, high = cabinet.getTightBounds(head)
-            thickness = 0.022
+            thickness = 0.042
             # The cabinet is hollow. Its opening must remain traversable.
             panels = (
                 (Vec3(low), Vec3(high.x, low.y + thickness, high.z)),
@@ -2275,12 +3144,13 @@ void main() {{
     def _sync_tentacle_anchors_and_front(self):
         head = self._rig_nodes["head"]
         front = self.model_np.getRelativeVector(head, Vec3(0, 1, 0)).normalized()
+        up = self.model_np.getRelativeVector(head, Vec3(0, 0, 1)).normalized()
         for tentacle, local_anchor in zip(
             self.tentacle_pool.tentacles, self._tentacle_anchor_local, strict=True
         ):
             anchor = self.model_np.getRelativePoint(head, local_anchor)
             self.tentacle_director.sincronizar_ancora_e_frente(
-                tentacle, anchor, front
+                tentacle, anchor, front, up
             )
 
     def _update_tentacle_contacts(self):
@@ -2331,17 +3201,21 @@ void main() {{
             self._cobertura_roupa.clear()
 
     def _posar_cobertura_roupa(self):
-        # A curva cobre o tronco entre a abertura e o recolhimento.
+        # A curva cobre a frente do tronco no espaço atual da cabeça (mesmo se girada).
+        head = self._rig_nodes.get("head")
         for index, limb in enumerate(self._cobertura_roupa):
             if limb.state != TentacleState.CURIOUS:
                 continue
             lado = -1 if index == 0 else 1
-            curva = (
-                limb.anchor,
-                Vec3(lado * 0.68, -0.64, 0.68),
-                Vec3(-lado * 0.58, -0.62, 0.46),
-                Vec3(lado * 0.27, -0.47, 0.22),
-            )
+            if head is not None and not head.isEmpty():
+                c1 = Vec3(self.model_np.getRelativePoint(head, Point3(lado * 0.68, 0.64, -0.07)))
+                c2 = Vec3(self.model_np.getRelativePoint(head, Point3(-lado * 0.58, 0.62, -0.29)))
+                c3 = Vec3(self.model_np.getRelativePoint(head, Point3(lado * 0.27, 0.47, -0.53)))
+            else:
+                c1 = Vec3(lado * 0.68, -0.64, 0.68)
+                c2 = Vec3(-lado * 0.58, -0.62, 0.46)
+                c3 = Vec3(lado * 0.27, -0.47, 0.22)
+            curva = (limb.anchor, c1, c2, c3)
             for j, segmento in enumerate(limb.segments):
                 u = j / (len(limb.segments) - 1)
                 v = 1 - u
@@ -2350,6 +3224,14 @@ void main() {{
                     + curva[2] * (3 * v*u*u) + curva[3] * u**3
                 )
 
+    def _sincronizar_porta_para_contatos(self, angulo_porta: float) -> None:
+        """Aplica o ângulo real da porta antes de montar as caixas de contato."""
+        door = self._rig_nodes.get("door")
+        if door is None or door.isEmpty():
+            return
+        base_h, base_p, base_r = self._rig_base_hpr["door"]
+        door.setHpr(base_h + angulo_porta, base_p, base_r)
+
     def _interromper_cobertura_roupa(self) -> None:
         if self._tempo_cobertura <= 0 and not self._cobertura_roupa:
             return
@@ -2357,6 +3239,77 @@ void main() {{
         for limb in self._cobertura_roupa:
             self.tentacle_pool.release(limb)
         self._cobertura_roupa.clear()
+
+    def _disparar_tentaculos_cena_curta(
+        self, count: int, *, escala_comp: float = 1.15, escala_esp: float = 1.15, rev_s: float = 0.28, rec_s: float = 0.34, frente_extra: float = 0.0, baixo_extra: float = 0.0, porta_imediata: float = 0.0
+    ) -> None:
+        td = self.tentacle_director
+        if porta_imediata > 0.0:
+            td._door_current = max(td._door_current, porta_imediata)
+            td._door_requested = max(td._door_requested, porta_imediata)
+            td._atraso_abertura_porta = 0.0
+            self._sincronizar_porta_para_contatos(td._door_current)
+        limbs = td._spawn_curious(count, coreografar=False)
+        for idx, limb in enumerate(limbs):
+            limb.length_scale = escala_comp
+            limb.girth_scale = escala_esp
+            limb.duracao_revelacao_s = rev_s
+            limb.duracao_recolher_s = rec_s
+            limb.state_time = 0.0
+            limb.mola_forcada = (240.0, 22.0)
+            for seg in limb.segments:
+                seg.length = seg.length * (escala_comp / 1.08)
+            if limb.target is not None and (frente_extra != 0.0 or baixo_extra != 0.0):
+                limb.target = limb.target + limb.reference_front * frente_extra - limb.reference_up * baixo_extra
+
+    def _sincronizar_tentaculos_cena(self, controller, bloqueado: bool) -> None:
+        amostra = getattr(controller, "cena_idle_amostra", None)
+        if bloqueado or amostra is None or not amostra.ativa:
+            self._cena_tentaculo_chave = None
+            return
+        nome = amostra.nome
+        t_c = float(getattr(controller, "_cena_idle_tempo", 0.0))
+        td = self.tentacle_director
+        chave_ant = getattr(self, "_cena_tentaculo_chave", None)
+        if nome == "tentaculo_fujao":
+            if 0.42 <= t_c <= 2.25 and chave_ant != ("fujao", 1):
+                self._cena_tentaculo_chave = ("fujao", 1)
+                self._disparar_tentaculos_cena_curta(1, escala_comp=1.12, escala_esp=1.10, rev_s=0.34, rec_s=0.34, porta_imediata=42.0)
+            elif t_c > 2.25 and chave_ant == ("fujao", 1):
+                self._cena_tentaculo_chave = ("fujao", 2)
+                td.pool.release_all()
+            if t_c >= 3.04:
+                td._door_current = min(td._door_current, 1.5)
+        elif nome == "roubo_cursor_tentaculo":
+            if 0.64 <= t_c <= 1.12 and chave_ant != ("roubo", 1):
+                self._cena_tentaculo_chave = ("roubo", 1)
+                self._disparar_tentaculos_cena_curta(1, escala_comp=1.45, escala_esp=1.22, rev_s=0.14, rec_s=0.20, frente_extra=0.18, baixo_extra=0.10, porta_imediata=96.0)
+            elif 1.12 < t_c < 3.26 and chave_ant == ("roubo", 1):
+                self._cena_tentaculo_chave = ("roubo", 2)
+                td.pool.release_all()
+            elif 3.26 <= t_c <= 3.78 and chave_ant != ("roubo", 3):
+                self._cena_tentaculo_chave = ("roubo", 3)
+                self._disparar_tentaculos_cena_curta(2, escala_comp=1.35, escala_esp=1.18, rev_s=0.14, rec_s=0.24, frente_extra=0.16, baixo_extra=0.08, porta_imediata=98.0)
+                if self._vfx_enabled:
+                    self.tentacle_drips.spray(self.tentacle_pool.tentacles)
+            elif t_c > 3.78 and chave_ant == ("roubo", 3):
+                self._cena_tentaculo_chave = ("roubo", 4)
+                td.pool.release_all()
+            if 1.38 <= t_c <= 2.95:
+                for limb in td.pool.tentacles:
+                    limb.reveal = 0.0
+                td._door_current = min(td._door_current, 3.5)
+        elif nome == "cuspir_item":
+            if 0.54 <= t_c <= 1.42 and chave_ant != ("cuspir", 1):
+                self._cena_tentaculo_chave = ("cuspir", 1)
+                self._disparar_tentaculos_cena_curta(2, escala_comp=1.50, escala_esp=1.30, rev_s=0.16, rec_s=0.30, frente_extra=0.20, baixo_extra=0.18, porta_imediata=98.0)
+                if self._vfx_enabled:
+                    self.tentacle_drips.spray(self.tentacle_pool.tentacles)
+            elif t_c > 1.42 and chave_ant == ("cuspir", 1):
+                self._cena_tentaculo_chave = ("cuspir", 2)
+                td.pool.release_all()
+            if t_c >= 1.92:
+                td._door_current = min(td._door_current, 1.5)
 
     def _sincronizar_bloqueio_apendices(self, controller, visible: bool) -> tuple[bool, bool]:
         """Garante recolhimento e devolução da porta em drag/fall/sleep."""
@@ -2460,6 +3413,7 @@ void main() {{
             head.setH(head.getH() - 17 * shot + 62 * olhar)
             head.setP(head.getP() - 24 * shot)
             self._outline_nodes["head"].setHpr(head.getHpr())
+            self._sync_tentacle_anchors_and_front()
 
         sneezing = controller.state is not None and controller.state.value == "sneeze"
         if (
@@ -2468,11 +3422,13 @@ void main() {{
             and not self.tentacle_director.burst
         ):
             self.tentacle_director.trigger_sneeze()
-            self.tentacle_drips.spray(self.tentacle_pool.tentacles)
+            if self._vfx_enabled:
+                self.tentacle_drips.spray(self.tentacle_pool.tentacles)
         if not sneezing and not any(
             t.state != TentacleState.DORMANT for t in self.tentacle_pool.tentacles
         ):
             self.tentacle_director.burst = False
+        self._sincronizar_tentaculos_cena(controller, bloqueado)
         if visible:
             if not self._tentacles_were_visible:
                 self.tentacle_director.trigger_curious()
@@ -2485,6 +3441,8 @@ void main() {{
             t.state != TentacleState.DORMANT for t in self.tentacle_pool.tentacles
         )
         if tentacles_active:
+            # Aplica o ângulo aberto atual antes de coletar caixas para não esmagar na porta em 0°.
+            self._sincronizar_porta_para_contatos(self.tentacle_director._door_current)
             self._update_tentacle_contacts()
         self._atualizar_cobertura(dt)
         choreography_active = self.tentacle_director.coreografia_ativa
@@ -2509,7 +3467,7 @@ void main() {{
         porta_extensao = (
             coreo.SAIDA_ESPIRRO.angulo_empurrao_graus
             if self.tentacle_director.burst
-            else 92.0
+            else 105.0
         )
         self.tentacle_director._door_requested = max(
             self._door_requested,
@@ -2521,7 +3479,8 @@ void main() {{
         # after the last limb is dormant, so it can finish closing smoothly.
         self.tentacle_director.update(dt, controller.idle_personality)
         self._posar_cobertura_roupa()
-        self.tentacle_drips.update(dt, self.tentacle_pool.tentacles)
+        if self._vfx_enabled:
+            self.tentacle_drips.update(dt, self.tentacle_pool.tentacles)
         self._tentacles_were_visible = visible
         door = self._rig_nodes.get("door")
         angulo_porta = (
@@ -2536,6 +3495,9 @@ void main() {{
         if door:
             base_h, base_p, base_r = self._rig_base_hpr["door"]
             door.setHpr(base_h + angulo_porta, base_p, base_r)
+            if tentacles_active:
+                self._update_tentacle_contacts()
+                self.tentacle_director.reprojetar_portas()
             out_door = self._outline_nodes.get("door")
             if out_door:
                 out_door.hide()
@@ -2545,7 +3507,7 @@ void main() {{
                 tentacle.state != TentacleState.DORMANT
                 and tentacle.reveal > 0.015
                 and (
-                    abs(angulo_porta) >= 6.0
+                    abs(angulo_porta) >= 14.0
                     or tentacle is self.tentacle_director._atuador
                     or getattr(tentacle, "speaker_throw", False)
                 )
@@ -2570,10 +3532,12 @@ void main() {{
             if tentacle.outline_mesh_node:
                 (
                     tentacle.outline_mesh_node.show
-                    if tentacle_visible
+                    if tentacle_visible and getattr(self, "_outline_enabled", True)
                     else tentacle.outline_mesh_node.hide
                 )()
         self.fio_fone.atualizar(dt)
+        if getattr(self, "prop_cuspido", None) is not None:
+            self.prop_cuspido.atualizar(dt, controller, interromper=bloqueado)
 
     def trocar_caixa_de_som(self, estilo: str) -> None:
         """Recria o palco com a seleção atual e libera os nós da seleção anterior."""
@@ -2581,6 +3545,7 @@ void main() {{
 
         anterior = self.music_speaker
         self.music_speaker = MusicSpeaker(self, estilo)
+        self.music_speaker.set_album_colors(getattr(self, "_album_colors", ()))
         anterior.root.removeNode()
         self._speaker_throw_index = -1
 
@@ -2604,6 +3569,8 @@ void main() {{
 
         self.restore_exit_effect()
         self._normalizar_pivos_saida()
+        if self._shadow_np is not None:
+            self._shadow_np.hide()
         if style == "classic":
             vertex = """#version 130
 in vec4 p3d_Vertex; in vec2 p3d_MultiTexCoord0;
@@ -2665,10 +3632,44 @@ void main() {{
         if getattr(self, "exit_pivot", None):
             self.exit_pivot.setR(roll)
 
+    def _paleta_transicao_estilo(self) -> dict[str, tuple[float, float, float]]:
+        """Devolve a paleta de abertura/encerramento adaptada aos 5 estilos canônicos."""
+        from sejoga.configuracao import normalizar_filtro_visual
+
+        filtro = normalizar_filtro_visual(getattr(self, "_visual_filter", "blockbench"))
+        paletas: dict[str, dict[str, tuple[float, float, float]]] = {
+            "blockbench": {
+                "primaria": (0.14, 0.78, 1.0),
+                "secundaria": (1.0, 0.86, 0.24),
+                "fumaca": (0.94, 0.96, 1.0),
+            },
+            "street": {
+                "primaria": (1.0, 0.88, 0.13),
+                "secundaria": (0.07, 0.84, 1.0),
+                "fumaca": (0.65, 0.96, 0.12),
+            },
+            "anime": {
+                "primaria": (0.36, 0.88, 1.0),
+                "secundaria": (1.0, 0.84, 0.34),
+                "fumaca": (0.95, 0.96, 1.0),
+            },
+            "spiderverse": {
+                "primaria": (1.0, 0.20, 0.26),
+                "secundaria": (0.07, 0.85, 1.0),
+                "fumaca": (1.0, 0.91, 0.10),
+            },
+            "holograma": {
+                "primaria": (0.11, 0.91, 1.0),
+                "secundaria": (0.22, 0.96, 0.55),
+                "fumaca": (0.95, 1.0, 1.0),
+            },
+        }
+        return paletas[filtro]
+
     def set_post_effect(
         self,
         dissolve: float = 0.0,
-        dissolve_mode: str = "uniform",
+        dissolve_mode: str | float = "uniform",
         tint: tuple[float, float, float] = (0.10, 0.65, 1.00),
         flash: float = 0.0,
     ) -> None:
@@ -2678,11 +3679,16 @@ void main() {{
             return
         quad = pipeline._post_process_quad
         dissolve_val = float(max(0.0, min(1.0, dissolve)))
-        mode_val = (
-            2.0
-            if dissolve_mode == "cyberpsicopata"
-            else (1.0 if dissolve_mode == "thanos" else 0.0)
-        )
+        if isinstance(dissolve_mode, (int, float)):
+            mode_val = float(dissolve_mode)
+        elif dissolve_mode == "goku":
+            mode_val = 3.0
+        elif dissolve_mode == "cyberpsicopata":
+            mode_val = 2.0
+        elif dissolve_mode == "thanos":
+            mode_val = 1.0
+        else:
+            mode_val = 0.0
         tint_val = (float(tint[0]), float(tint[1]), float(tint[2]))
         flash_val = float(max(0.0, min(1.0, flash)))
         state = (quad, dissolve_val, mode_val, tint_val, flash_val)
@@ -2871,6 +3877,8 @@ void main() {{
             ghost.setCollideMask(0)
             for tampa in ghost.findAllMatches("**/*-tampa"):
                 tampa.removeNode()
+            for sub_gn in ghost.findAllMatches("**/+GeomNode"):
+                sub_gn.clearShader()
             if shader is not None:
                 ghost.setShader(shader, 1001)
                 ghost.setShaderInput("u_ghost_dissolve", 0.0)
@@ -2919,10 +3927,44 @@ void main() {{
                 ghost.setShaderInput("ghost_color", (cor[0], cor[1], cor[2], 1.0))
                 ghost.setShaderInput("u_ghost_dissolve", dissolve)
 
+    def _garantir_vfx_transicoes(self):
+        if self._vfx_transicoes is None:
+            from sejoga.render.vfx.transicoes import GerenciadorVfxTransicao
+
+            ef = getattr(self, "efeitos_street", None)
+            pai = ef.root if ef is not None else self.showbase.render
+            escala = float(getattr(ef, "_escala_global", 1.0)) if ef is not None else 1.0
+            self._vfx_transicoes = GerenciadorVfxTransicao(pai, escala_global=escala)
+        return self._vfx_transicoes
+
+    def _ancoras_transicao(self) -> dict[str, Vec3]:
+        ef = getattr(self, "efeitos_street", None)
+        if ef is not None:
+            return ef._calcular_ancoras()
+        pos, _, _ = self._pose_mundo_modelo()
+        return {
+            "tronco": Vec3(pos.x, pos.y, pos.z + 0.4),
+            "pes": Vec3(pos.x, pos.y, pos.z - 1.1),
+            "cabeca_topo": Vec3(pos.x, pos.y, pos.z + 2.2),
+            "antena_d": Vec3(pos.x - 0.8, pos.y, pos.z + 2.1),
+            "antena_e": Vec3(pos.x + 0.8, pos.y, pos.z + 2.1),
+        }
+
+    def definir_contexto_entrada(self, estilo: str, progresso: float) -> None:
+        """Registra estilo e progresso [0..1] da abertura para os VFX dedicados."""
+        self._transicao_intro_estilo = str(estilo or "")
+        self._transicao_intro_prog = max(0.0, min(1.0, float(progresso)))
+
+    def definir_progresso_saida(self, progresso: float) -> None:
+        """Registra progresso [0..1] da saída/morte para os VFX dedicados."""
+        self._transicao_saida_prog = max(0.0, min(1.0, float(progresso)))
+
     def prewarm_intro_effects(self, style: str) -> None:
         """Pré-aloca nós/shaders pesados da abertura para evitar engasgos no frame 1."""
+        self._transicao_intro_estilo = str(style or "")
         if self.model_np is None:
             return
+        self._garantir_vfx_transicoes()
         if style == "sandevistan_in" and hasattr(self.model_np, "copyTo"):
             root = self._garantir_fx_root()
             shader = self._garantir_shader_silhueta()
@@ -2952,10 +3994,12 @@ void main() {{
                 self._fx_smoke_nodes.append(puff)
         expande = 1.0 - burst * 0.55
         scale_model = max(0.35, self.model_np.getSz() * 0.28)
+        cor_fumaca = self._paleta_transicao_estilo()["fumaca"]
         for idx, (puff, (ox, oy, oz, rad)) in enumerate(
             zip(self._fx_smoke_nodes, _NINJA_SMOKE_OFFSETS, strict=True)
         ):
             puff.show()
+            puff.setColorScale(cor_fumaca[0], cor_fumaca[1], cor_fumaca[2], 1.0)
             drift = 0.65 + (1.0 - burst) * 1.15
             puff.setPos(
                 center_world.x + ox * scale_model * drift,
@@ -2993,6 +4037,7 @@ void main() {{
         count = 20
         self._garantir_flocos_thanos(count)
         s = max(0.35, self.model_np.getSz() * 0.18)
+        pal_estilo = self._paleta_transicao_estilo()
         for idx, flake in enumerate(self._fx_ash_nodes):
             delay = (idx / count) * 0.55
             local_p = max(0.0, min(1.0, (ash - delay * 0.6) / max(0.25, 1.0 - delay * 0.6)))
@@ -3001,7 +4046,14 @@ void main() {{
                 continue
             flake.show()
             if paleta == "cyber":
-                cor = (0.98, 0.16, 0.28, 1.0) if idx % 2 == 0 else (0.10, 0.96, 1.0, 1.0)
+                c_a = pal_estilo["secundaria"]
+                c_b = pal_estilo["primaria"]
+                cor = (*c_a, 1.0) if idx % 2 == 0 else (*c_b, 1.0)
+                flake.setColorScale(*cor)
+            elif paleta == "portal":
+                c_a = pal_estilo["primaria"]
+                c_b = pal_estilo["secundaria"]
+                cor = (*c_a, 1.0) if idx % 2 == 0 else (*c_b, 1.0)
                 flake.setColorScale(*cor)
             else:
                 flake.clearColorScale()
@@ -3123,7 +4175,20 @@ void main() {{
                     (0.02, 0.28, 0.96, 0.28),
                     (0.24, 0.70, 1.0, 0.34),
                 )
+                from panda3d.core import ColorBlendAttrib
+
                 halo.setTransparency(1)
+                halo.setAttrib(
+                    ColorBlendAttrib.make(
+                        ColorBlendAttrib.MAdd,
+                        ColorBlendAttrib.OIncomingAlpha,
+                        ColorBlendAttrib.OOneMinusIncomingAlpha,
+                        ColorBlendAttrib.MAdd,
+                        ColorBlendAttrib.OOne,
+                        ColorBlendAttrib.OOneMinusIncomingAlpha,
+                    ),
+                    10,
+                )
                 halo.setBin("fixed", 59)
                 halo.setDepthTest(False)
                 halo.setDepthWrite(False)
@@ -3332,7 +4397,9 @@ void main() {{
         )
 
     def _aplicar_visibilidade_e_dissolve_intro(self, frame) -> None:
-        if frame.dissolve >= 0.96 and frame.smoke_burst > 0.05:
+        d_mode = float(getattr(frame, "dissolve_mode", 0.0))
+        pal = self._paleta_transicao_estilo()
+        if frame.dissolve >= 0.96 and frame.smoke_burst > 0.05 and d_mode < 2.5:
             self.model_np.hide()
             self.outline_np.hide()
             self.set_post_effect(dissolve=0.0)
@@ -3340,7 +4407,14 @@ void main() {{
         self.model_np.show()
         if self._outline_enabled:
             self.outline_np.show()
-        self.set_post_effect(dissolve=frame.dissolve, dissolve_mode="uniform")
+        tint = pal["secundaria"] if d_mode >= 2.5 else pal["primaria"]
+        flash = (0.48 * frame.dissolve) if d_mode >= 2.5 else 0.0
+        self.set_post_effect(
+            dissolve=frame.dissolve,
+            dissolve_mode=d_mode,
+            tint=tint,
+            flash=flash,
+        )
 
     def apply_intro_effect(
         self,
@@ -3360,22 +4434,66 @@ void main() {{
         self._aplicar_visibilidade_e_dissolve_intro(frame)
         base_pos = self._resolver_base_intro()
         scale = max(0.08, float(frame.scale))
+        warp = getattr(frame, "warp_scale", (1.0, 1.0, 1.0))
         units = float(self._view_height / max(1, self.height))
-        foot_comp = self._intro_orig_foot_local_z * (1.0 - scale)
+        foot_comp = self._intro_orig_foot_local_z * (1.0 - scale * float(warp[2]))
         offset_x_u = frame.offset_x * units if apply_horizontal_offset else 0.0
         self.model_anchor.setPos(
             base_pos.x + offset_x_u,
             base_pos.y,
             base_pos.z - frame.offset_y * units + foot_comp,
         )
-        self.model_anchor.setScale(scale)
+        self.model_anchor.setScale(
+            scale * float(warp[0]),
+            scale * float(warp[1]),
+            scale * float(warp[2]),
+        )
         self.model_anchor.setHpr(frame.yaw, frame.pitch, frame.roll)
         self._atualizar_fumaca_ninja(frame.smoke_burst, self._centro_efeito_intro())
         afterimage = float(getattr(frame, "afterimage", 0.0))
-        if (afterimage > 0.02 or self._sandevistan_stamps) and self.model_np is not None:
+        d_mode = float(getattr(frame, "dissolve_mode", 0.0))
+        if d_mode >= 2.5 and afterimage > 0.02 and self.model_np is not None:
+            pal = self._paleta_transicao_estilo()
+            world_pos, world_hpr, scale_ref = self._pose_mundo_modelo()
+            silhuetas_goku = [
+                (
+                    Point3(world_pos.x - 0.045, world_pos.y + 0.12, world_pos.z + 0.06),
+                    world_hpr,
+                    pal["secundaria"],
+                    scale_ref,
+                    0.35,
+                ),
+                (
+                    Point3(world_pos.x + 0.045, world_pos.y + 0.18, world_pos.z - 0.06),
+                    world_hpr,
+                    pal["primaria"],
+                    scale_ref,
+                    0.45,
+                ),
+            ]
+            self._atualizar_silhuetas_fx(True, silhuetas_goku)
+        elif (afterimage > 0.02 or self._sandevistan_stamps) and self.model_np is not None:
             self._atualizar_sandevistan_intro(afterimage, desktop_pos, units)
         else:
             self._atualizar_silhuetas_fx(False, [])
+        if self._vfx_enabled:
+            estilo_in = self._transicao_intro_estilo or (
+                "goku_teleport_in"
+                if d_mode >= 2.5
+                else (
+                    "kagebunshin_in"
+                    if getattr(frame, "smoke_burst", 0.0) > 0.01
+                    else ("hero_drop_in" if getattr(frame, "locomotion", "") in ("fall", "land") else "fade_in")
+                )
+            )
+            prog_in = (
+                self._transicao_intro_prog
+                if self._transicao_intro_prog is not None
+                else max(0.05, 1.0 - float(getattr(frame, "dissolve", 0.0)))
+            )
+            self._garantir_vfx_transicoes().atualizar_entrada(
+                estilo_in, prog_in, getattr(self, "_visual_filter", "blockbench"), self._ancoras_transicao()
+            )
 
     def _pose_mundo_modelo(self):
         pos = self.model_np.getPos(self.showbase.render)
@@ -3394,15 +4512,27 @@ void main() {{
             )
             self.outline_np.show()
         if self.model_anchor:
-            if self._intro_orig_anchor_pos is not None:
+            if (
+                self._intro_orig_anchor_pos is not None
+                and getattr(self.showbase, "desktop", None) is None
+            ):
                 self.model_anchor.setPos(self._intro_orig_anchor_pos)
             self.model_anchor.setScale(1.0)
             self.model_anchor.setHpr(0.0, 0.0, 0.0)
         self._intro_orig_anchor_pos = None
         self._intro_orig_foot_local_z = None
+        self._anim_air_px_suave = 0.0
         self._sandevistan_stamps.clear()
+        self._transicao_intro_estilo = ""
+        self._transicao_intro_prog = None
+        if self._vfx_transicoes is not None:
+            self._vfx_transicoes.limpar()
         self.set_post_effect(dissolve=0.0, flash=0.0)
+        self._transicao_saida_prog = None
+        if self._vfx_transicoes is not None:
+            self._vfx_transicoes.limpar()
         self._limpar_fx()
+        self.atualizar_sombra_contato()
 
     def _fx_saida_fnf(self, frame) -> tuple[tuple[float, float, float], float]:
         shock = float(getattr(frame, "shock", 0.0))
@@ -3468,25 +4598,65 @@ void main() {{
             self._exit_center.z - (frame.y - origin[1]) * units,
         )
         self.exit_pivot.setHpr(frame.yaw, frame.pitch, frame.roll)
-        self.exit_pivot.setScale(max(0.05, frame.scale))
+        s = max(0.05, float(frame.scale))
+        warp = getattr(frame, "warp_scale", (1.0, 1.0, 1.0))
+        self.exit_pivot.setScale(
+            s * float(warp[0]),
+            s * float(warp[1]),
+            s * float(warp[2]),
+        )
 
         if style == "lego_disassemble" and frame.explode > 0.0:
             if not self._lego_snapshot:
                 self._iniciar_lego_scatter(getattr(self, "_lego_floor_world_z", None))
             self._atualizar_lego_scatter(frame.explode)
 
-        mode = (
-            "cyberpsicopata"
-            if style == "cyberpsicopata_out"
-            else ("thanos" if style == "thanos_snap" else "uniform")
+        pal = self._paleta_transicao_estilo()
+        d_mode_frame = float(getattr(frame, "dissolve_mode", 0.0))
+        mode: str | float = (
+            "goku"
+            if (style == "goku_teleport_out" or d_mode_frame >= 2.5)
+            else (
+                "cyberpsicopata"
+                if style == "cyberpsicopata_out"
+                else (
+                    "thanos"
+                    if style in ("thanos_snap", "portal_pull_out")
+                    else "uniform"
+                )
+            )
         )
         silhuetas_saida: list[tuple] = []
         if style == "fnf_blue_balls":
             tint, flash = self._fx_saida_fnf(frame)
         elif style == "cyberpsicopata_out":
             tint, flash, silhuetas_saida = self._fx_saida_cyberpsicopata(frame, units)
+        elif style == "goku_teleport_out" or d_mode_frame >= 2.5:
+            tint = pal["secundaria"]
+            flash = min(0.55, float(getattr(frame, "shock", 0.0)) * 0.48)
+            if 0.05 < frame.dissolve < 0.96 and self.model_np is not None:
+                world_pos, world_hpr, scale_ref = self._pose_mundo_modelo()
+                silhuetas_saida = [
+                    (
+                        Point3(world_pos.x - 0.045, world_pos.y + 0.12, world_pos.z + 0.06),
+                        world_hpr,
+                        pal["secundaria"],
+                        scale_ref,
+                        0.32,
+                    ),
+                    (
+                        Point3(world_pos.x + 0.045, world_pos.y + 0.18, world_pos.z - 0.06),
+                        world_hpr,
+                        pal["primaria"],
+                        scale_ref,
+                        0.42,
+                    ),
+                ]
+        elif style == "portal_pull_out":
+            tint = pal["primaria"]
+            flash = min(0.45, float(getattr(frame, "shock", 0.0)) * 0.42)
         else:
-            tint = (0.08, 0.68, 1.0)
+            tint = pal["primaria"]
             flash = frame.blue_balls * 0.26
         self._atualizar_silhuetas_fx(bool(silhuetas_saida), silhuetas_saida)
         self.set_post_effect(
@@ -3499,9 +4669,22 @@ void main() {{
         self._atualizar_cinzas_thanos(
             frame.ash,
             center,
-            paleta="cyber" if style == "cyberpsicopata_out" else "thanos",
+            paleta=(
+                "cyber"
+                if style == "cyberpsicopata_out"
+                else ("portal" if style == "portal_pull_out" else "thanos")
+            ),
         )
         self._atualizar_orbes_azuis(frame.blue_balls, center)
+        if self._vfx_enabled:
+            prog_out = (
+                self._transicao_saida_prog
+                if self._transicao_saida_prog is not None
+                else max(0.08, float(frame.dissolve), float(frame.explode))
+            )
+            self._garantir_vfx_transicoes().atualizar_saida(
+                style, prog_out, getattr(self, "_visual_filter", "blockbench"), self._ancoras_transicao()
+            )
 
     def _restaurar_ancora_saida(self) -> None:
         if self.model_anchor:
@@ -3543,4 +4726,8 @@ void main() {{
             )
             self.outline_np.show()
         self.set_post_effect(dissolve=0.0, flash=0.0)
+        self._transicao_saida_prog = None
+        if self._vfx_transicoes is not None:
+            self._vfx_transicoes.limpar()
         self._limpar_fx()
+        self.atualizar_sombra_contato()

@@ -25,7 +25,7 @@ FASES_TEIMOSIA = {
     "cospe": (5.0, 6.0),
 }
 
-_JANELA_BLEND_FASE_S = 0.18
+_JANELA_BLEND_FASE_S = 0.16
 
 _BASE_TEIMOSIA: dict[str, Trio] = {
     "cintura": (0.0, 0.0, 0.0),
@@ -47,10 +47,6 @@ _BASE_TEIMOSIA: dict[str, Trio] = {
     "hand2": (0.0, 0.0, 0.0),
     "fingers": (0.0, 0.0, 0.0),
     "fingers2": (0.0, 0.0, 0.0),
-    "coxa-direita": (0.0, 0.0, 0.0),
-    "coxa-esquerda": (0.0, 0.0, 0.0),
-    "canela-direita": (0.0, 0.0, 0.0),
-    "canela-esquerda": (0.0, 0.0, 0.0),
 }
 
 
@@ -120,7 +116,6 @@ def _pose_resistencia(tempo: float, direcao_olhar: float) -> dict[str, Trio]:
     """Fase 1: Mário tensiona o corpo em cascata da cintura às antenas."""
     tensao = suavizar_quintico(min(1.0, tempo / 0.30))
     balanco = math.sin(tempo * 10.0) * tensao
-    peso = math.sin(tempo * 5.0) * 4.0 * tensao
     pose = dict(_BASE_TEIMOSIA)
     pose.update({
         "cintura": (-4.0 * tensao, direcao_olhar * 4.0 * tensao, balanco * 2.5),
@@ -141,10 +136,6 @@ def _pose_resistencia(tempo: float, direcao_olhar: float) -> dict[str, Trio]:
         "hand2": (10.0 * tensao, 0.0, 8.0 * tensao),
         "fingers": (0.0, 0.0, 14.0 * tensao),
         "fingers2": (0.0, 0.0, -14.0 * tensao),
-        "coxa-direita": (-10.0 * tensao + peso, 0.0, 0.0),
-        "coxa-esquerda": (-10.0 * tensao - peso, 0.0, 0.0),
-        "canela-direita": (16.0 * tensao + max(0.0, peso), 0.0, 0.0),
-        "canela-esquerda": (16.0 * tensao + max(0.0, -peso), 0.0, 0.0),
     })
     return pose
 
@@ -152,7 +143,7 @@ def _pose_resistencia(tempo: float, direcao_olhar: float) -> dict[str, Trio]:
 def _pose_repreensao(tempo: float, direcao_olhar: float) -> dict[str, Trio]:
     """Fase 2: Olhar de desafio para o cursor (pose forte + ombros e dedos vivos)."""
     u = min(1.0, max(0.0, tempo - 1.0))
-    batida = abs(math.sin(tempo * 8.0))
+    batida = 0.5 - 0.5 * math.cos((tempo - 1.0) * 8.0)
     pose = dict(_BASE_TEIMOSIA)
     pose.update({
         "cintura": (2.0 * math.sin(u * math.pi), direcao_olhar * 5.0, 0.0),
@@ -184,11 +175,12 @@ def _pose_bote(tempo: float, direcao_olhar: float) -> dict[str, Trio]:
     suave = suavizar_quintico(agachar)
     pose = dict(_BASE_TEIMOSIA)
     pose.update({
-        "cintura": (8.0 * suave, direcao_olhar * 4.0, 0.0),
-        "abdomen": (8.0 * suave, direcao_olhar * 4.0, 0.0),
-        "peitoral": (10.0 * suave, direcao_olhar * 5.0, 0.0),
-        "body": (18.0 * suave, direcao_olhar * 10.0, 0.0),
-        "head": (-28.0 * suave, direcao_olhar * 20.0, 0.0),
+        # Convenção canônica: -X inclina tronco à frente para o bote.
+        "cintura": (-5.0 * suave, direcao_olhar * 4.0, 0.0),
+        "abdomen": (-5.5 * suave, direcao_olhar * 4.0, 0.0),
+        "peitoral": (-6.5 * suave, direcao_olhar * 5.0, 0.0),
+        "body": (-10.0 * suave, direcao_olhar * 10.0, 0.0),
+        "head": (12.0 * suave, direcao_olhar * 20.0, 0.0),
         "fones": (10.0 * suave, 0.0, 0.0),
         "antena-direita": (16.0 * suave, 0.0, -6.0 * suave),
         "antena-esquerda": (16.0 * suave, 0.0, 6.0 * suave),
@@ -228,8 +220,8 @@ def _pose_roubo(tempo: float, direcao_olhar: float) -> dict[str, Trio]:
         "shoulder2": (-correr * 0.4, 0.0, 3.0),
         "right-arm": (REPOUSO.BRACO_X - 28.0 + correr * 1.6, REPOUSO.BRACO_Y, REPOUSO.BRACO_Z),
         "left-arm": (REPOUSO.BRACO_X - 28.0 - correr * 1.6, -REPOUSO.BRACO_Y, -REPOUSO.BRACO_Z),
-        "ant-arm": (0.0, 0.0, REPOUSO.ANTEBRACO_Z + 28.0 + max(0.0, -correr) * 1.2),
-        "ant-arm2": (0.0, 0.0, -REPOUSO.ANTEBRACO_Z - 28.0 - max(0.0, correr) * 1.2),
+        "ant-arm": (0.0, 0.0, REPOUSO.ANTEBRACO_Z + 28.0 + 0.6 * (math.sqrt(correr * correr + 1.0) - correr)),
+        "ant-arm2": (0.0, 0.0, -REPOUSO.ANTEBRACO_Z - 28.0 - 0.6 * (math.sqrt(correr * correr + 1.0) + correr)),
         "hand": (10.0 + correr * 0.8, 0.0, 0.0),
         "hand2": (10.0 - correr * 0.8, 0.0, 0.0),
         "fingers": (0.0, 0.0, 14.0),

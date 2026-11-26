@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+
 from panda3d.core import (
     CullFaceAttrib,
     Filename,
@@ -17,6 +18,7 @@ from panda3d.core import (
     Texture,
     Vec3,
 )
+
 from sejoga.nucleo.recursos import model_dir
 
 
@@ -130,6 +132,7 @@ class PernasTecido:
         stage = base_geom.findTextureStage("*")
         vis.setTexture(stage, textura, 10)
         self._nodes.append(vis)
+        self._vdata_outline = None
         if renderer.outline_np is not None:
             outline_base = renderer.outline_np.find("**/pelvis/+GeomNode")
             estado_outline = (
@@ -137,8 +140,17 @@ class PernasTecido:
                 .getGeomState(0)
                 .removeAttrib(CullFaceAttrib.getClassType())
             )
+            self._vdata_outline = GeomVertexData(
+                "calca-autoral-outline", formato, Geom.UHDynamic
+            )
+            uv_out = GeomVertexWriter(self._vdata_outline, "texcoord.0")
+            for face in self._faces:
+                for tex in face["uv"]:
+                    uv_out.addData2(*tex)
+            geom_out = Geom(self._vdata_outline)
+            geom_out.addPrimitive(triangulos)
             no_outline = GeomNode("calca-autoral-outline")
-            no_outline.addGeom(geom, estado_outline)
+            no_outline.addGeom(geom_out, estado_outline)
             contorno = renderer.outline_np.find("**/legs").attachNewNode(no_outline)
             contorno.setTexture(stage, textura, 10)
             self._nodes.append(contorno)
@@ -164,17 +176,33 @@ class PernasTecido:
     def _escrever(self, pontos):
         vw = GeomVertexWriter(self._vdata, "vertex")
         nw = GeomVertexWriter(self._vdata, "normal")
+        normais_suaves: dict[str, Vec3] = {}
         for face in self._faces:
             ps = [pontos[k] for k in face["vertices"]]
             normal = (ps[1] - ps[0]).cross(ps[2] - ps[0])
             normal.normalize()
-            for p in ps:
+            for k, p in zip(face["vertices"], ps, strict=True):
                 vw.setData3(p)
                 nw.setData3(normal)
+                acum = normais_suaves.get(k)
+                normais_suaves[k] = normal if acum is None else (acum + normal)
+        if self._vdata_outline is not None:
+            for k, soma in normais_suaves.items():
+                if soma.lengthSquared() > 1e-10:
+                    soma.normalize()
+                else:
+                    normais_suaves[k] = Vec3(0.0, -1.0, 0.0)
+            vw_o = GeomVertexWriter(self._vdata_outline, "vertex")
+            nw_o = GeomVertexWriter(self._vdata_outline, "normal")
+            for face in self._faces:
+                for k in face["vertices"]:
+                    vw_o.setData3(pontos[k])
+                    nw_o.setData3(normais_suaves[k])
         for node in self._nodes:
             node.node().markInternalBoundsStale()
 
     def apply(self, renderer, pose, dt):
+        """Aplica skinning matricial na malha da calça autoral quando há mudança de pose."""
         if not self._ativo:
             return
         mat_pelvis = (
@@ -192,6 +220,16 @@ class PernasTecido:
             )
             for lado, (nos, inversas) in self._cadeias.items()
         }
+        assinatura = tuple(
+            round(m.getCell(lin, col), 5)
+            for lado in sorted(matrizes)
+            for m in matrizes[lado]
+            for lin in range(4)
+            for col in range(3)
+        )
+        if assinatura == getattr(self, "_ultima_assinatura_matrizes", None):
+            return
+        self._ultima_assinatura_matrizes = assinatura
         pontos = {}
         for chave, ponto in self._pontos.items():
             lado, pesos = self._pesos[chave]
@@ -201,6 +239,7 @@ class PernasTecido:
         self._escrever(pontos)
 
     def set_lego_mode(self, renderer, ativo):
+        """Alterna visibilidade entre calça contínua e peças rígidas no modo LEGO."""
         self._ativo = not ativo
         for no in self._nodes:
             no.hide() if ativo else no.show()
