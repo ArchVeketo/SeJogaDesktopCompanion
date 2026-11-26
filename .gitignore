@@ -1,0 +1,48 @@
+# Godot 4
+.godot/
+*.translation
+export_presets.cfg
+
+# C# / .NET (caso use Godot .NET)
+.mono/
+data_*/
+mono_crash.*.json
+bin/
+obj/
+*.user
+*.suo
+
+# Blender / Blockbench temporários
+*.blend1
+*.blend2
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Artefatos locais e pastas pré-existentes no workspace (legado v1/v2)
+.local/
+.worktrees/
+.venv/
+.venv-build/
+venv/
+env/
+dist/
+build/
+scratch/
+logs/
+captures/
+state/
+user-data/
+temp_pytest_run/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+__pycache__/
+*.log
+*.local.toml
+*.spec
+.idea/
+.junie/
+.agents/tasks/
